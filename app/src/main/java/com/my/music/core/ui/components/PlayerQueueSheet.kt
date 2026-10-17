@@ -211,7 +211,7 @@ private fun QueueTrackItem(
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
+            if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
                 onDismiss()
                 true
             } else {
@@ -222,11 +222,17 @@ private fun QueueTrackItem(
 
     SwipeToDismissBox(
         state = dismissState,
-        enableDismissFromStartToEnd = false,
+        enableDismissFromStartToEnd = true,
         enableDismissFromEndToStart = true,
         backgroundContent = {
+            val isDismissing = dismissState.targetValue != SwipeToDismissBoxValue.Settled
+            val alignment = if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd) {
+                Alignment.CenterStart
+            } else {
+                Alignment.CenterEnd
+            }
             val color by animateColorAsState(
-                targetValue = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
+                targetValue = if (isDismissing) {
                     MaterialTheme.colorScheme.errorContainer
                 } else {
                     Color.Transparent
@@ -239,13 +245,15 @@ private fun QueueTrackItem(
                     .clip(RoundedCornerShape(16.dp))
                     .background(color)
                     .padding(horizontal = 20.dp),
-                contentAlignment = Alignment.CenterEnd,
+                contentAlignment = alignment,
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = "Удалить из очереди",
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                )
+                if (isDismissing) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Удалить из очереди",
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
             }
         },
     ) {

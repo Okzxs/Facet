@@ -109,7 +109,7 @@ fun AppNavGraph() {
                 HomeScreen(onTrackClick = { navController.navigate(Screen.Player.route) })
             }
             composable(Screen.Search.route) {
-                SearchScreen(onTrackClick = { track -> openPlayer(track) })
+                SearchScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
             }
             composable(Screen.Library.route) {
                 LibraryScreen(onTrackClick = { navController.navigate(Screen.Player.route) })

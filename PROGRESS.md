@@ -310,10 +310,52 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## 🔜 Следующий шаг — Фаза 2 (Очередь воспроизведения)
+## ✅ Фаза 2 — Очередь воспроизведения (17.10.2026)
+
+### Что сделано
+1. **Управление очередью в PlayerController**:
+   - Полноценная очередь `List<Track>` с отслеживанием текущего индекса `currentIndex`.
+   - Режимы повтора `repeatMode` (`OFF` $\to$ `ALL` $\to$ `ONE` $\to$ `OFF`) и воспроизведения после окончания трека (`onTrackEnded`).
+   - Режим перемешивания `isShuffle` с сохранением `originalQueue` для корректного восстановления исходного порядка треков при выключении.
+   - Методы перехода: `playNext(loop)` и `playPrevious()` с логикой возврата в начало трека, если прошло более 3 секунд.
+   - Метод удаления трека `removeTrackAt(index)` с автокоррекцией текущего индекса и остановкой плеера при опустошении очереди.
+2. **Интеграция с системным сервисом и уведомлением (MusicService)**:
+   - В `ForwardingPlayer` переопределены и объявлены доступными команды `SEEK_TO_NEXT`, `SEEK_TO_NEXT_MEDIA_ITEM`, `SEEK_TO_PREVIOUS`, `SEEK_TO_PREVIOUS_MEDIA_ITEM`.
+   - Кнопки переключения треков в шторке уведомлений и на заблокированном экране вызывают методы очереди `playerController.playNext()` и `playerController.playPrevious()`.
+3. **Шторка очереди воспроизведения (PlayerQueueSheet)**:
+   - Модальная шторка `ModalBottomSheet` высотой 78% экрана со скруглением верхних углов 28dp и drag handle 32×4 dp.
+   - Заголовок «Очередь» с количеством треков и кнопками быстрого включения/выключения Shuffle и Repeat.
+   - Список треков с автоскроллом к активному элементу при открытии.
+   - Активный трек визуально выделен тонированной плашкой `primaryContainer` и иконкой Play.
+   - Двусторонний свайп влево и вправо для быстрого удаления трека из очереди (`SwipeToDismissBox`) с анимацией красной подложки и корзины.
+4. **Связка с UI плеера и поиском**:
+   - Пилюля «Далее» в сегментированном баре `PlayerScreen` открывает `PlayerQueueSheet`.
+   - При выборе трека в результатах поиска (`SearchScreen`) в плеер передаётся полный список найденных треков как контекстная очередь.
+   - Кнопки «Prev» и «Next» в `PlayerScreen` вызывают `viewModel.playPrevious()` и `viewModel.playNext()`.
+5. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+core/player/RepeatMode.kt
+core/player/PlayerController.kt
+core/player/MusicService.kt
+core/ui/components/PlayerQueueSheet.kt
+feature/player/PlayerViewModel.kt
+feature/player/PlayerScreen.kt
+feature/search/SearchScreen.kt
+navigation/AppNavGraph.kt
+```
+
+---
+
+## 🔜 Следующий шаг — Фаза 3 (Home charts and Library)
 
 ### Что нужно сделать
-1. `PlayerController`: очередь `List<Track>`, текущий индекс, режимы `repeat` (off/all/one), `shuffle` (с сохранением исходного порядка), методы `next`/`prev` с учётом режимов; `StateFlow` очереди.
-2. Клик по треку в любом списке: очередь = список-источник, текущий = кликнутый трек.
-3. `PlayerQueueSheet` по `docs/reference-notes.md`: шторка 78% высоты, скругление 28dp, handle, заголовок «Очередь», текущий трек подсвечен, тап — переключение, свайп — удалить.
-4. Пилюля «Далее» открывает шторку очереди; кнопки prev/next в плеере и уведомлении работают через очередь.
+1. **Data**: `SoundCloudChartsRepository` через NewPipe-киоски SoundCloud («New & hot», «Top 50»). Кэш: последние чарты в Room-таблицу `chart_cache`, TTL обновления ~30 минут.
+2. **CollectionsViewModel**: собирает секции Home:
+   - Личные (когда есть данные): «Недавние» (`play_history`), «Лайкнутые» (`liked_tracks`), «Твои жанры» (группировка истории + лайков по genre).
+   - Открытие (всегда): «New & hot», «Top 50» из чарт-кэша/сети.
+3. **HomeScreen**: выразительная шапка-приветствие по времени суток с крупной типографикой; горизонтальные карусели (`LazyRow`) карточек подборок с заголовками секций; тап по треку = воспроизведение с очередью из этой подборки; скелетоны при загрузке чартов; pull-to-refresh.
+4. **LibraryScreen**: сетка/список «Лайкнутые» из БД, тап — играет.
+5. Сборка, пометка в `PROGRESS.md`, коммит и пуш.
+
