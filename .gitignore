@@ -1,0 +1,37 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Kotlin
+*.class
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+
+# NDK
+*.so
+obj/
+
+# Keystore (никогда не коммитить!)
+*.jks
+*.keystore
+release/
+
+# Логи
+*.log
+
+# Временные файлы Android Studio
+captures/
+.externalNativeBuild/
+.cxx/

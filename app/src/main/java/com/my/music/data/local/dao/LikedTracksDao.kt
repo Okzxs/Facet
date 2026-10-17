@@ -1,0 +1,30 @@
+package com.my.music.data.local.dao
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.my.music.data.local.entity.LikedTrackEntity
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * DAO для работы с избранными треками (таблица liked_tracks).
+ */
+@Dao
+interface LikedTracksDao {
+
+    @Query("SELECT * FROM liked_tracks ORDER BY likedAt DESC")
+    fun getLikedTracks(): Flow<List<LikedTrackEntity>>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM liked_tracks WHERE id = :id)")
+    fun isLiked(id: String): Flow<Boolean>
+
+    @Query("SELECT * FROM liked_tracks WHERE id = :id LIMIT 1")
+    suspend fun getLikedTrack(id: String): LikedTrackEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLikedTrack(track: LikedTrackEntity)
+
+    @Query("DELETE FROM liked_tracks WHERE id = :id")
+    suspend fun deleteLikedTrack(id: String)
+}
