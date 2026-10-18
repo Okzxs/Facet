@@ -105,14 +105,13 @@ fun AppNavGraph() {
             popExitTransition = { fadeOut(animationSpec = tween(200)) },
         ) {
             composable(Screen.Home.route) {
-                // HomeScreen — заглушка, onTrackClick без параметра (трека нет)
-                HomeScreen(onTrackClick = { navController.navigate(Screen.Player.route) })
+                HomeScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
             }
             composable(Screen.Search.route) {
                 SearchScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
             }
             composable(Screen.Library.route) {
-                LibraryScreen(onTrackClick = { navController.navigate(Screen.Player.route) })
+                LibraryScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
             }
             composable(Screen.Wave.route) {
                 WaveScreen(onTrackClick = { navController.navigate(Screen.Player.route) })

@@ -35,5 +35,11 @@ abstract class RepositoryModule {
     abstract fun bindPlayHistoryRepository(
         impl: com.my.music.data.local.PlayHistoryRepositoryImpl,
     ): com.my.music.data.repository.PlayHistoryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSoundCloudChartsRepository(
+        impl: com.my.music.data.source.soundcloud.SoundCloudChartsRepositoryImpl,
+    ): com.my.music.data.repository.SoundCloudChartsRepository
 }
 

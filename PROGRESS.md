@@ -432,15 +432,66 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## 🔜 Следующий шаг — Фаза 3 (Home charts and Library)
+## ✅ Фаза 3 — Главный экран с подборками и Медиатека (19.10.2026)
+
+### Что сделано
+1. **Слой данных чартов SoundCloud и кэш Room**:
+   - Создана сущность `ChartCacheEntity` и DAO `ChartCacheDao` с составным первичным ключом `(chartType, id)` и транзакционной заменой `replaceChart`.
+   - База данных `AppDatabase` обновлена до версии 2 с регистрацией `ChartCacheEntity` и `chartCacheDao()`.
+   - Создан интерфейс `SoundCloudChartsRepository` и реализация `SoundCloudChartsRepositoryImpl` через NewPipe-киоски (`https://soundcloud.com/charts/new` для "New & hot" и `/top` для "Top 50").
+   - Внедрён 30-минутный TTL кэширования: свежий кэш отдаётся мгновенно офлайн; при устаревании или pull-to-refresh происходит сетевой запрос к NewPipe с сохранением в Room; при сбое сети работает offline-first фолбэк на кэш.
+   - Hilt-модули `DatabaseModule` и `RepositoryModule` обновлены для предоставления `ChartCacheDao` и `SoundCloudChartsRepository`.
+2. **HomeViewModel**:
+   - Непрерывное наблюдение за реактивными потоками кэша чартов, истории прослушиваний (`play_history`) и лайков (`liked_tracks`).
+   - Автоматическая группировка персональных предпочтений по жанрам (`genreSections`).
+   - Разделение секций: личные («Недавние», «Любимые треки», «Твои жанры») показываются только при наличии данных; чарты («New & Hot», «Top 50») доступны всегда со скелетонами загрузки.
+   - Поддержка `refresh()` с флагом `forceRefresh = true` для жеста pull-to-refresh.
+3. **HomeScreen (Material 3 Expressive + Jetpack Compose)**:
+   - Выразительная шапка-приветствие по времени суток с динамическим эмодзи («Доброе утро ☀️», «Добрый день 🌤️», «Добрый вечер 🌆», «Доброй ночи 🌙») и крупным шрифтом `headlineLarge`.
+   - Горизонтальные карусели `LazyRow` с карточками 148×148 dp со скруглением `RoundedCornerShape(20.dp)` и тенью 6dp.
+   - Номерные карточки для секции «Top 50 SoundCloud» с крупным плакатным номером позиции (1..50) по дизайн-спеке.
+   - Скелетон-карусели при первой загрузке без мерцания.
+   - Жест Pull-to-refresh через `PullToRefreshBox`.
+   - Тап по любому треку запускает воспроизведение трека с полной очередью из этой подборки.
+4. **LibraryScreen и LibraryViewModel**:
+   - Заменена статическая заглушка на полноценный экран медиатеки любимых треков из базы данных Room.
+   - Счетчик треков в заголовке шапки ("X треков в коллекции").
+   - Кнопки быстрых действий: «Слушать всё» и «Перемешать».
+   - Список карточек `TrackCard` с возможностью быстрого снятия лайка через `IconButton`.
+   - Выразительный Empty State с подсказкой при пустой медиатеке.
+   - Тап по треку открывает плеер с очередью из всей коллекции.
+5. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+data/local/entity/ChartCacheEntity.kt
+data/local/dao/ChartCacheDao.kt
+data/local/AppDatabase.kt
+data/local/DatabaseModule.kt
+data/repository/SoundCloudChartsRepository.kt
+data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
+core/di/RepositoryModule.kt
+feature/home/HomeViewModel.kt
+feature/home/HomeScreen.kt
+feature/library/LibraryViewModel.kt
+feature/library/LibraryScreen.kt
+navigation/AppNavGraph.kt
+```
+
+---
+
+## 🔜 Следующий шаг — Фаза 4 («Моя волна» — бесконечный персональный поток)
 
 ### Что нужно сделать
-1. **Data**: `SoundCloudChartsRepository` через NewPipe-киоски SoundCloud («New & hot», «Top 50»). Кэш: последние чарты в Room-таблицу `chart_cache`, TTL обновления ~30 минут.
-2. **CollectionsViewModel**: собирает секции Home:
-   - Личные (когда есть данные): «Недавние» (`play_history`), «Лайкнутые» (`liked_tracks`), «Твои жанры» (группировка истории + лайков по genre).
-   - Открытие (всегда): «New & hot», «Top 50» из чарт-кэша/сети.
-3. **HomeScreen**: выразительная шапка-приветствие по времени суток с крупной типографикой; горизонтальные карусели (`LazyRow`) карточек подборок с заголовками секций; тап по треку = воспроизведение с очередью из этой подборки; скелетоны при загрузке чартов; pull-to-refresh.
-4. **LibraryScreen**: сетка/список «Лайкнутые» из БД, тап — играет.
-5. Сборка, пометка в `PROGRESS.md`, коммит и пуш.
+1. **Алгоритм рекомендаций Wave**:
+   - Анализ истории прослушиваний (`play_history`) и лайков (`liked_tracks`) для выявления доминантных жанров, ключевых артистов и тегов.
+   - Автоматическая ротация запросов в SoundCloud через NewPipe для непрерывной генерации следующей порции треков.
+2. **WaveViewModel & PlayerController интеграция**:
+   - Автоматическая дозагрузка треков в очередь плеера при приближении к концу списка (бесконечный поток).
+   - Поддержка настроек настроения/темпа волны (бодрая, спокойная, по любимым, по открытиям).
+3. **WaveScreen**:
+   - Живая интерактивная процедурная синусоида в `Canvas` по дизайн-спеке (анимированный визуализатор).
+   - Кнопка «Запустить волну» и переключатели режимов настроения.
+4. Сборка, PROGRESS.md, MEMORY.md, коммит и пуш.
 
 

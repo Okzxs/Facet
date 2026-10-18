@@ -40,4 +40,10 @@ object DatabaseModule {
     fun providePlayHistoryDao(database: AppDatabase): PlayHistoryDao {
         return database.playHistoryDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideChartCacheDao(database: AppDatabase): com.my.music.data.local.dao.ChartCacheDao {
+        return database.chartCacheDao()
+    }
 }
