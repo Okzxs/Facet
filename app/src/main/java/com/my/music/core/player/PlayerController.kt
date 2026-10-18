@@ -54,8 +54,13 @@ class PlayerController @Inject constructor(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                val isLoading = playbackState == Player.STATE_BUFFERING
-                _state.update { it.copy(isLoading = isLoading) }
+                val isBuffering = playbackState == Player.STATE_BUFFERING
+                _state.update {
+                    it.copy(
+                        isLoading = isBuffering,
+                        isBuffering = isBuffering,
+                    )
+                }
 
                 if (playbackState == Player.STATE_ENDED) {
                     onTrackEnded()
@@ -122,11 +127,13 @@ class PlayerController @Inject constructor(
         if (index !in tracks.indices) return
 
         val track = tracks[index]
+        exoPlayer.seekTo(0)
         _state.update {
             it.copy(
                 currentIndex = index,
                 currentTrack = track,
                 isLoading = true,
+                isBuffering = false,
                 error = null,
             )
         }
@@ -358,6 +365,7 @@ class PlayerController @Inject constructor(
 
         exoPlayer.apply {
             setMediaItem(mediaItem)
+            seekTo(0)
             prepare()
             play()
         }
@@ -367,6 +375,7 @@ class PlayerController @Inject constructor(
                 currentTrack = track,
                 isPlaying = true,
                 isLoading = false,
+                isBuffering = false,
                 error = null,
             )
         }
@@ -389,6 +398,13 @@ class PlayerController @Inject constructor(
 
     fun durationMs(): Long = exoPlayer.duration.coerceAtLeast(0L)
 
+    fun bufferedPositionMs(): Long = exoPlayer.bufferedPosition.coerceAtLeast(0L)
+
+    fun bufferedFraction(): Float {
+        val duration = durationMs()
+        return if (duration > 0) (bufferedPositionMs().toFloat() / duration).coerceIn(0f, 1f) else 0f
+    }
+
     fun release() {
         resolveJob?.cancel()
         exoPlayer.release()
@@ -402,6 +418,7 @@ data class PlayerState(
     val currentTrack: Track? = null,
     val isPlaying: Boolean = false,
     val isLoading: Boolean = false,
+    val isBuffering: Boolean = false,
     val playbackSpeed: Float = 1.0f,
     val queue: List<Track> = emptyList(),
     val currentIndex: Int = -1,

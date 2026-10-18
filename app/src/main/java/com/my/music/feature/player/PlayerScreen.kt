@@ -63,6 +63,7 @@ fun PlayerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
+    val isBuffering by viewModel.isBuffering.collectAsState()
     val isLiked by viewModel.isLiked.collectAsState()
     val context = LocalContext.current
 
@@ -299,14 +300,7 @@ fun PlayerScreen(
                     }
                 }
 
-                // ─── Индикатор ошибки / загрузки URL ─────────────────────────
-                if (uiState.isResolving) {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = playerColors.primary,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                }
+                // ─── Сообщение об ошибке (если есть) ─────────────────────────
                 if (uiState.error != null) {
                     Text(
                         text = "⚠️ ${uiState.error}",
@@ -316,13 +310,15 @@ fun PlayerScreen(
                     Spacer(Modifier.height(4.dp))
                 }
 
-                // ─── Слайдер прогресса и время ("-m:ss") ──────────────────────
+                // ─── Слайдер прогресса, буферизация и время ("-m:ss") ─────────
                 PlayerProgressSection(
                     isPlaying = playerState.isPlaying,
+                    trackId = track?.id,
                     durationMs = track?.durationMs ?: 0L,
                     primaryColor = playerColors.primary,
                     currentFraction = { viewModel.currentFraction() },
                     currentPositionMs = { viewModel.currentPositionMs() },
+                    bufferedFraction = { viewModel.bufferedFraction() },
                     onSeek = { fraction -> viewModel.seekTo(fraction) },
                 )
 
@@ -331,8 +327,7 @@ fun PlayerScreen(
                 // ─── Кнопки управления (ControlsRow: залитые 64dp Prev/Next, Play morph) ──
                 ControlsRow(
                     isPlaying = playerState.isPlaying,
-                    isLoading = playerState.isLoading,
-                    isResolving = uiState.isResolving,
+                    isBuffering = isBuffering,
                     primaryColor = playerColors.primary,
                     onPrimaryColor = playerColors.onPrimary,
                     onPlayPause = { viewModel.togglePlayPause() },
@@ -579,8 +574,7 @@ private fun LyricsListView(
 @Composable
 private fun ControlsRow(
     isPlaying: Boolean,
-    isLoading: Boolean,
-    isResolving: Boolean,
+    isBuffering: Boolean,
     primaryColor: Color,
     onPrimaryColor: Color,
     onPlayPause: () -> Unit,
@@ -624,9 +618,8 @@ private fun ControlsRow(
                 containerColor = primaryColor,
                 contentColor = onPrimaryColor,
             ),
-            enabled = !isResolving,
         ) {
-            if (isLoading) {
+            if (isBuffering) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(32.dp),
                     color = onPrimaryColor,
@@ -750,26 +743,40 @@ private fun ActionPillsRow(
  * Изолированная секция слайдера прогресса и времени.
  * Оставшееся время справа отображается с минусом ("-m:ss").
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerProgressSection(
     isPlaying: Boolean,
+    trackId: String? = null,
     durationMs: Long,
     primaryColor: Color,
     currentFraction: () -> Float,
     currentPositionMs: () -> Long,
+    bufferedFraction: () -> Float = { 0f },
     onSeek: (Float) -> Unit,
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(0f) }
     var playbackFraction by remember { mutableFloatStateOf(0f) }
     var playbackPositionMs by remember { mutableLongStateOf(0L) }
+    var bufferFrac by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(isPlaying) {
+    // Сброс таймкода и слайдера при смене трека
+    LaunchedEffect(trackId) {
+        playbackFraction = 0f
+        playbackPositionMs = 0L
+        dragPosition = 0f
+        bufferFrac = 0f
+        isDragging = false
+    }
+
+    LaunchedEffect(isPlaying, trackId) {
         while (true) {
             if (!isDragging) {
                 playbackFraction = currentFraction()
                 playbackPositionMs = currentPositionMs()
             }
+            bufferFrac = bufferedFraction()
             delay(150) // ~6-7 обновлений в секунду
         }
     }
@@ -794,9 +801,51 @@ private fun PlayerProgressSection(
                 onSeek(dragPosition)
                 isDragging = false
             },
+            track = { _ ->
+                val inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                val bufferTrackColor = primaryColor.copy(alpha = 0.38f)
+                val activeTrackColor = primaryColor
+
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                ) {
+                    val width = size.width
+                    val height = size.height
+                    val cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2f, height / 2f)
+
+                    // 1. Серый фон (общая длина)
+                    drawRoundRect(
+                        color = inactiveTrackColor,
+                        size = size,
+                        cornerRadius = cornerRadius,
+                    )
+
+                    // 2. Полупрозрачный цвет для буферизованной части
+                    val bufferWidth = (bufferFrac * width).coerceIn(0f, width)
+                    if (bufferWidth > 0f) {
+                        drawRoundRect(
+                            color = bufferTrackColor,
+                            size = androidx.compose.ui.geometry.Size(bufferWidth, height),
+                            cornerRadius = cornerRadius,
+                        )
+                    }
+
+                    // 3. Активный цвет прогресса
+                    val progressFraction = (if (isDragging) dragPosition else displayPosition).coerceIn(0f, 1f)
+                    val activeWidth = (progressFraction * width).coerceIn(0f, width)
+                    if (activeWidth > 0f) {
+                        drawRoundRect(
+                            color = activeTrackColor,
+                            size = androidx.compose.ui.geometry.Size(activeWidth, height),
+                            cornerRadius = cornerRadius,
+                        )
+                    }
+                }
+            },
             colors = SliderDefaults.colors(
                 thumbColor = primaryColor,
-                activeTrackColor = primaryColor,
             ),
             modifier = Modifier.fillMaxWidth(),
         )

@@ -348,6 +348,40 @@ navigation/AppNavGraph.kt
 
 ---
 
+## ✅ Фаза 2.5 — Хотфикс плеера (18.10.2026)
+
+### Что сделано
+1. **Починена кнопка Play/Pause в развернутом плеере (`PlayerScreen.kt`)**:
+   - Устранено блокирующее условие `enabled = !isResolving`, из-за которого кнопка зависала в отключенном состоянии после загрузки трека.
+   - Кнопка 88dp кликабельна всегда и переключает воспроизведение через `viewModel.togglePlayPause()`.
+   - Иконка корректно синхронизирована с состоянием `isPlaying` (`PlayArrow` / `Pause`).
+2. **Мгновенный сброс позиции при смене трека**:
+   - В `PlayerViewModel`: при смене трека через `loadAndPlay` или очередь UI-состояние позиции немедленно обнуляется (`positionMs = 0L`).
+   - В `PlayerProgressSection`: при изменении `trackId` значения слайдера (`playbackFraction`, `playbackPositionMs`, `dragPosition`) мгновенно сбрасываются в 0, исключая зависание старого таймкода.
+   - В `PlayerController`: перед вызовом `prepare()` при запуске трека явно вызывается `seekTo(0)`.
+3. **Починена зависающая полоска буферизации**:
+   - В `PlayerController` и `PlayerViewModel` реализован отдельный поток `isBuffering: StateFlow<Boolean>`, отслеживающий состояние `Player.STATE_BUFFERING`.
+   - В `PlayerScreen` спиннер в центральной кнопке крутится ТОЛЬКО когда `isBuffering == true`.
+   - Старый `LinearProgressIndicator` полностью удалён из разметки.
+4. **Бесшовный переход буферизации в таймлайн (кастомный M3 Slider)**:
+   - В `PlayerProgressSection` применён кастомный параметр `track` у `Slider` из Material 3:
+     1. Базовый неактивный слой (общая длительность) цвета `surfaceVariant`.
+     2. Полупрозрачный слой буферизации `primary.copy(alpha = 0.38f)` пропорционально `bufferedPosition / duration`.
+     3. Активный слой прогресса воспроизведения акцентного цвета `primary`.
+5. **Оптимизация сетевых запросов и таймаутов (`NetworkModule.kt`)**:
+   - В `OkHttpClient` таймауты подключения, чтения и записи установлены в 10 секунд, общий `callTimeout` в 15 секунд, что предотвращает блокировку интерфейса при нестабильной сети.
+6. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+core/network/NetworkModule.kt
+core/player/PlayerController.kt
+feature/player/PlayerViewModel.kt
+feature/player/PlayerScreen.kt
+```
+
+---
+
 ## 🔜 Следующий шаг — Фаза 3 (Home charts and Library)
 
 ### Что нужно сделать

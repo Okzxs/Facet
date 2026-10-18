@@ -44,6 +44,16 @@ class PlayerViewModel @Inject constructor(
     /** Состояние плеера (isPlaying, currentTrack, playbackSpeed, queue, shuffle, repeat) */
     val playerState: StateFlow<PlayerState> = playerController.state
 
+    /** Флаг буферизации ExoPlayer */
+    val isBuffering: StateFlow<Boolean> = playerController.state
+        .map { it.isBuffering }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false,
+        )
+
     /** Наблюдение за состоянием лайка текущего трека из БД Room */
     @OptIn(ExperimentalCoroutinesApi::class)
     val isLiked: StateFlow<Boolean> = playerController.state
@@ -63,7 +73,7 @@ class PlayerViewModel @Inject constructor(
         )
 
     init {
-        // При смене текущего трека в PlayerController (автопереход/очередь) — подгружаем текст
+        // При смене текущего трека в PlayerController (автопереход/очередь) — подгружаем текст и сбрасываем позицию
         viewModelScope.launch {
             playerController.state
                 .map { it.currentTrack }
@@ -73,6 +83,7 @@ class PlayerViewModel @Inject constructor(
                         _uiState.update {
                             it.copy(
                                 track = track,
+                                positionMs = 0L,
                                 lyrics = null,
                                 isLyricsLoading = true,
                                 lyricsError = null,
@@ -81,6 +92,18 @@ class PlayerViewModel @Inject constructor(
                         loadLyrics(track)
                     }
                 }
+        }
+
+        // Сброс флага isResolving при завершении загрузки потока
+        viewModelScope.launch {
+            playerController.state.collect { state ->
+                if (state.currentTrack != null && !state.isLoading) {
+                    _uiState.update { it.copy(isResolving = false) }
+                }
+                if (state.error != null) {
+                    _uiState.update { it.copy(isResolving = false, error = state.error) }
+                }
+            }
         }
     }
 
@@ -106,6 +129,7 @@ class PlayerViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 track = track,
+                positionMs = 0L,
                 isResolving = true,
                 error = null,
                 lyrics = null,
@@ -206,13 +230,17 @@ class PlayerViewModel @Inject constructor(
 
     fun currentPositionMs(): Long = playerController.currentPositionMs()
     fun durationMs(): Long = playerController.durationMs()
+
+    fun bufferedPositionMs(): Long = playerController.bufferedPositionMs()
+    fun bufferedFraction(): Float = playerController.bufferedFraction()
 }
 
 /**
- * UI-состояние экрана плеера (ошибки, загрузка URL, тексты).
+ * UI-состояние экрана плеера (ошибки, загрузка URL, тексты, позиция).
  */
 data class PlayerUiState(
     val track: Track? = null,
+    val positionMs: Long = 0L,
     val isResolving: Boolean = false,
     val error: String? = null,
     val lyrics: LyricsResult? = null,
