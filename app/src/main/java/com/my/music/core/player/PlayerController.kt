@@ -127,11 +127,14 @@ class PlayerController @Inject constructor(
         if (index !in tracks.indices) return
 
         val track = tracks[index]
+        exoPlayer.pause()
+        exoPlayer.stop()
         exoPlayer.seekTo(0)
         _state.update {
             it.copy(
                 currentIndex = index,
                 currentTrack = track,
+                isPlaying = false,
                 isLoading = true,
                 isBuffering = false,
                 error = null,
@@ -304,6 +307,9 @@ class PlayerController @Inject constructor(
      */
     private fun resolveAndPlay(track: Track) {
         resolveJob?.cancel()
+        exoPlayer.pause()
+        exoPlayer.stop()
+        exoPlayer.seekTo(0)
         resolveJob = scope.launch {
             // Запись в историю воспроизведения Room
             playHistoryRepository.addToHistory(track)
@@ -338,6 +344,9 @@ class PlayerController @Inject constructor(
      * Прямой запуск потока (для вызова с уже готовым AudioStreamResult).
      */
     fun play(track: Track, streamResult: AudioStreamResult) {
+        exoPlayer.pause()
+        exoPlayer.stop()
+        exoPlayer.seekTo(0)
         // Если очередь была пуста — создаём одиночную очередь
         if (_state.value.queue.none { it.id == track.id }) {
             originalQueue = listOf(track)

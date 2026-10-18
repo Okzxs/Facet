@@ -1,6 +1,7 @@
 package com.my.music.feature.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -313,6 +314,7 @@ fun PlayerScreen(
                 // ─── Слайдер прогресса, буферизация и время ("-m:ss") ─────────
                 PlayerProgressSection(
                     isPlaying = playerState.isPlaying,
+                    isBuffering = isBuffering,
                     trackId = track?.id,
                     durationMs = track?.durationMs ?: 0L,
                     primaryColor = playerColors.primary,
@@ -747,6 +749,7 @@ private fun ActionPillsRow(
 @Composable
 private fun PlayerProgressSection(
     isPlaying: Boolean,
+    isBuffering: Boolean = false,
     trackId: String? = null,
     durationMs: Long,
     primaryColor: Color,
@@ -789,66 +792,98 @@ private fun PlayerProgressSection(
     }
 
     val remainingMs = (durationMs - displayedMs).coerceAtLeast(0L)
+    val showLoadingBar = isBuffering && displayPosition <= 0.005f
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Slider(
-            value = displayPosition.coerceIn(0f, 1f),
-            onValueChange = { value ->
-                isDragging = true
-                dragPosition = value
-            },
-            onValueChangeFinished = {
-                onSeek(dragPosition)
-                isDragging = false
-            },
-            track = { _ ->
-                val inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                val bufferTrackColor = primaryColor.copy(alpha = 0.38f)
-                val activeTrackColor = primaryColor
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Crossfade(
+                targetState = showLoadingBar,
+                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+                label = "progressTransition",
+            ) { loading ->
+                if (loading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = primaryColor,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                    }
+                } else {
+                    Slider(
+                        value = displayPosition.coerceIn(0f, 1f),
+                        onValueChange = { value ->
+                            isDragging = true
+                            dragPosition = value
+                        },
+                        onValueChangeFinished = {
+                            onSeek(dragPosition)
+                            isDragging = false
+                        },
+                        track = { _ ->
+                            val inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                            val bufferTrackColor = primaryColor.copy(alpha = 0.38f)
+                            val activeTrackColor = primaryColor
 
-                androidx.compose.foundation.Canvas(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp),
-                ) {
-                    val width = size.width
-                    val height = size.height
-                    val cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2f, height / 2f)
+                            androidx.compose.foundation.Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp),
+                            ) {
+                                val width = size.width
+                                val height = size.height
+                                val cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2f, height / 2f)
 
-                    // 1. Серый фон (общая длина)
-                    drawRoundRect(
-                        color = inactiveTrackColor,
-                        size = size,
-                        cornerRadius = cornerRadius,
+                                // 1. Серый фон (общая длина)
+                                drawRoundRect(
+                                    color = inactiveTrackColor,
+                                    size = size,
+                                    cornerRadius = cornerRadius,
+                                )
+
+                                // 2. Полупрозрачный цвет для буферизованной части
+                                val bufferWidth = (bufferFrac * width).coerceIn(0f, width)
+                                if (bufferWidth > 0f) {
+                                    drawRoundRect(
+                                        color = bufferTrackColor,
+                                        size = androidx.compose.ui.geometry.Size(bufferWidth, height),
+                                        cornerRadius = cornerRadius,
+                                    )
+                                }
+
+                                // 3. Активный цвет прогресса
+                                val progressFraction = (if (isDragging) dragPosition else displayPosition).coerceIn(0f, 1f)
+                                val activeWidth = (progressFraction * width).coerceIn(0f, width)
+                                if (activeWidth > 0f) {
+                                    drawRoundRect(
+                                        color = activeTrackColor,
+                                        size = androidx.compose.ui.geometry.Size(activeWidth, height),
+                                        cornerRadius = cornerRadius,
+                                    )
+                                }
+                            }
+                        },
+                        colors = SliderDefaults.colors(
+                            thumbColor = primaryColor,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
                     )
-
-                    // 2. Полупрозрачный цвет для буферизованной части
-                    val bufferWidth = (bufferFrac * width).coerceIn(0f, width)
-                    if (bufferWidth > 0f) {
-                        drawRoundRect(
-                            color = bufferTrackColor,
-                            size = androidx.compose.ui.geometry.Size(bufferWidth, height),
-                            cornerRadius = cornerRadius,
-                        )
-                    }
-
-                    // 3. Активный цвет прогресса
-                    val progressFraction = (if (isDragging) dragPosition else displayPosition).coerceIn(0f, 1f)
-                    val activeWidth = (progressFraction * width).coerceIn(0f, width)
-                    if (activeWidth > 0f) {
-                        drawRoundRect(
-                            color = activeTrackColor,
-                            size = androidx.compose.ui.geometry.Size(activeWidth, height),
-                            cornerRadius = cornerRadius,
-                        )
-                    }
                 }
-            },
-            colors = SliderDefaults.colors(
-                thumbColor = primaryColor,
-            ),
-            modifier = Modifier.fillMaxWidth(),
-        )
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,

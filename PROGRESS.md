@@ -382,6 +382,26 @@ feature/player/PlayerScreen.kt
 
 ---
 
+## ✅ Фаза 2.6 — Полировка переключения треков и слайдера (18.10.2026)
+
+### Что сделано
+1. **Мгновенное глушение прошлого трека при смене (`PlayerController.kt`)**:
+   - В начале методов `playTrackAt`, `resolveAndPlay` и `play` вызывается немедленная остановка: `exoPlayer.pause()`, `exoPlayer.stop()`, `exoPlayer.seekTo(0)`.
+   - Прошлый трек замолкает сразу в момент нажатия, до начала сетевого запроса `resolveStreamUrl`, исключая эффект "хвоста" воспроизведения.
+2. **Плавный переход «Загрузка $\to$ Таймлайн» (`PlayerScreen.kt`)**:
+   - В `PlayerProgressSection` внедрён контейнер фиксированной высоты `44.dp` с выравниванием по центру (`Alignment.Center`), что гарантирует стабильность положения таймкодов без прыжков UI.
+   - Переключение между тонким индикатором загрузки (`LinearProgressIndicator` 4dp) и основным слайдером (`Slider` с буферизацией) анимировано через `Crossfade` (300 мс, `FastOutSlowInEasing`).
+   - Условие показа полоски загрузки: `isBuffering && displayPosition <= 0.005f`.
+3. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+core/player/PlayerController.kt
+feature/player/PlayerScreen.kt
+```
+
+---
+
 ## 🔜 Следующий шаг — Фаза 3 (Home charts and Library)
 
 ### Что нужно сделать
