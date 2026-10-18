@@ -1,15 +1,16 @@
 package com.my.music.core.ui.theme
 
-import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
 import coil3.BitmapImage
 import coil3.ImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
+import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -27,13 +28,16 @@ data class PlayerDynamicColors(
     val secondaryContainer: Color,
     val onSecondaryContainer: Color,
     val surfaceContainerHigh: Color,
+    val isLoading: Boolean = false,
 )
 
 private val paletteCache = mutableMapOf<String, PlayerDynamicColors>()
 
 /**
  * Асинхронно извлекает палитру из обложки с кэшированием по URL.
- * Не пересчитывается на тиках прогресса.
+ * Пока картинка грузится — возвращает дефолтный фон.
+ * При ошибке извлечения — оставляет дефолтный фон.
+ * Для картинок с высоким контрастом и светлых обложек цвет выразительно применяется к фону.
  */
 @Composable
 fun rememberPlayerDynamicColors(
@@ -49,7 +53,7 @@ fun rememberPlayerDynamicColors(
     val fallback = remember(defaultSurface, defaultPrimary) {
         PlayerDynamicColors(
             dominant = defaultPrimary,
-            backgroundTop = defaultPrimary.copy(alpha = 0.18f),
+            backgroundTop = defaultPrimary.copy(alpha = 0.20f),
             backgroundBottom = defaultSurface,
             primary = defaultPrimary,
             onPrimary = defaultOnPrimary,
@@ -58,6 +62,7 @@ fun rememberPlayerDynamicColors(
             secondaryContainer = defaultPrimaryContainer.copy(alpha = 0.7f),
             onSecondaryContainer = defaultPrimary,
             surfaceContainerHigh = defaultSurface,
+            isLoading = false,
         )
     }
 
@@ -67,16 +72,19 @@ fun rememberPlayerDynamicColors(
 
     paletteCache[artworkUrl]?.let { return it }
 
-    var dynamicColors by remember(artworkUrl) { mutableStateOf(fallback) }
+    var dynamicColors by remember(artworkUrl) { mutableStateOf(fallback.copy(isLoading = true)) }
 
     LaunchedEffect(artworkUrl) {
-        withContext(Dispatchers.IO) {
-            val cached = paletteCache[artworkUrl]
-            if (cached != null) {
-                dynamicColors = cached
-                return@withContext
-            }
+        val cached = paletteCache[artworkUrl]
+        if (cached != null) {
+            dynamicColors = cached
+            return@LaunchedEffect
+        }
 
+        // Пока картинка грузится — ставим дефолтный фон
+        dynamicColors = fallback.copy(isLoading = true)
+
+        withContext(Dispatchers.IO) {
             try {
                 val loader = ImageLoader(context)
                 val request = ImageRequest.Builder(context)
@@ -86,36 +94,60 @@ fun rememberPlayerDynamicColors(
 
                 val result = loader.execute(request)
                 if (result is SuccessResult) {
-                    val bitmap = (result.image as? BitmapImage)?.bitmap
+                    val bitmap: Bitmap? = (result.image as? BitmapImage)?.bitmap
+                        ?: runCatching { result.image.toBitmap() }.getOrNull()
+
                     if (bitmap != null) {
                         val palette = Palette.from(bitmap).generate()
                         val swatch = palette.dominantSwatch
                             ?: palette.vibrantSwatch
+                            ?: palette.lightVibrantSwatch
                             ?: palette.mutedSwatch
+                            ?: palette.lightMutedSwatch
+                            ?: palette.darkVibrantSwatch
+                            ?: palette.swatches.maxByOrNull { it.population }
 
-                        val dominantInt = swatch?.rgb ?: android.graphics.Color.DKGRAY
-                        val dominantColor = Color(dominantInt)
+                        if (swatch != null) {
+                            val dominantInt = swatch.rgb
+                            val dominantColor = Color(dominantInt)
+                            val luminance = ColorUtils.calculateLuminance(dominantInt)
 
-                        val colors = PlayerDynamicColors(
-                            dominant = dominantColor,
-                            backgroundTop = dominantColor.copy(alpha = 0.32f),
-                            backgroundBottom = defaultSurface,
-                            primary = dominantColor,
-                            onPrimary = Color(swatch?.titleTextColor ?: android.graphics.Color.WHITE),
-                            primaryContainer = dominantColor.copy(alpha = 0.28f),
-                            onPrimaryContainer = dominantColor,
-                            secondaryContainer = dominantColor.copy(alpha = 0.22f),
-                            onSecondaryContainer = dominantColor,
-                            surfaceContainerHigh = dominantColor.copy(alpha = 0.14f),
-                        )
-                        paletteCache[artworkUrl] = colors
-                        withContext(Dispatchers.Main) {
-                            dynamicColors = colors
+                            // Для светлых и контрастных обложек обеспечиваем насыщенный оттенок фона,
+                            // чтобы фон не поглощался темной системной темой.
+                            val topAlpha = if (luminance > 0.4) 0.72f else 0.55f
+                            val bottomAlpha = if (luminance > 0.4) 0.28f else 0.16f
+                            val onPrimary = if (luminance > 0.5) Color.Black else Color.White
+
+                            val colors = PlayerDynamicColors(
+                                dominant = dominantColor,
+                                backgroundTop = dominantColor.copy(alpha = topAlpha),
+                                backgroundBottom = dominantColor.copy(alpha = bottomAlpha),
+                                primary = dominantColor,
+                                onPrimary = onPrimary,
+                                primaryContainer = dominantColor.copy(alpha = 0.28f),
+                                onPrimaryContainer = if (luminance > 0.5) Color.Black else dominantColor,
+                                secondaryContainer = dominantColor.copy(alpha = 0.22f),
+                                onSecondaryContainer = dominantColor,
+                                surfaceContainerHigh = dominantColor.copy(alpha = 0.14f),
+                                isLoading = false,
+                            )
+                            paletteCache[artworkUrl] = colors
+                            withContext(Dispatchers.Main) {
+                                dynamicColors = colors
+                            }
+                            return@withContext
                         }
                     }
                 }
+                // Ошибка извлечения или пустая палитра: оставляем дефолт
+                withContext(Dispatchers.Main) {
+                    dynamicColors = fallback
+                }
             } catch (e: Exception) {
-                // Игнорируем ошибки извлечения палитры, используем фолбэк
+                // При ошибке загрузки — оставляем дефолтный фон
+                withContext(Dispatchers.Main) {
+                    dynamicColors = fallback
+                }
             }
         }
     }

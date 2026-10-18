@@ -59,6 +59,8 @@ class PlayerController @Inject constructor(
                     it.copy(
                         isLoading = isBuffering,
                         isBuffering = isBuffering,
+                        playbackState = playbackState,
+                        error = if (playbackState == Player.STATE_READY) null else it.error,
                     )
                 }
 
@@ -428,6 +430,7 @@ data class PlayerState(
     val isPlaying: Boolean = false,
     val isLoading: Boolean = false,
     val isBuffering: Boolean = false,
+    val playbackState: Int = androidx.media3.common.Player.STATE_IDLE,
     val playbackSpeed: Float = 1.0f,
     val queue: List<Track> = emptyList(),
     val currentIndex: Int = -1,

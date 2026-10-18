@@ -73,7 +73,7 @@ class PlayerViewModel @Inject constructor(
         )
 
     init {
-        // При смене текущего трека в PlayerController (автопереход/очередь) — подгружаем текст и сбрасываем позицию
+        // При смене текущего трека в PlayerController (автопереход/очередь) — подгружаем текст и сбрасываем позицию и ошибки
         viewModelScope.launch {
             playerController.state
                 .map { it.currentTrack }
@@ -87,6 +87,7 @@ class PlayerViewModel @Inject constructor(
                                 lyrics = null,
                                 isLyricsLoading = true,
                                 lyricsError = null,
+                                error = null,
                             )
                         }
                         loadLyrics(track)
@@ -94,13 +95,15 @@ class PlayerViewModel @Inject constructor(
                 }
         }
 
-        // Сброс флага isResolving при завершении загрузки потока
+        // Сброс флага isResolving и ошибок при готовности плеера
         viewModelScope.launch {
             playerController.state.collect { state ->
                 if (state.currentTrack != null && !state.isLoading) {
                     _uiState.update { it.copy(isResolving = false) }
                 }
-                if (state.error != null) {
+                if (state.playbackState == androidx.media3.common.Player.STATE_READY) {
+                    _uiState.update { it.copy(error = null) }
+                } else if (state.error != null) {
                     _uiState.update { it.copy(isResolving = false, error = state.error) }
                 }
             }

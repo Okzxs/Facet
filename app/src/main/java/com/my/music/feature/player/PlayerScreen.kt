@@ -97,11 +97,22 @@ fun PlayerScreen(
         defaultOnPrimaryContainer = defaultOnPrimaryContainer,
     )
 
-    val backgroundBrush = remember(playerColors) {
+    val animatedBgTop by animateColorAsState(
+        targetValue = playerColors.backgroundTop,
+        animationSpec = tween(durationMillis = 400),
+        label = "bgTopAnim",
+    )
+    val animatedBgBottom by animateColorAsState(
+        targetValue = playerColors.backgroundBottom,
+        animationSpec = tween(durationMillis = 400),
+        label = "bgBottomAnim",
+    )
+
+    val backgroundBrush = remember(animatedBgTop, animatedBgBottom, defaultSurface) {
         Brush.verticalGradient(
             colors = listOf(
-                playerColors.backgroundTop,
-                playerColors.backgroundBottom,
+                animatedBgTop,
+                animatedBgBottom,
                 defaultSurface,
             ),
         )
@@ -223,7 +234,7 @@ fun PlayerScreen(
                             Text(
                                 text = track?.title ?: "—",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                maxLines = 1,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
@@ -266,7 +277,7 @@ fun PlayerScreen(
                                 Text(
                                     text = track?.title ?: "Нет трека",
                                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Spacer(Modifier.height(4.dp))
@@ -301,10 +312,13 @@ fun PlayerScreen(
                     }
                 }
 
-                // ─── Сообщение об ошибке (если есть) ─────────────────────────
-                if (uiState.error != null) {
+                // ─── Сообщение об ошибке (скрывается, как только плеер в STATE_READY) ──
+                val isPlayerReady = playerState.playbackState == androidx.media3.common.Player.STATE_READY
+                val errorMessage = if (isPlayerReady) null else (uiState.error ?: playerState.error)
+
+                if (errorMessage != null) {
                     Text(
-                        text = "⚠️ ${uiState.error}",
+                        text = "⚠️ $errorMessage",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -792,7 +806,7 @@ private fun PlayerProgressSection(
     }
 
     val remainingMs = (durationMs - displayedMs).coerceAtLeast(0L)
-    val showLoadingBar = isBuffering && displayPosition <= 0.005f
+    val isInitialBuffering = isBuffering && displayedMs == 0L
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Box(
@@ -802,9 +816,9 @@ private fun PlayerProgressSection(
             contentAlignment = Alignment.Center,
         ) {
             Crossfade(
-                targetState = showLoadingBar,
-                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
-                label = "progressTransition",
+                targetState = isInitialBuffering,
+                animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                label = "progressCrossfade",
             ) { loading ->
                 if (loading) {
                     Box(
@@ -823,64 +837,41 @@ private fun PlayerProgressSection(
                         )
                     }
                 } else {
-                    Slider(
-                        value = displayPosition.coerceIn(0f, 1f),
-                        onValueChange = { value ->
-                            isDragging = true
-                            dragPosition = value
-                        },
-                        onValueChangeFinished = {
-                            onSeek(dragPosition)
-                            isDragging = false
-                        },
-                        track = { _ ->
-                            val inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                            val bufferTrackColor = primaryColor.copy(alpha = 0.38f)
-                            val activeTrackColor = primaryColor
-
-                            androidx.compose.foundation.Canvas(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp),
-                            ) {
-                                val width = size.width
-                                val height = size.height
-                                val cornerRadius = androidx.compose.ui.geometry.CornerRadius(height / 2f, height / 2f)
-
-                                // 1. Серый фон (общая длина)
-                                drawRoundRect(
-                                    color = inactiveTrackColor,
-                                    size = size,
-                                    cornerRadius = cornerRadius,
-                                )
-
-                                // 2. Полупрозрачный цвет для буферизованной части
-                                val bufferWidth = (bufferFrac * width).coerceIn(0f, width)
-                                if (bufferWidth > 0f) {
-                                    drawRoundRect(
-                                        color = bufferTrackColor,
-                                        size = androidx.compose.ui.geometry.Size(bufferWidth, height),
-                                        cornerRadius = cornerRadius,
-                                    )
-                                }
-
-                                // 3. Активный цвет прогресса
-                                val progressFraction = (if (isDragging) dragPosition else displayPosition).coerceIn(0f, 1f)
-                                val activeWidth = (progressFraction * width).coerceIn(0f, width)
-                                if (activeWidth > 0f) {
-                                    drawRoundRect(
-                                        color = activeTrackColor,
-                                        size = androidx.compose.ui.geometry.Size(activeWidth, height),
-                                        cornerRadius = cornerRadius,
-                                    )
-                                }
-                            }
-                        },
-                        colors = SliderDefaults.colors(
-                            thumbColor = primaryColor,
-                        ),
+                    Box(
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // Буферизация под слайдером (фон surfaceVariant, буферизация primary.copy(alpha = 0.3f))
+                        LinearProgressIndicator(
+                            progress = { bufferFrac.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .padding(horizontal = 6.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = primaryColor.copy(alpha = 0.3f),
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        )
+
+                        // Стандартный Slider
+                        Slider(
+                            value = displayPosition.coerceIn(0f, 1f),
+                            onValueChange = { value ->
+                                isDragging = true
+                                dragPosition = value
+                            },
+                            onValueChangeFinished = {
+                                onSeek(dragPosition)
+                                isDragging = false
+                            },
+                            colors = SliderDefaults.colors(
+                                thumbColor = primaryColor,
+                                activeTrackColor = primaryColor,
+                                inactiveTrackColor = Color.Transparent,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
         }

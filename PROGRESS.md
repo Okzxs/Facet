@@ -402,6 +402,36 @@ feature/player/PlayerScreen.kt
 
 ---
 
+## ✅ Фаза 2.7 — Хотфикс UI и состояний плеера (18.10.2026)
+
+### Что сделано
+1. **Сброс ошибок при смене трека и переходе в STATE_READY**:
+   - В `PlayerController.kt` добавлено поле `playbackState` в `PlayerState`, а при переходе в `Player.STATE_READY` ошибка автоматически сбрасывается (`error = null`).
+   - В `PlayerViewModel.kt` при смене трека состояние ошибок немедленно очищается, а также синхронизируется с переходом в `STATE_READY`.
+   - В `PlayerScreen.kt` плашка с ошибкой гарантированно скрывается, как только плеер переходит в статус `Player.STATE_READY`.
+2. **Починена палитра обложки (Palette)**:
+   - В `PlayerPalette.kt` внедрено явное состояние загрузки `isLoading`: пока обложка загружается — отображается дефолтный фон; как только обложка загрузилась — применяется доминантный цвет.
+   - Добавлена устойчивая обработка ошибок (при сетевых сбоях или невозможности извлечь палитру остаётся дефолтный фон).
+   - Для светлых и высококонтрастных обложек увеличены веса альфы (`0.72f` вверху, `0.28f` внизу), предотвращая поглощение цвета тёмным системным фоном `surface`.
+   - В `PlayerScreen.kt` переходы градиента фона анимированы через `animateColorAsState` (400 мс).
+3. **Стандартный Slider и плавный Crossfade (500 мс)**:
+   - В `PlayerProgressSection` удалён кастомный Canvas-трек и возвращён стандартный компонент `Slider`.
+   - Реализована буферизация под слайдером через `LinearProgressIndicator` (фон `surfaceVariant`, прогресс `primary`, буферизация `primary.copy(alpha = 0.3f)`).
+   - Переход «загрузка $\to$ таймлайн» выполнен через `Crossfade(targetState = isBuffering && currentPosition == 0L)` с длительностью анимации 500 мс (`FastOutSlowInEasing`).
+4. **Обрезка текста**:
+   - В заголовке трека установлено `maxLines = 2` с `TextOverflow.Ellipsis`.
+5. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+core/player/PlayerController.kt
+feature/player/PlayerViewModel.kt
+core/ui/theme/PlayerPalette.kt
+feature/player/PlayerScreen.kt
+```
+
+---
+
 ## 🔜 Следующий шаг — Фаза 3 (Home charts and Library)
 
 ### Что нужно сделать
@@ -412,4 +442,5 @@ feature/player/PlayerScreen.kt
 3. **HomeScreen**: выразительная шапка-приветствие по времени суток с крупной типографикой; горизонтальные карусели (`LazyRow`) карточек подборок с заголовками секций; тап по треку = воспроизведение с очередью из этой подборки; скелетоны при загрузке чартов; pull-to-refresh.
 4. **LibraryScreen**: сетка/список «Лайкнутые» из БД, тап — играет.
 5. Сборка, пометка в `PROGRESS.md`, коммит и пуш.
+
 
