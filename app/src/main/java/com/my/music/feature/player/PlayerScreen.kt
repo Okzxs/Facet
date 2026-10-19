@@ -12,6 +12,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -41,6 +42,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -126,9 +128,9 @@ fun PlayerScreen(
         )
     }
 
-    // ─── Плавное анимированное схлопывание обложки (280dp -> 56dp) ────────
+    // ─── Плавное анимированное схлопывание обложки (248dp -> 56dp) ────────
     val artworkSize by animateDpAsState(
-        targetValue = if (isLyricsMode) 56.dp else 280.dp,
+        targetValue = if (isLyricsMode) 56.dp else 248.dp,
         animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
         label = "artworkSize",
     )
@@ -202,8 +204,8 @@ fun PlayerScreen(
                 val artworkShape = RoundedCornerShape(artworkRadius)
 
                 if (!isLyricsMode) {
-                    Spacer(Modifier.height(12.dp))
-                    // Большая обложка альбома по центру (280dp)
+                    Spacer(Modifier.height(8.dp))
+                    // Большая обложка альбома по центру (248dp)
                     Surface(
                         modifier = Modifier
                             .size(artworkSize)
@@ -219,7 +221,7 @@ fun PlayerScreen(
                             placeholderPainter = placeholderPainter,
                         )
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                 } else {
                     // Режим текста: миниатюра (56dp) слева в компактном ряду
                     Row(
@@ -286,7 +288,7 @@ fun PlayerScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 12.dp),
+                                .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -354,9 +356,9 @@ fun PlayerScreen(
                     onSeek = { fraction -> viewModel.seekTo(fraction) },
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
 
-                // ─── Кнопки управления (ControlsRow: залитые 64dp Prev/Next, Play morph) ──
+                // ─── Кнопки управления (ControlsRow: залитые 56dp Prev/Next, Play morph) ──
                 ControlsRow(
                     isPlaying = playerState.isPlaying,
                     isBuffering = isBuffering,
@@ -367,7 +369,7 @@ fun PlayerScreen(
                     onNext = { viewModel.playNext() },
                 )
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
                 // ─── Пилюли действий (1× Скорость / Текст / Далее) ────────────
                 ActionPillsRow(
@@ -387,7 +389,7 @@ fun PlayerScreen(
                     onQueueClick = { showQueueSheet = true },
                 )
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -647,8 +649,8 @@ private fun LyricsListView(
 
 /**
  * Панель кнопок воспроизведения по референсу:
- * - Play/Pause: морф радиуса (44dp в паузе / 28dp в воспроизведении)
- * - Prev / Next: залитые круги 64dp (фон primary, иконка onPrimary)
+ * - Play/Pause: морф радиуса (40dp в паузе / 26dp в воспроизведении)
+ * - Prev / Next: залитые круги 56dp (фон primary, иконка onPrimary)
  */
 @Composable
 private fun ControlsRow(
@@ -661,7 +663,7 @@ private fun ControlsRow(
     onNext: () -> Unit,
 ) {
     val playShapeRadius by animateDpAsState(
-        targetValue = if (isPlaying) 28.dp else 44.dp,
+        targetValue = if (isPlaying) 26.dp else 40.dp,
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "playMorphRadius",
     )
@@ -671,10 +673,10 @@ private fun ControlsRow(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Prev: Залитый круг 64dp
+        // Prev: Залитый круг 56dp
         FilledIconButton(
             onClick = onPrev,
-            modifier = Modifier.size(64.dp),
+            modifier = Modifier.size(56.dp),
             shape = CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = primaryColor.copy(alpha = 0.25f),
@@ -684,14 +686,14 @@ private fun ControlsRow(
             Icon(
                 imageVector = Icons.Filled.SkipPrevious,
                 contentDescription = "Предыдущий",
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(28.dp),
             )
         }
 
-        // Главная кнопка Play/Pause с динамическим радиусом (88dp)
+        // Главная кнопка Play/Pause с динамическим радиусом (80dp)
         FilledIconButton(
             onClick = onPlayPause,
-            modifier = Modifier.size(88.dp),
+            modifier = Modifier.size(80.dp),
             shape = RoundedCornerShape(playShapeRadius),
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = primaryColor,
@@ -700,7 +702,7 @@ private fun ControlsRow(
         ) {
             if (isBuffering) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(30.dp),
                     color = onPrimaryColor,
                     strokeWidth = 3.dp,
                 )
@@ -708,15 +710,15 @@ private fun ControlsRow(
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Пауза" else "Играть",
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(36.dp),
                 )
             }
         }
 
-        // Next: Залитый круг 64dp
+        // Next: Залитый круг 56dp
         FilledIconButton(
             onClick = onNext,
-            modifier = Modifier.size(64.dp),
+            modifier = Modifier.size(56.dp),
             shape = CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = primaryColor.copy(alpha = 0.25f),
@@ -726,14 +728,14 @@ private fun ControlsRow(
             Icon(
                 imageVector = Icons.Filled.SkipNext,
                 contentDescription = "Следующий",
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(28.dp),
             )
         }
     }
 }
 
 /**
- * Пилюли действий (высота 52dp).
+ * Пилюли действий (высота 46dp).
  */
 @Composable
 private fun ActionPillsRow(
@@ -751,7 +753,7 @@ private fun ActionPillsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp),
+            .height(46.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -761,7 +763,7 @@ private fun ActionPillsRow(
                 .weight(1f)
                 .fillMaxHeight()
                 .clickable(onClick = onSpeedClick),
-            shape = RoundedCornerShape(topStart = 26.dp, bottomStart = 26.dp, topEnd = 8.dp, bottomEnd = 8.dp),
+            shape = RoundedCornerShape(topStart = 23.dp, bottomStart = 23.dp, topEnd = 8.dp, bottomEnd = 8.dp),
             color = surfaceContainerColor,
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -804,7 +806,7 @@ private fun ActionPillsRow(
                 .weight(1f)
                 .fillMaxHeight()
                 .clickable(onClick = onQueueClick),
-            shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 26.dp, bottomEnd = 26.dp),
+            shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 23.dp, bottomEnd = 23.dp),
             color = surfaceContainerColor,
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -906,34 +908,64 @@ private fun PlayerProgressSection(
                         )
                     }
                 } else {
-                    // Анимированный синусоидальный слайдер (WaveSlider by galaxygoldfish).
-                    // Фон и неактивная дорожка прозрачны — волна рисуется прямо на градиенте плеера
-                    WaveSlider(
-                        value = displayPosition.coerceIn(0f, 1f),
-                        onValueChange = { value ->
-                            isDragging = true
-                            dragPosition = value
-                        },
-                        onValueChangeFinished = { value ->
-                            onSeek(value)
-                            isDragging = false
-                        },
-                        colors = WaveSliderDefaults.colors(
-                            thumbColor = primaryColor,
-                            activeTrackColor = primaryColor,
-                            inactiveTrackColor = Color.Transparent,
-                        ),
-                        animationOptions = WaveSliderDefaults.animationOptions(
-                            reverseDirection = false,
-                            flatlineOnDrag = true,
-                            animateWave = true,
-                        ),
-                        waveOptions = WaveSliderDefaults.waveOptions(
-                            amplitude = waveAmplitude,
-                            frequency = 0.07F,
-                        ),
+                    Box(
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // Тонкая полоска длительности трека под волной:
+                        // проигранная часть — яркая, остаток — едва заметный
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp),
+                        ) {
+                            val centerY = size.height / 2f
+                            val fraction = displayPosition.coerceIn(0f, 1f)
+                            drawLine(
+                                color = primaryColor.copy(alpha = 0.18f),
+                                start = Offset(0f, centerY),
+                                end = Offset(size.width, centerY),
+                                strokeWidth = size.height,
+                                cap = StrokeCap.Round,
+                            )
+                            drawLine(
+                                color = primaryColor.copy(alpha = 0.65f),
+                                start = Offset(0f, centerY),
+                                end = Offset(size.width * fraction, centerY),
+                                strokeWidth = size.height,
+                                cap = StrokeCap.Round,
+                            )
+                        }
+
+                        // Анимированный синусоидальный слайдер (WaveSlider by galaxygoldfish).
+                        // Фон и неактивная дорожка прозрачны — волна рисуется прямо на градиенте плеера
+                        WaveSlider(
+                            value = displayPosition.coerceIn(0f, 1f),
+                            onValueChange = { value ->
+                                isDragging = true
+                                dragPosition = value
+                            },
+                            onValueChangeFinished = { value ->
+                                onSeek(value)
+                                isDragging = false
+                            },
+                            colors = WaveSliderDefaults.colors(
+                                thumbColor = primaryColor,
+                                activeTrackColor = primaryColor,
+                                inactiveTrackColor = Color.Transparent,
+                            ),
+                            animationOptions = WaveSliderDefaults.animationOptions(
+                                reverseDirection = false,
+                                flatlineOnDrag = true,
+                                animateWave = true,
+                            ),
+                            waveOptions = WaveSliderDefaults.waveOptions(
+                                amplitude = waveAmplitude,
+                                frequency = 0.07F,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
         }
