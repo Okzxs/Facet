@@ -612,6 +612,26 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 4.4 — Чистый фон WaveSlider и замирание волны на паузе (19.10.2026)
+
+### Что сделано
+1. **Прозрачный фон слайдера (`PlayerProgressSection`)**:
+   - `inactiveTrackColor` переведён на `Color.Transparent` — серая полоса `surfaceVariant` (линия от бегунка до конца, которую рисует библиотека) больше не видна за волной.
+   - Удалён слой буферизации (`LinearProgressIndicator` `primary.copy(alpha = 0.3f)`) — волна теперь рисуется прямо на градиенте плеера, без подложек (вместе с ним убран параметр `bufferedFraction`).
+2. **Замирание волны на паузе**:
+   - Амплитуда волны связана с `isPlaying` через `animateFloatAsState`: на паузе плавно (500 мс, `FastOutSlowInEasing`) опускается с 10f до 0f, при возобновлении — поднимается обратно.
+   - На паузе волна замирает абсолютно прямой линией.
+3. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать

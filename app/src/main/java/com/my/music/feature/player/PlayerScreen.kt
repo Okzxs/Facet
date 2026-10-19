@@ -351,7 +351,6 @@ fun PlayerScreen(
                     primaryColor = playerColors.primary,
                     currentFraction = { viewModel.currentFraction() },
                     currentPositionMs = { viewModel.currentPositionMs() },
-                    bufferedFraction = { viewModel.bufferedFraction() },
                     onSeek = { fraction -> viewModel.seekTo(fraction) },
                 )
 
@@ -834,21 +833,25 @@ private fun PlayerProgressSection(
     primaryColor: Color,
     currentFraction: () -> Float,
     currentPositionMs: () -> Long,
-    bufferedFraction: () -> Float = { 0f },
     onSeek: (Float) -> Unit,
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(0f) }
     var playbackFraction by remember { mutableFloatStateOf(0f) }
     var playbackPositionMs by remember { mutableLongStateOf(0L) }
-    var bufferFrac by remember { mutableFloatStateOf(0f) }
+
+    // Амплитуда волны: на воспроизведении колышется, на паузе плавно опускается до нуля (прямая линия)
+    val waveAmplitude by animateFloatAsState(
+        targetValue = if (isPlaying) 10f else 0f,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "waveAmplitude",
+    )
 
     // Сброс таймкода и слайдера при смене трека
     LaunchedEffect(trackId) {
         playbackFraction = 0f
         playbackPositionMs = 0L
         dragPosition = 0f
-        bufferFrac = 0f
         isDragging = false
     }
 
@@ -858,7 +861,6 @@ private fun PlayerProgressSection(
                 playbackFraction = currentFraction()
                 playbackPositionMs = currentPositionMs()
             }
-            bufferFrac = bufferedFraction()
             delay(150) // ~6-7 обновлений в секунду
         }
     }
@@ -904,50 +906,34 @@ private fun PlayerProgressSection(
                         )
                     }
                 } else {
-                    Box(
+                    // Анимированный синусоидальный слайдер (WaveSlider by galaxygoldfish).
+                    // Фон и неактивная дорожка прозрачны — волна рисуется прямо на градиенте плеера
+                    WaveSlider(
+                        value = displayPosition.coerceIn(0f, 1f),
+                        onValueChange = { value ->
+                            isDragging = true
+                            dragPosition = value
+                        },
+                        onValueChangeFinished = { value ->
+                            onSeek(value)
+                            isDragging = false
+                        },
+                        colors = WaveSliderDefaults.colors(
+                            thumbColor = primaryColor,
+                            activeTrackColor = primaryColor,
+                            inactiveTrackColor = Color.Transparent,
+                        ),
+                        animationOptions = WaveSliderDefaults.animationOptions(
+                            reverseDirection = false,
+                            flatlineOnDrag = true,
+                            animateWave = true,
+                        ),
+                        waveOptions = WaveSliderDefaults.waveOptions(
+                            amplitude = waveAmplitude,
+                            frequency = 0.07F,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        // Буферизация: тонкий слой под анимированной волной (primary.copy(alpha = 0.3f))
-                        LinearProgressIndicator(
-                            progress = { bufferFrac.coerceIn(0f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .padding(horizontal = 6.dp)
-                                .clip(RoundedCornerShape(2.dp)),
-                            color = primaryColor.copy(alpha = 0.3f),
-                            trackColor = Color.Transparent,
-                        )
-
-                        // Анимированный синусоидальный слайдер (WaveSlider by galaxygoldfish)
-                        WaveSlider(
-                            value = displayPosition.coerceIn(0f, 1f),
-                            onValueChange = { value ->
-                                isDragging = true
-                                dragPosition = value
-                            },
-                            onValueChangeFinished = { value ->
-                                onSeek(value)
-                                isDragging = false
-                            },
-                            colors = WaveSliderDefaults.colors(
-                                thumbColor = primaryColor,
-                                activeTrackColor = primaryColor,
-                                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                            ),
-                            animationOptions = WaveSliderDefaults.animationOptions(
-                                reverseDirection = false,
-                                flatlineOnDrag = true,
-                                animateWave = true,
-                            ),
-                            waveOptions = WaveSliderDefaults.waveOptions(
-                                amplitude = 10F,
-                                frequency = 0.07F,
-                            ),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    )
                 }
             }
         }
