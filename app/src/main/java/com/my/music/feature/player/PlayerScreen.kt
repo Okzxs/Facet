@@ -105,6 +105,7 @@ fun PlayerScreen(
     val playerState by viewModel.playerState.collectAsState()
     val isBuffering by viewModel.isBuffering.collectAsState()
     val isLiked by viewModel.isLiked.collectAsState()
+    val appSettings by viewModel.appSettings.collectAsState()
 
     var isLyricsMode by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
@@ -126,8 +127,9 @@ fun PlayerScreen(
     val defaultPrimaryContainer = MaterialTheme.colorScheme.primaryContainer
     val defaultOnPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
 
+    // Динамические цвета включены — палитра от обложки; выключены — акцент из темы
     val playerColors = rememberPlayerDynamicColors(
-        artworkUrl = track?.artworkUrl,
+        artworkUrl = if (appSettings.dynamicCoverColors) track?.artworkUrl else null,
         defaultSurface = defaultSurface,
         defaultPrimary = defaultPrimary,
         defaultOnPrimary = defaultOnPrimary,
@@ -176,7 +178,8 @@ fun PlayerScreen(
                             letterSpacing = 1.6.sp,
                             fontWeight = FontWeight.Bold,
                         ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // Явная непрозрачность: лейбл не растворяется на градиентном фоне
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.80f),
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -231,7 +234,7 @@ fun PlayerScreen(
                         text = "⚠️ $errorMessage",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 24.dp),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
                     )
                 }
 
@@ -263,7 +266,8 @@ fun PlayerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .padding(top = 24.dp),
+                        // Запас под выступающий язычок «Текст» и воздух до текстов/обложки
+                        .padding(top = 30.dp),
                 ) {
                     PlayerProgressSection(
                         isPlaying = playerState.isPlaying,
@@ -279,7 +283,7 @@ fun PlayerScreen(
                     )
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(18.dp))
             }
         }
     }
@@ -552,6 +556,9 @@ private fun CoverForeground(
                 modifier = Modifier.offset(y = -style.overlap),
             )
         }
+
+        // Гарантированный воздух между карточкой и островом управления
+        Spacer(Modifier.height(20.dp))
     }
 }
 
@@ -683,7 +690,8 @@ private fun LyricsForeground(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomEnd = 30.dp, bottomStart = 10.dp),
-            color = glassColor.copy(alpha = 0.62f),
+            // Плотнее стекло — выше контраст текста на размытом фоне
+            color = glassColor.copy(alpha = 0.82f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
         ) {
             Row(
@@ -729,13 +737,13 @@ private fun LyricsForeground(
                 .weight(1f)
                 .fillMaxWidth(),
             shape = RoundedCornerShape(30.dp),
-            color = glassColor.copy(alpha = 0.42f),
+            color = glassColor.copy(alpha = 0.72f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
                 LyricsListView(
                     lyricsResult = lyricsResult,
@@ -749,7 +757,8 @@ private fun LyricsForeground(
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        // Воздух до острова управления, чтобы строки не налезали на язычок и волну
+        Spacer(Modifier.height(18.dp))
     }
 }
 
@@ -876,7 +885,7 @@ private fun LyricsListView(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth(),
-                        contentPadding = PaddingValues(vertical = 12.dp),
+                        contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         itemsIndexed(
@@ -963,7 +972,7 @@ private fun LyricsListView(
                         text = if (lyricsResult.isSynced) "Синхронный текст · LRCLIB" else "Текст песни · LRCLIB",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
                     )
                 }
             }

@@ -29,6 +29,7 @@ import com.my.music.feature.library.LibraryScreen
 import com.my.music.feature.player.PlayerViewModel
 import com.my.music.feature.player.PlayerScreen
 import com.my.music.feature.search.SearchScreen
+import com.my.music.feature.settings.SettingsScreen
 import com.my.music.feature.wave.WaveScreen
 
 @Composable
@@ -37,8 +38,9 @@ fun AppNavGraph() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // Скрываем BottomBar на экране плеера
-    val showBottomBar = currentDestination?.route != Screen.Player.route
+    // Скрываем BottomBar на полноэкранных экранах (плеер, настройки)
+    val showBottomBar = currentDestination?.route != Screen.Player.route &&
+        currentDestination?.route != Screen.Settings.route
 
     // Общий PlayerViewModel для MiniPlayer и PlayerScreen (один и тот же экземпляр через Hilt)
     val playerViewModel: PlayerViewModel = hiltViewModel()
@@ -112,7 +114,10 @@ fun AppNavGraph() {
             popExitTransition = { fadeOut(animationSpec = tween(160)) },
         ) {
             composable(Screen.Home.route) {
-                HomeScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
+                HomeScreen(
+                    onTrackClick = { track, queue -> openPlayer(track, queue) },
+                    onSettingsClick = { navController.navigate(Screen.Settings.route) },
+                )
             }
             composable(Screen.Search.route) {
                 SearchScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
@@ -122,6 +127,9 @@ fun AppNavGraph() {
             }
             composable(Screen.Wave.route) {
                 WaveScreen()
+            }
+            composable(Screen.Settings.route) {
+                SettingsScreen(onBack = { navController.popBackStack() })
             }
             composable(
                 route = Screen.Player.route,

@@ -41,5 +41,11 @@ abstract class RepositoryModule {
     abstract fun bindSoundCloudChartsRepository(
         impl: com.my.music.data.source.soundcloud.SoundCloudChartsRepositoryImpl,
     ): com.my.music.data.repository.SoundCloudChartsRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSettingsRepository(
+        impl: com.my.music.data.local.SettingsRepositoryImpl,
+    ): com.my.music.data.repository.SettingsRepository
 }
 

@@ -21,17 +21,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.lerp
-import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
- * «Цепочка точек» — фирменный Expressive-слайдер прогресса:
- * - пройденные точки крупнее и ярче, буферные — полупрозрачные, будущие — тусклые;
- * - ближайшая к бегунку точка плавно раздувается;
- * - ползунок-пилюля пружинно «подпрыгивает» при захвате (bounce с овершутом),
- *   ореол проявляется вместе с отскоком.
- * Без бесконечных анимаций: рисуется только при изменениях.
+ * Слайдер прогресса плеера: сплошная скруглённая дорожка 8dp
+ * (трек → буфер → проигранная часть) с ползунком-пилюлей.
+ * При захвате ползунок пружинно раздувается (bounce с овершутом),
+ * под ним раскрывается ореол акцентного цвета.
  */
 @Composable
 fun ExpressivePlayerSlider(
@@ -99,32 +94,34 @@ fun ExpressivePlayerSlider(
         val pad = 8.dp.toPx()
         val span = (size.width - pad * 2f).coerceAtLeast(1f)
         val centerY = size.height / 2f
-        val spacing = 13.dp.toPx()
-        val dotCount = (span / spacing).roundToInt().coerceAtLeast(2) + 1
-        val step = span / (dotCount - 1)
-        val progressPos = displayFraction * (dotCount - 1)
-        val bufferPos = buffer * (dotCount - 1)
-        val passedRadius = 3.1.dp.toPx()
-        val idleRadius = 2.4.dp.toPx()
+        val trackHeight = 8.dp.toPx()
+        val trackRadius = trackHeight / 2f
 
-        // Цепочка точек от края до края: пройденные — заметно крупнее
-        for (i in 0 until dotCount) {
-            val proximity = (1f - abs(progressPos - i)).coerceIn(0f, 1f)
-            val radius = when {
-                i <= progressPos - 0.6f -> passedRadius
-                proximity > 0f -> lerp(passedRadius, 4.6.dp.toPx(), proximity)
-                i.toFloat() <= bufferPos -> idleRadius + 0.4.dp.toPx()
-                else -> idleRadius
-            }
-            val color = when {
-                i <= progressPos - 0.6f || proximity > 0f -> activeColor
-                i.toFloat() <= bufferPos -> activeColor.copy(alpha = 0.35f)
-                else -> trackColor
-            }
-            drawCircle(
-                color = color,
-                radius = radius,
-                center = Offset(pad + i * step, centerY),
+        // Базовая дорожка (общая длительность)
+        drawRoundRect(
+            color = trackColor,
+            topLeft = Offset(pad, centerY - trackHeight / 2f),
+            size = Size(span, trackHeight),
+            cornerRadius = CornerRadius(trackRadius),
+        )
+
+        // Слой буферизации — полупрозрачный акцент
+        if (buffer > 0f) {
+            drawRoundRect(
+                color = activeColor.copy(alpha = 0.28f),
+                topLeft = Offset(pad, centerY - trackHeight / 2f),
+                size = Size((span * buffer).coerceAtLeast(trackHeight), trackHeight),
+                cornerRadius = CornerRadius(trackRadius),
+            )
+        }
+
+        // Проигранная часть — плотный акцент
+        if (displayFraction > 0f) {
+            drawRoundRect(
+                color = activeColor,
+                topLeft = Offset(pad, centerY - trackHeight / 2f),
+                size = Size((span * displayFraction).coerceAtLeast(trackHeight), trackHeight),
+                cornerRadius = CornerRadius(trackRadius),
             )
         }
 
@@ -134,15 +131,15 @@ fun ExpressivePlayerSlider(
         if (bounce > 0.02f) {
             drawCircle(
                 color = activeColor.copy(alpha = (0.22f * bounce).coerceIn(0f, 1f)),
-                radius = (8f + 14f * bounce.coerceIn(0f, 1.4f)).dp.toPx(),
+                radius = (10f + 16f * bounce).dp.toPx(),
                 center = Offset(activeX, centerY),
             )
         }
 
-        // Ползунок-пилюля: «сквош» — шире и чуть выше при захвате
+        // Ползунок-пилюля: пружинное увеличение при захвате
         val safeBounce = bounce.coerceIn(-0.3f, 1.4f)
-        val thumbW = 8.dp.toPx() * (1f + 0.55f * safeBounce)
-        val thumbH = 26.dp.toPx() * (1f + 0.16f * safeBounce)
+        val thumbW = 10.dp.toPx() * (1f + 0.35f * safeBounce)
+        val thumbH = 30.dp.toPx() * (1f + 0.16f * safeBounce)
         drawRoundRect(
             color = thumbColor,
             topLeft = Offset(activeX - thumbW / 2f, centerY - thumbH / 2f),

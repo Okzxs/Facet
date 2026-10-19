@@ -10,9 +10,11 @@ import com.my.music.core.player.toFriendlyPlaybackMessage
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.LyricsResult
 import com.my.music.data.model.Track
+import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.LyricsRepository
 import com.my.music.data.repository.PlayHistoryRepository
+import com.my.music.data.repository.SettingsRepository
 import com.my.music.data.repository.SoundCloudRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,6 +32,7 @@ class PlayerViewModel @Inject constructor(
     private val lyricsRepository: LyricsRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
+    private val settingsRepository: SettingsRepository,
     private val playerController: PlayerController,
 ) : ViewModel() {
 
@@ -45,6 +48,14 @@ class PlayerViewModel @Inject constructor(
 
     /** Состояние плеера (isPlaying, currentTrack, playbackSpeed, queue, shuffle, repeat) */
     val playerState: StateFlow<PlayerState> = playerController.state
+
+    /** Настройки оформления: флаг динамических цветов обложки и акцент. */
+    val appSettings: StateFlow<AppSettings> = settingsRepository.settings
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = AppSettings(),
+        )
 
     /** Флаг буферизации ExoPlayer */
     val isBuffering: StateFlow<Boolean> = playerController.state

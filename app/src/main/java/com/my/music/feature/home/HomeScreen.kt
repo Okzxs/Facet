@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -74,6 +75,7 @@ import java.util.Calendar
 @Composable
 fun HomeScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
+    onSettingsClick: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -90,7 +92,10 @@ fun HomeScreen(
         ) {
             item(key = "greeting_header") {
                 RevealSection(index = 0) {
-                    GreetingHeader(onRefresh = { viewModel.refresh() })
+                    GreetingHeader(
+                        onRefresh = { viewModel.refresh() },
+                        onSettingsClick = onSettingsClick,
+                    )
                 }
             }
 
@@ -266,6 +271,7 @@ private fun RevealSection(
 @Composable
 private fun GreetingHeader(
     onRefresh: () -> Unit,
+    onSettingsClick: () -> Unit,
 ) {
     val (greetingText, greetingEmoji) = remember {
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
@@ -299,16 +305,33 @@ private fun GreetingHeader(
             )
         }
 
-        FilledTonalIconButton(
-            onClick = onRefresh,
-            modifier = Modifier.size(44.dp),
-            shape = RoundedCornerShape(16.dp),
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = Icons.Filled.Refresh,
-                contentDescription = "Обновить",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            FilledTonalIconButton(
+                onClick = onRefresh,
+                modifier = Modifier.size(44.dp),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Обновить",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            FilledTonalIconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier.size(44.dp),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "Настройки",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

@@ -21,6 +21,7 @@ sealed class Screen(val route: String) {
 
     // Полноэкранные экраны (без нижней панели)
     object Player : Screen("player")
+    object Settings : Screen("settings")
 }
 
 data class BottomNavItem(

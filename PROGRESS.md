@@ -724,6 +724,50 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 4.8 — Полировка контраста плеера и экран настроек (19.10.2026)
+
+### Что сделано
+1. **Полировка PlayerScreen (контраст и наложения)**:
+   - Лейбл «СЕЙЧАС ИГРАЕТ» получил явный цвет `onSurface` alpha 0.80 — больше не растворяется на градиентном фоне.
+   - Отступы: у острова управления верхний паддинг 24→30dp (запас под язычок «Текст»), спейсер под островом 14→18dp, в CoverForeground добавлен гарантированный спейсер 20dp под карточкой, в LyricsForeground — 18dp до острова и внутренний вертикальный паддинг панели строк, contentPadding списка текстов (16/24dp), подпись «LRCLIB» с увеличенным отступом, плашка ошибки — с вертикальным паддингом.
+   - Контраст матового стекла в текстах: шапка витрины alpha 0.62→0.82, панель строк 0.42→0.72 — строки не сливаются с размытой обложкой.
+2. **Слайдер — сплошная волна**: `ExpressivePlayerSlider` переведён с «цепочки точек» на сплошную скруглённую дорожку 8dp (трек → буфер `activeColor` alpha 0.28 → проигранная часть), ползунок-пилюля 10×30dp с пружинным увеличением и ореолом при захвате (как в рабочей версии Фазы 4.6, но в Expressive-оформлении).
+3. **Слой настроек**:
+   - `AppSettings` (`dynamicCoverColors`, `accentColorArgb`) и интерфейс `SettingsRepository`.
+   - `SettingsRepositoryImpl` на SharedPreferences (`mymusic_settings`), запись в IO-диспетчере, `@Binds` в `RepositoryModule`.
+4. **Тема от акцентного цвета**:
+   - `Theme.kt`: функция `accentColorScheme(accent, darkTheme)` генерирует primary-группу из seed через HSL (secondary/tertiary со сдвигом оттенка 40°, нейтральные поверхности — из фиксированных схем); `MyMusicTheme` получил параметр `accentColor: Color?` с приоритетом над Dynamic Color.
+   - `MainActivity` внедряет `SettingsRepository` и передаёт акцент в тему, когда динамические цвета обложки выключены.
+5. **Плеер и настройки динамики**:
+   - `PlayerViewModel.appSettings` (StateFlow из репозитория).
+   - `PlayerScreen` при выключенной динамике не грузит палитру обложки (`artworkUrl = null`) — фон и акценты плеера строятся от выбранного акцента темы.
+6. **Экран настроек (`SettingsScreen` + `SettingsViewModel`)**:
+   - Секция «ОФОРМЛЕНИЕ»: переключатель «Динамические цвета обложки» и палитра из 6 базовых акцентов (фиолетовый, синий, бирюзовый, зелёный, оранжевый, красный) в виде кружков; выбранный раздувается пружиной и получает контур с галочкой, при включённой динамике палитра приглушена и неактивна.
+   - Маршрут `Screen.Settings` — полноэкранный (нижняя панель скрыта), кнопка-шестерёнка добавлена в шапку `HomeScreen`.
+7. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/my/music/data/repository/SettingsRepository.kt (новый)
+app/src/main/java/com/my/music/data/local/SettingsRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/core/di/RepositoryModule.kt
+app/src/main/java/com/my/music/core/ui/theme/Theme.kt
+app/src/main/java/com/my/music/core/ui/theme/AccentPalette.kt (новый)
+app/src/main/java/com/my/music/MainActivity.kt
+app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt (новый)
+app/src/main/java/com/my/music/feature/settings/SettingsViewModel.kt (новый)
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+app/src/main/java/com/my/music/navigation/Screen.kt
+app/src/main/java/com/my/music/navigation/AppNavGraph.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать
