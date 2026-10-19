@@ -836,14 +836,10 @@ private fun LyricsListView(
     var activeIndex by remember { mutableIntStateOf(-1) }
     var activeProgress by remember { mutableFloatStateOf(0f) }
 
-    // Центрирование активной строки, как в Apple Music:
-    // измеряем видимую высоту списка и делаем симметричные отступы на полвысоты
+    // Высота видимой области — для центрирующего сдвига автоскролла
     val density = LocalDensity.current
     var viewportHeightPx by remember { mutableIntStateOf(0) }
     val halfLinePx = with(density) { 18.dp.roundToPx() }
-    val centerPadding = with(density) {
-        (viewportHeightPx / 2 - halfLinePx).coerceAtLeast(0).toDp()
-    }
 
     LaunchedEffect(lyricsResult) {
         // Новый текст — с чистого листа: мгновенное центрирование первой строки
@@ -858,7 +854,8 @@ private fun LyricsListView(
                     val previousIndex = activeIndex
                     activeIndex = idx
                     if (idx >= 0) {
-                        // Активная строка встаёт ровно по центру видимой области
+                        // Центрирующий сдвиг: строка встаёт по центру видимой области,
+                        // а 50dp-отступы не дают ей упираться в границы карточки
                         val centerOffset = (viewportHeightPx / 2 - halfLinePx).coerceAtLeast(0)
                         if (previousIndex < 0) {
                             // При открытии текстов — без «пролёта» через весь список
@@ -917,8 +914,8 @@ private fun LyricsListView(
                             .weight(1f)
                             .fillMaxWidth()
                             .onSizeChanged { viewportHeightPx = it.height },
-                        // Симметричные отступы на полвысоты — строка может встать в самый центр
-                        contentPadding = PaddingValues(vertical = centerPadding),
+                        // Отступы сверху и снизу: строка не упирается в границы карточки
+                        contentPadding = PaddingValues(top = 50.dp, bottom = 50.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         itemsIndexed(
@@ -930,6 +927,8 @@ private fun LyricsListView(
                                 isSynced = lyricsResult.isSynced,
                                 isActive = lyricsResult.isSynced && index == activeIndex,
                                 isPast = lyricsResult.isSynced && index < activeIndex,
+                                isNeighbor = lyricsResult.isSynced && activeIndex >= 0 &&
+                                    abs(index - activeIndex) == 1,
                                 isPlaying = isPlaying,
                                 karaokeProgress = { activeProgress },
                                 highlightColor = highlightColor,
@@ -986,6 +985,7 @@ private fun LyricLineItem(
     isSynced: Boolean,
     isActive: Boolean,
     isPast: Boolean,
+    isNeighbor: Boolean,
     isPlaying: Boolean,
     karaokeProgress: () -> Float,
     highlightColor: Color,
@@ -1033,9 +1033,11 @@ private fun LyricLineItem(
 
     var textWidth by remember { mutableIntStateOf(0) }
 
-    // Альфы ведёт фокус: неактивные строки — 0.4, у активной «непропетое» — 0.62, «пропетое» — 1.0
-    val filledColor = onSurface.copy(alpha = lerp(0.40f, 1f, focus))
-    val dimColor = onSurface.copy(alpha = lerp(0.40f, 0.62f, focus))
+    // Альфы ведёт фокус: неактивные строки — 0.4, соседние с активной — 0.7,
+    // у активной «непропетое» — 0.62, «пропетое» — 1.0
+    val baseAlpha = if (isNeighbor) 0.7f else 0.4f
+    val filledColor = onSurface.copy(alpha = lerp(baseAlpha, 1f, focus))
+    val dimColor = onSurface.copy(alpha = lerp(baseAlpha, 0.62f, focus))
     // Фронт чернил приглушён (alpha 0.7) — тлеет мягко, а не горит
     val tipColor = blendColors(filledColor, highlightColor, 0.75f).copy(alpha = 0.7f)
     val shimmerColor = blendColors(filledColor, Color.White, 0.65f)
@@ -1068,6 +1070,9 @@ private fun LyricLineItem(
             brush = if (isSynced) karaokeBrush else null,
         ),
         color = if (isSynced) Color.Unspecified else onSurface.copy(alpha = 0.85f),
+        // Без жёстких ограничений: длинные строки свободно переносятся
+        softWrap = true,
+        maxLines = Int.MAX_VALUE,
         onTextLayout = { layoutResult ->
             val width = if (layoutResult.lineCount > 0) {
                 layoutResult.multiParagraph.getLineWidth(0).toInt()
@@ -1096,7 +1101,7 @@ private fun LyricLineItem(
 
 /**
  * Изолированная секция прогресса для «острова»:
- * цепочка точек ExpressivePlayerSlider + таймкоды.
+ * волновой ExpressivePlayerSlider + таймкоды.
  * Оставшееся время справа отображается с минусом ("-m:ss").
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1188,6 +1193,7 @@ private fun PlayerProgressSection(
                     trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
                     thumbColor = MaterialTheme.colorScheme.onSurface,
                     bufferedFraction = bufferFrac,
+                    isPlaying = isPlaying,
                 )
             }
         }
