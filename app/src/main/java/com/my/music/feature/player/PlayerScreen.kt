@@ -4,7 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,6 +39,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
@@ -133,14 +137,18 @@ fun PlayerScreen(
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(
+            // CenterAlignedTopAppBar центрирует заголовок между «Назад» и «Меню» с учётом их ширины
+            CenterAlignedTopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Назад")
                     }
                 },
                 title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
                         Text(
                             text = "СЕЙЧАС ИГРАЕТ",
                             style = MaterialTheme.typography.labelSmall.copy(
@@ -148,12 +156,16 @@ fun PlayerScreen(
                                 fontWeight = FontWeight.Medium,
                             ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         Text(
                             text = track?.title ?: "MyMusic",
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 },
@@ -162,7 +174,7 @@ fun PlayerScreen(
                         Icon(Icons.Filled.MoreVert, contentDescription = "Меню")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color.Transparent,
                 ),
             )
@@ -329,6 +341,7 @@ fun PlayerScreen(
                 PlayerProgressSection(
                     isPlaying = playerState.isPlaying,
                     isBuffering = isBuffering,
+                    isResolving = uiState.isResolving,
                     trackId = track?.id,
                     durationMs = track?.durationMs ?: 0L,
                     primaryColor = playerColors.primary,
@@ -511,37 +524,56 @@ private fun LyricsListView(
                             key = { index, line -> "$index-${line.timeMs}" },
                         ) { index, line ->
                             val isActive = lyricsResult.isSynced && index == activeIndex
-                            val targetAlpha = when {
-                                !lyricsResult.isSynced -> 0.9f
-                                isActive -> 1.0f
-                                kotlin.math.abs(index - activeIndex) == 1 -> 0.52f
-                                else -> 0.35f
-                            }
-                            val alpha by androidx.compose.animation.core.animateFloatAsState(
-                                targetValue = targetAlpha,
-                                animationSpec = tween(durationMillis = 200),
-                                label = "lyricsAlpha",
-                            )
+                            val isSynced = lyricsResult.isSynced
+                            val onSurface = MaterialTheme.colorScheme.onSurface
 
-                            val shadow = if (isActive) {
-                                Shadow(
-                                    color = highlightColor.copy(alpha = 0.6f),
-                                    blurRadius = 8f,
-                                )
-                            } else null
+                            // Плавный перелив: тусклая строка «перетекает» в белый активный цвет
+                            val targetColor = when {
+                                !isSynced -> onSurface.copy(alpha = 0.92f)
+                                isActive -> onSurface
+                                kotlin.math.abs(index - activeIndex) == 1 -> onSurface.copy(alpha = 0.55f)
+                                else -> onSurface.copy(alpha = 0.30f)
+                            }
+                            val animatedColor by animateColorAsState(
+                                targetValue = targetColor,
+                                animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+                                label = "lyricsLineColor",
+                            )
+                            val animatedGlow by animateColorAsState(
+                                targetValue = if (isActive) highlightColor.copy(alpha = 0.5f) else Color.Transparent,
+                                animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+                                label = "lyricsLineGlow",
+                            )
+                            val animatedWeight by animateFloatAsState(
+                                targetValue = if (isActive) 700f else 400f,
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+                                label = "lyricsLineWeight",
+                            )
+                            val animatedScale by animateFloatAsState(
+                                targetValue = if (isActive) 1.05f else 1f,
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+                                label = "lyricsLineScale",
+                            )
 
                             Text(
                                 text = line.text.ifBlank { "♪" },
                                 style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = if (lyricsResult.isSynced) 22.sp else 18.sp,
-                                    shadow = shadow,
+                                    fontWeight = FontWeight(animatedWeight.toInt()),
+                                    fontSize = if (isSynced) 22.sp else 18.sp,
+                                    shadow = Shadow(
+                                        color = animatedGlow,
+                                        blurRadius = 10f,
+                                    ),
                                 ),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+                                color = animatedColor,
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .graphicsLayer {
+                                        scaleX = animatedScale
+                                        scaleY = animatedScale
+                                    }
                                     .clickable(
-                                        enabled = lyricsResult.isSynced && line.timeMs >= 0,
+                                        enabled = isSynced && line.timeMs >= 0,
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,
                                         onClick = { onSeekToLine(line.timeMs) },
@@ -764,6 +796,7 @@ private fun ActionPillsRow(
 private fun PlayerProgressSection(
     isPlaying: Boolean,
     isBuffering: Boolean = false,
+    isResolving: Boolean = false,
     trackId: String? = null,
     durationMs: Long,
     primaryColor: Color,
@@ -806,7 +839,9 @@ private fun PlayerProgressSection(
     }
 
     val remainingMs = (durationMs - displayedMs).coerceAtLeast(0L)
-    val isInitialBuffering = isBuffering && displayedMs == 0L
+    // Пока идёт резолв потока/буферизация и позиция == 0 — показываем индикатор загрузки,
+    // при старте воспроизведения Crossfade (500 мс) плавно заменяет его на слайдер.
+    val isInitialBuffering = (isBuffering || isResolving) && displayedMs == 0L
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Box(

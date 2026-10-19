@@ -99,36 +99,49 @@ fun rememberPlayerDynamicColors(
 
                     if (bitmap != null) {
                         val palette = Palette.from(bitmap).generate()
-                        val swatch = palette.dominantSwatch
-                            ?: palette.vibrantSwatch
+                        // Сначала ищем выразительные (насыщенные) свотчи, и только потом — доминанту:
+                        // у светлых «металлических» обложек доминанта серая и почти не даёт цвета.
+                        val swatch = palette.vibrantSwatch
                             ?: palette.lightVibrantSwatch
+                            ?: palette.dominantSwatch
                             ?: palette.mutedSwatch
                             ?: palette.lightMutedSwatch
                             ?: palette.darkVibrantSwatch
                             ?: palette.swatches.maxByOrNull { it.population }
 
                         if (swatch != null) {
-                            val dominantInt = swatch.rgb
-                            val dominantColor = Color(dominantInt)
-                            val luminance = ColorUtils.calculateLuminance(dominantInt)
+                            val swatchInt = swatch.rgb
+                            val luminance = ColorUtils.calculateLuminance(swatchInt)
+                            val isLightCover = luminance > 0.35f
 
-                            // Для светлых и контрастных обложек обеспечиваем насыщенный оттенок фона,
-                            // чтобы фон не поглощался темной системной темой.
-                            val topAlpha = if (luminance > 0.4) 0.72f else 0.55f
-                            val bottomAlpha = if (luminance > 0.4) 0.28f else 0.16f
-                            val onPrimary = if (luminance > 0.5) Color.Black else Color.White
+                            // Для светлых/металлических обложек поднимаем насыщенность и светлоту оттенка,
+                            // иначе серый доминант на тёмном фоне выглядит почти чёрным.
+                            val hsl = FloatArray(3)
+                            ColorUtils.colorToHSL(swatchInt, hsl)
+                            if (isLightCover) {
+                                hsl[1] = (hsl[1] * 1.4f).coerceIn(0.32f, 0.82f)
+                                hsl[2] = hsl[2].coerceIn(0.50f, 0.66f)
+                            }
+                            val tintInt = ColorUtils.HSLToColor(hsl)
+                            val tintColor = Color(tintInt)
+                            val tintLuminance = ColorUtils.calculateLuminance(tintInt)
+
+                            // Больший вес цвета: фон реально окрашивается даже на тёмной теме
+                            val topAlpha = if (isLightCover) 0.88f else 0.62f
+                            val bottomAlpha = if (isLightCover) 0.40f else 0.22f
+                            val onPrimary = if (tintLuminance > 0.5) Color.Black else Color.White
 
                             val colors = PlayerDynamicColors(
-                                dominant = dominantColor,
-                                backgroundTop = dominantColor.copy(alpha = topAlpha),
-                                backgroundBottom = dominantColor.copy(alpha = bottomAlpha),
-                                primary = dominantColor,
+                                dominant = tintColor,
+                                backgroundTop = tintColor.copy(alpha = topAlpha),
+                                backgroundBottom = tintColor.copy(alpha = bottomAlpha),
+                                primary = tintColor,
                                 onPrimary = onPrimary,
-                                primaryContainer = dominantColor.copy(alpha = 0.28f),
-                                onPrimaryContainer = if (luminance > 0.5) Color.Black else dominantColor,
-                                secondaryContainer = dominantColor.copy(alpha = 0.22f),
-                                onSecondaryContainer = dominantColor,
-                                surfaceContainerHigh = dominantColor.copy(alpha = 0.14f),
+                                primaryContainer = tintColor.copy(alpha = 0.30f),
+                                onPrimaryContainer = if (tintLuminance > 0.5) Color.Black else tintColor,
+                                secondaryContainer = tintColor.copy(alpha = 0.24f),
+                                onSecondaryContainer = tintColor,
+                                surfaceContainerHigh = tintColor.copy(alpha = 0.15f),
                                 isLoading = false,
                             )
                             paletteCache[artworkUrl] = colors

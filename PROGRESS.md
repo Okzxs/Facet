@@ -526,6 +526,29 @@ app/src/main/java/com/my/music/navigation/AppNavGraph.kt
 
 ---
 
+## ✅ Фаза 4.1 — Правки после теста на реальном устройстве (19.10.2026)
+
+### Что сделано
+1. **WaveScreen**: центр орба перенесён в геометрический центр hero-зоны (`size.height / 2f`), поэтому иконка `Waves` через `Alignment.Center` стоит ровно в центре круга.
+2. **PlayerScreen, верхняя панель**: `TopAppBar` заменён на `CenterAlignedTopAppBar`; «СЕЙЧАС ИГРАЕТ» и название трека центрируются между кнопками «Назад» и «Меню» (`TextAlign.Center`, `fillMaxWidth`, ellipsis).
+3. **PlayerPalette**: приоритет свотчей изменён на выразительные (`vibrant` → `lightVibrant` → `dominant` → …); для светлых обложек (`luminance > 0.35`) насыщенность поднимается ×1.4, светлота ограничивается 0.50–0.66, альфы фона увеличены до 0.88/0.40 (тёмные — 0.62/0.22). Серые «металлические» обложки теперь дают ощутимый цвет фона.
+4. **Тексты песен**: вместо простого fade — `animateColorAsState` (420 мс) от тусклого `onSurface` (alpha 0.30/0.55) к белому `onSurface` (alpha 1.0); дополнительно анимируются вес шрифта (400 → 700, пружина), масштаб (1.0 → 1.05) и свечение (`Transparent` → `primary` 0.5, blur 10).
+5. **Слайдер**: в `PlayerProgressSection` добавлен флаг `isResolving`; `LinearProgressIndicator` показывается при `(isBuffering || isResolving) && позиция == 0`, затем `Crossfade` (500 мс) плавно заменяет его на `Slider` с буферным слоем `primary.copy(alpha = 0.3f)`.
+6. **Чарты SoundCloud**: в `SoundCloudChartsRepositoryImpl` добавлен фильтр мусора — отбрасываются треки длительностью 1–29 сек и явные нули прослушиваний (фильтр по plays применяется только если `viewCount` реально парсится); если после фильтрации список пуст — возвращается исходный. Секция Top 50 остаётся полной (50 позиций).
+7. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/my/music/core/ui/theme/PlayerPalette.kt
+app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать

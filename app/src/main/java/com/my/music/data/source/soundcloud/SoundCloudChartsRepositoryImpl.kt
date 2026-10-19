@@ -84,9 +84,9 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
             val kioskInfo = KioskInfo.getInfo(service, url)
             Log.d(tag, "[$chartType] Загружено из сети NewPipe: ${kioskInfo.relatedItems.size} элементов")
 
-            val tracks = kioskInfo.relatedItems
-                .filterIsInstance<StreamInfoItem>()
-                .map { it.toDomain() }
+            val tracks = filterJunk(
+                kioskInfo.relatedItems.filterIsInstance<StreamInfoItem>(),
+            ).map { it.toDomain() }
 
             if (tracks.isNotEmpty()) {
                 // Сохраняем в кэш Room
@@ -113,6 +113,26 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
                 throw error
             }
         }
+    }
+
+    /**
+     * Базовый фильтр мусора в чартах: треки короче 30 секунд и явные нули прослушиваний.
+     * Если SoundCloud не вернул метаданные (viewCount == 0 у всех элементов), фильтр
+     * по прослушиваниям не применяется. Если после фильтрации не осталось треков —
+     * возвращаем исходный список, чтобы не показывать пустую секцию.
+     */
+    private fun filterJunk(items: List<StreamInfoItem>): List<StreamInfoItem> {
+        val hasViewData = items.any { it.viewCount > 0 }
+        val filtered = items.filter { item ->
+            val tooShort = item.duration in 1..29
+            val noPlays = hasViewData && item.viewCount == 0L
+            !tooShort && !noPlays
+        }
+        val removed = items.size - filtered.size
+        if (removed > 0) {
+            Log.d(tag, "Отфильтровано $removed мусорных треков (короткие / без прослушиваний)")
+        }
+        return filtered.ifEmpty { items }
     }
 
     private fun StreamInfoItem.toDomain(): Track {

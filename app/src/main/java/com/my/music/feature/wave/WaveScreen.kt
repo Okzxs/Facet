@@ -265,7 +265,8 @@ private fun WaveHero(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val center = Offset(size.width / 2f, size.height * 0.52f)
+            // Орб ровно по центру hero-зоны, чтобы иконка волны (Alignment.Center) стояла в его геометрическом центре
+            val center = Offset(size.width / 2f, size.height / 2f)
             val baseRadius = size.minDimension * 0.17f * pulse
 
             drawCircle(
