@@ -3,6 +3,7 @@ package com.my.music.core.player
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.my.music.data.model.AudioStreamResult
@@ -66,6 +67,18 @@ class PlayerController @Inject constructor(
 
                 if (playbackState == Player.STATE_ENDED) {
                     onTrackEnded()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e(tag, "Ошибка воспроизведения ExoPlayer", error)
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isBuffering = false,
+                        isPlaying = false,
+                        error = error.toFriendlyPlaybackMessage(),
+                    )
                 }
             }
         })
@@ -307,14 +320,16 @@ class PlayerController @Inject constructor(
     /**
      * Разрешить URL трека и передать в ExoPlayer.
      */
-    private fun resolveAndPlay(track: Track) {
+    private fun resolveAndPlay(track: Track, recordHistory: Boolean = true) {
         resolveJob?.cancel()
         exoPlayer.pause()
         exoPlayer.stop()
         exoPlayer.seekTo(0)
         resolveJob = scope.launch {
             // Запись в историю воспроизведения Room
-            playHistoryRepository.addToHistory(track)
+            if (recordHistory) {
+                playHistoryRepository.addToHistory(track)
+            }
 
             val streamResult: Result<AudioStreamResult> = when {
                 track.streamUrl != null ->
@@ -331,11 +346,15 @@ class PlayerController @Inject constructor(
                     playStream(track, result)
                 }
                 .onFailure { error ->
-                    Log.e(tag, "Ошибка resolve для трека '${track.title}'", error)
+                    // В UI уходит только дружелюбное сообщение, сырое исключение — в лог
+                    val friendlyMessage = error.toFriendlyPlaybackMessage()
+                    Log.e(tag, "Ошибка resolve для трека '${track.title}': $friendlyMessage", error)
                     _state.update {
                         it.copy(
                             isLoading = false,
-                            error = error.message ?: "Ошибка воспроизведения",
+                            isBuffering = false,
+                            isPlaying = false,
+                            error = friendlyMessage,
                         )
                     }
                 }
@@ -393,6 +412,15 @@ class PlayerController @Inject constructor(
     }
 
     fun pauseOrResume() {
+        // После ошибки нажатие Play/Pause сразу снимает сообщение и повторяет запуск трека
+        if (_state.value.error != null) {
+            _state.update { it.copy(error = null) }
+            val track = _state.value.currentTrack
+            if (track != null) {
+                resolveAndPlay(track, recordHistory = false)
+            }
+            return
+        }
         if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
     }
 

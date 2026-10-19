@@ -549,6 +549,38 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 4.2 — Дружелюбные сетевые ошибки плеера (19.10.2026)
+
+### Что сделано
+1. **Единый маппер ошибок (`core/player/PlaybackErrorMessages.kt`)**:
+   - `UnknownHostException`, `ConnectException`, `SocketException`, сообщения «Unable to resolve host» / «No address associated with hostname» → «Нет подключения к интернету. Проверьте сеть.»
+   - `SocketTimeoutException` / таймауты → «Превышено время ожидания. Попробуйте снова.»
+   - `SSLException` → «Ошибка защищённого соединения. Попробуйте снова.»
+   - Всё остальное → «Не удалось воспроизвести трек. Попробуйте снова.»
+   - Для `PlaybackException` дополнительно учитываются коды `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED` / `_TIMEOUT`.
+2. **PlayerController**:
+   - Ошибка `resolveStreamUrl` маппится в дружелюбный текст; сырое исключение пишется только в Logcat.
+   - Добавлен `onPlayerError` для ошибок ExoPlayer во время воспроизведения — на экран также уходит только понятное сообщение.
+   - При ошибке сбрасываются `isLoading`, `isBuffering`, `isPlaying`.
+   - Нажатие Play/Pause при наличии ошибки сразу очищает её и повторно запускает текущий трек (`recordHistory = false`, чтобы не дублировать историю).
+   - При переходе в `STATE_READY` ошибка гарантированно очищается.
+3. **PlayerViewModel**:
+   - `togglePlayPause()` немедленно очищает `uiState.error`.
+   - Ошибки загрузки текстов из LRCLIB также маппятся в «Не удалось загрузить текст. Попробуйте снова.» — сырые Java-ошибки не попадают в панель текстов.
+   - Выбор нового трека уже сбрасывает ошибку (`playTrackWithQueue` / `playTrackAt`).
+4. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/player/PlaybackErrorMessages.kt (новый)
+app/src/main/java/com/my/music/core/player/PlayerController.kt
+app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать

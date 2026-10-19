@@ -3,8 +3,10 @@ package com.my.music.feature.player
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.my.music.core.player.ERROR_LYRICS
 import com.my.music.core.player.PlayerController
 import com.my.music.core.player.PlayerState
+import com.my.music.core.player.toFriendlyPlaybackMessage
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.LyricsResult
 import com.my.music.data.model.Track
@@ -197,12 +199,17 @@ class PlayerViewModel @Inject constructor(
                 _uiState.update { it.copy(lyrics = result, isLyricsLoading = false, lyricsError = null) }
             }
             .onFailure { error ->
-                Log.w("LRCLIB", "PlayerViewModel: не удалось загрузить тексты: ${error.message}")
-                _uiState.update { it.copy(lyrics = null, isLyricsLoading = false, lyricsError = error.message) }
+                val friendlyMessage = error.toFriendlyPlaybackMessage(ERROR_LYRICS)
+                Log.w("LRCLIB", "PlayerViewModel: не удалось загрузить тексты: $friendlyMessage", error)
+                _uiState.update {
+                    it.copy(lyrics = null, isLyricsLoading = false, lyricsError = friendlyMessage)
+                }
             }
     }
 
     fun togglePlayPause() {
+        // Сразу убираем сообщение об ошибке из UI; контроллер при необходимости повторит запуск
+        _uiState.update { it.copy(error = null) }
         playerController.pauseOrResume()
     }
 
