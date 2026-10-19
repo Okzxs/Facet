@@ -132,6 +132,7 @@ fun ExpressivePlayerSlider(
     ) {
         val pad = 8.dp.toPx()
         val span = (size.width - pad * 2f).coerceAtLeast(1f)
+        val spanD = span.toDouble()
         val centerY = size.height / 2f
         val progressX = pad + span * displayFraction
         val amp = 9.dp.toPx() * amplitude
@@ -143,7 +144,6 @@ fun ExpressivePlayerSlider(
         val wave = Path()
         wave.moveTo(pad, centerY)
         val steps = 96
-        val spanD = span.toDouble()
         for (i in 1..steps) {
             val u = i / steps.toDouble()
             val x = pad + (spanD * u).toFloat()
@@ -151,6 +151,11 @@ fun ExpressivePlayerSlider(
             val angle = TWO_PI * (spanD * u / wavelength) + phase
             wave.lineTo(x, centerY - (amp * taper * sin(angle)).toFloat())
         }
+
+        // Бегунок едет по самой волне: та же формула синуса в его X-координате
+        val thumbU = displayFraction.toDouble()
+        val thumbAngle = TWO_PI * (spanD * thumbU / wavelength) + phase
+        val thumbY = centerY - (amp * sin(PI * thumbU) * sin(thumbAngle)).toFloat()
 
         // Тусклая волна — вся длительность трека
         drawPath(wave, trackColor, style = Stroke(width = stroke, cap = StrokeCap.Round))
@@ -176,7 +181,7 @@ fun ExpressivePlayerSlider(
             drawCircle(
                 color = activeColor.copy(alpha = (0.22f * bounce).coerceIn(0f, 1f)),
                 radius = (10f + 16f * bounce).dp.toPx(),
-                center = Offset(progressX, centerY),
+                center = Offset(progressX, thumbY),
             )
         }
 
@@ -185,7 +190,7 @@ fun ExpressivePlayerSlider(
         drawCircle(
             color = thumbColor,
             radius = 5.dp.toPx() * (1f + 0.4f * safeBounce),
-            center = Offset(progressX, centerY),
+            center = Offset(progressX, thumbY),
         )
     }
 }

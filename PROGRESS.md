@@ -927,6 +927,31 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 4.16 — Бегунок по волне, фиолетовый дефолт и артист в шапке (20.10.2026)
+
+### Что сделано
+1. **Thumb на волне**: в `ExpressivePlayerSlider` Y-координата бегунка и ореола считается по той же синусоиде, что и Path: `centerY − amp × sin(πu) × sin(2π·span·u/wavelength + phase)`. Кружок едет по гребням, а на паузе (амплитуда 0) возвращается на центральную линию.
+2. **Фиолетовая тема по умолчанию**:
+   - `AppSettings.dynamicCoverColors` и чтение из SharedPreferences — дефолт `false`;
+   - `MyMusicTheme.dynamicColor` — дефолт `false` (фиксированная фиолетовая палитра вместо системного Material You);
+   - выключенный переключатель → акцент из настроек (по умолчанию фиолетовый), включённый → палитра обложки в плеере.
+3. **Шапка плеера**: верхняя панель теперь двухстрочная — «СЕЙЧАС ИГРАЕТ» (labelSmall, alpha 0.6) и имя артиста (titleLarge, Bold) с мягким свечением `Shadow(blurRadius = 8f, color = primary alpha 0.55)`; длинные имена обрезаются ellipsis.
+4. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/my/music/data/repository/SettingsRepository.kt
+app/src/main/java/com/my/music/data/local/SettingsRepositoryImpl.kt
+app/src/main/java/com/my/music/core/ui/theme/Theme.kt
+app/src/main/java/com/my/music/MainActivity.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать

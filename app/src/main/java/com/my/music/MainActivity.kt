@@ -25,7 +25,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
-            // Динамические цвета включены — акцент не навязываем (текущая логика темы)
+            // Динамика обложки выключена — фиксируем акцент (по умолчанию фиолетовый);
+            // включена — плеер берёт палитру обложки, общая тема остаётся фиолетовой
             val accentOverride = if (settings.dynamicCoverColors) null else Color(settings.accentColorArgb)
 
             MyMusicTheme(accentColor = accentOverride) {

@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
@@ -172,17 +173,36 @@ fun PlayerScreen(
                     }
                 },
                 title = {
-                    Text(
-                        text = "СЕЙЧАС ИГРАЕТ",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            letterSpacing = 1.6.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        // Явная непрозрачность: лейбл не растворяется на градиентном фоне
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.80f),
-                        textAlign = TextAlign.Center,
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = "СЕЙЧАС ИГРАЕТ",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                letterSpacing = 1.6.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            text = track?.artist ?: "—",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                // Мягкое свечение именем акцента палитры
+                                shadow = Shadow(
+                                    color = playerColors.primary.copy(alpha = 0.55f),
+                                    blurRadius = 8f,
+                                ),
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 },
                 actions = {
                     IconButton(onClick = {}) {

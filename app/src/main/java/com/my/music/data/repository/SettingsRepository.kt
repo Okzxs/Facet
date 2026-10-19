@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
  * @param accentColorArgb выбранный вручную акцентный цвет (ARGB), применяется когда динамика выключена.
  */
 data class AppSettings(
-    val dynamicCoverColors: Boolean = true,
+    val dynamicCoverColors: Boolean = false,
     val accentColorArgb: Int = DEFAULT_ACCENT_ARGB,
 ) {
     companion object {

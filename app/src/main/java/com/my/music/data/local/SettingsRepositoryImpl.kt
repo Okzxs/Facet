@@ -28,7 +28,8 @@ class SettingsRepositoryImpl @Inject constructor(
     override val settings: Flow<AppSettings> = _settings.asStateFlow()
 
     private fun load(): AppSettings = AppSettings(
-        dynamicCoverColors = prefs.getBoolean(KEY_DYNAMIC_COVER_COLORS, true),
+        // По умолчанию — фиолетовая тема, динамика обложки выключена
+        dynamicCoverColors = prefs.getBoolean(KEY_DYNAMIC_COVER_COLORS, false),
         accentColorArgb = prefs.getInt(KEY_ACCENT_COLOR, AppSettings.DEFAULT_ACCENT_ARGB),
     )
 

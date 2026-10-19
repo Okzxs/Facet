@@ -111,13 +111,14 @@ private fun accentColorScheme(accent: Color, darkTheme: Boolean): ColorScheme {
 
 /**
  * Главная тема приложения.
- * Приоритет: ручной акцент из настроек → Dynamic Color (Android 12+) → фиксированная палитра.
+ * Приоритет: ручной акцент из настроек → Dynamic Color (только если явно включён) → фиксированная фиолетовая палитра.
+ * По умолчанию Dynamic Color выключен: приложение всегда стартует в фирменной фиолетовой теме.
  */
 @Composable
 fun MyMusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true, // отключить если нужна фиксированная палитра
-    accentColor: Color? = null, // задан — динамические цвета обложки выключены, строим схему от акцента
+    dynamicColor: Boolean = false, // фиолетовая палитра по умолчанию; true — системные цвета Android 12+
+    accentColor: Color? = null, // задан — строим схему от акцента (акцент выбран в настройках)
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {
