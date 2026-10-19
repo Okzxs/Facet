@@ -6,7 +6,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -15,11 +14,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -33,15 +32,13 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -57,19 +54,46 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.core.ui.components.ExpressivePlayerSlider
+import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
-import com.my.music.core.ui.components.PlayerSlider
 import com.my.music.core.ui.theme.PlayerDynamicColors
 import com.my.music.core.ui.theme.rememberPlayerDynamicColors
-import com.my.music.data.model.LyricLine
 import com.my.music.data.model.LyricsResult
 import kotlinx.coroutines.delay
+
+/**
+ * Вариант компоновки hero-зоны (для сравнения на устройстве, поменяй цифру и пересобери):
+ * 1 — «Редакция»: наклонённая обложка по центру, стеклянная карточка с огромным названием свисает с её нижнего края;
+ * 2 — «Смещение»: обложка свисает за правый край экрана, карточка с названием — слева;
+ * 3 — «На обложке»: название лежит прямо на обложке в матово-стеклянной плашке.
+ */
+private const val PLAYER_LAYOUT_VARIANT = 1
+
+/** Параметры компоновки для конкретного варианта. */
+private data class HeroStyle(
+    val widthFraction: Float,
+    val rotationZ: Float,
+    val alignment: Alignment,
+    val topPadding: Dp,
+    val offsetX: Dp,
+    val overlap: Dp,
+    val titleOnArtwork: Boolean,
+)
+
+private fun heroStyle(variant: Int): HeroStyle = when (variant) {
+    2 -> HeroStyle(0.62f, 7f, Alignment.TopEnd, 26.dp, 16.dp, 60.dp, false)
+    3 -> HeroStyle(0.94f, -3f, Alignment.TopCenter, 4.dp, 0.dp, 0.dp, true)
+    else -> HeroStyle(0.88f, -5f, Alignment.TopCenter, 6.dp, 0.dp, 46.dp, false)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,7 +105,6 @@ fun PlayerScreen(
     val playerState by viewModel.playerState.collectAsState()
     val isBuffering by viewModel.isBuffering.collectAsState()
     val isLiked by viewModel.isLiked.collectAsState()
-    val context = LocalContext.current
 
     var isLyricsMode by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
@@ -96,7 +119,7 @@ fun PlayerScreen(
         }
     }
 
-    // ─── Тонированный фон и палитра по референсу (Palette) ───────────────
+    // ─── Тонированный фон и палитра по обложке (Palette) ────────────────
     val defaultSurface = MaterialTheme.colorScheme.surface
     val defaultPrimary = MaterialTheme.colorScheme.primary
     val defaultOnPrimary = MaterialTheme.colorScheme.onPrimary
@@ -133,10 +156,13 @@ fun PlayerScreen(
         )
     }
 
+    val surfaceColor = playerColors.surfaceContainerHigh
+    val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
+    val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
+
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            // CenterAlignedTopAppBar центрирует заголовок между «Назад» и «Меню» с учётом их ширины
             CenterAlignedTopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -144,29 +170,16 @@ fun PlayerScreen(
                     }
                 },
                 title = {
-                    Column(
+                    Text(
+                        text = "СЕЙЧАС ИГРАЕТ",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            letterSpacing = 1.6.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "СЕЙЧАС ИГРАЕТ",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                letterSpacing = 1.2.sp,
-                                fontWeight = FontWeight.Medium,
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            text = track?.title ?: "MyMusic",
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    )
                 },
                 actions = {
                     IconButton(onClick = {}) {
@@ -183,75 +196,31 @@ fun PlayerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(backgroundBrush)
-                .padding(padding)
-                .padding(horizontal = 24.dp),
+                .padding(padding),
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                // ─── Анимированное переключение «Обложка ↔ Текст» ─────────────
-                val surfaceColor = playerColors.surfaceContainerHigh
-                val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
-                val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
-
-                AnimatedContent(
-                    targetState = isLyricsMode,
+            Column(modifier = Modifier.fillMaxSize()) {
+                // ─── Hero-зона: обложка-задник + передний план (обложка/тексты) ──
+                ExpressiveHeroZone(
+                    variant = PLAYER_LAYOUT_VARIANT,
+                    title = track?.title ?: "Нет трека",
+                    artist = track?.artist ?: "—",
+                    artworkUrl = track?.artworkUrl,
+                    isLiked = isLiked,
+                    isLyricsMode = isLyricsMode,
+                    lyricsResult = uiState.lyrics,
+                    isLyricsLoading = uiState.isLyricsLoading,
+                    lyricsError = uiState.lyricsError,
+                    palette = playerColors,
+                    notePainter = notePainter,
+                    placeholderPainter = placeholderPainter,
+                    currentPositionMs = { viewModel.currentPositionMs() },
+                    onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
+                    onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
+                    onToggleLike = { viewModel.toggleLike() },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    transitionSpec = {
-                        if (targetState) {
-                            // Обложка → Текст: список въезжает снизу, обложка уходит вверх
-                            (slideInVertically(
-                                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-                            ) { it / 3 } + fadeIn(tween(durationMillis = 240))) togetherWith
-                                (fadeOut(tween(durationMillis = 180)) + slideOutVertically(
-                                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-                                ) { -it / 4 })
-                        } else {
-                            // Текст → Обложка: зеркальный переход
-                            (slideInVertically(
-                                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-                            ) { -it / 4 } + fadeIn(tween(durationMillis = 240))) togetherWith
-                                (fadeOut(tween(durationMillis = 180)) + slideOutVertically(
-                                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-                                ) { it / 3 })
-                        }
-                    },
-                    label = "playerModeContent",
-                ) { lyricsMode ->
-                    if (lyricsMode) {
-                        LyricsModeContent(
-                            title = track?.title ?: "—",
-                            artist = track?.artist ?: "—",
-                            artworkUrl = track?.artworkUrl,
-                            lyricsResult = uiState.lyrics,
-                            isLoading = uiState.isLyricsLoading,
-                            error = uiState.lyricsError,
-                            highlightColor = playerColors.primary,
-                            surfaceContainerColor = surfaceColor,
-                            notePainter = notePainter,
-                            placeholderPainter = placeholderPainter,
-                            currentPositionMs = { viewModel.currentPositionMs() },
-                            onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
-                            onRetry = { viewModel.loadLyricsIfNeeded(track) },
-                        )
-                    } else {
-                        CoverModeContent(
-                            title = track?.title ?: "Нет трека",
-                            artist = track?.artist ?: "—",
-                            artworkUrl = track?.artworkUrl,
-                            isLiked = isLiked,
-                            primaryColor = playerColors.primary,
-                            primaryContainerColor = playerColors.primaryContainer,
-                            surfaceContainerColor = surfaceColor,
-                            notePainter = notePainter,
-                            placeholderPainter = placeholderPainter,
-                            onToggleLike = { viewModel.toggleLike() },
-                        )
-                    }
-                }
+                )
 
                 // ─── Сообщение об ошибке (скрывается, как только плеер в STATE_READY) ──
                 val isPlayerReady = playerState.playbackState == androidx.media3.common.Player.STATE_READY
@@ -262,47 +231,28 @@ fun PlayerScreen(
                         text = "⚠️ $errorMessage",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 24.dp),
                     )
-                    Spacer(Modifier.height(4.dp))
                 }
 
-                // ─── Слайдер прогресса, буферизация и время ("-m:ss") ─────────
-                PlayerProgressSection(
+                // ─── Плавающий остров управления ─────────────────────────
+                PlayerControlIsland(
                     isPlaying = playerState.isPlaying,
                     isBuffering = isBuffering,
-                    isResolving = uiState.isResolving,
-                    trackId = track?.id,
-                    durationMs = track?.durationMs ?: 0L,
-                    primaryColor = playerColors.primary,
-                    currentFraction = { viewModel.currentFraction() },
-                    currentPositionMs = { viewModel.currentPositionMs() },
-                    bufferedFraction = { viewModel.bufferedFraction() },
-                    onSeek = { fraction -> viewModel.seekTo(fraction) },
-                )
-
-                Spacer(Modifier.height(10.dp))
-
-                // ─── Кнопки управления (ControlsRow: круги 56dp, Play 84dp с morph) ──
-                ControlsRow(
-                    isPlaying = playerState.isPlaying,
-                    isBuffering = isBuffering,
-                    primaryColor = playerColors.primary,
-                    onPrimaryColor = playerColors.onPrimary,
+                    playbackSpeed = playerState.playbackSpeed,
+                    isLyricsActive = isLyricsMode,
+                    containerColor = surfaceColor.copy(alpha = 0.94f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    accentColor = playerColors.primary,
+                    onAccentColor = playerColors.onPrimary,
+                    lyricsActiveContainer = playerColors.primaryContainer,
+                    lyricsActiveContent = playerColors.onPrimaryContainer,
+                    borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                     onPlayPause = { viewModel.togglePlayPause() },
                     onPrev = { viewModel.playPrevious() },
                     onNext = { viewModel.playNext() },
-                )
-
-                Spacer(Modifier.height(16.dp))
-
-                // ─── Пилюли действий (1× Скорость / Текст / Далее) ────────────
-                ActionPillsRow(
-                    playbackSpeed = playerState.playbackSpeed,
-                    isLyricsActive = isLyricsMode,
-                    activeContainerColor = playerColors.secondaryContainer,
-                    activeContentColor = playerColors.onSecondaryContainer,
-                    surfaceContainerColor = playerColors.surfaceContainerHigh,
                     onSpeedClick = { viewModel.cyclePlaybackSpeed() },
+                    onQueueClick = { showQueueSheet = true },
                     onLyricsClick = {
                         val nextMode = !isLyricsMode
                         isLyricsMode = nextMode
@@ -310,10 +260,26 @@ fun PlayerScreen(
                             viewModel.loadLyricsIfNeeded(track)
                         }
                     },
-                    onQueueClick = { showQueueSheet = true },
-                )
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 24.dp),
+                ) {
+                    PlayerProgressSection(
+                        isPlaying = playerState.isPlaying,
+                        isBuffering = isBuffering,
+                        isResolving = uiState.isResolving,
+                        trackId = track?.id,
+                        durationMs = track?.durationMs ?: 0L,
+                        primaryColor = playerColors.primary,
+                        currentFraction = { viewModel.currentFraction() },
+                        currentPositionMs = { viewModel.currentPositionMs() },
+                        bufferedFraction = { viewModel.bufferedFraction() },
+                        onSeek = { fraction -> viewModel.seekTo(fraction) },
+                    )
+                }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
             }
         }
     }
@@ -333,6 +299,459 @@ fun PlayerScreen(
     }
 }
 
+/**
+ * Hero-зона плеера:
+ * - постоянный слой-задник: наклонённая обложка со свечением, параллаксом и «уходом на задний план»;
+ * - передний план через AnimatedContent: карточка трека ИЛИ стеклянный экран текстов.
+ */
+@Composable
+private fun ExpressiveHeroZone(
+    variant: Int,
+    title: String,
+    artist: String,
+    artworkUrl: String?,
+    isLiked: Boolean,
+    isLyricsMode: Boolean,
+    lyricsResult: LyricsResult?,
+    isLyricsLoading: Boolean,
+    lyricsError: String?,
+    palette: PlayerDynamicColors,
+    notePainter: Painter,
+    placeholderPainter: Painter,
+    currentPositionMs: () -> Long,
+    onSeekToLine: (Long) -> Unit,
+    onRetryLyrics: () -> Unit,
+    onToggleLike: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val style = heroStyle(variant)
+    val heroScroll = rememberScrollState()
+
+    // «Уход на задний план»: при входе в тексты обложка уменьшается, мутнеет и тонет в тени
+    val recede by animateFloatAsState(
+        targetValue = if (isLyricsMode) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+        label = "artworkRecede",
+    )
+
+    val artworkShape = RoundedCornerShape(
+        topStart = 56.dp,
+        topEnd = 24.dp,
+        bottomEnd = 56.dp,
+        bottomStart = 24.dp,
+    )
+
+    Box(modifier = modifier) {
+        // ─── Постоянный слой-задник: обложка ───
+        Box(
+            modifier = Modifier
+                .align(style.alignment)
+                .padding(top = style.topPadding)
+                .fillMaxWidth(style.widthFraction)
+                .aspectRatio(1f)
+                .offset(x = style.offsetX, y = (26f * recede).dp)
+                .graphicsLayer {
+                    rotationZ = lerp(style.rotationZ, style.rotationZ * 2.4f, recede)
+                    scaleX = lerp(1f, 0.58f, recede)
+                    scaleY = lerp(1f, 0.58f, recede)
+                    alpha = lerp(1f, 0.30f, recede)
+                    translationY = heroScroll.value * 0.32f
+                }
+                .blur(
+                    radius = (26f * recede).dp,
+                    edgeTreatment = BlurredEdgeTreatment.Unbounded,
+                ),
+        ) {
+            // Свечение: размытое цветное облако палитры под обложкой
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        scaleX = 1.22f
+                        scaleY = 1.22f
+                    }
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                palette.primary.copy(alpha = 0.45f),
+                                palette.primaryContainer.copy(alpha = 0.18f),
+                                Color.Transparent,
+                            ),
+                        ),
+                        shape = CircleShape,
+                    ),
+            )
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .shadow(
+                        elevation = 22.dp,
+                        shape = artworkShape,
+                        clip = false,
+                        ambientColor = palette.primary.copy(alpha = 0.60f),
+                        spotColor = palette.primary,
+                    )
+                    .clip(artworkShape),
+                shape = artworkShape,
+                color = palette.surfaceContainerHigh,
+            ) {
+                ArtworkImage(
+                    artworkUrl = artworkUrl,
+                    shape = artworkShape,
+                    notePainter = notePainter,
+                    placeholderPainter = placeholderPainter,
+                )
+            }
+
+            // Вариант 3: название прямо на обложке — в матово-стеклянной плашке
+            if (style.titleOnArtwork) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(14.dp)
+                        .fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    color = palette.surfaceContainerHigh.copy(alpha = 0.55f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.displaySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                    )
+                }
+            }
+        }
+
+        // ─── Передний план ───
+        AnimatedContent(
+            targetState = isLyricsMode,
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                if (targetState) {
+                    // Обложка → Текст: тексты въезжают снизу, обложка уходит вверх
+                    (slideInVertically(
+                        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                    ) { it / 3 } + fadeIn(tween(durationMillis = 240))) togetherWith
+                        (fadeOut(tween(durationMillis = 180)) + slideOutVertically(
+                            animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                        ) { -it / 5 })
+                } else {
+                    // Текст → Обложка: зеркальный переход
+                    (slideInVertically(
+                        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                    ) { -it / 5 } + fadeIn(tween(durationMillis = 240))) togetherWith
+                        (fadeOut(tween(durationMillis = 180)) + slideOutVertically(
+                            animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                        ) { it / 3 })
+                }
+            },
+            label = "playerModeContent",
+        ) { lyricsMode ->
+            if (lyricsMode) {
+                LyricsForeground(
+                    title = title,
+                    artist = artist,
+                    artworkUrl = artworkUrl,
+                    lyricsResult = lyricsResult,
+                    isLoading = isLyricsLoading,
+                    error = lyricsError,
+                    highlightColor = palette.primary,
+                    glassColor = palette.surfaceContainerHigh,
+                    notePainter = notePainter,
+                    placeholderPainter = placeholderPainter,
+                    currentPositionMs = currentPositionMs,
+                    onSeekToLine = onSeekToLine,
+                    onRetry = onRetryLyrics,
+                )
+            } else {
+                CoverForeground(
+                    style = style,
+                    heroScroll = heroScroll,
+                    title = title,
+                    artist = artist,
+                    isLiked = isLiked,
+                    primaryColor = palette.primary,
+                    primaryContainerColor = palette.primaryContainer,
+                    surfaceColor = palette.surfaceContainerHigh,
+                    onToggleLike = onToggleLike,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Передний план режима обложки: прозрачный «слот» под обложку (сама обложка — в заднем слое),
+ * под ним — стеклянная карточка с Display-названием и артистом.
+ */
+@Composable
+private fun CoverForeground(
+    style: HeroStyle,
+    heroScroll: ScrollState,
+    title: String,
+    artist: String,
+    isLiked: Boolean,
+    primaryColor: Color,
+    primaryContainerColor: Color,
+    surfaceColor: Color,
+    onToggleLike: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(heroScroll)
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = if (style.alignment == Alignment.TopEnd) Alignment.End else Alignment.Start,
+    ) {
+        Spacer(Modifier.height(style.topPadding))
+
+        // Слот под обложку: точно совпадает с задним слоем
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth(style.widthFraction)
+                .aspectRatio(1f),
+        )
+
+        if (style.titleOnArtwork) {
+            // Вариант 3: название уже на обложке — снизу только артист и лайк
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = artist,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(12.dp))
+                LikeSquircle(
+                    isLiked = isLiked,
+                    primaryColor = primaryColor,
+                    primaryContainerColor = primaryContainerColor,
+                    onToggleLike = onToggleLike,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        } else {
+            TrackGlassCard(
+                title = title,
+                artist = artist,
+                isLiked = isLiked,
+                primaryColor = primaryColor,
+                primaryContainerColor = primaryContainerColor,
+                surfaceColor = surfaceColor,
+                onToggleLike = onToggleLike,
+                modifier = Modifier.offset(y = -style.overlap),
+            )
+        }
+    }
+}
+
+/** Матово-стеклянная карточка трека с огромной Display-типографикой. */
+@Composable
+private fun TrackGlassCard(
+    title: String,
+    artist: String,
+    isLiked: Boolean,
+    primaryColor: Color,
+    primaryContainerColor: Color,
+    surfaceColor: Color,
+    onToggleLike: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cardShape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp, bottomEnd = 34.dp, bottomStart = 12.dp)
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 20.dp,
+                shape = cardShape,
+                clip = false,
+                ambientColor = primaryColor.copy(alpha = 0.35f),
+                spotColor = primaryColor.copy(alpha = 0.25f),
+            ),
+        shape = cardShape,
+        color = surfaceColor.copy(alpha = 0.88f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)),
+    ) {
+        Column(modifier = Modifier.padding(22.dp)) {
+            // Огромная типографика Display (Google Sans Flex)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.displaySmall,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Акцентная полоска-градиент под названием
+                Box(
+                    modifier = Modifier
+                        .width(26.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(primaryColor, primaryColor.copy(alpha = 0f)),
+                            ),
+                        ),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = artist,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(12.dp))
+                LikeSquircle(
+                    isLiked = isLiked,
+                    primaryColor = primaryColor,
+                    primaryContainerColor = primaryContainerColor,
+                    onToggleLike = onToggleLike,
+                )
+            }
+        }
+    }
+}
+
+/** Лайк-сквиркл 46dp с тональным контейнером. */
+@Composable
+private fun LikeSquircle(
+    isLiked: Boolean,
+    primaryColor: Color,
+    primaryContainerColor: Color,
+    onToggleLike: () -> Unit,
+) {
+    FilledTonalIconButton(
+        onClick = onToggleLike,
+        modifier = Modifier.size(46.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = if (isLiked) primaryContainerColor
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+            contentColor = if (isLiked) primaryColor else MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
+        Icon(
+            imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = "Лайк",
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+/**
+ * Стеклянный экран текстов поверх «утопленной» размытой обложки:
+ * компактная шапка-витрина + полупрозрачная панель со строками.
+ */
+@Composable
+private fun LyricsForeground(
+    title: String,
+    artist: String,
+    artworkUrl: String?,
+    lyricsResult: LyricsResult?,
+    isLoading: Boolean,
+    error: String?,
+    highlightColor: Color,
+    glassColor: Color,
+    notePainter: Painter,
+    placeholderPainter: Painter,
+    currentPositionMs: () -> Long,
+    onSeekToLine: (Long) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val miniShape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+    ) {
+        Spacer(Modifier.height(10.dp))
+
+        // Шапка-витрина: миниатюра + название/артист на матовом стекле
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomEnd = 30.dp, bottomStart = 10.dp),
+            color = glassColor.copy(alpha = 0.62f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    modifier = Modifier.size(52.dp),
+                    shape = miniShape,
+                    color = glassColor,
+                ) {
+                    ArtworkImage(
+                        artworkUrl = artworkUrl,
+                        shape = miniShape,
+                        notePainter = notePainter,
+                        placeholderPainter = placeholderPainter,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = artist,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Полупрозрачная панель строк — продолжение матового стекла
+        Surface(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(30.dp),
+            color = glassColor.copy(alpha = 0.42f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+            ) {
+                LyricsListView(
+                    lyricsResult = lyricsResult,
+                    isLoading = isLoading,
+                    error = error,
+                    highlightColor = highlightColor,
+                    currentPositionMs = currentPositionMs,
+                    onSeekToLine = onSeekToLine,
+                    onRetry = onRetry,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+    }
+}
 
 @Composable
 private fun ArtworkImage(
@@ -372,221 +791,6 @@ private fun ArtworkImage(
             )
         }
     }
-}
-
-/**
- * Режим обложки: крупная обложка (248dp) со свечением и лёгким параллаксом,
- * под ней — название, артист и лайк-сквиркл. Вся зона скроллится вертикально.
- */
-@Composable
-private fun CoverModeContent(
-    title: String,
-    artist: String,
-    artworkUrl: String?,
-    isLiked: Boolean,
-    primaryColor: Color,
-    primaryContainerColor: Color,
-    surfaceContainerColor: Color,
-    notePainter: Painter,
-    placeholderPainter: Painter,
-    onToggleLike: () -> Unit,
-) {
-    val coverScroll = rememberScrollState()
-    val artworkShape = RoundedCornerShape(28.dp)
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(coverScroll),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.height(8.dp))
-
-        Box(
-            modifier = Modifier
-                .size(248.dp)
-                // Параллакс: обложка отстаёт от скролла текста под ней
-                .graphicsLayer { translationY = coverScroll.value * 0.45f },
-            contentAlignment = Alignment.Center,
-        ) {
-            // Свечение позади обложки: рисуется крупнее, но layout не раздувает
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer {
-                        scaleX = 1.16f
-                        scaleY = 1.16f
-                    }
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(primaryColor.copy(alpha = 0.35f), Color.Transparent),
-                        ),
-                        shape = CircleShape,
-                    ),
-            )
-
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .shadow(
-                        elevation = 18.dp,
-                        shape = artworkShape,
-                        clip = false,
-                        ambientColor = primaryColor.copy(alpha = 0.55f),
-                        spotColor = primaryColor,
-                    )
-                    .clip(artworkShape),
-                shape = artworkShape,
-                color = surfaceContainerColor,
-            ) {
-                ArtworkImage(
-                    artworkUrl = artworkUrl,
-                    shape = artworkShape,
-                    notePainter = notePainter,
-                    placeholderPainter = placeholderPainter,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = artist,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Spacer(Modifier.width(16.dp))
-
-            // Лайк-сквиркл (RoundedCornerShape 18dp)
-            FilledTonalIconButton(
-                onClick = onToggleLike,
-                modifier = Modifier.size(48.dp),
-                shape = RoundedCornerShape(18.dp),
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = if (isLiked) primaryContainerColor else surfaceContainerColor,
-                    contentColor = if (isLiked) primaryColor else MaterialTheme.colorScheme.onSurface,
-                ),
-            ) {
-                Icon(
-                    imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = "Лайк",
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
-    }
-}
-
-/**
- * Режим текста: компактный ряд (миниатюра 56dp + название/артист) и список строк текста.
- */
-@Composable
-private fun LyricsModeContent(
-    title: String,
-    artist: String,
-    artworkUrl: String?,
-    lyricsResult: LyricsResult?,
-    isLoading: Boolean,
-    error: String?,
-    highlightColor: Color,
-    surfaceContainerColor: Color,
-    notePainter: Painter,
-    placeholderPainter: Painter,
-    currentPositionMs: () -> Long,
-    onSeekToLine: (Long) -> Unit,
-    onRetry: () -> Unit,
-) {
-    val artworkShape = RoundedCornerShape(16.dp)
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                modifier = Modifier
-                    .size(56.dp)
-                    .shadow(elevation = 6.dp, shape = artworkShape, clip = false)
-                    .clip(artworkShape),
-                shape = artworkShape,
-                color = surfaceContainerColor,
-            ) {
-                ArtworkImage(
-                    artworkUrl = artworkUrl,
-                    shape = artworkShape,
-                    notePainter = notePainter,
-                    placeholderPainter = placeholderPainter,
-                )
-            }
-
-            Spacer(Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            LyricsListView(
-                lyricsResult = lyricsResult,
-                isLoading = isLoading,
-                error = error,
-                highlightColor = highlightColor,
-                currentPositionMs = currentPositionMs,
-                onSeekToLine = onSeekToLine,
-                onRetry = onRetry,
-            )
-        }
-    }
-}
-
-/** Пружинный press-scale (0.90 при нажатии) для expressive-кнопок. */
-@Composable
-private fun rememberPressScale(interactionSource: InteractionSource): Float {
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.90f else 1f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
-        label = "pressScale",
-    )
-    return scale
 }
 
 /**
@@ -787,207 +991,8 @@ private fun LyricsListView(
 }
 
 /**
- * Панель кнопок воспроизведения по референсу:
- * - Play/Pause: морф радиуса (42dp в паузе / 30dp в воспроизведении) и press-scale
- * - Prev / Next: залитые круги 56dp (фон primary, иконка onSurface)
- */
-@Composable
-private fun ControlsRow(
-    isPlaying: Boolean,
-    isBuffering: Boolean,
-    primaryColor: Color,
-    onPrimaryColor: Color,
-    onPlayPause: () -> Unit,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-) {
-    val playShapeRadius by animateDpAsState(
-        targetValue = if (isPlaying) 30.dp else 42.dp,
-        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-        label = "playMorphRadius",
-    )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val prevInteraction = remember { MutableInteractionSource() }
-        val prevScale = rememberPressScale(prevInteraction)
-
-        // Prev: Залитый круг 56dp
-        FilledIconButton(
-            onClick = onPrev,
-            interactionSource = prevInteraction,
-            modifier = Modifier
-                .size(56.dp)
-                .graphicsLayer {
-                    scaleX = prevScale
-                    scaleY = prevScale
-                },
-            shape = CircleShape,
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = primaryColor.copy(alpha = 0.25f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.SkipPrevious,
-                contentDescription = "Предыдущий",
-                modifier = Modifier.size(28.dp),
-            )
-        }
-
-        val playInteraction = remember { MutableInteractionSource() }
-        val playScale = rememberPressScale(playInteraction)
-
-        // Главная кнопка Play/Pause с динамическим радиусом (84dp)
-        FilledIconButton(
-            onClick = onPlayPause,
-            interactionSource = playInteraction,
-            modifier = Modifier
-                .size(84.dp)
-                .graphicsLayer {
-                    scaleX = playScale
-                    scaleY = playScale
-                },
-            shape = RoundedCornerShape(playShapeRadius),
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = primaryColor,
-                contentColor = onPrimaryColor,
-            ),
-        ) {
-            if (isBuffering) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(32.dp),
-                    color = onPrimaryColor,
-                    strokeWidth = 3.dp,
-                )
-            } else {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Пауза" else "Играть",
-                    modifier = Modifier.size(38.dp),
-                )
-            }
-        }
-
-        val nextInteraction = remember { MutableInteractionSource() }
-        val nextScale = rememberPressScale(nextInteraction)
-
-        // Next: Залитый круг 56dp
-        FilledIconButton(
-            onClick = onNext,
-            interactionSource = nextInteraction,
-            modifier = Modifier
-                .size(56.dp)
-                .graphicsLayer {
-                    scaleX = nextScale
-                    scaleY = nextScale
-                },
-            shape = CircleShape,
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = primaryColor.copy(alpha = 0.25f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.SkipNext,
-                contentDescription = "Следующий",
-                modifier = Modifier.size(28.dp),
-            )
-        }
-    }
-}
-
-/**
- * Пилюли действий (высота 46dp).
- */
-@Composable
-private fun ActionPillsRow(
-    playbackSpeed: Float,
-    isLyricsActive: Boolean,
-    activeContainerColor: Color,
-    activeContentColor: Color,
-    surfaceContainerColor: Color,
-    onSpeedClick: () -> Unit,
-    onLyricsClick: () -> Unit,
-    onQueueClick: () -> Unit,
-) {
-    val speedText = if (playbackSpeed == 1.0f) "1×" else "${playbackSpeed}×"
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(46.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Левая пилюля — Скорость
-        Surface(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clickable(onClick = onSpeedClick),
-            shape = RoundedCornerShape(topStart = 23.dp, bottomStart = 23.dp, topEnd = 8.dp, bottomEnd = 8.dp),
-            color = surfaceContainerColor,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = speedText,
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
-
-        // Центральная пилюля — Текст
-        val lyricsBgColor by animateColorAsState(
-            targetValue = if (isLyricsActive) activeContainerColor else surfaceContainerColor,
-            animationSpec = tween(durationMillis = 200),
-            label = "lyricsBgColor",
-        )
-        val lyricsTextColor = if (isLyricsActive) activeContentColor else MaterialTheme.colorScheme.onSurface
-
-        Surface(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clickable(onClick = onLyricsClick),
-            shape = RoundedCornerShape(8.dp),
-            color = lyricsBgColor,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = "Текст",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = lyricsTextColor,
-                )
-            }
-        }
-
-        // Правая пилюля — Очередь / Далее
-        Surface(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clickable(onClick = onQueueClick),
-            shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 23.dp, bottomEnd = 23.dp),
-            color = surfaceContainerColor,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = "Далее",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Изолированная секция слайдера прогресса и времени.
+ * Изолированная секция прогресса для «острова»:
+ * цепочка точек ExpressivePlayerSlider + таймкоды.
  * Оставшееся время справа отображается с минусом ("-m:ss").
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1043,52 +1048,43 @@ private fun PlayerProgressSection(
     val isInitialBuffering = (isBuffering || isResolving) && displayedMs == 0L
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Crossfade(
-                targetState = isInitialBuffering,
-                animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-                label = "progressCrossfade",
-            ) { loading ->
-                if (loading) {
-                    Box(
+        Crossfade(
+            targetState = isInitialBuffering,
+            animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            label = "progressCrossfade",
+        ) { loading ->
+            if (loading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 6.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(4.dp)),
-                            color = primaryColor,
-                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                        )
-                    }
-                } else {
-                    // Expressive-слайдер: толстая дорожка, буфер, пружинный ползунок
-                    PlayerSlider(
-                        value = displayPosition.coerceIn(0f, 1f),
-                        onValueChange = { value ->
-                            isDragging = true
-                            dragPosition = value
-                        },
-                        onValueChangeFinished = { value ->
-                            onSeek(value)
-                            isDragging = false
-                        },
-                        activeColor = primaryColor,
-                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
-                        thumbColor = MaterialTheme.colorScheme.onSurface,
-                        bufferedFraction = bufferFrac,
-                        modifier = Modifier.fillMaxWidth(),
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = primaryColor,
+                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
                     )
                 }
+            } else {
+                ExpressivePlayerSlider(
+                    value = displayPosition.coerceIn(0f, 1f),
+                    onValueChange = { value ->
+                        isDragging = true
+                        dragPosition = value
+                    },
+                    onValueChangeFinished = { value ->
+                        onSeek(value)
+                        isDragging = false
+                    },
+                    activeColor = primaryColor,
+                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                    thumbColor = MaterialTheme.colorScheme.onSurface,
+                    bufferedFraction = bufferFrac,
+                )
             }
         }
         Row(
@@ -1097,12 +1093,12 @@ private fun PlayerProgressSection(
         ) {
             Text(
                 text = formatMs(displayedMs),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = "-${formatMs(remainingMs)}",
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
