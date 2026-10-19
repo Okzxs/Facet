@@ -55,7 +55,9 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -816,7 +818,7 @@ private fun ArtworkImage(
 /**
  * Изолированный список строк текста:
  * - Экспрессивная караоке-строка: «жидкие чернила» с мягкой кромкой, тлеющим фронтом и шиммером
- * - Пружинный автоскролл к активной строке
+ * - Автоцентрирование активной строки по вертикали (как в Apple Music)
  * - Тап = перемотка
  */
 @Composable
@@ -834,21 +836,36 @@ private fun LyricsListView(
     var activeIndex by remember { mutableIntStateOf(-1) }
     var activeProgress by remember { mutableFloatStateOf(0f) }
 
+    // Центрирование активной строки, как в Apple Music:
+    // измеряем видимую высоту списка и делаем симметричные отступы на полвысоты
+    val density = LocalDensity.current
+    var viewportHeightPx by remember { mutableIntStateOf(0) }
+    val halfLinePx = with(density) { 18.dp.roundToPx() }
+    val centerPadding = with(density) {
+        (viewportHeightPx / 2 - halfLinePx).coerceAtLeast(0).toDp()
+    }
+
     LaunchedEffect(lyricsResult) {
+        // Новый текст — с чистого листа: мгновенное центрирование первой строки
+        activeIndex = -1
+        activeProgress = 0f
         while (true) {
             val lines = lyricsResult?.lines
             if (lyricsResult?.isSynced == true && !lines.isNullOrEmpty()) {
                 val curTime = currentPositionMs()
                 val idx = lines.indexOfLast { it.timeMs <= curTime }
                 if (idx != activeIndex) {
+                    val previousIndex = activeIndex
                     activeIndex = idx
                     if (idx >= 0) {
-                        // Пружинный автоскролл: строка приезжает с плавным доводчиком
-                        // (внутри animateScrollToItem — пружинная анимация foundation)
-                        listState.animateScrollToItem(
-                            index = (idx - 2).coerceAtLeast(0),
-                            scrollOffset = 0,
-                        )
+                        // Активная строка встаёт ровно по центру видимой области
+                        val centerOffset = (viewportHeightPx / 2 - halfLinePx).coerceAtLeast(0)
+                        if (previousIndex < 0) {
+                            // При открытии текстов — без «пролёта» через весь список
+                            listState.scrollToItem(index = idx, scrollOffset = -centerOffset)
+                        } else {
+                            listState.animateScrollToItem(index = idx, scrollOffset = -centerOffset)
+                        }
                     }
                 }
                 // Прогресс внутри активной строки для караоке-заливки
@@ -898,8 +915,10 @@ private fun LyricsListView(
                         state = listState,
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxWidth(),
-                        contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp),
+                            .fillMaxWidth()
+                            .onSizeChanged { viewportHeightPx = it.height },
+                        // Симметричные отступы на полвысоты — строка может встать в самый центр
+                        contentPadding = PaddingValues(vertical = centerPadding),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         itemsIndexed(
@@ -958,7 +977,7 @@ private fun LyricsListView(
  * Одна строка караоке. Вся Expressive-механика собрана здесь:
  * - «жидкие чернила»: заливка слева направо с мягкой кромкой и тлеющим фронтом в цвете палитры;
  * - шиммер-перелив, бегущий по строке, пока идёт воспроизведение;
- * - фокус от ОДНОЙ пружины: вес 600→800, масштаб 1.0→1.05, свечение primary;
+ * - фокус от ОДНОЙ пружины: вес 500→700, масштаб 1.0→1.05, лёгкое свечение primary;
  * - прогресс заливки и шиммер читаются только активной строкой — остальные не перерисовываются.
  */
 @Composable
@@ -974,10 +993,11 @@ private fun LyricLineItem(
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
-    // Единая пружина фокуса: ею живут вес, масштаб, свечение и альфы заливки
+    // Единая пружина фокуса: ею живут вес, масштаб, свечение и альфы заливки.
+    // dampingRatio 0.85 — благородное плавное увеличение без подпрыгивания
     val focus by animateFloatAsState(
         targetValue = if (isActive) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
         label = "lyricLineFocus",
     )
 
@@ -1016,7 +1036,8 @@ private fun LyricLineItem(
     // Альфы ведёт фокус: неактивные строки — 0.4, у активной «непропетое» — 0.62, «пропетое» — 1.0
     val filledColor = onSurface.copy(alpha = lerp(0.40f, 1f, focus))
     val dimColor = onSurface.copy(alpha = lerp(0.40f, 0.62f, focus))
-    val tipColor = blendColors(filledColor, highlightColor, 0.75f)
+    // Фронт чернил приглушён (alpha 0.7) — тлеет мягко, а не горит
+    val tipColor = blendColors(filledColor, highlightColor, 0.75f).copy(alpha = 0.7f)
     val shimmerColor = blendColors(filledColor, Color.White, 0.65f)
     val shimmerStrength = if (isActive && isPlaying) 1f else 0f
 
@@ -1038,11 +1059,11 @@ private fun LyricLineItem(
     Text(
         text = text,
         style = MaterialTheme.typography.headlineSmall.copy(
-            fontWeight = FontWeight(lerp(600f, 800f, focus).toInt()),
+            fontWeight = FontWeight(lerp(500f, 700f, focus).toInt()),
             fontSize = if (isSynced) 22.sp else 18.sp,
             shadow = Shadow(
-                color = highlightColor.copy(alpha = 0.55f * focus),
-                blurRadius = lerp(3f, 16f, focus),
+                color = highlightColor.copy(alpha = 0.2f * focus),
+                blurRadius = lerp(2f, 8f, focus),
             ),
             brush = if (isSynced) karaokeBrush else null,
         ),
@@ -1190,7 +1211,7 @@ private fun PlayerProgressSection(
 
 // ─── Геометрия «жидких чернил» ────────────────────────────────
 private const val KARAOKE_EDGE = 0.028f // полуширина мягкой кромки заливки
-private const val KARAOKE_SHIMMER_HALF = 0.09f // полуширина бегущего перелива
+private const val KARAOKE_SHIMMER_HALF = 0.12f // полуширина бегущего перелива (шире — мягче)
 private const val KARAOKE_SHIMMER_FROM = -0.15f // старт перелива (за левым краем)
 private const val KARAOKE_SHIMMER_TO = 1.15f // финиш перелива (за правым краем)
 
@@ -1225,9 +1246,9 @@ private fun karaokeColorAt(
     } else {
         0f
     }
-    // Перелив — светлая волна, скользящая по строке
+    // Перелив — едва заметный блик, скользящий по строке
     val shimmerAmount = (1f - abs(x - shimmer) / KARAOKE_SHIMMER_HALF)
-        .coerceIn(0f, 1f) * shimmerStrength * 0.5f
+        .coerceIn(0f, 1f) * shimmerStrength * 0.2f
 
     return blendColors(
         blendColors(base, tipColor, tip * 0.65f),
