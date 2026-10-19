@@ -42,7 +42,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
@@ -804,8 +803,9 @@ private fun ArtworkImage(
 
 /**
  * Изолированный список строк текста:
- * - активная строка визуально крупнее за счёт graphicsLayer-масштаба (лейаут не прыгает);
- * - слова «пропетой» части строки плавно окрашиваются в акцент;
+ * - активная строка — 20sp SemiBold, слова по прогрессу окрашиваются в акцент;
+ * - неактивные строки — 18sp Normal, читаемый onSurfaceVariant;
+ * - стандартный text layout: FlowRow сам переносит длинные строки;
  * - автоцентрирование активной строки по вертикали (как в Apple Music);
  * - тап = перемотка.
  */
@@ -901,8 +901,8 @@ private fun LyricsListView(
                             .weight(1f)
                             .fillMaxWidth()
                             .onSizeChanged { viewportHeightPx = it.height },
-                        // Отступы сверху и снизу: строка не упирается в границы карточки
-                        contentPadding = PaddingValues(top = 50.dp, bottom = 50.dp),
+                        // Отступы: сверху — воздух до шапки, снизу — место под подпись и панель
+                        contentPadding = PaddingValues(top = 50.dp, bottom = 100.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         itemsIndexed(
@@ -957,11 +957,10 @@ private fun LyricsListView(
 
 /**
  * Одна строка текста в стиле Material 3:
- * - у всех строк одинаковый размер 18sp — высота лейаута не меняется;
- * - активная строка визуально растёт через graphicsLayer (1.0 → 1.3);
- * - слова, попавшие в прогресс строки, анимированно окрашиваются в акцент,
- *   остальные — читаемый onSurfaceVariant;
- * - неактивные строки не читают прогресс и не перерисовываются на каждом опросе.
+ * - активная — 20sp SemiBold, непропетые слова белые, пропетые анимированно уходят в акцент;
+ * - неактивные — 18sp Normal, читаемый onSurfaceVariant;
+ * - стандартный text layout: FlowRow сам переносит длинные строки без выхода за экран;
+ * - прогресс читает только активная строка, остальные не перерисовываются на опросе.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -973,28 +972,20 @@ private fun LyricLineItem(
     highlightColor: Color,
     onClick: (() -> Unit)?,
 ) {
-    // Масштаб вместо fontSize: текст крупнее, но лейаут и высота строки не прыгают
-    val scale by animateFloatAsState(
-        targetValue = if (isActive) 1.3f else 1f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
-        label = "lyricScale",
-    )
-
     val words = remember(text) { text.split(" ").filter { it.isNotEmpty() } }
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val activeColor = MaterialTheme.colorScheme.onSurface
 
     // Прогресс читает только активная строка — остальные не подписаны на опрос плеера
     val progress = if (isActive && isSynced) lineProgress().coerceIn(0f, 1f) else 0f
     val sungWords = progress * words.size
 
+    val lineFontSize = if (isActive) 20.sp else 18.sp
+    val lineFontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+
     FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer {
-                transformOrigin = TransformOrigin(0f, 0.5f)
-                scaleX = scale
-                scaleY = scale
-            }
             .clickable(
                 enabled = onClick != null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -1008,15 +999,20 @@ private fun LyricLineItem(
         words.forEachIndexed { index, word ->
             val isSung = isActive && isSynced && index < sungWords
             val wordColor by animateColorAsState(
-                targetValue = if (isSung) highlightColor else inactiveColor,
+                targetValue = when {
+                    isSung -> highlightColor
+                    isActive -> activeColor
+                    else -> inactiveColor
+                },
                 animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
                 label = "lyricWordColor$index",
             )
             Text(
                 text = word,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 18.sp,
-                    lineHeight = 24.sp,
+                    fontSize = lineFontSize,
+                    lineHeight = 26.sp,
+                    fontWeight = lineFontWeight,
                 ),
                 color = wordColor,
                 maxLines = Int.MAX_VALUE,
