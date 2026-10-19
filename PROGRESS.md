@@ -235,8 +235,9 @@ feature/player/PlayerScreen.kt
 - ✅ MiniPlayer с анимацией slide + fade (250 мс) и изолированным прогресс-баром
 - ✅ Плавный слайдер плеера без дёрганий и лишних рекомпозиций
 - ✅ Динамический градиентный фон плеера от обложки (Palette API с кэшированием)
-- ✅ Анимированное схлопывание обложки (280dp $\to$ 56dp) при переключении режима текстов
-- ✅ Сквиркл-лайк (18dp), залитые круглые кнопки Prev/Next (64dp), время `"-m:ss"`
+- ✅ Переход «Обложка ↔ Текст» через AnimatedContent (spring slide + fade), обложка 248dp со свечением и параллаксом
+- ✅ Нативный PlayerSlider (Canvas, буфер, пружинный ползунок) вместо внешней библиотеки WaveSlider
+- ✅ Сквиркл-лайк (18dp), круглые кнопки Prev/Next (56dp), Play 84dp с морфом, время `"-m:ss"`
 - ✅ Синхронизированные и обычные тексты песен через LRCLIB со свечением активной строки и перемоткой по тапу
 - ✅ Переключение скорости воспроизведения (0.5× – 2.0×) через ExoPlayer
 
@@ -647,6 +648,39 @@ MEMORY.md
 
 ### Файлы
 ```
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
+## ✅ Фаза 4.6 — Expressive-редизайн PlayerScreen: нативный слайдер и AnimatedContent (19.10.2026)
+
+### Что сделано
+1. **Удалена библиотека WaveSlider**:
+   - Из `app/build.gradle.kts` убрана зависимость `com.github.galaxygoldfish:waveslider:v0.0.4`; JitPack в `settings.gradle.kts` оставлен (не относится к библиотеке).
+2. **Новый слайдер `PlayerSlider` (`core/ui/components/PlayerSlider.kt`)**:
+   - Чистый Compose Canvas: толстая скруглённая дорожка 8dp, буферизация полупрозрачным слоем (`activeColor` alpha 0.28), проигранная часть — акцентный цвет.
+   - Ползунок — вертикальная пилюля 10×30dp с пружинным увеличением ×1.35 и ореолом при перетаскивании; жесты drag + tap, без внешних библиотек.
+3. **Переход «Обложка ↔ Текст» через `AnimatedContent`**:
+   - Верхняя (обложка) и центральная зоны объединены в один `AnimatedContent` с весом 1f.
+   - Пружинный переход (dampingRatio 0.82, StiffnessMediumLow): текст въезжает снизу (it/3), обложка уходит вверх (-it/4), с fade; обратный переход — зеркальный.
+   - Новые file-scope композаблы `CoverModeContent` и `LyricsModeContent`.
+4. **Объём обложки**:
+   - Свечение позади обложки: radialGradient (`primary` alpha 0.35), scale 1.16 через `matchParentSize` (layout не раздувает).
+   - Параллакс: `translationY = scroll * 0.45f` при вертикальном скролле зоны.
+   - Тень 18dp с ambient/spot `primary`; типографика: название `headlineLarge` Bold, артист `bodyLarge` (alpha 0.60); в текстовом режиме — миниатюра 56dp/16dp с тенью 6dp и спейсером 14dp.
+5. **Кнопки управления**:
+   - Play/Pause 84dp (морф радиуса 42/30dp, иконка 38dp, спиннер 32dp), Prev/Next 56dp; ряд центрирован `spacedBy(28.dp)`.
+   - Новый хелпер `rememberPressScale` — пружинный press-scale 0.90 при нажатии (InteractionSource) для всех трёх кнопок.
+6. **Мелочи**: пилюли действий — зазор 4→8dp; спейсеры секций 6→10 и 12→16 (больше воздуха); loading-полоска прогресса приведена к толщине дорожки 8dp (трек `onSurface` alpha 0.12), трек слайдера `onSurface` alpha 0.16, ползунок `onSurface`.
+7. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/build.gradle.kts
+app/src/main/java/com/my/music/core/ui/components/PlayerSlider.kt (новый)
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md

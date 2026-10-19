@@ -82,9 +82,6 @@ dependencies {
     // Palette
     implementation("androidx.palette:palette-ktx:1.0.0")
 
-    // WaveSlider (анимированный синусоидальный слайдер, JitPack)
-    implementation("com.github.galaxygoldfish:waveslider:v0.0.4")
-
     // Coil (images)
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")

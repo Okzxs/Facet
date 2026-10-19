@@ -1,6 +1,6 @@
 package com.my.music.feature.player
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -12,16 +12,22 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
@@ -42,9 +48,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -57,9 +63,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
-import com.galaxygoldfish.waveslider.WaveSlider
-import com.galaxygoldfish.waveslider.WaveSliderDefaults
 import com.my.music.core.ui.components.PlayerQueueSheet
+import com.my.music.core.ui.components.PlayerSlider
 import com.my.music.core.ui.theme.PlayerDynamicColors
 import com.my.music.core.ui.theme.rememberPlayerDynamicColors
 import com.my.music.data.model.LyricLine
@@ -128,18 +133,6 @@ fun PlayerScreen(
         )
     }
 
-    // ─── Плавное анимированное схлопывание обложки (248dp -> 56dp) ────────
-    val artworkSize by animateDpAsState(
-        targetValue = if (isLyricsMode) 56.dp else 248.dp,
-        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-        label = "artworkSize",
-    )
-    val artworkRadius by animateDpAsState(
-        targetValue = if (isLyricsMode) 16.dp else 28.dp,
-        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-        label = "artworkRadius",
-    )
-
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
@@ -197,136 +190,66 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // ─── Верхняя зона: Анимированная обложка альбома ───────────────
-                val surfaceColor = MaterialTheme.colorScheme.surfaceVariant
+                // ─── Анимированное переключение «Обложка ↔ Текст» ─────────────
+                val surfaceColor = playerColors.surfaceContainerHigh
                 val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
                 val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
-                val artworkShape = RoundedCornerShape(artworkRadius)
 
-                if (!isLyricsMode) {
-                    Spacer(Modifier.height(8.dp))
-                    // Большая обложка альбома по центру (248dp)
-                    Surface(
-                        modifier = Modifier
-                            .size(artworkSize)
-                            .shadow(elevation = 12.dp, shape = artworkShape, clip = false)
-                            .clip(artworkShape),
-                        shape = artworkShape,
-                        color = surfaceColor,
-                    ) {
-                        ArtworkImage(
-                            artworkUrl = track?.artworkUrl,
-                            shape = artworkShape,
-                            notePainter = notePainter,
-                            placeholderPainter = placeholderPainter,
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                } else {
-                    // Режим текста: миниатюра (56dp) слева в компактном ряду
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .size(artworkSize)
-                                .shadow(elevation = 4.dp, shape = artworkShape, clip = false)
-                                .clip(artworkShape),
-                            shape = artworkShape,
-                            color = surfaceColor,
-                        ) {
-                            ArtworkImage(
-                                artworkUrl = track?.artworkUrl,
-                                shape = artworkShape,
-                                notePainter = notePainter,
-                                placeholderPainter = placeholderPainter,
-                            )
-                        }
-
-                        Spacer(Modifier.width(14.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = track?.title ?: "—",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = track?.artist ?: "—",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-
-                // ─── Центральная зона: Метаданные (в обычном режиме) ИЛИ Список текстов (в режиме текстов) ─
-                Box(
+                AnimatedContent(
+                    targetState = isLyricsMode,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (isLyricsMode) {
-                        LyricsListView(
+                    transitionSpec = {
+                        if (targetState) {
+                            // Обложка → Текст: список въезжает снизу, обложка уходит вверх
+                            (slideInVertically(
+                                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                            ) { it / 3 } + fadeIn(tween(durationMillis = 240))) togetherWith
+                                (fadeOut(tween(durationMillis = 180)) + slideOutVertically(
+                                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                                ) { -it / 4 })
+                        } else {
+                            // Текст → Обложка: зеркальный переход
+                            (slideInVertically(
+                                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                            ) { -it / 4 } + fadeIn(tween(durationMillis = 240))) togetherWith
+                                (fadeOut(tween(durationMillis = 180)) + slideOutVertically(
+                                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+                                ) { it / 3 })
+                        }
+                    },
+                    label = "playerModeContent",
+                ) { lyricsMode ->
+                    if (lyricsMode) {
+                        LyricsModeContent(
+                            title = track?.title ?: "—",
+                            artist = track?.artist ?: "—",
+                            artworkUrl = track?.artworkUrl,
                             lyricsResult = uiState.lyrics,
                             isLoading = uiState.isLyricsLoading,
                             error = uiState.lyricsError,
                             highlightColor = playerColors.primary,
+                            surfaceContainerColor = surfaceColor,
+                            notePainter = notePainter,
+                            placeholderPainter = placeholderPainter,
                             currentPositionMs = { viewModel.currentPositionMs() },
                             onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                             onRetry = { viewModel.loadLyricsIfNeeded(track) },
                         )
                     } else {
-                        // Обычный режим: Название, Артист и Лайк-сквиркл
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = track?.title ?: "Нет трека",
-                                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    text = track?.artist ?: "—",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-
-                            // Лайк-сквиркл (RoundedCornerShape 18dp)
-                            FilledTonalIconButton(
-                                onClick = { viewModel.toggleLike() },
-                                modifier = Modifier.size(48.dp),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                    containerColor = if (isLiked) playerColors.primaryContainer
-                                    else playerColors.surfaceContainerHigh,
-                                    contentColor = if (isLiked) playerColors.primary
-                                    else MaterialTheme.colorScheme.onSurface,
-                                ),
-                            ) {
-                                Icon(
-                                    imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                    contentDescription = "Лайк",
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        }
+                        CoverModeContent(
+                            title = track?.title ?: "Нет трека",
+                            artist = track?.artist ?: "—",
+                            artworkUrl = track?.artworkUrl,
+                            isLiked = isLiked,
+                            primaryColor = playerColors.primary,
+                            primaryContainerColor = playerColors.primaryContainer,
+                            surfaceContainerColor = surfaceColor,
+                            notePainter = notePainter,
+                            placeholderPainter = placeholderPainter,
+                            onToggleLike = { viewModel.toggleLike() },
+                        )
                     }
                 }
 
@@ -353,12 +276,13 @@ fun PlayerScreen(
                     primaryColor = playerColors.primary,
                     currentFraction = { viewModel.currentFraction() },
                     currentPositionMs = { viewModel.currentPositionMs() },
+                    bufferedFraction = { viewModel.bufferedFraction() },
                     onSeek = { fraction -> viewModel.seekTo(fraction) },
                 )
 
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(10.dp))
 
-                // ─── Кнопки управления (ControlsRow: залитые 56dp Prev/Next, Play morph) ──
+                // ─── Кнопки управления (ControlsRow: круги 56dp, Play 84dp с morph) ──
                 ControlsRow(
                     isPlaying = playerState.isPlaying,
                     isBuffering = isBuffering,
@@ -369,7 +293,7 @@ fun PlayerScreen(
                     onNext = { viewModel.playNext() },
                 )
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
 
                 // ─── Пилюли действий (1× Скорость / Текст / Далее) ────────────
                 ActionPillsRow(
@@ -389,7 +313,7 @@ fun PlayerScreen(
                     onQueueClick = { showQueueSheet = true },
                 )
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
             }
         }
     }
@@ -414,8 +338,8 @@ fun PlayerScreen(
 private fun ArtworkImage(
     artworkUrl: String?,
     shape: RoundedCornerShape,
-    notePainter: androidx.compose.ui.graphics.painter.Painter,
-    placeholderPainter: androidx.compose.ui.graphics.painter.Painter,
+    notePainter: Painter,
+    placeholderPainter: Painter,
 ) {
     val context = LocalContext.current
     if (!artworkUrl.isNullOrBlank()) {
@@ -448,6 +372,221 @@ private fun ArtworkImage(
             )
         }
     }
+}
+
+/**
+ * Режим обложки: крупная обложка (248dp) со свечением и лёгким параллаксом,
+ * под ней — название, артист и лайк-сквиркл. Вся зона скроллится вертикально.
+ */
+@Composable
+private fun CoverModeContent(
+    title: String,
+    artist: String,
+    artworkUrl: String?,
+    isLiked: Boolean,
+    primaryColor: Color,
+    primaryContainerColor: Color,
+    surfaceContainerColor: Color,
+    notePainter: Painter,
+    placeholderPainter: Painter,
+    onToggleLike: () -> Unit,
+) {
+    val coverScroll = rememberScrollState()
+    val artworkShape = RoundedCornerShape(28.dp)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(coverScroll),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .size(248.dp)
+                // Параллакс: обложка отстаёт от скролла текста под ней
+                .graphicsLayer { translationY = coverScroll.value * 0.45f },
+            contentAlignment = Alignment.Center,
+        ) {
+            // Свечение позади обложки: рисуется крупнее, но layout не раздувает
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        scaleX = 1.16f
+                        scaleY = 1.16f
+                    }
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(primaryColor.copy(alpha = 0.35f), Color.Transparent),
+                        ),
+                        shape = CircleShape,
+                    ),
+            )
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .shadow(
+                        elevation = 18.dp,
+                        shape = artworkShape,
+                        clip = false,
+                        ambientColor = primaryColor.copy(alpha = 0.55f),
+                        spotColor = primaryColor,
+                    )
+                    .clip(artworkShape),
+                shape = artworkShape,
+                color = surfaceContainerColor,
+            ) {
+                ArtworkImage(
+                    artworkUrl = artworkUrl,
+                    shape = artworkShape,
+                    notePainter = notePainter,
+                    placeholderPainter = placeholderPainter,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = artist,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            // Лайк-сквиркл (RoundedCornerShape 18dp)
+            FilledTonalIconButton(
+                onClick = onToggleLike,
+                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = if (isLiked) primaryContainerColor else surfaceContainerColor,
+                    contentColor = if (isLiked) primaryColor else MaterialTheme.colorScheme.onSurface,
+                ),
+            ) {
+                Icon(
+                    imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = "Лайк",
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Режим текста: компактный ряд (миниатюра 56dp + название/артист) и список строк текста.
+ */
+@Composable
+private fun LyricsModeContent(
+    title: String,
+    artist: String,
+    artworkUrl: String?,
+    lyricsResult: LyricsResult?,
+    isLoading: Boolean,
+    error: String?,
+    highlightColor: Color,
+    surfaceContainerColor: Color,
+    notePainter: Painter,
+    placeholderPainter: Painter,
+    currentPositionMs: () -> Long,
+    onSeekToLine: (Long) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val artworkShape = RoundedCornerShape(16.dp)
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier
+                    .size(56.dp)
+                    .shadow(elevation = 6.dp, shape = artworkShape, clip = false)
+                    .clip(artworkShape),
+                shape = artworkShape,
+                color = surfaceContainerColor,
+            ) {
+                ArtworkImage(
+                    artworkUrl = artworkUrl,
+                    shape = artworkShape,
+                    notePainter = notePainter,
+                    placeholderPainter = placeholderPainter,
+                )
+            }
+
+            Spacer(Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            LyricsListView(
+                lyricsResult = lyricsResult,
+                isLoading = isLoading,
+                error = error,
+                highlightColor = highlightColor,
+                currentPositionMs = currentPositionMs,
+                onSeekToLine = onSeekToLine,
+                onRetry = onRetry,
+            )
+        }
+    }
+}
+
+/** Пружинный press-scale (0.90 при нажатии) для expressive-кнопок. */
+@Composable
+private fun rememberPressScale(interactionSource: InteractionSource): Float {
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
+        label = "pressScale",
+    )
+    return scale
 }
 
 /**
@@ -649,8 +788,8 @@ private fun LyricsListView(
 
 /**
  * Панель кнопок воспроизведения по референсу:
- * - Play/Pause: морф радиуса (40dp в паузе / 26dp в воспроизведении)
- * - Prev / Next: залитые круги 56dp (фон primary, иконка onPrimary)
+ * - Play/Pause: морф радиуса (42dp в паузе / 30dp в воспроизведении) и press-scale
+ * - Prev / Next: залитые круги 56dp (фон primary, иконка onSurface)
  */
 @Composable
 private fun ControlsRow(
@@ -663,20 +802,29 @@ private fun ControlsRow(
     onNext: () -> Unit,
 ) {
     val playShapeRadius by animateDpAsState(
-        targetValue = if (isPlaying) 26.dp else 40.dp,
+        targetValue = if (isPlaying) 30.dp else 42.dp,
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "playMorphRadius",
     )
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val prevInteraction = remember { MutableInteractionSource() }
+        val prevScale = rememberPressScale(prevInteraction)
+
         // Prev: Залитый круг 56dp
         FilledIconButton(
             onClick = onPrev,
-            modifier = Modifier.size(56.dp),
+            interactionSource = prevInteraction,
+            modifier = Modifier
+                .size(56.dp)
+                .graphicsLayer {
+                    scaleX = prevScale
+                    scaleY = prevScale
+                },
             shape = CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = primaryColor.copy(alpha = 0.25f),
@@ -690,10 +838,19 @@ private fun ControlsRow(
             )
         }
 
-        // Главная кнопка Play/Pause с динамическим радиусом (80dp)
+        val playInteraction = remember { MutableInteractionSource() }
+        val playScale = rememberPressScale(playInteraction)
+
+        // Главная кнопка Play/Pause с динамическим радиусом (84dp)
         FilledIconButton(
             onClick = onPlayPause,
-            modifier = Modifier.size(80.dp),
+            interactionSource = playInteraction,
+            modifier = Modifier
+                .size(84.dp)
+                .graphicsLayer {
+                    scaleX = playScale
+                    scaleY = playScale
+                },
             shape = RoundedCornerShape(playShapeRadius),
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = primaryColor,
@@ -702,7 +859,7 @@ private fun ControlsRow(
         ) {
             if (isBuffering) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(32.dp),
                     color = onPrimaryColor,
                     strokeWidth = 3.dp,
                 )
@@ -710,15 +867,24 @@ private fun ControlsRow(
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Пауза" else "Играть",
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(38.dp),
                 )
             }
         }
 
+        val nextInteraction = remember { MutableInteractionSource() }
+        val nextScale = rememberPressScale(nextInteraction)
+
         // Next: Залитый круг 56dp
         FilledIconButton(
             onClick = onNext,
-            modifier = Modifier.size(56.dp),
+            interactionSource = nextInteraction,
+            modifier = Modifier
+                .size(56.dp)
+                .graphicsLayer {
+                    scaleX = nextScale
+                    scaleY = nextScale
+                },
             shape = CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = primaryColor.copy(alpha = 0.25f),
@@ -754,7 +920,7 @@ private fun ActionPillsRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(46.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Левая пилюля — Скорость
@@ -835,19 +1001,14 @@ private fun PlayerProgressSection(
     primaryColor: Color,
     currentFraction: () -> Float,
     currentPositionMs: () -> Long,
+    bufferedFraction: () -> Float = { 0f },
     onSeek: (Float) -> Unit,
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(0f) }
     var playbackFraction by remember { mutableFloatStateOf(0f) }
     var playbackPositionMs by remember { mutableLongStateOf(0L) }
-
-    // Амплитуда волны: на воспроизведении колышется, на паузе плавно опускается до нуля (прямая линия)
-    val waveAmplitude by animateFloatAsState(
-        targetValue = if (isPlaying) 10f else 0f,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "waveAmplitude",
-    )
+    var bufferFrac by remember { mutableFloatStateOf(0f) }
 
     // Сброс таймкода и слайдера при смене трека
     LaunchedEffect(trackId) {
@@ -855,6 +1016,7 @@ private fun PlayerProgressSection(
         playbackPositionMs = 0L
         dragPosition = 0f
         isDragging = false
+        bufferFrac = 0f
     }
 
     LaunchedEffect(isPlaying, trackId) {
@@ -863,6 +1025,7 @@ private fun PlayerProgressSection(
                 playbackFraction = currentFraction()
                 playbackPositionMs = currentPositionMs()
             }
+            bufferFrac = bufferedFraction()
             delay(150) // ~6-7 обновлений в секунду
         }
     }
@@ -901,71 +1064,30 @@ private fun PlayerProgressSection(
                         LinearProgressIndicator(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
                             color = primaryColor,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
                         )
                     }
                 } else {
-                    Box(
+                    // Expressive-слайдер: толстая дорожка, буфер, пружинный ползунок
+                    PlayerSlider(
+                        value = displayPosition.coerceIn(0f, 1f),
+                        onValueChange = { value ->
+                            isDragging = true
+                            dragPosition = value
+                        },
+                        onValueChangeFinished = { value ->
+                            onSeek(value)
+                            isDragging = false
+                        },
+                        activeColor = primaryColor,
+                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                        thumbColor = MaterialTheme.colorScheme.onSurface,
+                        bufferedFraction = bufferFrac,
                         modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        // Тонкая полоска длительности трека под волной:
-                        // проигранная часть — яркая, остаток — едва заметный
-                        Canvas(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(2.dp),
-                        ) {
-                            val centerY = size.height / 2f
-                            val fraction = displayPosition.coerceIn(0f, 1f)
-                            drawLine(
-                                color = primaryColor.copy(alpha = 0.18f),
-                                start = Offset(0f, centerY),
-                                end = Offset(size.width, centerY),
-                                strokeWidth = size.height,
-                                cap = StrokeCap.Round,
-                            )
-                            drawLine(
-                                color = primaryColor.copy(alpha = 0.65f),
-                                start = Offset(0f, centerY),
-                                end = Offset(size.width * fraction, centerY),
-                                strokeWidth = size.height,
-                                cap = StrokeCap.Round,
-                            )
-                        }
-
-                        // Анимированный синусоидальный слайдер (WaveSlider by galaxygoldfish).
-                        // Фон и неактивная дорожка прозрачны — волна рисуется прямо на градиенте плеера
-                        WaveSlider(
-                            value = displayPosition.coerceIn(0f, 1f),
-                            onValueChange = { value ->
-                                isDragging = true
-                                dragPosition = value
-                            },
-                            onValueChangeFinished = { value ->
-                                onSeek(value)
-                                isDragging = false
-                            },
-                            colors = WaveSliderDefaults.colors(
-                                thumbColor = primaryColor,
-                                activeTrackColor = primaryColor,
-                                inactiveTrackColor = Color.Transparent,
-                            ),
-                            animationOptions = WaveSliderDefaults.animationOptions(
-                                reverseDirection = false,
-                                flatlineOnDrag = true,
-                                animateWave = true,
-                            ),
-                            waveOptions = WaveSliderDefaults.waveOptions(
-                                amplitude = waveAmplitude,
-                                frequency = 0.07F,
-                            ),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    )
                 }
             }
         }
