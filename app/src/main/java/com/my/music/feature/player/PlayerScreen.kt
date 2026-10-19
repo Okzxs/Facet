@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -957,12 +958,11 @@ private fun LyricsListView(
 
 /**
  * Одна строка текста в стиле Material 3:
- * - активная — 20sp SemiBold, непропетые слова белые, пропетые анимированно уходят в акцент;
- * - неактивные — 18sp Normal, читаемый onSurfaceVariant;
- * - стандартный text layout: FlowRow сам переносит длинные строки без выхода за экран;
+ * - у всех строк одинаковые 18sp / lineHeight 26sp — лейаут стабилен, без скачков;
+ * - активная строка выделяется SemiBold и плавной градиентной заливкой слева направо;
+ * - пропетая часть — primary, непропетая — onSurfaceVariant, между ними мягкая кромка;
  * - прогресс читает только активная строка, остальные не перерисовываются на опросе.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LyricLineItem(
     text: String,
@@ -972,18 +972,26 @@ private fun LyricLineItem(
     highlightColor: Color,
     onClick: (() -> Unit)?,
 ) {
-    val words = remember(text) { text.split(" ").filter { it.isNotEmpty() } }
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val activeColor = MaterialTheme.colorScheme.onSurface
 
     // Прогресс читает только активная строка — остальные не подписаны на опрос плеера
-    val progress = if (isActive && isSynced) lineProgress().coerceIn(0f, 1f) else 0f
-    val sungWords = progress * words.size
+    val fillTarget = if (isActive && isSynced) lineProgress().coerceIn(0f, 1f) else 0f
+    val fill by animateFloatAsState(
+        targetValue = fillTarget,
+        animationSpec = tween(durationMillis = 240, easing = LinearEasing),
+        label = "lyricFill",
+    )
 
-    val lineFontSize = if (isActive) 20.sp else 18.sp
-    val lineFontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+    // Кисть обновляется вместе с анимацией заливки; span — по границам самой строки
+    val lyricsBrush = remember(fill, highlightColor, inactiveColor) {
+        buildLyricsBrush(
+            fillFraction = fill,
+            sungColor = highlightColor,
+            unsungColor = inactiveColor,
+        )
+    }
 
-    FlowRow(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(
@@ -993,31 +1001,20 @@ private fun LyricLineItem(
                 onClick = { onClick?.invoke() },
             )
             .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        words.forEachIndexed { index, word ->
-            val isSung = isActive && isSynced && index < sungWords
-            val wordColor by animateColorAsState(
-                targetValue = when {
-                    isSung -> highlightColor
-                    isActive -> activeColor
-                    else -> inactiveColor
-                },
-                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
-                label = "lyricWordColor$index",
-            )
-            Text(
-                text = word,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = lineFontSize,
-                    lineHeight = 26.sp,
-                    fontWeight = lineFontWeight,
-                ),
-                color = wordColor,
-                maxLines = Int.MAX_VALUE,
-            )
-        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = 18.sp,
+                lineHeight = 26.sp,
+                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                brush = if (isActive && isSynced) lyricsBrush else null,
+            ),
+            color = if (isActive && isSynced) Color.Unspecified else inactiveColor,
+            // Без жёстких ограничений: длинные строки свободно переносятся
+            softWrap = true,
+            maxLines = Int.MAX_VALUE,
+        )
     }
 }
 
@@ -1135,6 +1132,38 @@ private fun PlayerProgressSection(
             )
         }
     }
+}
+
+/**
+ * Градиент караоке для всей строки:
+ * слева — пропетая часть в акценте, справа — непропетая, между ними мягкая кромка.
+ * Без явных start/end градиент растягивается по границам самой строки.
+ */
+private fun buildLyricsBrush(
+    fillFraction: Float,
+    sungColor: Color,
+    unsungColor: Color,
+): Brush {
+    val fill = fillFraction.coerceIn(0f, 1f)
+    if (fill <= 0f) {
+        return Brush.linearGradient(colors = listOf(unsungColor, unsungColor))
+    }
+    if (fill >= 1f) {
+        return Brush.linearGradient(colors = listOf(sungColor, sungColor))
+    }
+
+    // Полуширина мягкой кромки в долях ширины строки
+    val edge = 0.05f
+    val edgeStart = (fill - edge).coerceAtLeast(0f)
+    val edgeEnd = (fill + edge).coerceAtMost(1f)
+
+    val stops = buildList {
+        if (edgeStart > 0f) add(0f to sungColor)
+        add(edgeStart to sungColor)
+        add(edgeEnd to unsungColor)
+        if (edgeEnd < 1f) add(1f to unsungColor)
+    }
+    return Brush.linearGradient(colorStops = stops.toTypedArray())
 }
 
 private fun formatMs(ms: Long): String {

@@ -909,6 +909,24 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 4.15 — Гибрид: плавный градиент при стабильном лейауте (20.10.2026)
+
+### Что сделано
+1. **Возвращена плавная заливка всей строки**: вместо `FlowRow` с покраской отдельных слов — единый `Text` с `TextStyle.brush`. `Brush.linearGradient` растягивается по границам строки, прогресс анимируется `animateFloatAsState` (240 мс, `LinearEasing`).
+2. **Цвета градиента**: слева пропетая часть — `highlightColor` (primary), справа непропетая — `onSurfaceVariant`; между ними мягкая кромка ±5% ширины строки (4 стопа без дублей).
+3. **Стабильный лейаут**: `graphicsLayer`/scale не используются; у всех строк фиксированные 18sp и `lineHeight 26.sp`; активная выделяется только `SemiBold` и градиентом. Перенос длинных строк — штатный text layout.
+4. **Сохранены фиксы**: `contentPadding(top = 50.dp, bottom = 100.dp)`, подпись «Синхронный текст · LRCLIB» вне `LazyColumn`, центрирующий автоскролл через `LaunchedEffect(activeIndex, viewportHeightPx)`.
+5. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать
