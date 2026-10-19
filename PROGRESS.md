@@ -581,6 +581,37 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 4.3 — Финальные визуальные штрихи: WaveSlider, караоке-текст, Google Sans Flex (19.10.2026)
+
+### Что сделано
+1. **Анимированная синусоида в PlayerScreen (WaveSlider)**:
+   - В `app/build.gradle.kts` добавлена зависимость `com.github.galaxygoldfish:waveslider:v0.0.4` (в задании указана 0.3.3, но в JitPack её нет — последняя собранная версия v0.0.4). JitPack уже был подключён в `settings.gradle.kts`, правок не потребовалось.
+   - Стандартный `Slider` в `PlayerProgressSection` заменён на `WaveSlider` (amplitude = 10F, frequency = 0.07F, colors из MaterialTheme/палитры трека).
+   - Буферизация сохранена: тонкая линия `primary.copy(alpha = 0.3f)` рисуется под волной; Crossfade «индикатор загрузки → слайдер» (500 мс) не тронут.
+2. **Караоке-эффект в текстах (по мотивам Accompanist KaraokeLineText, без копирования кода)**:
+   - В цикле опроса позиции (150 мс) вычисляется прогресс внутри активной строки.
+   - Активная строка заполняется `Brush.linearGradient` слева направо: проигранная часть — белая (`onSurface`), непропетая — тусклая (alpha 0.30), с мягким краем 5%.
+   - Прошедшие строки — заливка 1.0 (белый 55% alpha), будущие — 0.0; заливка анимируется `animateFloatAsState` (160 мс, LinearEasing).
+   - Свечение, анимация веса (400→700) и масштаба (1.05) активной строки сохранены.
+3. **Google Sans Flex**:
+   - Variable-шрифт `GoogleSansFlex[ROND,opsz,slnt,wdth,wght].ttf` (OFL) скачан в `app/src/main/res/font/google_sans_flex.ttf`; лицензия — `app/src/main/assets/licenses/OFL_GoogleSansFlex.txt`.
+   - В `Type.kt` создан `FontFamily` из 5 весов (400/500/600/700/800) через `FontVariation.Settings` (ось wght, API 26+) и применён ко всей типографике.
+   - Отказались от `ui-text-google-fonts`/`GoogleFont("Google Sans Flex")`: провайдер шрифтов требует GMS и сертификаты, в оффлайне может не загрузиться; локальный TTF надёжнее (в задании допускался вариант «или скачай .ttf»).
+4. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/build.gradle.kts
+app/src/main/res/font/google_sans_flex.ttf (новый)
+app/src/main/assets/licenses/OFL_GoogleSansFlex.txt (новый)
+app/src/main/java/com/my/music/core/ui/theme/Type.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать

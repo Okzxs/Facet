@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -53,6 +55,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.galaxygoldfish.waveslider.WaveSlider
+import com.galaxygoldfish.waveslider.WaveSliderDefaults
 import com.my.music.core.ui.components.PlayerQueueSheet
 import com.my.music.core.ui.theme.PlayerDynamicColors
 import com.my.music.core.ui.theme.rememberPlayerDynamicColors
@@ -463,6 +467,7 @@ private fun LyricsListView(
 ) {
     val listState = rememberLazyListState()
     var activeIndex by remember { mutableIntStateOf(-1) }
+    var activeProgress by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(lyricsResult) {
         while (true) {
@@ -479,6 +484,17 @@ private fun LyricsListView(
                         )
                     }
                 }
+                // Прогресс внутри активной строки для караоке-заливки
+                activeProgress = if (idx in lines.indices) {
+                    val startMs = lines[idx].timeMs.coerceAtLeast(0L)
+                    val endMs = if (idx + 1 < lines.size) lines[idx + 1].timeMs else startMs + 5000L
+                    ((curTime - startMs).toFloat() / (endMs - startMs).coerceAtLeast(1L))
+                        .coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+            } else {
+                activeProgress = 0f
             }
             delay(150)
         }
@@ -526,19 +542,26 @@ private fun LyricsListView(
                             val isActive = lyricsResult.isSynced && index == activeIndex
                             val isSynced = lyricsResult.isSynced
                             val onSurface = MaterialTheme.colorScheme.onSurface
+                            val filledColor = if (isActive) onSurface else onSurface.copy(alpha = 0.55f)
+                            val dimColor = onSurface.copy(alpha = 0.30f)
 
-                            // Плавный перелив: тусклая строка «перетекает» в белый активный цвет
-                            val targetColor = when {
-                                !isSynced -> onSurface.copy(alpha = 0.92f)
-                                isActive -> onSurface
-                                kotlin.math.abs(index - activeIndex) == 1 -> onSurface.copy(alpha = 0.55f)
-                                else -> onSurface.copy(alpha = 0.30f)
+                            // Караоке-эффект: заливка строки слева направо по мере проигрывания
+                            val targetFill = when {
+                                !isSynced -> 1f
+                                index < activeIndex -> 1f
+                                index == activeIndex -> activeProgress
+                                else -> 0f
                             }
-                            val animatedColor by animateColorAsState(
-                                targetValue = targetColor,
-                                animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-                                label = "lyricsLineColor",
+                            val fill by animateFloatAsState(
+                                targetValue = targetFill,
+                                animationSpec = tween(durationMillis = 160, easing = LinearEasing),
+                                label = "lyricsFill",
                             )
+                            var textWidth by remember { mutableIntStateOf(0) }
+                            val karaokeBrush = remember(fill, textWidth, filledColor, dimColor) {
+                                buildKaraokeBrush(fill, textWidth, filledColor, dimColor)
+                            }
+
                             val animatedGlow by animateColorAsState(
                                 targetValue = if (isActive) highlightColor.copy(alpha = 0.5f) else Color.Transparent,
                                 animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
@@ -564,8 +587,17 @@ private fun LyricsListView(
                                         color = animatedGlow,
                                         blurRadius = 10f,
                                     ),
+                                    brush = if (isSynced) karaokeBrush else null,
                                 ),
-                                color = animatedColor,
+                                color = if (isSynced) Color.Unspecified else onSurface.copy(alpha = 0.92f),
+                                onTextLayout = { layoutResult ->
+                                    val width = if (layoutResult.lineCount > 0) {
+                                        layoutResult.multiParagraph.getLineWidth(0).toInt()
+                                    } else {
+                                        0
+                                    }
+                                    if (width != textWidth) textWidth = width
+                                },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .graphicsLayer {
@@ -876,7 +908,7 @@ private fun PlayerProgressSection(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        // Буферизация под слайдером (фон surfaceVariant, буферизация primary.copy(alpha = 0.3f))
+                        // Буферизация: тонкий слой под анимированной волной (primary.copy(alpha = 0.3f))
                         LinearProgressIndicator(
                             progress = { bufferFrac.coerceIn(0f, 1f) },
                             modifier = Modifier
@@ -885,24 +917,33 @@ private fun PlayerProgressSection(
                                 .padding(horizontal = 6.dp)
                                 .clip(RoundedCornerShape(2.dp)),
                             color = primaryColor.copy(alpha = 0.3f),
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            trackColor = Color.Transparent,
                         )
 
-                        // Стандартный Slider
-                        Slider(
+                        // Анимированный синусоидальный слайдер (WaveSlider by galaxygoldfish)
+                        WaveSlider(
                             value = displayPosition.coerceIn(0f, 1f),
                             onValueChange = { value ->
                                 isDragging = true
                                 dragPosition = value
                             },
-                            onValueChangeFinished = {
-                                onSeek(dragPosition)
+                            onValueChangeFinished = { value ->
+                                onSeek(value)
                                 isDragging = false
                             },
-                            colors = SliderDefaults.colors(
+                            colors = WaveSliderDefaults.colors(
                                 thumbColor = primaryColor,
                                 activeTrackColor = primaryColor,
-                                inactiveTrackColor = Color.Transparent,
+                                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            ),
+                            animationOptions = WaveSliderDefaults.animationOptions(
+                                reverseDirection = false,
+                                flatlineOnDrag = true,
+                                animateWave = true,
+                            ),
+                            waveOptions = WaveSliderDefaults.waveOptions(
+                                amplitude = 10F,
+                                frequency = 0.07F,
                             ),
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -926,6 +967,33 @@ private fun PlayerProgressSection(
             )
         }
     }
+}
+
+/** Градиентная кисть караоке: заполненная часть строки слева, тусклая — справа. */
+private fun buildKaraokeBrush(
+    fillFraction: Float,
+    textWidth: Int,
+    filledColor: Color,
+    dimColor: Color,
+): Brush {
+    val width = textWidth.coerceAtLeast(1).toFloat()
+    val fill = fillFraction.coerceIn(0f, 1f)
+    val edge = 0.05f
+    val colorStops: Array<Pair<Float, Color>> = when {
+        fill <= 0f -> arrayOf(0f to dimColor, 1f to dimColor)
+        fill >= 1f -> arrayOf(0f to filledColor, 1f to filledColor)
+        else -> arrayOf(
+            0f to filledColor,
+            fill to filledColor,
+            (fill + edge).coerceAtMost(1f) to dimColor,
+            1f to dimColor,
+        )
+    }
+    return Brush.linearGradient(
+        colorStops = colorStops,
+        start = Offset.Zero,
+        end = Offset(width, 0f),
+    )
 }
 
 private fun formatMs(ms: Long): String {
