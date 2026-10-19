@@ -1,6 +1,6 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 19.10.2026
+## Последнее обновление: 20.10.2026
 
 ---
 
@@ -838,6 +838,27 @@ MEMORY.md
 ### Файлы
 ```
 app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
+## ✅ Фаза 4.12 — Чистая M3-типографика текстов вместо караоке (20.10.2026)
+
+### Что сделано
+1. **Удалён караоке-эффект**: убраны `Brush.linearGradient`, расчёт прогресса закрашивания, smoothstep-кромка, тлеющий фронт, шиммер и все хелперы (`buildKaraokeBrush`, `karaokeColorAt`, `smoothBlend`, `blendColors`, константы `KARAOKE_*`).
+2. **Два состояния строки**:
+   - активная — крупнее (анимация 16→22sp, как `titleLarge`), `SemiBold` (400→600), акцентный цвет палитры (при тёмном акценте — яркий `onSurface` по порогу luminance 0.35);
+   - неактивные синхронного текста — `bodyLarge` 16sp, `Normal`, `onSurfaceVariant` alpha 0.5; обычный (несинхронный) текст — полностью читаемый `onSurfaceVariant`.
+3. **Плавные переходы**: `animateColorAsState` (320 мс) для цвета, `animateFloatAsState` (пружина 0.8) для размера и `tween` для веса; строка растёт и меняет цвет без резкого скачка.
+4. **Автоскролл**: опрос позиции обновляет только `activeIndex`, а прокрутка вынесена в `LaunchedEffect(activeIndex, viewportHeightPx)` — `animateScrollToItem` с центрирующим `scrollOffset`; первое позиционирование — мгновенный `scrollToItem` (без пролёта через весь текст).
+5. **Чистка**: из цепочки текстов убраны неиспользуемые `isPlaying`, `activeProgress`, `isPast`, `isNeighbor`, замер ширины текста и `graphicsLayer`-масштаб.
+6. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+
+### Файлы
+```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md

@@ -4,13 +4,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -45,12 +40,10 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -76,7 +69,6 @@ import com.my.music.core.ui.theme.PlayerDynamicColors
 import com.my.music.core.ui.theme.rememberPlayerDynamicColors
 import com.my.music.data.model.LyricsResult
 import kotlinx.coroutines.delay
-import kotlin.math.abs
 
 /**
  * Вариант компоновки hero-зоны (для сравнения на устройстве, поменяй цифру и пересобери):
@@ -217,7 +209,6 @@ fun PlayerScreen(
                     artist = track?.artist ?: "—",
                     artworkUrl = track?.artworkUrl,
                     isLiked = isLiked,
-                    isPlaying = playerState.isPlaying,
                     isLyricsMode = isLyricsMode,
                     lyricsResult = uiState.lyrics,
                     isLyricsLoading = uiState.isLyricsLoading,
@@ -324,7 +315,6 @@ private fun ExpressiveHeroZone(
     artist: String,
     artworkUrl: String?,
     isLiked: Boolean,
-    isPlaying: Boolean,
     isLyricsMode: Boolean,
     lyricsResult: LyricsResult?,
     isLyricsLoading: Boolean,
@@ -472,7 +462,6 @@ private fun ExpressiveHeroZone(
                     artworkUrl = artworkUrl,
                     lyricsResult = lyricsResult,
                     isLoading = isLyricsLoading,
-                    isPlaying = isPlaying,
                     error = lyricsError,
                     highlightColor = palette.primary,
                     glassColor = palette.surfaceContainerHigh,
@@ -680,7 +669,6 @@ private fun LyricsForeground(
     artworkUrl: String?,
     lyricsResult: LyricsResult?,
     isLoading: Boolean,
-    isPlaying: Boolean,
     error: String?,
     highlightColor: Color,
     glassColor: Color,
@@ -760,7 +748,6 @@ private fun LyricsForeground(
                 LyricsListView(
                     lyricsResult = lyricsResult,
                     isLoading = isLoading,
-                    isPlaying = isPlaying,
                     error = error,
                     highlightColor = highlightColor,
                     currentPositionMs = currentPositionMs,
@@ -817,15 +804,15 @@ private fun ArtworkImage(
 
 /**
  * Изолированный список строк текста:
- * - Экспрессивная караоке-строка: «жидкие чернила» с мягкой кромкой, тлеющим фронтом и шиммером
- * - Автоцентрирование активной строки по вертикали (как в Apple Music)
- * - Тап = перемотка
+ * - активная строка — крупная, акцентная и SemiBold, остальные — компактные и приглушённые;
+ * - размер, насыщенность и цвет плавно анимируются при смене строки;
+ * - автоцентрирование активной строки по вертикали (как в Apple Music);
+ * - тап = перемотка.
  */
 @Composable
 private fun LyricsListView(
     lyricsResult: LyricsResult?,
     isLoading: Boolean,
-    isPlaying: Boolean,
     error: String?,
     highlightColor: Color,
     currentPositionMs: () -> Long,
@@ -834,50 +821,37 @@ private fun LyricsListView(
 ) {
     val listState = rememberLazyListState()
     var activeIndex by remember { mutableIntStateOf(-1) }
-    var activeProgress by remember { mutableFloatStateOf(0f) }
+    var hasCentered by remember { mutableStateOf(false) }
 
     // Высота видимой области — для центрирующего сдвига автоскролла
     val density = LocalDensity.current
     var viewportHeightPx by remember { mutableIntStateOf(0) }
     val halfLinePx = with(density) { 18.dp.roundToPx() }
 
+    // Опрос позиции обновляет только индекс активной строки
     LaunchedEffect(lyricsResult) {
-        // Новый текст — с чистого листа: мгновенное центрирование первой строки
         activeIndex = -1
-        activeProgress = 0f
+        hasCentered = false
         while (true) {
             val lines = lyricsResult?.lines
             if (lyricsResult?.isSynced == true && !lines.isNullOrEmpty()) {
-                val curTime = currentPositionMs()
-                val idx = lines.indexOfLast { it.timeMs <= curTime }
-                if (idx != activeIndex) {
-                    val previousIndex = activeIndex
-                    activeIndex = idx
-                    if (idx >= 0) {
-                        // Центрирующий сдвиг: строка встаёт по центру видимой области,
-                        // а 50dp-отступы не дают ей упираться в границы карточки
-                        val centerOffset = (viewportHeightPx / 2 - halfLinePx).coerceAtLeast(0)
-                        if (previousIndex < 0) {
-                            // При открытии текстов — без «пролёта» через весь список
-                            listState.scrollToItem(index = idx, scrollOffset = -centerOffset)
-                        } else {
-                            listState.animateScrollToItem(index = idx, scrollOffset = -centerOffset)
-                        }
-                    }
-                }
-                // Прогресс внутри активной строки для караоке-заливки
-                activeProgress = if (idx in lines.indices) {
-                    val startMs = lines[idx].timeMs.coerceAtLeast(0L)
-                    val endMs = if (idx + 1 < lines.size) lines[idx + 1].timeMs else startMs + 5000L
-                    ((curTime - startMs).toFloat() / (endMs - startMs).coerceAtLeast(1L))
-                        .coerceIn(0f, 1f)
-                } else {
-                    0f
-                }
-            } else {
-                activeProgress = 0f
+                val idx = lines.indexOfLast { it.timeMs <= currentPositionMs() }
+                if (idx != activeIndex) activeIndex = idx
             }
             delay(150)
+        }
+    }
+
+    // Скролл — реакция только на смену индекса; строка встаёт по центру видимой области
+    LaunchedEffect(activeIndex, viewportHeightPx) {
+        if (activeIndex < 0 || viewportHeightPx <= 0) return@LaunchedEffect
+        val centerOffset = (viewportHeightPx / 2 - halfLinePx).coerceAtLeast(0)
+        if (!hasCentered) {
+            // Первое позиционирование — мгновенно, без «пролёта» через весь текст
+            listState.scrollToItem(index = activeIndex, scrollOffset = -centerOffset)
+            hasCentered = true
+        } else {
+            listState.animateScrollToItem(index = activeIndex, scrollOffset = -centerOffset)
         }
     }
 
@@ -926,11 +900,6 @@ private fun LyricsListView(
                                 text = line.text.ifBlank { "♪" },
                                 isSynced = lyricsResult.isSynced,
                                 isActive = lyricsResult.isSynced && index == activeIndex,
-                                isPast = lyricsResult.isSynced && index < activeIndex,
-                                isNeighbor = lyricsResult.isSynced && activeIndex >= 0 &&
-                                    abs(index - activeIndex) == 1,
-                                isPlaying = isPlaying,
-                                karaokeProgress = { activeProgress },
                                 highlightColor = highlightColor,
                                 onClick = if (lyricsResult.isSynced && line.timeMs >= 0) {
                                     { onSeekToLine(line.timeMs) }
@@ -973,122 +942,62 @@ private fun LyricsListView(
 }
 
 /**
- * Одна строка караоке. Вся Expressive-механика собрана здесь:
- * - «жидкие чернила»: заливка слева направо с мягкой кромкой и тлеющим фронтом в цвете палитры;
- * - шиммер-перелив, бегущий по строке, пока идёт воспроизведение;
- * - фокус от ОДНОЙ пружины: вес 500→700, масштаб 1.0→1.05, лёгкое свечение primary;
- * - прогресс заливки и шиммер читаются только активной строкой — остальные не перерисовываются.
+ * Одна строка текста в стиле Material 3:
+ * - активная — titleLarge-размер, SemiBold, в акцентном цвете палитры;
+ * - неактивные — bodyLarge-размер, Normal, полупрозрачный onSurfaceVariant.
+ * Размер, насыщенность и цвет плавно анимируются при смене активной строки.
  */
 @Composable
 private fun LyricLineItem(
     text: String,
     isSynced: Boolean,
     isActive: Boolean,
-    isPast: Boolean,
-    isNeighbor: Boolean,
-    isPlaying: Boolean,
-    karaokeProgress: () -> Float,
     highlightColor: Color,
     onClick: (() -> Unit)?,
 ) {
-    val onSurface = MaterialTheme.colorScheme.onSurface
-
-    // Единая пружина фокуса: ею живут вес, масштаб, свечение и альфы заливки.
-    // dampingRatio 0.85 — благородное плавное увеличение без подпрыгивания
-    val focus by animateFloatAsState(
-        targetValue = if (isActive) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
-        label = "lyricLineFocus",
-    )
-
-    // Прогресс караоке читается ТОЛЬКО активной строкой:
-    // остальные не подписаны на 150-мс опрос позиции плеера
-    val fillTarget = when {
-        !isSynced -> 1f
-        isActive -> karaokeProgress()
-        isPast -> 1f
-        else -> 0f
-    }
-    val fill by animateFloatAsState(
-        targetValue = fillTarget,
-        animationSpec = tween(durationMillis = 220, easing = LinearEasing),
-        label = "lyricLineFill",
-    )
-
-    // Перелив включается только у активной строки и только во время воспроизведения
-    val shimmerPhase = if (isActive && isPlaying) {
-        val shimmer = rememberInfiniteTransition(label = "lyricLineShimmer")
-        shimmer.animateFloat(
-            initialValue = KARAOKE_SHIMMER_FROM,
-            targetValue = KARAOKE_SHIMMER_TO,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 2800, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-            label = "lyricLineShimmerPhase",
-        ).value
+    // Акцент обложки бывает тёмным на тёмном фоне — тогда берём яркий onSurface
+    val activeColor = if (highlightColor.luminance() > 0.35f) {
+        highlightColor
     } else {
-        0f
+        MaterialTheme.colorScheme.onSurface
     }
 
-    var textWidth by remember { mutableIntStateOf(0) }
-
-    // Альфы ведёт фокус: неактивные строки — 0.4, соседние с активной — 0.7,
-    // у активной «непропетое» — 0.62, «пропетое» — 1.0
-    val baseAlpha = if (isNeighbor) 0.7f else 0.4f
-    val filledColor = onSurface.copy(alpha = lerp(baseAlpha, 1f, focus))
-    val dimColor = onSurface.copy(alpha = lerp(baseAlpha, 0.62f, focus))
-    // Фронт чернил приглушён (alpha 0.7) — тлеет мягко, а не горит
-    val tipColor = blendColors(filledColor, highlightColor, 0.75f).copy(alpha = 0.7f)
-    val shimmerColor = blendColors(filledColor, Color.White, 0.65f)
-    val shimmerStrength = if (isActive && isPlaying) 1f else 0f
-
-    val karaokeBrush = remember(
-        fill, focus, textWidth, shimmerPhase, shimmerStrength, shimmerColor, tipColor, filledColor, dimColor,
-    ) {
-        buildKaraokeBrush(
-            fillFraction = fill,
-            textWidth = textWidth,
-            filledColor = filledColor,
-            dimColor = dimColor,
-            tipColor = tipColor,
-            shimmerColor = shimmerColor,
-            shimmerPhase = shimmerPhase,
-            shimmerStrength = shimmerStrength,
-        )
+    val targetColor = when {
+        isActive -> activeColor
+        // Для синхронного текста неактивные строки приглушены, для обычного — читаемы
+        isSynced -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val color by animateColorAsState(
+        targetValue = targetColor,
+        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+        label = "lyricColor",
+    )
+
+    val fontSize by animateFloatAsState(
+        targetValue = if (isActive) 22f else 16f,
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+        label = "lyricFontSize",
+    )
+    val fontWeight by animateFloatAsState(
+        targetValue = if (isActive) 600f else 400f,
+        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+        label = "lyricFontWeight",
+    )
 
     Text(
         text = text,
-        style = MaterialTheme.typography.headlineSmall.copy(
-            fontWeight = FontWeight(lerp(500f, 700f, focus).toInt()),
-            fontSize = if (isSynced) 22.sp else 18.sp,
-            shadow = Shadow(
-                color = highlightColor.copy(alpha = 0.2f * focus),
-                blurRadius = lerp(2f, 8f, focus),
-            ),
-            brush = if (isSynced) karaokeBrush else null,
+        style = MaterialTheme.typography.bodyLarge.copy(
+            fontSize = fontSize.sp,
+            lineHeight = (fontSize * 1.28f).sp,
+            fontWeight = FontWeight(fontWeight.toInt()),
         ),
-        color = if (isSynced) Color.Unspecified else onSurface.copy(alpha = 0.85f),
+        color = color,
         // Без жёстких ограничений: длинные строки свободно переносятся
         softWrap = true,
         maxLines = Int.MAX_VALUE,
-        onTextLayout = { layoutResult ->
-            val width = if (layoutResult.lineCount > 0) {
-                layoutResult.multiParagraph.getLineWidth(0).toInt()
-            } else {
-                0
-            }
-            if (width != textWidth) textWidth = width
-        },
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer {
-                // Рост строки от левого края — позиция чтения не «уезжает»
-                transformOrigin = TransformOrigin(0f, 0.5f)
-                scaleX = lerp(1f, 1.05f, focus)
-                scaleY = lerp(1f, 1.05f, focus)
-            }
             .clickable(
                 enabled = onClick != null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -1213,102 +1122,6 @@ private fun PlayerProgressSection(
             )
         }
     }
-}
-
-// ─── Геометрия «жидких чернил» ────────────────────────────────
-private const val KARAOKE_EDGE = 0.028f // полуширина мягкой кромки заливки
-private const val KARAOKE_SHIMMER_HALF = 0.12f // полуширина бегущего перелива (шире — мягче)
-private const val KARAOKE_SHIMMER_FROM = -0.15f // старт перелива (за левым краем)
-private const val KARAOKE_SHIMMER_TO = 1.15f // финиш перелива (за правым краем)
-
-/** Мягкое смешение двух цветов с клампом доли. */
-private fun blendColors(from: Color, to: Color, fraction: Float): Color =
-    androidx.compose.ui.graphics.lerp(from, to, fraction.coerceIn(0f, 1f))
-
-/** Smoothstep-переход между цветами вокруг кромки заливки. */
-private fun smoothBlend(from: Color, to: Color, at: Float, x: Float, feather: Float): Color {
-    if (at <= 0f) return from
-    if (at >= 1f) return to
-    val t = ((x - (at - feather)) / (2f * feather)).coerceIn(0f, 1f)
-    return blendColors(from, to, t * t * (3f - 2f * t))
-}
-
-/** Цвет строки в точке x (0..1): основа с кромкой + тлеющий фронт + перелив. */
-private fun karaokeColorAt(
-    x: Float,
-    fill: Float,
-    shimmer: Float,
-    filledColor: Color,
-    dimColor: Color,
-    tipColor: Color,
-    shimmerColor: Color,
-    shimmerStrength: Float,
-): Color {
-    // Основа: мягкая кромка «пропето / не пропето»
-    val base = smoothBlend(dimColor, filledColor, fill, x, KARAOKE_EDGE)
-    // Тлеющий фронт чернил точно на границе заливки
-    val tip = if (fill > 0.001f && fill < 0.999f) {
-        (1f - abs(x - fill) / (KARAOKE_EDGE * 1.8f)).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    // Перелив — едва заметный блик, скользящий по строке
-    val shimmerAmount = (1f - abs(x - shimmer) / KARAOKE_SHIMMER_HALF)
-        .coerceIn(0f, 1f) * shimmerStrength * 0.2f
-
-    return blendColors(
-        blendColors(base, tipColor, tip * 0.65f),
-        shimmerColor,
-        shimmerAmount,
-    )
-}
-
-/** Градиент караоке для Text: заливка, кромка, тлеющий фронт и бегущий перелив. */
-private fun buildKaraokeBrush(
-    fillFraction: Float,
-    textWidth: Int,
-    filledColor: Color,
-    dimColor: Color,
-    tipColor: Color,
-    shimmerColor: Color,
-    shimmerPhase: Float,
-    shimmerStrength: Float,
-): Brush {
-    val width = textWidth.coerceAtLeast(1).toFloat()
-    val fill = fillFraction.coerceIn(0f, 1f)
-
-    // Критические точки градиента: кромка заливки + фронт перелива
-    val stops = buildList {
-        add(0f)
-        add(1f)
-        add(fill - KARAOKE_EDGE)
-        add(fill)
-        add(fill + KARAOKE_EDGE)
-        add(shimmerPhase - KARAOKE_SHIMMER_HALF)
-        add(shimmerPhase)
-        add(shimmerPhase + KARAOKE_SHIMMER_HALF)
-    }.map { it.coerceIn(0f, 1f) }
-        .distinct()
-        .sorted()
-        .map { x ->
-            x to karaokeColorAt(
-                x = x,
-                fill = fill,
-                shimmer = shimmerPhase,
-                filledColor = filledColor,
-                dimColor = dimColor,
-                tipColor = tipColor,
-                shimmerColor = shimmerColor,
-                shimmerStrength = shimmerStrength,
-            )
-        }
-        .toTypedArray()
-
-    return Brush.linearGradient(
-        colorStops = stops,
-        start = Offset.Zero,
-        end = Offset(width, 0f),
-    )
 }
 
 private fun formatMs(ms: Long): String {
