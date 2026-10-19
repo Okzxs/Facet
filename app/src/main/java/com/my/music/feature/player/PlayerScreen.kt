@@ -42,8 +42,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -804,8 +804,8 @@ private fun ArtworkImage(
 
 /**
  * Изолированный список строк текста:
- * - активная строка — крупная, акцентная и SemiBold, остальные — компактные и приглушённые;
- * - размер, насыщенность и цвет плавно анимируются при смене строки;
+ * - активная строка визуально крупнее за счёт graphicsLayer-масштаба (лейаут не прыгает);
+ * - слова «пропетой» части строки плавно окрашиваются в акцент;
  * - автоцентрирование активной строки по вертикали (как в Apple Music);
  * - тап = перемотка.
  */
@@ -821,6 +821,7 @@ private fun LyricsListView(
 ) {
     val listState = rememberLazyListState()
     var activeIndex by remember { mutableIntStateOf(-1) }
+    var activeProgress by remember { mutableFloatStateOf(0f) }
     var hasCentered by remember { mutableStateOf(false) }
 
     // Высота видимой области — для центрирующего сдвига автоскролла
@@ -828,15 +829,27 @@ private fun LyricsListView(
     var viewportHeightPx by remember { mutableIntStateOf(0) }
     val halfLinePx = with(density) { 18.dp.roundToPx() }
 
-    // Опрос позиции обновляет только индекс активной строки
+    // Опрос позиции: индекс активной строки и прогресс внутри неё
     LaunchedEffect(lyricsResult) {
         activeIndex = -1
+        activeProgress = 0f
         hasCentered = false
         while (true) {
             val lines = lyricsResult?.lines
             if (lyricsResult?.isSynced == true && !lines.isNullOrEmpty()) {
-                val idx = lines.indexOfLast { it.timeMs <= currentPositionMs() }
+                val curTime = currentPositionMs()
+                val idx = lines.indexOfLast { it.timeMs <= curTime }
                 if (idx != activeIndex) activeIndex = idx
+                activeProgress = if (idx in lines.indices) {
+                    val startMs = lines[idx].timeMs.coerceAtLeast(0L)
+                    val endMs = if (idx + 1 < lines.size) lines[idx + 1].timeMs else startMs + 5000L
+                    ((curTime - startMs).toFloat() / (endMs - startMs).coerceAtLeast(1L))
+                        .coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+            } else {
+                activeProgress = 0f
             }
             delay(150)
         }
@@ -900,6 +913,7 @@ private fun LyricsListView(
                                 text = line.text.ifBlank { "♪" },
                                 isSynced = lyricsResult.isSynced,
                                 isActive = lyricsResult.isSynced && index == activeIndex,
+                                lineProgress = { activeProgress },
                                 highlightColor = highlightColor,
                                 onClick = if (lyricsResult.isSynced && line.timeMs >= 0) {
                                     { onSeekToLine(line.timeMs) }
@@ -943,61 +957,44 @@ private fun LyricsListView(
 
 /**
  * Одна строка текста в стиле Material 3:
- * - активная — titleLarge-размер, SemiBold, в акцентном цвете палитры;
- * - неактивные — bodyLarge-размер, Normal, полупрозрачный onSurfaceVariant.
- * Размер, насыщенность и цвет плавно анимируются при смене активной строки.
+ * - у всех строк одинаковый размер 18sp — высота лейаута не меняется;
+ * - активная строка визуально растёт через graphicsLayer (1.0 → 1.3);
+ * - слова, попавшие в прогресс строки, анимированно окрашиваются в акцент,
+ *   остальные — читаемый onSurfaceVariant;
+ * - неактивные строки не читают прогресс и не перерисовываются на каждом опросе.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LyricLineItem(
     text: String,
     isSynced: Boolean,
     isActive: Boolean,
+    lineProgress: () -> Float,
     highlightColor: Color,
     onClick: (() -> Unit)?,
 ) {
-    // Акцент обложки бывает тёмным на тёмном фоне — тогда берём яркий onSurface
-    val activeColor = if (highlightColor.luminance() > 0.35f) {
-        highlightColor
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-
-    val targetColor = when {
-        isActive -> activeColor
-        // Для синхронного текста неактивные строки приглушены, для обычного — читаемы
-        isSynced -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val color by animateColorAsState(
-        targetValue = targetColor,
-        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-        label = "lyricColor",
-    )
-
-    val fontSize by animateFloatAsState(
-        targetValue = if (isActive) 22f else 16f,
+    // Масштаб вместо fontSize: текст крупнее, но лейаут и высота строки не прыгают
+    val scale by animateFloatAsState(
+        targetValue = if (isActive) 1.3f else 1f,
         animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
-        label = "lyricFontSize",
-    )
-    val fontWeight by animateFloatAsState(
-        targetValue = if (isActive) 600f else 400f,
-        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-        label = "lyricFontWeight",
+        label = "lyricScale",
     )
 
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge.copy(
-            fontSize = fontSize.sp,
-            lineHeight = (fontSize * 1.28f).sp,
-            fontWeight = FontWeight(fontWeight.toInt()),
-        ),
-        color = color,
-        // Без жёстких ограничений: длинные строки свободно переносятся
-        softWrap = true,
-        maxLines = Int.MAX_VALUE,
+    val words = remember(text) { text.split(" ").filter { it.isNotEmpty() } }
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    // Прогресс читает только активная строка — остальные не подписаны на опрос плеера
+    val progress = if (isActive && isSynced) lineProgress().coerceIn(0f, 1f) else 0f
+    val sungWords = progress * words.size
+
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                transformOrigin = TransformOrigin(0f, 0.5f)
+                scaleX = scale
+                scaleY = scale
+            }
             .clickable(
                 enabled = onClick != null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -1005,7 +1002,27 @@ private fun LyricLineItem(
                 onClick = { onClick?.invoke() },
             )
             .padding(vertical = 4.dp),
-    )
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        words.forEachIndexed { index, word ->
+            val isSung = isActive && isSynced && index < sungWords
+            val wordColor by animateColorAsState(
+                targetValue = if (isSung) highlightColor else inactiveColor,
+                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                label = "lyricWordColor$index",
+            )
+            Text(
+                text = word,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 18.sp,
+                    lineHeight = 24.sp,
+                ),
+                color = wordColor,
+                maxLines = Int.MAX_VALUE,
+            )
+        }
+    }
 }
 
 /**
