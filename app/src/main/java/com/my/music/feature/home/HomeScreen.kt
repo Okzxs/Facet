@@ -1,11 +1,28 @@
 package com.my.music.feature.home
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -13,13 +30,20 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material3.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -29,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
@@ -42,9 +67,10 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.my.music.data.model.Track
+import kotlinx.coroutines.delay
 import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
@@ -52,29 +78,25 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = uiState.isRefreshing,
-            onRefresh = { viewModel.refresh() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+    PullToRefreshBox(
+        isRefreshing = uiState.isRefreshing,
+        onRefresh = { viewModel.refresh() },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(28.dp),
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(28.dp),
-            ) {
-                // ─── 1. Приветствие по времени суток (M3 Expressive Headline) ───
-                item(key = "greeting_header") {
+            item(key = "greeting_header") {
+                RevealSection(index = 0) {
                     GreetingHeader(onRefresh = { viewModel.refresh() })
                 }
+            }
 
-                // ─── 2. Сообщение об ошибке (если есть) ─────────────────────────
-                if (uiState.error != null) {
-                    item(key = "error_banner") {
+            if (uiState.error != null) {
+                item(key = "error_banner") {
+                    RevealSection(index = 1) {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -82,7 +104,7 @@ fun HomeScreen(
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
                             ),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(20.dp),
                         ) {
                             Row(
                                 modifier = Modifier
@@ -104,41 +126,48 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
 
-                // ─── 3. Личная секция: «Недавние» (показывать, если есть данные) ──
-                if (uiState.recentTracks.isNotEmpty()) {
-                    item(key = "section_recent") {
-                        SectionHeader(
-                            title = "Недавние",
-                            subtitle = "То, что вы слушали недавно",
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        TracksCarousel(
-                            tracks = uiState.recentTracks,
-                            onTrackClick = { track -> onTrackClick(track, uiState.recentTracks) },
-                        )
+            if (uiState.recentTracks.isNotEmpty()) {
+                item(key = "section_recent") {
+                    RevealSection(index = 2) {
+                        Column {
+                            SectionHeader(
+                                title = "Недавние",
+                                subtitle = "То, что вы слушали недавно",
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            TracksCarousel(
+                                tracks = uiState.recentTracks,
+                                onTrackClick = { track -> onTrackClick(track, uiState.recentTracks) },
+                            )
+                        }
                     }
                 }
+            }
 
-                // ─── 4. Личная секция: «Любимые треки» (показывать, если есть данные)
-                if (uiState.likedTracks.isNotEmpty()) {
-                    item(key = "section_liked") {
-                        SectionHeader(
-                            title = "Любимые треки",
-                            subtitle = "${uiState.likedTracks.size} сохранено в медиатеке",
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        TracksCarousel(
-                            tracks = uiState.likedTracks,
-                            onTrackClick = { track -> onTrackClick(track, uiState.likedTracks) },
-                        )
+            if (uiState.likedTracks.isNotEmpty()) {
+                item(key = "section_liked") {
+                    RevealSection(index = 3) {
+                        Column {
+                            SectionHeader(
+                                title = "Любимые треки",
+                                subtitle = "${uiState.likedTracks.size} сохранено в медиатеке",
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            TracksCarousel(
+                                tracks = uiState.likedTracks,
+                                onTrackClick = { track -> onTrackClick(track, uiState.likedTracks) },
+                            )
+                        }
                     }
                 }
+            }
 
-                // ─── 5. Личная секция: «Твои жанры» (группировка по genre) ───────
-                if (uiState.genreSections.isNotEmpty()) {
-                    uiState.genreSections.take(3).forEach { genreSection ->
-                        item(key = "genre_${genreSection.genre}") {
+            uiState.genreSections.take(3).forEachIndexed { index, genreSection ->
+                item(key = "genre_${genreSection.genre}") {
+                    RevealSection(index = 4 + index) {
+                        Column {
                             SectionHeader(
                                 title = genreSection.genre,
                                 subtitle = "Подборка на основе ваших предпочтений",
@@ -151,42 +180,83 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
 
-                // ─── 6. Открытие: «New & hot» (всегда, со скелетонами при загрузке) ─
-                item(key = "section_new_and_hot") {
-                    SectionHeader(
-                        title = "New & Hot",
-                        subtitle = "Свежие тренды и новинки на SoundCloud",
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    if (uiState.isLoading && uiState.newAndHot.isEmpty()) {
-                        SkeletonCarousel()
-                    } else {
-                        TracksCarousel(
-                            tracks = uiState.newAndHot,
-                            onTrackClick = { track -> onTrackClick(track, uiState.newAndHot) },
+            item(key = "section_new_and_hot") {
+                RevealSection(index = 7) {
+                    Column {
+                        SectionHeader(
+                            title = "New & Hot",
+                            subtitle = "Свежие тренды и новинки на SoundCloud",
                         )
+                        Spacer(Modifier.height(12.dp))
+                        if (uiState.isLoading && uiState.newAndHot.isEmpty()) {
+                            SkeletonCarousel()
+                        } else {
+                            TracksCarousel(
+                                tracks = uiState.newAndHot,
+                                onTrackClick = { track -> onTrackClick(track, uiState.newAndHot) },
+                            )
+                        }
                     }
                 }
+            }
 
-                // ─── 7. Открытие: «Top 50» (номерные карточки чарта) ─────────────
-                item(key = "section_top_50") {
-                    SectionHeader(
-                        title = "Top 50 SoundCloud",
-                        subtitle = "Самые прослушиваемые треки сейчас",
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    if (uiState.isLoading && uiState.top50.isEmpty()) {
-                        SkeletonCarousel()
-                    } else {
-                        TopChartCarousel(
-                            tracks = uiState.top50,
-                            onTrackClick = { track -> onTrackClick(track, uiState.top50) },
+            item(key = "section_top_50") {
+                RevealSection(index = 8) {
+                    Column {
+                        SectionHeader(
+                            title = "Top 50 SoundCloud",
+                            subtitle = "Самые прослушиваемые треки сейчас",
                         )
+                        Spacer(Modifier.height(12.dp))
+                        if (uiState.isLoading && uiState.top50.isEmpty()) {
+                            SkeletonCarousel()
+                        } else {
+                            TopChartCarousel(
+                                tracks = uiState.top50,
+                                onTrackClick = { track -> onTrackClick(track, uiState.top50) },
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Каскадное появление секции: пружинный fade + подъём + микро-масштаб.
+ * Размер секции резервируется сразу, поэтому список не «прыгает».
+ */
+@Composable
+private fun RevealSection(
+    index: Int,
+    content: @Composable () -> Unit,
+) {
+    val progress = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        delay((index.coerceAtMost(8) * 55).toLong())
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = 0.84f,
+                stiffness = Spring.StiffnessLow,
+            ),
+        )
+    }
+
+    Box(
+        modifier = Modifier.graphicsLayer {
+            alpha = progress.value
+            translationY = (1f - progress.value) * 34.dp.toPx()
+            val scale = 0.97f + 0.03f * progress.value
+            scaleX = scale
+            scaleY = scale
+        },
+    ) {
+        content()
     }
 }
 
@@ -232,7 +302,7 @@ private fun GreetingHeader(
         FilledTonalIconButton(
             onClick = onRefresh,
             modifier = Modifier.size(44.dp),
-            shape = CircleShape,
+            shape = RoundedCornerShape(16.dp),
         ) {
             Icon(
                 imageVector = Icons.Filled.Refresh,
@@ -248,18 +318,38 @@ private fun SectionHeader(
     title: String,
     subtitle: String? = null,
 ) {
-    Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+    Row(
+        modifier = Modifier.padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(24.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.tertiary,
+                        ),
+                    ),
+                ),
         )
-        if (!subtitle.isNullOrBlank()) {
-            Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.width(12.dp))
+        Column {
             Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = title,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
             )
+            if (!subtitle.isNullOrBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -305,6 +395,7 @@ private fun TracksCarousel(
 
 /**
  * Карточка трека в горизонтальной карусели: обложка 148×148, скругление 20dp.
+ * При нажатии мягко сжимается и получает тонированную подсветку.
  */
 @Composable
 private fun TrackCarouselCard(
@@ -316,10 +407,38 @@ private fun TrackCarouselCard(
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.52f,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "carouselCardScale",
+    )
+    val pressedTint by animateColorAsState(
+        targetValue = if (pressed) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        else Color.Transparent,
+        animationSpec = tween(160),
+        label = "carouselCardTint",
+    )
+
     Column(
         modifier = Modifier
             .width(148.dp)
-            .clickable(onClick = onClick),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(
+                    bounded = true,
+                    color = MaterialTheme.colorScheme.primary,
+                ),
+                onClick = onClick,
+            ),
     ) {
         Surface(
             modifier = Modifier
@@ -329,33 +448,41 @@ private fun TrackCarouselCard(
             shape = RoundedCornerShape(20.dp),
             color = surfaceColor,
         ) {
-            if (!track.artworkUrl.isNullOrBlank()) {
-                val imageRequest = remember(track.artworkUrl) {
-                    ImageRequest.Builder(context)
-                        .data(track.artworkUrl)
-                        .crossfade(200)
-                        .build()
-                }
-                AsyncImage(
-                    model = imageRequest,
-                    contentDescription = track.title,
-                    contentScale = ContentScale.Crop,
-                    placeholder = placeholderPainter,
-                    error = notePainter,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painter = notePainter,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(40.dp),
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (!track.artworkUrl.isNullOrBlank()) {
+                    val imageRequest = remember(track.artworkUrl) {
+                        ImageRequest.Builder(context)
+                            .data(track.artworkUrl)
+                            .crossfade(200)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = imageRequest,
+                        contentDescription = track.title,
+                        contentScale = ContentScale.Crop,
+                        placeholder = placeholderPainter,
+                        error = notePainter,
+                        modifier = Modifier.fillMaxSize(),
                     )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            painter = notePainter,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(40.dp),
+                        )
+                    }
                 }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(pressedTint),
+                )
             }
         }
 
@@ -378,8 +505,8 @@ private fun TrackCarouselCard(
 }
 
 /**
- * Горизонтальная карусель Top 50 с крупными плакатными номерами позиций (1..50)
- * по дизайн-спеке Material 3 Expressive (Решение 1).
+ * Горизонтальная карусель Top 50 с крупными плакатными номерами позиций (1..50).
+ * Топ-3 получают акцентную тонированную подложку.
  */
 @Composable
 private fun TopChartCarousel(
@@ -400,17 +527,45 @@ private fun TopChartCarousel(
             key = { _, track -> track.id },
         ) { index, track ->
             val position = index + 1
+            val interactionSource = remember { MutableInteractionSource() }
+            val pressed by interactionSource.collectIsPressedAsState()
+            val scale by animateFloatAsState(
+                targetValue = if (pressed) 0.96f else 1f,
+                animationSpec = spring(
+                    dampingRatio = 0.52f,
+                    stiffness = Spring.StiffnessMedium,
+                ),
+                label = "chartCardScale",
+            )
+            val containerColor by animateColorAsState(
+                targetValue = when {
+                    pressed -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
+                    position <= 3 -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.30f)
+                    else -> MaterialTheme.colorScheme.surfaceContainerLow
+                },
+                animationSpec = tween(180),
+                label = "chartCardColor",
+            )
 
             Row(
                 modifier = Modifier
                     .width(220.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .clickable { onTrackClick(track) }
+                    .background(containerColor)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = ripple(
+                            bounded = true,
+                            color = MaterialTheme.colorScheme.primary,
+                        ),
+                    ) { onTrackClick(track) }
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Номер позиции в чарте
                 Box(
                     modifier = Modifier
                         .width(36.dp)
@@ -428,7 +583,6 @@ private fun TopChartCarousel(
                     )
                 }
 
-                // Обложка трека 64×64 dp
                 Surface(
                     modifier = Modifier
                         .size(64.dp)
@@ -468,7 +622,6 @@ private fun TopChartCarousel(
 
                 Spacer(Modifier.width(10.dp))
 
-                // Название и артист
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = track.title,

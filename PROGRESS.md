@@ -1,6 +1,6 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 16.10.2026
+## Последнее обновление: 19.10.2026
 
 ---
 
@@ -480,7 +480,53 @@ navigation/AppNavGraph.kt
 
 ---
 
-## 🔜 Следующий шаг — Фаза 4 («Моя волна» — бесконечный персональный поток)
+## ✅ Фаза 4 — Material 3 Expressive редизайн (19.10.2026)
+
+Примечание: в прежнем плане «Фаза 4» означала алгоритм «Моей волны». По решению пользователя эта фаза отведена под Expressive-редизайн интерфейса, а алгоритм волны перенесён в v1.1. Механика плеера (LRCLIB, Palette, морфинг кнопки) не затрагивалась.
+
+### Что сделано
+1. **ExpressiveNavigationBar** (`core/ui/components/ExpressiveNavigationBar.kt`):
+   - Плавающая нижняя панель `surfaceContainer` со скруглением 24dp, тенью и отступом 8dp над системной навигацией.
+   - Пружинная пилюля-индикатор активной вкладки (~56×32 dp, радиус 16dp) с анимацией смещения (`spring`, dampingRatio 0.78) через `BoxWithConstraints`.
+   - Анимация масштаба и цвета иконок активной вкладки, типографика 11sp, тактильный отклик `TextHandleMove`.
+2. **SearchScreen**:
+   - Крупная выразительная шапка «ПОИСК» (headlineLarge, ExtraBold).
+   - `ExpressiveSearchField`: морфинг при фокусе (цвет контейнера, скругление 28dp, тень 8dp), иконка очистки с пружинным появлением.
+   - Жанровые чипы-подсказки, состояния Idle / Loading (скелетоны) / Error / Empty / Results, reveal-анимация списка.
+   - Убран двойной системный inset (вложенный Scaffold с `contentWindowInsets = 0`).
+3. **WaveScreen** (промо-заглушка «скоро»):
+   - Живой Canvas-фон: три синусоиды, радиальный градиентный орб с частицами на орбитах, `rememberInfiniteTransition`.
+   - Бейдж «СКОРО» с градиентом, чипы настроений волны (горизонтальный `LazyRow`, в будущем — режимы), карточка-анонс.
+   - Полноэкранный reveal-переход через `AnimatedVisibility` (пружина + fade).
+4. **HomeScreen**:
+   - Удалён вложенный Scaffold — контент больше не получает двойные insets.
+   - Все секции обёрнуты в `RevealSection` (staggered-появление с задержкой 55 мс на секцию, пружина, с резервированием layout-размера).
+   - `SectionHeader` с градиентной акцентной полосой; expressивные заголовки секций.
+   - `TrackCarouselCard`: пружинный scale 0.95 при нажатии и тональный слой-подсветка.
+   - `TopChartCarousel`: анимированный цвет контейнера при нажатии, top-3 карточки в `primaryContainer`.
+5. **TrackCard** (общий компонент Search и Library):
+   - Поверхность 20dp с тональным откликом на нажатие (`collectIsPressedAsState` + `animateColorAsState`), пружинный scale 0.975.
+   - Обложка 56dp/12dp, длительность и жанр в подписи.
+6. **AppNavGraph**:
+   - Spring-переходы вкладок и плеера (fade + scale / spring slide вместо tween), обновлён вызов `WaveScreen()`.
+7. **Type.kt** — выразительная типографическая шкала:
+   - ExtraBold-заголовки с плотным трекингом (-0.5sp), Bold labelSmall (11sp), SemiBold labelLarge/titleMedium.
+8. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/ui/components/ExpressiveNavigationBar.kt (новый)
+app/src/main/java/com/my/music/core/ui/components/TrackCard.kt
+app/src/main/java/com/my/music/core/ui/theme/Type.kt
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+app/src/main/java/com/my/music/feature/search/SearchScreen.kt
+app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/my/music/navigation/AppNavGraph.kt
+```
+
+---
+
+## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать
 1. **Алгоритм рекомендаций Wave**:
@@ -488,10 +534,8 @@ navigation/AppNavGraph.kt
    - Автоматическая ротация запросов в SoundCloud через NewPipe для непрерывной генерации следующей порции треков.
 2. **WaveViewModel & PlayerController интеграция**:
    - Автоматическая дозагрузка треков в очередь плеера при приближении к концу списка (бесконечный поток).
-   - Поддержка настроек настроения/темпа волны (бодрая, спокойная, по любимым, по открытиям).
-3. **WaveScreen**:
-   - Живая интерактивная процедурная синусоида в `Canvas` по дизайн-спеке (анимированный визуализатор).
-   - Кнопка «Запустить волну» и переключатели режимов настроения.
+   - Поддержка настроений волны (бодрая, спокойная, по любимым, по открытиям) — чипы в `WaveScreen` уже подготовлены визуально.
+3. **WaveScreen**: подключить кнопку «Запустить волну» (сейчас промо-заглушка с Canvas-анимацией).
 4. Сборка, PROGRESS.md, MEMORY.md, коммит и пуш.
 
 
