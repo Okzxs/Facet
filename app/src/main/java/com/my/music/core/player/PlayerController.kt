@@ -6,14 +6,17 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Track
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.SoundCloudRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -162,8 +165,10 @@ class PlayerController @Inject constructor(
     /**
      * Переход к следующему треку.
      * [loop] — зацикливать ли в начало при достижении конца очереди.
+     * По умолчанию не зацикливаем: ручной Next при Repeat OFF не должен
+     * перескакивать с последнего трека на первый (зацикливание — только при ALL).
      */
-    fun playNext(loop: Boolean = true) {
+    fun playNext(loop: Boolean = false) {
         val queue = _state.value.queue
         if (queue.isEmpty()) return
 
@@ -326,9 +331,15 @@ class PlayerController @Inject constructor(
         exoPlayer.stop()
         exoPlayer.seekTo(0)
         resolveJob = scope.launch {
-            // Запись в историю воспроизведения Room
+            // Запись в историю воспроизведения Room: сбой БД не должен ломать воспроизведение
             if (recordHistory) {
-                playHistoryRepository.addToHistory(track)
+                try {
+                    playHistoryRepository.addToHistory(track)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(tag, "Не удалось записать трек в историю", e)
+                }
             }
 
             val streamResult: Result<AudioStreamResult> = when {
@@ -338,7 +349,7 @@ class PlayerController @Inject constructor(
                     soundCloudRepository.resolveStreamUrl(track.transcodingUrl)
                 else ->
                     Result.failure(IllegalStateException("Нет ссылки на поток для трека: ${track.id}"))
-            }
+            }.rethrowCancellation()
 
             streamResult
                 .onSuccess { result ->
@@ -446,6 +457,7 @@ class PlayerController @Inject constructor(
 
     fun release() {
         resolveJob?.cancel()
+        scope.cancel()
         exoPlayer.release()
     }
 }

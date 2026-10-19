@@ -31,7 +31,40 @@ data class PlayerDynamicColors(
     val isLoading: Boolean = false,
 )
 
-private val paletteCache = mutableMapOf<String, PlayerDynamicColors>()
+private const val MAX_CACHE_ENTRIES = 32
+
+/**
+ * LRU-кэш палитр: ограничен 32 обложками, чтобы длинная сессия
+ * не держала в памяти цвета всех когда-либо открытых треков.
+ * Доступ синхронизирован: запись идёт с IO-диспетчера, чтение — с main.
+ */
+private val paletteCache = object :
+    LinkedHashMap<String, PlayerDynamicColors>(MAX_CACHE_ENTRIES, 0.75f, true) {
+    override fun removeEldestEntry(
+        eldest: MutableMap.MutableEntry<String, PlayerDynamicColors>?,
+    ): Boolean = size > MAX_CACHE_ENTRIES
+}
+
+private val paletteLock = Any()
+
+@Volatile
+private var sharedImageLoader: ImageLoader? = null
+
+private fun cachedPalette(url: String): PlayerDynamicColors? =
+    synchronized(paletteLock) { paletteCache[url] }
+
+private fun putPalette(url: String, colors: PlayerDynamicColors) {
+    synchronized(paletteLock) { paletteCache[url] = colors }
+}
+
+/**
+ * Один ImageLoader на процесс: создание нового загрузчика на каждый трек
+ * плодило независимые дисковые и memory-кэши.
+ */
+private fun imageLoader(context: android.content.Context): ImageLoader =
+    sharedImageLoader ?: synchronized(paletteLock) {
+        sharedImageLoader ?: ImageLoader(context.applicationContext).also { sharedImageLoader = it }
+    }
 
 /**
  * Асинхронно извлекает палитру из обложки с кэшированием по URL.
@@ -70,12 +103,12 @@ fun rememberPlayerDynamicColors(
         return fallback
     }
 
-    paletteCache[artworkUrl]?.let { return it }
+    cachedPalette(artworkUrl)?.let { return it }
 
     var dynamicColors by remember(artworkUrl) { mutableStateOf(fallback.copy(isLoading = true)) }
 
     LaunchedEffect(artworkUrl) {
-        val cached = paletteCache[artworkUrl]
+        val cached = cachedPalette(artworkUrl)
         if (cached != null) {
             dynamicColors = cached
             return@LaunchedEffect
@@ -86,7 +119,7 @@ fun rememberPlayerDynamicColors(
 
         withContext(Dispatchers.IO) {
             try {
-                val loader = ImageLoader(context)
+                val loader = imageLoader(context)
                 val request = ImageRequest.Builder(context)
                     .data(artworkUrl)
                     .allowHardware(false)
@@ -144,7 +177,7 @@ fun rememberPlayerDynamicColors(
                                 surfaceContainerHigh = tintColor.copy(alpha = 0.15f),
                                 isLoading = false,
                             )
-                            paletteCache[artworkUrl] = colors
+                            putPalette(artworkUrl, colors)
                             withContext(Dispatchers.Main) {
                                 dynamicColors = colors
                             }

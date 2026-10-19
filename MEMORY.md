@@ -3,11 +3,12 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Фаза 4.16        | v1.1: «Моя волна» (алгоритм рекомендаций, бесконечный поток) |
+| MyMusic | активен  | Фаза 5 (тесты и QA) | v1.1: «Моя волна» (алгоритм рекомендаций, бесконечный поток) |
 
 ## Ожидающие задачи
 ### Высокий приоритет
 - [ ] v1.1: «Моя волна» (алгоритм рекомендаций на основе истории и лайков, автодозагрузка в очередь, кнопка запуска в WaveScreen)
+- [x] Фаза 5: 31 JVM-тест (LrcParser, очередь/repeat/shuffle, группировка жанров HomeViewModel, Room-лайки), lint без critical/error; QA-фиксы playNext, CancellationException, Palette LRU, ключей списков
 - [x] Фаза 4.16: Thumb едет по синусоиде волны; фиолетовая тема по умолчанию (dynamicCoverColors=false, MyMusicTheme.dynamicColor=false); шапка плеера — «СЕЙЧАС ИГРАЕТ» + артист крупно с glow
 - [x] Фаза 4.15: Гибрид — плавный Brush.linearGradient по всей строке (primary → onSurfaceVariant, кромка ±5%), animateFloatAsState 240 мс; фиксированные 18sp/26sp, активная только SemiBold + градиент, без scale
 - [x] Фаза 4.14: Убран graphicsLayer-масштаб (ломая FlowRow); активная строка 20sp SemiBold с белыми непропетыми словами, неактивные 18sp Normal onSurfaceVariant, contentPadding bottom 100dp, подпись вне списка
@@ -33,6 +34,11 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
+- [Фаза 5] Тесты — только JVM: JUnit 4 + Robolectric (SDK 33) + MockK + coroutines-test; эмулятор не используется
+- [Фаза 5] `PlayerController.playNext(loop = false)` по умолчанию: ручной Next при Repeat OFF не перескакивает с последнего трека на первый; зацикливание только у ALL/авто-перехода
+- [Фаза 5] `CancellationException` пробрасывается из всех `runCatching` через `core/util/ResultExt.kt`; отмена scope не превращается в ошибку воспроизведения или офлайн-кэш
+- [Фаза 5] `PlayerPalette`: синхронизированный LRU-кэш на 32 палитры + один общий `ImageLoader` на процесс
+- [Фаза 5] В `PlayerQueueSheet` key списка — `track.id`; в статических списках Wave/Home добавлены стабильные ключи
 - [Фаза 4.16] Бегунок волнового слайдера позиционируется по той же синусоиде, что и Path: thumbY = centerY − amp × sin(πu) × sin(угол); ореол использует ту же точку
 - [Фаза 4.16] Дефолт приложения — фиолетовая тема: AppSettings.dynamicCoverColors = false, prefs-дефолт false, MyMusicTheme.dynamicColor = false (системный Material You отключён); динамика обложки остаётся опцией плеера
 - [Фаза 4.16] Верхняя панель плеера: «СЕЙЧАС ИГРАЕТ» (labelSmall, alpha 0.6) + имя артиста (titleLarge Bold) с Shadow blurRadius 8f цветом primary alpha 0.55
@@ -95,10 +101,12 @@
 - Архитектура: MVVM + Clean Architecture (Data / Domain / Feature / Core)
 - UI: Jetpack Compose + токены Material 3 Expressive
 - Среда: слабый ноутбук без эмулятора и Android Studio, сборка через Gradle CLI
+- Тесты: JVM (JUnit 4 + Robolectric + MockK), запуск `.\gradlew test`, без эмулятора и androidTest
 - Версии: запрет на повышение AGP выше 8.5.2 и изменение версий библиотек
 - Язык: комментарии в коде, служебные файлы (MEMORY.md, PROGRESS.md) и документация — строго на русском языке
 
 ## Последние сессии
+- Фаза 5: Тестовая песочница и 31 JVM-тест (LRC, очередь, жанры, Room-лайки); QA-прочёс — playNext/repeat OFF, отмена корутин, Palette LRU, ключи списков; lint 0 errors
 - Фаза 4.16: Thumb по синусоиде волны, фиолетовая тема по умолчанию (динамика обложки off), шапка плеера с именем артиста и свечением
 - Фаза 4.15: Гибридное караоке — плавный градиент всей строки (Brush.linearGradient, primary → onSurfaceVariant) при фиксированных 18sp/26sp и активной SemiBold без scale
 - Фаза 4.14: Стандартный text layout — без graphicsLayer-масштаба, активная 20sp SemiBold (белые слова → primary по прогрессу), неактивные 18sp onSurfaceVariant, bottom padding 100dp

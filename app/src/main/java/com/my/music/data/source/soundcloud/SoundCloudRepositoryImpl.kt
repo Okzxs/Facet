@@ -1,6 +1,7 @@
 package com.my.music.data.source.soundcloud
 
 import android.util.Log
+import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
@@ -39,7 +40,7 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
                     .filterIsInstance<StreamInfoItem>()
                     .take(limit)
                     .map { it.toDomain() }
-            }
+            }.rethrowCancellation()
         }
 
     /**
@@ -63,11 +64,6 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
                     Log.e("NP_ERROR", "Ошибка при вызове StreamInfo.getInfo(): ${e.message}", e)
                     if (e.cause != null) {
                         Log.e("NP_ERROR", "Причина (cause): ${e.cause?.message}", e.cause)
-                    }
-                    if (e is StreamInfo) {
-                        e.errors.forEach { error ->
-                            Log.e("NP_ERROR", "StreamInfo error: ${error.javaClass.simpleName}: ${error.message}", error)
-                        }
                     }
                     e.suppressed.forEach { suppressed ->
                         Log.e("NP_SUPPRESSED", suppressed.message, suppressed)
@@ -124,7 +120,7 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
                 val newPipeError = streamInfo.errors.firstOrNull()
                 val cause = newPipeError?.message ?: "нет доступных аудио-потоков"
                 error("Не удалось получить поток для '$transcodingUrl': $cause")
-            }
+            }.rethrowCancellation()
         }
 
     // ─── Mapping ─────────────────────────────────────────────────────────────

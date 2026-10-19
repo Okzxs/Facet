@@ -7,6 +7,7 @@ import com.my.music.data.local.entity.toTrack
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import com.my.music.data.repository.SoundCloudChartsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -103,6 +104,8 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
 
             tracks
         }.recoverCatching { error ->
+            // Отмена корутины не должна превращаться в «офлайн-фолбэк»
+            if (error is CancellationException) throw error
             Log.w(tag, "[$chartType] Ошибка сетевого запроса к NewPipe: ${error.message}")
             // Если сеть отвалилась — фолбэк на старый кэш из Room (офлайн режим)
             val staleCache = chartCacheDao.getTracksByChartSync(chartType).map { it.toTrack() }

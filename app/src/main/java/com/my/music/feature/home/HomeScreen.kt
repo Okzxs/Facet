@@ -676,7 +676,10 @@ private fun SkeletonCarousel() {
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         userScrollEnabled = false,
     ) {
-        items(4) {
+        items(
+            count = 4,
+            key = { index -> "skeleton_$index" },
+        ) {
             Column(modifier = Modifier.width(148.dp)) {
                 Box(
                     modifier = Modifier

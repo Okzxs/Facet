@@ -1,0 +1,232 @@
+package com.my.music.core.player
+
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.my.music.data.model.AudioStreamResult
+import com.my.music.data.model.Source
+import com.my.music.data.model.Track
+import com.my.music.data.repository.PlayHistoryRepository
+import com.my.music.data.repository.SoundCloudRepository
+import com.my.music.testutil.MainDispatcherRule
+import io.mockk.Runs
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+
+class PlayerControllerQueueTest {
+
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
+
+    private lateinit var exoPlayer: ExoPlayer
+    private lateinit var soundCloudRepository: SoundCloudRepository
+    private lateinit var playHistoryRepository: PlayHistoryRepository
+    private lateinit var controller: PlayerController
+
+    private val listenerSlot = slot<Player.Listener>()
+
+    private val tracks = listOf(
+        track("one"),
+        track("two"),
+        track("three"),
+    )
+
+    @Before
+    fun setUp() {
+        exoPlayer = mockk(relaxed = true)
+        soundCloudRepository = mockk(relaxed = true)
+        playHistoryRepository = mockk(relaxed = true)
+
+        every { exoPlayer.addListener(capture(listenerSlot)) } just Runs
+        coEvery { playHistoryRepository.addToHistory(any()) } just Runs
+        coEvery { soundCloudRepository.resolveStreamUrl(any()) } returns
+            Result.failure<AudioStreamResult>(IllegalStateException("test"))
+
+        controller = PlayerController(exoPlayer, soundCloudRepository, playHistoryRepository)
+    }
+
+    @Test
+    fun `repeat off does not wrap on manual next at the end`() {
+        controller.setQueueAndPlay(tracks, tracks.lastIndex)
+
+        controller.playNext()
+
+        assertEquals(tracks.lastIndex, controller.state.value.currentIndex)
+        assertEquals(RepeatMode.OFF, controller.state.value.repeatMode)
+    }
+
+    @Test
+    fun `repeat all wraps manual next to the first track`() {
+        controller.toggleRepeat()
+        controller.setQueueAndPlay(tracks, tracks.lastIndex)
+
+        controller.playNext()
+
+        assertEquals(RepeatMode.ALL, controller.state.value.repeatMode)
+        assertEquals(0, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `repeat one advances on manual next and does not wrap at the end`() {
+        controller.toggleRepeat()
+        controller.toggleRepeat()
+        controller.setQueueAndPlay(tracks, 0)
+
+        controller.playNext()
+        assertEquals(1, controller.state.value.currentIndex)
+
+        controller.setQueueAndPlay(tracks, tracks.lastIndex)
+        controller.playNext()
+        assertEquals(tracks.lastIndex, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `repeat mode cycles off all one`() {
+        assertEquals(RepeatMode.OFF, controller.state.value.repeatMode)
+
+        controller.toggleRepeat()
+        assertEquals(RepeatMode.ALL, controller.state.value.repeatMode)
+
+        controller.toggleRepeat()
+        assertEquals(RepeatMode.ONE, controller.state.value.repeatMode)
+
+        controller.toggleRepeat()
+        assertEquals(RepeatMode.OFF, controller.state.value.repeatMode)
+    }
+
+    @Test
+    fun `previous goes back one track`() {
+        controller.setQueueAndPlay(tracks, 1)
+
+        controller.playPrevious()
+
+        assertEquals(0, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `previous at first track stays with repeat off`() {
+        controller.setQueueAndPlay(tracks, 0)
+
+        controller.playPrevious()
+
+        assertEquals(0, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `previous at first track wraps with repeat all`() {
+        controller.toggleRepeat()
+        controller.setQueueAndPlay(tracks, 0)
+
+        controller.playPrevious()
+
+        assertEquals(tracks.lastIndex, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `previous restarts current track after three seconds`() {
+        every { exoPlayer.currentPosition } returns 5_000L
+        controller.setQueueAndPlay(tracks, 1)
+
+        controller.playPrevious()
+
+        assertEquals(1, controller.state.value.currentIndex)
+        verify { exoPlayer.seekTo(0L) }
+    }
+
+    @Test
+    fun `shuffle keeps current track first and restores original order`() {
+        controller.setQueueAndPlay(tracks, 2)
+
+        controller.toggleShuffle()
+
+        assertTrue(controller.state.value.isShuffle)
+        assertEquals(tracks.size, controller.state.value.queue.size)
+        assertEquals(tracks[2].id, controller.state.value.queue.first().id)
+        assertEquals(tracks.map { it.id }.toSet(), controller.state.value.queue.map { it.id }.toSet())
+
+        controller.toggleShuffle()
+
+        assertFalse(controller.state.value.isShuffle)
+        assertEquals(tracks.map { it.id }, controller.state.value.queue.map { it.id })
+        assertEquals(2, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `shuffle enabled before queue start still restores original order`() {
+        controller.toggleShuffle()
+
+        controller.setQueueAndPlay(tracks, 2)
+
+        assertEquals(tracks[2].id, controller.state.value.queue.first().id)
+
+        controller.toggleShuffle()
+
+        assertEquals(tracks.map { it.id }, controller.state.value.queue.map { it.id })
+        assertEquals(2, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `track ended with repeat one replays current track`() {
+        controller.toggleRepeat()
+        controller.toggleRepeat()
+        controller.setQueueAndPlay(tracks, 1)
+
+        listenerSlot.captured.onPlaybackStateChanged(Player.STATE_ENDED)
+
+        assertEquals(1, controller.state.value.currentIndex)
+        // seekTo(0) вызывается и при подготовке трека, поэтому проверяем хотя бы один вызов
+        verify { exoPlayer.seekTo(0L) }
+        verify(exactly = 1) { exoPlayer.play() }
+    }
+
+    @Test
+    fun `track ended with repeat all wraps to first track`() {
+        controller.toggleRepeat()
+        controller.setQueueAndPlay(tracks, tracks.lastIndex)
+
+        listenerSlot.captured.onPlaybackStateChanged(Player.STATE_ENDED)
+
+        assertEquals(0, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `track ended with repeat off stops at the end of queue`() {
+        controller.setQueueAndPlay(tracks, tracks.lastIndex)
+
+        listenerSlot.captured.onPlaybackStateChanged(Player.STATE_ENDED)
+
+        assertEquals(tracks.lastIndex, controller.state.value.currentIndex)
+        assertFalse(controller.state.value.isPlaying)
+        verify(exactly = 0) { exoPlayer.play() }
+    }
+
+    @Test
+    fun `track ended with repeat off advances when next exists`() {
+        controller.setQueueAndPlay(tracks, 0)
+
+        listenerSlot.captured.onPlaybackStateChanged(Player.STATE_ENDED)
+
+        assertEquals(1, controller.state.value.currentIndex)
+    }
+
+    private fun track(id: String) = Track(
+        id = id,
+        source = Source.SOUNDCLOUD,
+        title = "Title $id",
+        artist = "Artist",
+        artworkUrl = null,
+        streamUrl = null,
+        durationMs = 60_000L,
+        genre = null,
+        transcodingUrl = "https://soundcloud.com/test/$id",
+    )
+}

@@ -952,6 +952,54 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 5 — Тесты и QA-прочёс (20.10.2026)
+
+### Что сделано
+1. **Тестовая песочница (JVM, без эмулятора)**:
+   - В `app/build.gradle.kts` добавлены `junit:4.13.2`, `robolectric:4.14.1`, `kotlinx-coroutines-test:1.9.0`, `androidx.arch.core:core-testing:2.2.0`, `io.mockk:mockk:1.13.13`, `androidx.test:core-ktx:1.6.1`, `androidx.room:room-testing:2.6.1`.
+   - Включены `testOptions.unitTests.isIncludeAndroidResources = true` и `isReturnDefaultValues = true`.
+2. **Написаны 31 JVM-тест**:
+   - `LrcParserTest` (10): `[mm:ss.xx]`, `[mm:ss.x]`, `[mm:ss.xxx]`, несколько меток в строке, `[offset:+ms]`/`[offset:-ms]` с клампом в 0, караоке-теги `<mm:ss.xx>`, сортировка, фолбэк на несинхронный текст, CRLF, пустые/метаданные-only входы.
+   - `PlayerControllerQueueTest` (14): `playNext` и `playPrevious` для Repeat OFF/ALL/ONE, авто-окончание трека через `Player.Listener`, цикл переключения режима, возврат в начало после 3 секунд, shuffle сохраняет текущий трек первым и восстанавливает исходный порядок при выключении.
+   - `HomeViewModelGenreTest` (4): группировка «Твои жанры» из истории и лайков, дедупликация по `id`, trim жанра, отбрасывание пустых жанров, сортировка по размеру, лимит 20 недавних, реактивность чартов. Отдельного `CollectionsViewModel` в проекте нет — логика живёт в `HomeViewModel`.
+   - `LikedTracksRepositoryTest` (3, Robolectric + Room `inMemoryDatabaseBuilder`): добавление/удаление, `toggleLike`, реактивный Flow (пусто → лайк → снятие), сортировка `likedAt DESC`.
+3. **QA-фиксы**:
+   - `PlayerController.playNext()` по умолчанию больше не зацикливает очередь: ручной Next при Repeat OFF на последнем треке остаётся на месте; зацикливание — только у ALL/авто-перехода.
+   - `PlayerController.release()` отменяет внутренний `CoroutineScope`; запись в историю обёрнута в try/catch (сбой Room не ломает воспроизведение).
+   - `runCatching` больше не глотает `CancellationException`: добавлен `core/util/ResultExt.kt`, применён в SoundCloud-репозиториях, чартах, LRCLIB и `HomeViewModel`.
+   - `PlayerPalette`: кэш палитр стал потокобезопасным LRU на 32 записи (раньше — неограниченный `mutableMapOf` с гонками main/IO), `ImageLoader` создаётся один раз на процесс вместо нового на каждый трек.
+   - `PlayerQueueSheet`: key списка теперь по `track.id`, а не по индексу — состояние не «переезжает» при удалении.
+   - Добавлены стабильные ключи в статические списки Wave и скелетонов Home.
+   - Удалена мёртвая ветка `e is StreamInfo` в логе `resolveStreamUrl`.
+4. **Проверки**:
+   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+   - `.\gradlew test` — `BUILD SUCCESSFUL`, 31/31 тестов в debug и release, 0 failures, 0 errors.
+   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 critical/error, 20 warning (предложения обновить версии, exported MediaSessionService, non-lambda offset, отсутствие иконки приложения). Версии по правилам проекта не менялись.
+
+### Файлы
+```
+app/build.gradle.kts
+app/src/test/java/com/my/music/testutil/MainDispatcherRule.kt (новый)
+app/src/test/java/com/my/music/data/source/lyrics/LrcParserTest.kt (новый)
+app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt (новый)
+app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt (новый)
+app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt (новый)
+app/src/main/java/com/my/music/core/util/ResultExt.kt (новый)
+app/src/main/java/com/my/music/core/player/PlayerController.kt
+app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
+app/src/main/java/com/my/music/data/source/lyrics/LyricsRepositoryImpl.kt
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/my/music/core/ui/theme/PlayerPalette.kt
+app/src/main/java/com/my/music/core/ui/components/PlayerQueueSheet.kt
+app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
 
 ### Что нужно сделать

@@ -1,8 +1,10 @@
 package com.my.music.data.source.lyrics
 
 import android.util.Log
+import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.LyricsResult
 import com.my.music.data.repository.LyricsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Response
@@ -61,7 +63,7 @@ class LyricsRepositoryImpl @Inject constructor(
 
             Log.w(tag, "No lyrics found for $title by $artist")
             error("Текст для '$title' не найден")
-        }
+        }.rethrowCancellation()
     }
 
     private suspend fun tryGetLyrics(
@@ -71,6 +73,8 @@ class LyricsRepositoryImpl @Inject constructor(
     ): LyricsResult? {
         val response: Response<LrclibResponse> = try {
             lrclibApi.getLyrics(trackName = trackName, artistName = artistName, durationSec = durationSec)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Ошибка сети при getLyrics: ${e.message}")
             return null
@@ -104,6 +108,8 @@ class LyricsRepositoryImpl @Inject constructor(
     ): LyricsResult? {
         val response: Response<List<LrclibResponse>> = try {
             lrclibApi.searchLyrics(trackName = trackName, artistName = artistName, query = query)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "Ошибка сети при searchLyrics: ${e.message}")
             return null

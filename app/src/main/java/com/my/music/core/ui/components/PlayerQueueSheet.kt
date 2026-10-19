@@ -182,7 +182,9 @@ fun PlayerQueueSheet(
                 ) {
                     itemsIndexed(
                         items = queue,
-                        key = { index, track -> "${track.id}_$index" },
+                        // Стабильный ключ по треку: при удалении элемента его состояние
+                        // не «переезжает» на соседний, как было с ключом по индексу
+                        key = { _, track -> track.id },
                     ) { index, track ->
                         val isPlaying = index == currentIndex
                         QueueTrackItem(

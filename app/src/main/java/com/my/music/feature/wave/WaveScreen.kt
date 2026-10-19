@@ -388,7 +388,10 @@ private fun MoodPreview() {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            itemsIndexed(waveMoods) { index, mood ->
+            itemsIndexed(
+                items = waveMoods,
+                key = { _, mood -> mood },
+            ) { index, mood ->
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
