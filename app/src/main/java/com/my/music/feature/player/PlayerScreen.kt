@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
@@ -605,7 +606,6 @@ private fun ExpressiveHeroZone(
                     isLoading = isLyricsLoading,
                     error = lyricsError,
                     highlightColor = palette.primary,
-                    glassColor = palette.surfaceContainerHigh,
                     notePainter = notePainter,
                     placeholderPainter = placeholderPainter,
                     currentPositionMs = currentPositionMs,
@@ -800,8 +800,8 @@ private fun LikeSquircle(
 }
 
 /**
- * Стеклянный экран текстов поверх «утопленной» размытой обложки:
- * компактная шапка-витрина + полупрозрачная панель со строками.
+ * Чистый экран текстов поверх «утопленной» размытой обложки:
+ * без стеклянных панелей — только парящая шапка трека и строки, растворяющиеся в фоне.
  */
 @Composable
 private fun LyricsForeground(
@@ -812,94 +812,112 @@ private fun LyricsForeground(
     isLoading: Boolean,
     error: String?,
     highlightColor: Color,
-    glassColor: Color,
     notePainter: Painter,
     placeholderPainter: Painter,
     currentPositionMs: () -> Long,
     onSeekToLine: (Long) -> Unit,
     onRetry: () -> Unit,
 ) {
-    val miniShape = RoundedCornerShape(16.dp)
+    val miniShape = RoundedCornerShape(13.dp)
+    val fadeColor = MaterialTheme.colorScheme.surface
+    val onSurface = MaterialTheme.colorScheme.onSurface
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 24.dp),
     ) {
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // Шапка-витрина: миниатюра + название/артист на матовом стекле
-        Surface(
+        // Парящая шапка: миниатюра и подпись без подложки
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp, bottomEnd = 30.dp, bottomStart = 10.dp),
-            // Плотнее стекло — выше контраст текста на размытом фоне
-            color = glassColor.copy(alpha = 0.82f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    modifier = Modifier.size(52.dp),
-                    shape = miniShape,
-                    color = glassColor,
-                ) {
-                    ArtworkImage(
-                        artworkUrl = artworkUrl,
-                        shape = miniShape,
-                        notePainter = notePainter,
-                        placeholderPainter = placeholderPainter,
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = artist,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        // Полупрозрачная панель строк — продолжение матового стекла
-        Surface(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(30.dp),
-            color = glassColor.copy(alpha = 0.72f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .size(42.dp)
+                    .clip(miniShape),
             ) {
-                LyricsListView(
-                    lyricsResult = lyricsResult,
-                    isLoading = isLoading,
-                    error = error,
-                    highlightColor = highlightColor,
-                    currentPositionMs = currentPositionMs,
-                    onSeekToLine = onSeekToLine,
-                    onRetry = onRetry,
+                ArtworkImage(
+                    artworkUrl = artworkUrl,
+                    shape = miniShape,
+                    notePainter = notePainter,
+                    placeholderPainter = placeholderPainter,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = onSurface.copy(alpha = 0.88f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = onSurface.copy(alpha = 0.44f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
 
-        // Воздух до острова управления, чтобы строки не налезали на язычок и волну
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(6.dp))
+
+        // Строки скользят под мягкими градиентными масками, не упираясь в контролы
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            LyricsListView(
+                lyricsResult = lyricsResult,
+                isLoading = isLoading,
+                error = error,
+                highlightColor = highlightColor,
+                currentPositionMs = currentPositionMs,
+                onSeekToLine = onSeekToLine,
+                onRetry = onRetry,
+            )
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                fadeColor.copy(alpha = 0.92f),
+                                fadeColor.copy(alpha = 0.45f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(124.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                fadeColor.copy(alpha = 0.55f),
+                                fadeColor.copy(alpha = 0.96f),
+                            ),
+                        ),
+                    ),
+            )
+        }
+
+        // Воздух до острова управления: тексты не налезают на язычок и волну
+        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -944,10 +962,10 @@ private fun ArtworkImage(
 }
 
 /**
- * Изолированный список строк текста:
- * - активная строка — 20sp SemiBold, слова по прогрессу окрашиваются в акцент;
- * - неактивные строки — 18sp Normal, читаемый onSurfaceVariant;
- * - стандартный text layout: FlowRow сам переносит длинные строки;
+ * Список строк текста без панелей и подложек:
+ * - крупная базовая строка, активная выделяется масштабом, весом и свечением;
+ * - дальние строки приглушаются и мягко размываются;
+ * - сверху и снизу строки растворяются в градиентных масках;
  * - автоцентрирование активной строки по вертикали (как в Apple Music);
  * - тап = перемотка.
  */
@@ -969,7 +987,7 @@ private fun LyricsListView(
     // Высота видимой области — для центрирующего сдвига автоскролла
     val density = LocalDensity.current
     var viewportHeightPx by remember { mutableIntStateOf(0) }
-    val halfLinePx = with(density) { 18.dp.roundToPx() }
+    val halfLinePx = with(density) { 22.dp.roundToPx() }
 
     // Опрос позиции: индекс активной строки и прогресс внутри неё
     LaunchedEffect(lyricsResult) {
@@ -1036,42 +1054,40 @@ private fun LyricsListView(
             }
 
             lyricsResult != null && lyricsResult.lines.isNotEmpty() -> {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .onSizeChanged { viewportHeightPx = it.height },
-                        // Отступы: сверху — воздух до шапки, снизу — место под подпись и панель
-                        contentPadding = PaddingValues(top = 50.dp, bottom = 100.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        itemsIndexed(
-                            items = lyricsResult.lines,
-                            key = { index, line -> "$index-${line.timeMs}" },
-                        ) { index, line ->
-                            LyricLineItem(
-                                text = line.text.ifBlank { "♪" },
-                                isSynced = lyricsResult.isSynced,
-                                isActive = lyricsResult.isSynced && index == activeIndex,
-                                lineProgress = { activeProgress },
-                                highlightColor = highlightColor,
-                                onClick = if (lyricsResult.isSynced && line.timeMs >= 0) {
-                                    { onSeekToLine(line.timeMs) }
-                                } else {
-                                    null
-                                },
-                            )
-                        }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onSizeChanged { viewportHeightPx = it.height },
+                    // Воздух до шапки и до нижней градиентной маски над контролами
+                    contentPadding = PaddingValues(
+                        top = if (lyricsResult.isSynced) 64.dp else 28.dp,
+                        bottom = 136.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    itemsIndexed(
+                        items = lyricsResult.lines,
+                        key = { index, line -> "$index-${line.timeMs}" },
+                    ) { index, line ->
+                        LyricLineItem(
+                            text = line.text.ifBlank { "♪" },
+                            isSynced = lyricsResult.isSynced,
+                            isActive = lyricsResult.isSynced && index == activeIndex,
+                            indexDistance = if (lyricsResult.isSynced && activeIndex >= 0) {
+                                kotlin.math.abs(index - activeIndex)
+                            } else {
+                                0
+                            },
+                            lineProgress = { activeProgress },
+                            highlightColor = highlightColor,
+                            onClick = if (lyricsResult.isSynced && line.timeMs >= 0) {
+                                { onSeekToLine(line.timeMs) }
+                            } else {
+                                null
+                            },
+                        )
                     }
-
-                    Text(
-                        text = if (lyricsResult.isSynced) "Синхронный текст · LRCLIB" else "Текст песни · LRCLIB",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
-                    )
                 }
             }
 
@@ -1098,10 +1114,11 @@ private fun LyricsListView(
 }
 
 /**
- * Одна строка текста в стиле Material 3:
- * - у всех строк одинаковые 18sp / lineHeight 26sp — лейаут стабилен, без скачков;
- * - активная строка выделяется SemiBold и плавной градиентной заливкой слева направо;
- * - пропетая часть — primary, непропетая — onSurfaceVariant, между ними мягкая кромка;
+ * Одна строка текста в стиле Material 3 Expressive:
+ * - физический размер шрифта одинаков у всех строк — никаких скачков лейаута;
+ * - активная строка «вырастает» через graphicsLayer, получает Bold и мягкое свечение;
+ * - пропетая часть — primary, непропетая — onSurface, между ними плавная кромка;
+ * - неактивные строки приглушены, а далёкие — ещё и размыты;
  * - прогресс читает только активная строка, остальные не перерисовываются на опросе.
  */
 @Composable
@@ -1109,11 +1126,12 @@ private fun LyricLineItem(
     text: String,
     isSynced: Boolean,
     isActive: Boolean,
+    indexDistance: Int,
     lineProgress: () -> Float,
     highlightColor: Color,
     onClick: (() -> Unit)?,
 ) {
-    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val onSurface = MaterialTheme.colorScheme.onSurface
 
     // Прогресс читает только активная строка — остальные не подписаны на опрос плеера
     val fillTarget = if (isActive && isSynced) lineProgress().coerceIn(0f, 1f) else 0f
@@ -1123,12 +1141,37 @@ private fun LyricLineItem(
         label = "lyricFill",
     )
 
+    // Активная строка мягко увеличивается, не меняя физический размер и высоту строки
+    val activeScale by animateFloatAsState(
+        targetValue = if (isActive) 1.08f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+        label = "lyricScale",
+    )
+
+    val lineAlpha by animateFloatAsState(
+        targetValue = when {
+            !isSynced -> 0.82f
+            isActive -> 1f
+            else -> 0.36f
+        },
+        animationSpec = tween(durationMillis = 320),
+        label = "lyricAlpha",
+    )
+
+    // Дальние строки растворяются: мягкий blur только на API 31+, иначе остаётся прозрачность
+    val blurRadius = when {
+        !isSynced || indexDistance <= 2 -> 0.dp
+        indexDistance == 3 -> 1.5.dp
+        indexDistance == 4 -> 2.5.dp
+        else -> 3.5.dp
+    }
+
     // Кисть обновляется вместе с анимацией заливки; span — по границам самой строки
-    val lyricsBrush = remember(fill, highlightColor, inactiveColor) {
+    val lyricsBrush = remember(fill, highlightColor, onSurface) {
         buildLyricsBrush(
             fillFraction = fill,
             sungColor = highlightColor,
-            unsungColor = inactiveColor,
+            unsungColor = onSurface,
         )
     }
 
@@ -1141,20 +1184,42 @@ private fun LyricLineItem(
                 indication = null,
                 onClick = { onClick?.invoke() },
             )
-            .padding(vertical = 4.dp),
+            .padding(vertical = 6.dp),
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 18.sp,
-                lineHeight = 26.sp,
-                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = 24.sp,
+                lineHeight = 34.sp,
+                letterSpacing = (-0.2).sp,
+                fontWeight = when {
+                    isActive -> FontWeight.Bold
+                    isSynced -> FontWeight.Medium
+                    else -> FontWeight.Normal
+                },
                 brush = if (isActive && isSynced) lyricsBrush else null,
+                shadow = if (isActive && isSynced) {
+                    Shadow(
+                        color = highlightColor.copy(alpha = 0.55f),
+                        blurRadius = 18f,
+                    )
+                } else {
+                    null
+                },
             ),
-            color = if (isActive && isSynced) Color.Unspecified else inactiveColor,
+            color = if (isActive && isSynced) Color.Unspecified else onSurface,
             // Без жёстких ограничений: длинные строки свободно переносятся
             softWrap = true,
             maxLines = Int.MAX_VALUE,
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    alpha = lineAlpha
+                    scaleX = activeScale
+                    scaleY = activeScale
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                }
+                .blur(blurRadius),
         )
     }
 }
