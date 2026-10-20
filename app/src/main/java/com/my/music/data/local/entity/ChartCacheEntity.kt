@@ -5,7 +5,7 @@ import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 
 /**
- * Сущность кэша чартов SoundCloud ("New & hot", "Top 50") в Room.
+ * Сущность кэша чартов SoundCloud ("New & hot", "Top 10") в Room.
  */
 @Entity(
     tableName = "chart_cache",

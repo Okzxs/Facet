@@ -14,6 +14,12 @@ interface LikedTracksRepository {
     fun getLikedTracks(): Flow<List<Track>>
 
     /**
+     * Поток лайков, сохранённых в указанном сезоне (Winter / Spring / Summer / Autumn).
+     * Основа секции «Воспоминания».
+     */
+    fun getLikedTracksBySeason(season: String): Flow<List<Track>>
+
+    /**
      * Наблюдение за статусом лайка конкретного трека.
      */
     fun isLiked(trackId: String): Flow<Boolean>
@@ -21,7 +27,12 @@ interface LikedTracksRepository {
     /**
      * Добавить трек в избранное.
      */
-    suspend fun likeTrack(track: Track)
+    suspend fun likeTrack(
+        track: Track,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        season: String? = null,
+    )
 
     /**
      * Удалить трек из избранного.
@@ -30,7 +41,13 @@ interface LikedTracksRepository {
 
     /**
      * Переключить состояние лайка трека.
+     * Геопозиция и сезон сохраняются только при постановке лайка.
      * Возвращает новое состояние (true — лайкнут, false — снят лайк).
      */
-    suspend fun toggleLike(track: Track): Boolean
+    suspend fun toggleLike(
+        track: Track,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        season: String? = null,
+    ): Boolean
 }

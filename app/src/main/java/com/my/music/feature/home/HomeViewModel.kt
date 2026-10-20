@@ -3,6 +3,7 @@ package com.my.music.feature.home
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.my.music.core.util.SeasonProvider
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
@@ -30,6 +31,7 @@ data class HomeUiState(
     val top50: List<Track> = emptyList(),
     val recentTracks: List<Track> = emptyList(),
     val likedTracks: List<Track> = emptyList(),
+    val memories: List<Track> = emptyList(),
     val genreSections: List<GenreSection> = emptyList(),
     val error: String? = null,
 )
@@ -53,9 +55,10 @@ class HomeViewModel @Inject constructor(
 
     /**
      * Непрерывное наблюдение за локальными данными Room:
-     * - Кэш чартов (New & hot, Top 50)
+     * - Кэш чартов (New & hot, Top 10)
      * - Недавние треки (Play history)
      * - Лайкнутые треки (Liked tracks)
+     * - Воспоминания (лайки текущего сезона)
      * - Динамические жанровые подборки
      */
     private fun observeLocalData() {
@@ -70,6 +73,14 @@ class HomeViewModel @Inject constructor(
             chartsRepository.observeTop50().collect { tracks ->
                 _uiState.update { it.copy(top50 = tracks) }
             }
+        }
+
+        // «Воспоминания»: лайки, поставленные в текущем сезоне
+        viewModelScope.launch {
+            likedTracksRepository.getLikedTracksBySeason(SeasonProvider.currentSeason())
+                .collect { tracks ->
+                    _uiState.update { it.copy(memories = tracks) }
+                }
         }
 
         // Наблюдение за личными данными (история и лайки) и группировка по жанрам

@@ -27,26 +27,54 @@ class LikedTracksRepositoryImpl @Inject constructor(
             .flowOn(Dispatchers.IO)
     }
 
+    override fun getLikedTracksBySeason(season: String): Flow<List<Track>> {
+        return likedTracksDao.getLikedTracksBySeason(season)
+            .map { list -> list.map { it.toTrack() } }
+            .flowOn(Dispatchers.IO)
+    }
+
     override fun isLiked(trackId: String): Flow<Boolean> {
         return likedTracksDao.isLiked(trackId)
             .flowOn(Dispatchers.IO)
     }
 
-    override suspend fun likeTrack(track: Track) = withContext(Dispatchers.IO) {
-        likedTracksDao.insertLikedTrack(track.toLikedEntity())
+    override suspend fun likeTrack(
+        track: Track,
+        latitude: Double?,
+        longitude: Double?,
+        season: String?,
+    ) = withContext(Dispatchers.IO) {
+        likedTracksDao.insertLikedTrack(
+            track.toLikedEntity(
+                latitude = latitude,
+                longitude = longitude,
+                season = season,
+            ),
+        )
     }
 
     override suspend fun unlikeTrack(trackId: String) = withContext(Dispatchers.IO) {
         likedTracksDao.deleteLikedTrack(trackId)
     }
 
-    override suspend fun toggleLike(track: Track): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun toggleLike(
+        track: Track,
+        latitude: Double?,
+        longitude: Double?,
+        season: String?,
+    ): Boolean = withContext(Dispatchers.IO) {
         val existing = likedTracksDao.getLikedTrack(track.id)
         if (existing != null) {
             likedTracksDao.deleteLikedTrack(track.id)
             false
         } else {
-            likedTracksDao.insertLikedTrack(track.toLikedEntity())
+            likedTracksDao.insertLikedTrack(
+                track.toLikedEntity(
+                    latitude = latitude,
+                    longitude = longitude,
+                    season = season,
+                ),
+            )
             true
         }
     }

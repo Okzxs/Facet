@@ -29,6 +29,7 @@ class HomeViewModelGenreTest {
     private val top50Flow = MutableStateFlow<List<Track>>(emptyList())
     private val historyFlow = MutableStateFlow<List<Track>>(emptyList())
     private val likedFlow = MutableStateFlow<List<Track>>(emptyList())
+    private val memoriesFlow = MutableStateFlow<List<Track>>(emptyList())
 
     private lateinit var viewModel: HomeViewModel
 
@@ -43,6 +44,7 @@ class HomeViewModelGenreTest {
         coEvery { chartsRepository.getNewAndHot(any()) } returns Result.success(emptyList())
         coEvery { chartsRepository.getTop50(any()) } returns Result.success(emptyList())
         every { likedTracksRepository.getLikedTracks() } returns likedFlow
+        every { likedTracksRepository.getLikedTracksBySeason(any()) } returns memoriesFlow
         every { playHistoryRepository.getPlayHistory() } returns historyFlow
 
         viewModel = HomeViewModel(chartsRepository, likedTracksRepository, playHistoryRepository)
@@ -96,6 +98,15 @@ class HomeViewModelGenreTest {
         assertEquals("h1", state.recentTracks.first().id)
         assertEquals("h20", state.recentTracks.last().id)
         assertEquals(20, state.genreSections.single().tracks.size)
+    }
+
+    @Test
+    fun `memories reflect likes of the current season`() {
+        memoriesFlow.value = listOf(track("m1", "Rock"))
+
+        val state = viewModel.uiState.value
+
+        assertEquals(listOf("m1"), state.memories.map { it.id })
     }
 
     @Test

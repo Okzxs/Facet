@@ -82,6 +82,29 @@ class LikedTracksRepositoryTest {
     }
 
     @Test
+    fun `like stores coordinates and season for memories`() = runBlocking {
+        assertTrue(
+            repository.toggleLike(
+                track = sampleTrack,
+                latitude = 55.7558,
+                longitude = 37.6173,
+                season = "Autumn",
+            ),
+        )
+
+        val entity = database.likedTracksDao().getLikedTrack(sampleTrack.id)
+        assertEquals(55.7558, entity?.latitude ?: 0.0, 0.0001)
+        assertEquals(37.6173, entity?.longitude ?: 0.0, 0.0001)
+        assertEquals("Autumn", entity?.season)
+
+        assertEquals(
+            listOf(sampleTrack.id),
+            repository.getLikedTracksBySeason("Autumn").first().map { it.id },
+        )
+        assertTrue(repository.getLikedTracksBySeason("Winter").first().isEmpty())
+    }
+
+    @Test
     fun `liked tracks are ordered by likedAt descending`() = runBlocking {
         val older = track("old").toLikedEntity(likedAt = 1_000L)
         val newer = track("new").toLikedEntity(likedAt = 2_000L)

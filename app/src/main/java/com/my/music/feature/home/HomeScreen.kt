@@ -133,9 +133,27 @@ fun HomeScreen(
                 }
             }
 
+            if (uiState.memories.isNotEmpty()) {
+                item(key = "section_memories") {
+                    RevealSection(index = 2) {
+                        Column {
+                            SectionHeader(
+                                title = "Воспоминания",
+                                subtitle = "Треки, которые вы лайкнули в этом сезоне",
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            TracksCarousel(
+                                tracks = uiState.memories,
+                                onTrackClick = { track -> onTrackClick(track, uiState.memories) },
+                            )
+                        }
+                    }
+                }
+            }
+
             if (uiState.recentTracks.isNotEmpty()) {
                 item(key = "section_recent") {
-                    RevealSection(index = 2) {
+                    RevealSection(index = 3) {
                         Column {
                             SectionHeader(
                                 title = "Недавние",
@@ -153,7 +171,7 @@ fun HomeScreen(
 
             if (uiState.likedTracks.isNotEmpty()) {
                 item(key = "section_liked") {
-                    RevealSection(index = 3) {
+                    RevealSection(index = 4) {
                         Column {
                             SectionHeader(
                                 title = "Любимые треки",
@@ -171,7 +189,7 @@ fun HomeScreen(
 
             uiState.genreSections.take(3).forEachIndexed { index, genreSection ->
                 item(key = "genre_${genreSection.genre}") {
-                    RevealSection(index = 4 + index) {
+                    RevealSection(index = 5 + index) {
                         Column {
                             SectionHeader(
                                 title = genreSection.genre,
@@ -188,7 +206,7 @@ fun HomeScreen(
             }
 
             item(key = "section_new_and_hot") {
-                RevealSection(index = 7) {
+                RevealSection(index = 8) {
                     Column {
                         SectionHeader(
                             title = "New & Hot",
@@ -207,11 +225,11 @@ fun HomeScreen(
                 }
             }
 
-            item(key = "section_top_50") {
-                RevealSection(index = 8) {
+            item(key = "section_top_10") {
+                RevealSection(index = 9) {
                     Column {
                         SectionHeader(
-                            title = "Top 50 SoundCloud",
+                            title = "Top 10 SoundCloud",
                             subtitle = "Самые прослушиваемые треки сейчас",
                         )
                         Spacer(Modifier.height(12.dp))
@@ -528,7 +546,7 @@ private fun TrackCarouselCard(
 }
 
 /**
- * Горизонтальная карусель Top 50 с крупными плакатными номерами позиций (1..50).
+ * Горизонтальная карусель Top 10 с крупными плакатными номерами позиций (1..10).
  * Топ-3 получают акцентную тонированную подложку.
  */
 @Composable

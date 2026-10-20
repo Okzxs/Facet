@@ -1000,16 +1000,69 @@ MEMORY.md
 
 ---
 
-## 🔜 Следующий шаг — v1.1 «Моя волна» (алгоритм персонального потока)
+## ✅ Фаза 6 — Воспоминания, Моя волна и Top 10 (20.10.2026)
+
+### Что сделано
+1. **База данных и «Воспоминания»**:
+   - `LikedTrackEntity` дополнена полями `latitude: Double?`, `longitude: Double?`, `season: String?`; маппер `Track.toLikedEntity()` принимает эти значения (по умолчанию null).
+   - `AppDatabase` обновлена до версии **4**; миграции не пишутся — в `DatabaseModule` уже включён `fallbackToDestructiveMigration()`.
+   - `LikedTracksDao.getLikedTracksBySeason(season)` + `LikedTracksRepository.getLikedTracksBySeason()` — реактивный поток лайков текущего сезона.
+   - `SeasonProvider` (core/util): Winter (дек–фев), Spring (мар–май), Summer (июн–авг), Autumn (сен–ноя); сезон хранится строкой.
+   - `LocationProvider` + `FusedLocationProvider`: `FusedLocationProviderClient.getLastLocation()` с таймаутом 4 с, проверкой `ACCESS_FINE/COARSE_LOCATION`, безопасным фолбэком в null (нет разрешения/ошибка/таймаут). Добавлена зависимость `play-services-location:21.3.0` и разрешения в манифест.
+   - `PlayerViewModel.toggleLike()`: при постановке лайка запрашивает последнюю геопозицию и текущий сезон и сохраняет их в Room; при снятии лайка метаданные не нужны. Сбой геолокации не блокирует лайк.
+   - `HomeViewModel` наблюдает `getLikedTracksBySeason(текущий сезон)` и отдаёт `memories`; `HomeScreen` показывает карусель «Воспоминания» перед «Недавними».
+2. **«Моя волна»**:
+   - Новый `WaveRepository` / `WaveRepositoryImpl`: до 10 случайных лайков, до 5 недавних треков истории, до 5 находок по жанрам из лайков (поиск SoundCloud через NewPipe), фолбэк на Top 10 при отсутствии жанров; итог перемешивается и дедуплицируется, считается вклад каждого источника.
+   - `WaveViewModel`: генерирует подборку, сохраняет разбивку по источникам и сразу запускает очередь через общий `PlayerController.setQueueAndPlay()`; повторное нажатие во время генерации игнорируется.
+   - `WaveScreen` переписан: заглушки «Скоро» и фейковые чипы настроений убраны, добавлена большая градиентная кнопка «Включить волну» с пульсирующим ореолом, press-анимацией и индикатором загрузки; под кнопкой — чипы «N любимых / N из истории / N находок» и список треков с обложками, номерами и запуском с выбранной позиции.
+   - Ошибки сети показываются карточкой; пустые данные дают подсказку «добавьте лайки или послушайте треки».
+3. **Top 50 → Top 10**:
+   - Заголовок на главной заменён на «Top 10 SoundCloud», обновлены комментарии (карусель 1..10, KDoc чартов и кэша).
+   - Внутренние идентификаторы (`top50`, `TOP_50`) оставлены как ключ кэша Room для совместимости; API SoundCloud отдаёт 10 треков, поэтому нумерация и так ограничена 1..10.
+4. **Проверки**:
+   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+   - `.\gradlew test` — `BUILD SUCCESSFUL`, 38/38 тестов в debug и release (31 прежний + SeasonProvider 2 + WaveRepository 3 + Room-сезон 1 + Воспоминания HomeViewModel 1), 0 failures, 0 errors.
+   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (17 — предложения обновить версии, включая play-services-location; 2 — non-lambda offset; отсутствие иконки приложения; exported MediaSessionService).
+5. **Ограничение**: runtime-запрос геопозиции не добавлен (по ТЗ менялся только манифест). Пока пользователь не выдаст разрешение в системных настройках, координаты в лайках будут null; сезон и «Воспоминания» работают независимо.
+
+### Файлы
+```
+app/build.gradle.kts
+app/src/main/AndroidManifest.xml
+app/src/main/java/com/my/music/core/di/RepositoryModule.kt
+app/src/main/java/com/my/music/core/location/LocationProvider.kt (новый)
+app/src/main/java/com/my/music/core/location/FusedLocationProvider.kt (новый)
+app/src/main/java/com/my/music/core/util/SeasonProvider.kt (новый)
+app/src/main/java/com/my/music/data/local/AppDatabase.kt
+app/src/main/java/com/my/music/data/local/dao/LikedTracksDao.kt
+app/src/main/java/com/my/music/data/local/entity/LikedTrackEntity.kt
+app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
+app/src/main/java/com/my/music/data/repository/LikedTracksRepository.kt
+app/src/main/java/com/my/music/data/repository/WaveRepository.kt (новый)
+app/src/main/java/com/my/music/data/source/wave/WaveRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+app/src/main/java/com/my/music/feature/wave/WaveViewModel.kt (новый)
+app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/my/music/data/repository/SoundCloudChartsRepository.kt
+app/src/main/java/com/my/music/data/local/entity/ChartCacheEntity.kt
+app/src/test/java/com/my/music/core/util/SeasonProviderTest.kt (новый)
+app/src/test/java/com/my/music/data/source/wave/WaveRepositoryTest.kt (новый)
+app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
+## 🔜 Следующий шаг — v1.1.1: бесконечная волна и настроения
 
 ### Что нужно сделать
-1. **Алгоритм рекомендаций Wave**:
-   - Анализ истории прослушиваний (`play_history`) и лайков (`liked_tracks`) для выявления доминантных жанров, ключевых артистов и тегов.
-   - Автоматическая ротация запросов в SoundCloud через NewPipe для непрерывной генерации следующей порции треков.
-2. **WaveViewModel & PlayerController интеграция**:
-   - Автоматическая дозагрузка треков в очередь плеера при приближении к концу списка (бесконечный поток).
-   - Поддержка настроений волны (бодрая, спокойная, по любимым, по открытиям) — чипы в `WaveScreen` уже подготовлены визуально.
-3. **WaveScreen**: подключить кнопку «Запустить волну» (сейчас промо-заглушка с Canvas-анимацией).
-4. Сборка, PROGRESS.md, MEMORY.md, коммит и пуш.
+1. **Автодозагрузка**: при приближении к концу очереди запрашивать у `WaveRepository` следующую порцию и дописывать в `PlayerController` без обрыва воспроизведения.
+2. **Настроения волны**: вернуть осмысленные чипы (бодрая / спокойная / по любимым / открытия), влияющие на подбор жанров, а не декоративные.
+3. **Геопозиция**: добавить runtime-запрос разрешения (при первом лайке) и показ сохранённых координат/сезона в «Воспоминаниях».
+4. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
 
 

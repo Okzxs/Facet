@@ -20,6 +20,12 @@ data class LikedTrackEntity(
     val genre: String?,
     val transcodingUrl: String?,
     val likedAt: Long = System.currentTimeMillis(),
+    /** Широта на момент лайка (null, если нет разрешения или геопозиция недоступна). */
+    val latitude: Double? = null,
+    /** Долгота на момент лайка. */
+    val longitude: Double? = null,
+    /** Сезон лайка: Winter / Spring / Summer / Autumn. */
+    val season: String? = null,
 )
 
 fun LikedTrackEntity.toTrack(): Track = Track(
@@ -35,7 +41,12 @@ fun LikedTrackEntity.toTrack(): Track = Track(
     transcodingUrl = transcodingUrl,
 )
 
-fun Track.toLikedEntity(likedAt: Long = System.currentTimeMillis()): LikedTrackEntity = LikedTrackEntity(
+fun Track.toLikedEntity(
+    likedAt: Long = System.currentTimeMillis(),
+    latitude: Double? = null,
+    longitude: Double? = null,
+    season: String? = null,
+): LikedTrackEntity = LikedTrackEntity(
     id = id,
     source = source.name,
     title = title,
@@ -45,4 +56,7 @@ fun Track.toLikedEntity(likedAt: Long = System.currentTimeMillis()): LikedTrackE
     genre = genre,
     transcodingUrl = transcodingUrl,
     likedAt = likedAt,
+    latitude = latitude,
+    longitude = longitude,
+    season = season,
 )

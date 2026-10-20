@@ -1,5 +1,7 @@
 package com.my.music.core.di
 
+import com.my.music.core.location.FusedLocationProvider
+import com.my.music.core.location.LocationProvider
 import com.my.music.data.repository.SoundCloudRepository
 import com.my.music.data.source.soundcloud.SoundCloudRepositoryImpl
 import dagger.Binds
@@ -47,5 +49,17 @@ abstract class RepositoryModule {
     abstract fun bindSettingsRepository(
         impl: com.my.music.data.local.SettingsRepositoryImpl,
     ): com.my.music.data.repository.SettingsRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLocationProvider(
+        impl: FusedLocationProvider,
+    ): LocationProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindWaveRepository(
+        impl: com.my.music.data.source.wave.WaveRepositoryImpl,
+    ): com.my.music.data.repository.WaveRepository
 }
 

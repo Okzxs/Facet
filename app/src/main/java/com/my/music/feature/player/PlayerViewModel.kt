@@ -3,10 +3,12 @@ package com.my.music.feature.player
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.my.music.core.location.LocationProvider
 import com.my.music.core.player.ERROR_LYRICS
 import com.my.music.core.player.PlayerController
 import com.my.music.core.player.PlayerState
 import com.my.music.core.player.toFriendlyPlaybackMessage
+import com.my.music.core.util.SeasonProvider
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.LyricsResult
 import com.my.music.data.model.Track
@@ -34,6 +36,7 @@ class PlayerViewModel @Inject constructor(
     private val playHistoryRepository: PlayHistoryRepository,
     private val settingsRepository: SettingsRepository,
     private val playerController: PlayerController,
+    private val locationProvider: LocationProvider,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
@@ -127,11 +130,20 @@ class PlayerViewModel @Inject constructor(
 
     /**
      * Переключить статус избранного (лайк) для текущего трека.
+     * При постановке лайка сохраняем последнюю геопозицию и текущий сезон —
+     * они питают секцию «Воспоминания».
      */
     fun toggleLike() {
         val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
         viewModelScope.launch {
-            likedTracksRepository.toggleLike(track)
+            val addingLike = !isLiked.value
+            val point = if (addingLike) locationProvider.lastKnownLocation() else null
+            likedTracksRepository.toggleLike(
+                track = track,
+                latitude = point?.latitude,
+                longitude = point?.longitude,
+                season = if (addingLike) SeasonProvider.currentSeason() else null,
+            )
         }
     }
 
