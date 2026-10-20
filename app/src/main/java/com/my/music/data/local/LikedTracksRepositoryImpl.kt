@@ -63,19 +63,12 @@ class LikedTracksRepositoryImpl @Inject constructor(
         longitude: Double?,
         season: String?,
     ): Boolean = withContext(Dispatchers.IO) {
-        val existing = likedTracksDao.getLikedTrack(track.id)
-        if (existing != null) {
-            likedTracksDao.deleteLikedTrack(track.id)
-            false
-        } else {
-            likedTracksDao.insertLikedTrack(
-                track.toLikedEntity(
-                    latitude = latitude,
-                    longitude = longitude,
-                    season = season,
-                ),
-            )
-            true
-        }
+        likedTracksDao.toggleLikedTrack(
+            track.toLikedEntity(
+                latitude = latitude,
+                longitude = longitude,
+                season = season,
+            ),
+        )
     }
 }

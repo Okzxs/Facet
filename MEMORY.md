@@ -3,11 +3,12 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Фаза 6.2 (Expressive-редизайн текста) | v1.1.1: бесконечная волна, настроения, координаты в «Воспоминаниях» |
+| MyMusic | активен  | Фаза 6.5 (фоновый плеер и миграции Room) | v1.1.1: бесконечная волна, настроения, координаты в «Воспоминаниях» |
 
 ## Ожидающие задачи
 ### Высокий приоритет
 - [ ] v1.1.1: бесконечная волна (автодозагрузка в очередь), настроения волны, показ координат/сезона в «Воспоминаниях»
+- [x] Фаза 6.5: настоящий фоновый плеер (ExoPlayer только в MediaSessionService, PlayerController на MediaController, metadata/artwork, audio focus, wake mode) и безопасные миграции Room 1→4 с экспортом схем; 43 JVM-теста
 - [x] Фаза 6.2: Expressive-редизайн текста — без стеклянных панелей, 24sp, активная строка через graphicsLayer + свечение, alpha 0.36 у неактивных, blur дальних строк и градиентные маски; механика перехода/автоскролла сохранена; 41 JVM-тест
 - [x] Фаза 6.1: runtime-разрешение геопозиции (диалог при первом лайке, баннер в плеере, статус и переход в настройки приложения); 41 JVM-тест, lint без critical/error
 - [x] Фаза 6: «Воспоминания» (геопозиция + сезон, Room v4), «Моя волна» (10 лайков + 5 истории + 5 жанровых находок, новая WaveScreen, автозапуск), Top 50 → Top 10; 38 JVM-тестов, lint без critical/error
@@ -37,7 +38,11 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
-- [Фаза 6] Room v4 без миграций (`fallbackToDestructiveMigration`): в `liked_tracks` добавлены `latitude`, `longitude`, `season`; сезон пишется строкой Winter/Spring/Summer/Autumn через `SeasonProvider`
+- [Фаза 6.5] `ExoPlayer` создаётся только внутри `MusicService.onGetSession()`; `PlayerController` подключается к сервису через `SessionToken` + `MediaController`, поэтому UI не владеет плеером и не может его освободить
+- [Фаза 6.5] Уведомление получает `MediaMetadata` (title, artist, artworkUri), ExoPlayer — audio focus и `C.WAKE_MODE_NETWORK` (partial wake lock); в манифест добавлен `WAKE_LOCK`
+- [Фаза 6.5] Room: `exportSchema = true`, схема в `app/schemas`, миграции 1→2 (chart_cache), 2→3 (latitude/longitude), 3→4 (season); destructive fallback удалён
+- [Фаза 6.5] `toggleLikedTrack` в DAO помечен `@Transaction` — чтение и запись лайка атомарны
+- [Фаза 6] Room v4: в `liked_tracks` добавлены `latitude`, `longitude`, `season`; сезон пишется строкой Winter/Spring/Summer/Autumn через `SeasonProvider`
 - [Фаза 6] Геопозиция — `FusedLocationProviderClient.getLastLocation()` с таймаутом 4 с; runtime-разрешение добавлено в фазе 6.1, при отказе лайк сохраняется без координат
 - [Фаза 6.1] Разрешения FINE+COARSE запрашиваются одним `RequestMultiplePermissions` при первом лайке; отказ не отменяет лайк, а баннер в плеере после отказа ведёт в системные настройки приложения
 - [Фаза 6.1] `LocationPermissions` — единая точка проверки/открытия `ACTION_APPLICATION_DETAILS_SETTINGS`; статус в плеере и настройках обновляется по `ON_RESUME` после возврата из системных настроек
@@ -118,6 +123,7 @@
 - Язык: комментарии в коде, служебные файлы (MEMORY.md, PROGRESS.md) и документация — строго на русском языке
 
 ## Последние сессии
+- Фаза 6.5: фоновый плеер переведён на MediaSessionService + MediaController, добавлены metadata/artwork, audio focus, wake mode; Room переведён на реальные миграции 1→4 с экспортом схем, лайк стал транзакционным; 43 JVM-теста, lint 21 warning без errors
 - Фаза 6.2: Expressive-редизайн Lyrics — убраны стеклянные панели, крупная типографика 24sp, масштаб/свечение активной строки через graphicsLayer, приглушение и blur дальних строк, градиентные маски; автоскролл и переход сохранены
 - Фаза 6.1: Runtime-разрешение геопозиции — диалог при первом лайке, баннер «Воспоминаний» в плеере, статус «Разрешено/Запрещено» и переход в настройки приложения; 41 JVM-тест, lint 21 warning без critical/error
 - Фаза 6: Воспоминания (Room v4, геопозиция по FusedLocation, сезон), Моя волна (10+5+5, фолбэк Top 10, новая кнопка и список), Top 50 → Top 10; 38 JVM-тестов, lint 21 warning без critical/error

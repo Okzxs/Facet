@@ -25,7 +25,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "mymusic.db",
         )
-            .fallbackToDestructiveMigration()
+            .addMigrations(*ALL_MIGRATIONS)
             .build()
     }
 

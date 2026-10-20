@@ -1,17 +1,25 @@
 package com.my.music.core.player
 
+import android.content.ComponentName
+import android.content.Context
 import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Track
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.SoundCloudRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,19 +34,39 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Singleton-контроллер над ExoPlayer с полноценным управлением очередью,
- * перемешиванием (shuffle), повтором (repeat) и автовоспроизведением.
+ * Единый фасад управления воспроизведением.
+ *
+ * Сам плеер живёт в [MusicService]: контроллер только подключается к нему
+ * через [MediaController] и хранит очередь/режимы, чтобы UI и уведомление
+ * работали с одним состоянием.
  */
 @Singleton
-class PlayerController @Inject constructor(
-    private val exoPlayer: ExoPlayer,
+class PlayerController private constructor(
+    private val appContext: Context?,
     private val soundCloudRepository: SoundCloudRepository,
     private val playHistoryRepository: PlayHistoryRepository,
+    initialController: MediaController?,
 ) {
+
+    @Inject
+    constructor(
+        @ApplicationContext context: Context,
+        soundCloudRepository: SoundCloudRepository,
+        playHistoryRepository: PlayHistoryRepository,
+    ) : this(context, soundCloudRepository, playHistoryRepository, null)
+
+    /** Конструктор для JVM-тестов: готовый контроллер без подключения к сервису. */
+    internal constructor(
+        mediaController: MediaController,
+        soundCloudRepository: SoundCloudRepository,
+        playHistoryRepository: PlayHistoryRepository,
+    ) : this(null, soundCloudRepository, playHistoryRepository, mediaController)
 
     private val tag = "PlayerController"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var resolveJob: Job? = null
+    private var mediaController: MediaController? = null
+    private val controllerReady = CompletableDeferred<MediaController>()
 
     // Исходная очередь до перемешивания (для восстановления исходного порядка)
     private var originalQueue: List<Track> = emptyList()
@@ -48,51 +76,106 @@ class PlayerController @Inject constructor(
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
 
-    // ─── Слушатель событий ExoPlayer ─────────────────────────────────────────
+    // ─── Слушатель событий плеера ────────────────────────────────────────────
+
+    private val playerListener = object : Player.Listener {
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _state.update { it.copy(isPlaying = isPlaying) }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            val isBuffering = playbackState == Player.STATE_BUFFERING
+            _state.update {
+                it.copy(
+                    isLoading = isBuffering,
+                    isBuffering = isBuffering,
+                    playbackState = playbackState,
+                    error = if (playbackState == Player.STATE_READY) null else it.error,
+                )
+            }
+
+            if (playbackState == Player.STATE_ENDED) {
+                onTrackEnded()
+            }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e(tag, "Ошибка воспроизведения MediaController", error)
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    isBuffering = false,
+                    isPlaying = false,
+                    error = error.toFriendlyPlaybackMessage(),
+                )
+            }
+        }
+    }
 
     init {
-        exoPlayer.addListener(object : Player.Listener {
+        if (initialController != null) {
+            attachController(initialController)
+        } else {
+            connectToService()
+        }
+    }
 
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _state.update { it.copy(isPlaying = isPlaying) }
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                val isBuffering = playbackState == Player.STATE_BUFFERING
-                _state.update {
-                    it.copy(
-                        isLoading = isBuffering,
-                        isBuffering = isBuffering,
-                        playbackState = playbackState,
-                        error = if (playbackState == Player.STATE_READY) null else it.error,
-                    )
+    private fun connectToService() {
+        val context = appContext ?: return
+        val token = SessionToken(
+            context,
+            ComponentName(context, MusicService::class.java),
+        )
+        val future = MediaController.Builder(context, token).buildAsync()
+        future.addListener(
+            {
+                try {
+                    attachController(future.get())
+                } catch (e: Exception) {
+                    Log.e(tag, "Не удалось подключиться к MusicService", e)
+                    controllerReady.completeExceptionally(e)
                 }
+            },
+            ContextCompat.getMainExecutor(context),
+        )
+    }
 
-                if (playbackState == Player.STATE_ENDED) {
-                    onTrackEnded()
-                }
-            }
+    private fun attachController(controller: MediaController) {
+        mediaController = controller
+        controller.addListener(playerListener)
+        val isBuffering = controller.playbackState == Player.STATE_BUFFERING
+        _state.update {
+            it.copy(
+                isPlaying = controller.isPlaying,
+                isLoading = isBuffering,
+                isBuffering = isBuffering,
+                playbackState = controller.playbackState,
+                playbackSpeed = controller.playbackParameters.speed,
+            )
+        }
+        if (!controllerReady.isCompleted) {
+            controllerReady.complete(controller)
+        }
+    }
 
-            override fun onPlayerError(error: PlaybackException) {
-                Log.e(tag, "Ошибка воспроизведения ExoPlayer", error)
-                _state.update {
-                    it.copy(
-                        isLoading = false,
-                        isBuffering = false,
-                        isPlaying = false,
-                        error = error.toFriendlyPlaybackMessage(),
-                    )
-                }
-            }
-        })
+    private suspend fun awaitController(): MediaController? {
+        return try {
+            controllerReady.await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(tag, "MediaController недоступен", e)
+            null
+        }
     }
 
     private fun onTrackEnded() {
-        val currentState = _state.value
-        when (currentState.repeatMode) {
+        val controller = mediaController ?: return
+        when (_state.value.repeatMode) {
             RepeatMode.ONE -> {
-                exoPlayer.seekTo(0)
-                exoPlayer.play()
+                controller.seekTo(0)
+                controller.play()
             }
             RepeatMode.ALL -> {
                 playNext(loop = true)
@@ -145,9 +228,11 @@ class PlayerController @Inject constructor(
         if (index !in tracks.indices) return
 
         val track = tracks[index]
-        exoPlayer.pause()
-        exoPlayer.stop()
-        exoPlayer.seekTo(0)
+        mediaController?.apply {
+            pause()
+            stop()
+            seekTo(0)
+        }
         _state.update {
             it.copy(
                 currentIndex = index,
@@ -187,9 +272,9 @@ class PlayerController @Inject constructor(
      * Если прошло больше 3 секунд от начала — перезапускает текущий трек.
      */
     fun playPrevious() {
-        val currentPos = exoPlayer.currentPosition
-        if (currentPos > 3000L) {
-            exoPlayer.seekTo(0)
+        val controller = mediaController
+        if (controller != null && controller.currentPosition > 3000L) {
+            controller.seekTo(0)
             return
         }
 
@@ -204,7 +289,7 @@ class PlayerController @Inject constructor(
         } else if (_state.value.repeatMode == RepeatMode.ALL) {
             playTrackAt(queue.lastIndex)
         } else {
-            exoPlayer.seekTo(0)
+            controller?.seekTo(0)
         }
     }
 
@@ -285,7 +370,7 @@ class PlayerController @Inject constructor(
         val currentIndex = _state.value.currentIndex
         when {
             currentQueue.isEmpty() -> {
-                exoPlayer.stop()
+                mediaController?.stop()
                 _state.update {
                     it.copy(
                         queue = emptyList(),
@@ -323,13 +408,15 @@ class PlayerController @Inject constructor(
     // ─── Воспроизведение потока ───────────────────────────────────────────────
 
     /**
-     * Разрешить URL трека и передать в ExoPlayer.
+     * Разрешить URL трека и передать в MediaController.
      */
     private fun resolveAndPlay(track: Track, recordHistory: Boolean = true) {
         resolveJob?.cancel()
-        exoPlayer.pause()
-        exoPlayer.stop()
-        exoPlayer.seekTo(0)
+        mediaController?.apply {
+            pause()
+            stop()
+            seekTo(0)
+        }
         resolveJob = scope.launch {
             // Запись в историю воспроизведения Room: сбой БД не должен ломать воспроизведение
             if (recordHistory) {
@@ -376,9 +463,12 @@ class PlayerController @Inject constructor(
      * Прямой запуск потока (для вызова с уже готовым AudioStreamResult).
      */
     fun play(track: Track, streamResult: AudioStreamResult) {
-        exoPlayer.pause()
-        exoPlayer.stop()
-        exoPlayer.seekTo(0)
+        resolveJob?.cancel()
+        mediaController?.apply {
+            pause()
+            stop()
+            seekTo(0)
+        }
         // Если очередь была пуста — создаём одиночную очередь
         if (_state.value.queue.none { it.id == track.id }) {
             originalQueue = listOf(track)
@@ -386,29 +476,70 @@ class PlayerController @Inject constructor(
                 it.copy(
                     queue = listOf(track),
                     currentIndex = 0,
+                    currentTrack = track,
                 )
             }
         }
-        playStream(track, streamResult)
+        resolveJob = scope.launch {
+            playStream(track, streamResult)
+        }
     }
 
-    private fun playStream(track: Track, streamResult: AudioStreamResult) {
+    private suspend fun playStream(track: Track, streamResult: AudioStreamResult) {
+        val controller = awaitController()
+        if (controller == null) {
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    isBuffering = false,
+                    isPlaying = false,
+                    error = ERROR_PLAYBACK,
+                )
+            }
+            return
+        }
+
         val mimeType = if (streamResult.isHls) {
             MimeTypes.APPLICATION_M3U8
         } else {
             MimeTypes.AUDIO_MPEG
         }
 
-        val mediaItem = MediaItem.Builder()
-            .setUri(streamResult.url)
-            .setMimeType(mimeType)
+        val metadata = MediaMetadata.Builder()
+            .setTitle(track.title)
+            .setArtist(track.artist)
+            .apply {
+                track.artworkUrl
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { setArtworkUri(it.toUri()) }
+            }
             .build()
 
-        exoPlayer.apply {
-            setMediaItem(mediaItem)
-            seekTo(0)
-            prepare()
-            play()
+        val mediaItem = MediaItem.Builder()
+            .setMediaId(track.id)
+            .setUri(streamResult.url)
+            .setMimeType(mimeType)
+            .setMediaMetadata(metadata)
+            .build()
+
+        try {
+            controller.setMediaItem(mediaItem)
+            controller.seekTo(0)
+            controller.prepare()
+            controller.play()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(tag, "Не удалось запустить поток для трека '${track.title}'", e)
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    isBuffering = false,
+                    isPlaying = false,
+                    error = e.toFriendlyPlaybackMessage(),
+                )
+            }
+            return
         }
 
         _state.update {
@@ -432,23 +563,26 @@ class PlayerController @Inject constructor(
             }
             return
         }
-        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+        scope.launch {
+            val controller = awaitController() ?: return@launch
+            if (controller.isPlaying) controller.pause() else controller.play()
+        }
     }
 
     fun seekTo(positionMs: Long) {
-        exoPlayer.seekTo(positionMs)
+        mediaController?.seekTo(positionMs)
     }
 
     fun setPlaybackSpeed(speed: Float) {
-        exoPlayer.setPlaybackSpeed(speed)
+        mediaController?.setPlaybackSpeed(speed)
         _state.update { it.copy(playbackSpeed = speed) }
     }
 
-    fun currentPositionMs(): Long = exoPlayer.currentPosition
+    fun currentPositionMs(): Long = mediaController?.currentPosition ?: 0L
 
-    fun durationMs(): Long = exoPlayer.duration.coerceAtLeast(0L)
+    fun durationMs(): Long = mediaController?.duration?.coerceAtLeast(0L) ?: 0L
 
-    fun bufferedPositionMs(): Long = exoPlayer.bufferedPosition.coerceAtLeast(0L)
+    fun bufferedPositionMs(): Long = mediaController?.bufferedPosition?.coerceAtLeast(0L) ?: 0L
 
     fun bufferedFraction(): Float {
         val duration = durationMs()
@@ -457,8 +591,9 @@ class PlayerController @Inject constructor(
 
     fun release() {
         resolveJob?.cancel()
+        mediaController?.release()
+        mediaController = null
         scope.cancel()
-        exoPlayer.release()
     }
 }
 
@@ -470,7 +605,7 @@ data class PlayerState(
     val isPlaying: Boolean = false,
     val isLoading: Boolean = false,
     val isBuffering: Boolean = false,
-    val playbackState: Int = androidx.media3.common.Player.STATE_IDLE,
+    val playbackState: Int = Player.STATE_IDLE,
     val playbackSpeed: Float = 1.0f,
     val queue: List<Track> = emptyList(),
     val currentIndex: Int = -1,

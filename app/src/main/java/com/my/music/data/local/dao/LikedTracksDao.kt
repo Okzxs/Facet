@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.my.music.data.local.entity.LikedTrackEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -30,4 +31,19 @@ interface LikedTracksDao {
 
     @Query("DELETE FROM liked_tracks WHERE id = :id")
     suspend fun deleteLikedTrack(id: String)
+
+    /**
+     * Атомарно переключает лайк: чтение и запись выполняются
+     * в одной транзакции, поэтому двойной тап не оставит БД в неверном состоянии.
+     */
+    @Transaction
+    suspend fun toggleLikedTrack(track: LikedTrackEntity): Boolean {
+        return if (getLikedTrack(track.id) != null) {
+            deleteLikedTrack(track.id)
+            false
+        } else {
+            insertLikedTrack(track)
+            true
+        }
+    }
 }

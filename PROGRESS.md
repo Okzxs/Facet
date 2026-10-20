@@ -1122,6 +1122,60 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 6.5 — Настоящий фоновый плеер и безопасные миграции Room (20.10.2026)
+
+### Что сделано
+1. **MediaSessionService как единственный владелец ExoPlayer**:
+   - `MusicService` создаёт `ExoPlayer` в `onGetSession()`, оборачивает его в `MediaSession` и возвращает контроллерам.
+   - Сервис сам показывает MediaStyle-уведомление, получает foreground-статус и переживает уход приложения в фон.
+   - `ExoPlayer` больше не является Hilt-синглтоном: удалён `PlayerModule`, чтобы UI не мог случайно освободить или создать второй плеер.
+   - `onDestroy()` освобождает сначала `MediaSession`, затем `ExoPlayer` — без «мёртвого» общего плеера.
+2. **PlayerController переведён на MediaController**:
+   - Контроллер подключается к сервису через `SessionToken` и `MediaController.Builder` с application context.
+   - Все команды (play/pause, seek, скорость, позиция, буфер) идут через `MediaController`.
+   - Сохранены очередь, shuffle/repeat, ручной Next при `Repeat OFF`, запись истории и повтор трека после ошибки.
+   - Кнопки Prev/Next из уведомления по-прежнему работают с очередью через `ForwardingPlayer`.
+3. **Метаданные уведомления**:
+   - В `MediaItem` добавлены `mediaId`, `MediaMetadata` с title, artist и artworkUri — в шторке отображаются название, исполнитель и обложка.
+4. **Фон и блокировка экрана**:
+   - ExoPlayer настроен на `AudioAttributes` с обработкой аудиофокуса.
+   - Включены `setHandleAudioBecomingNoisy(true)` и `setWakeMode(C.WAKE_MODE_NETWORK)` (partial wake lock + Wi-Fi lock).
+   - В манифест добавлен `WAKE_LOCK`.
+5. **Безопасные миграции Room**:
+   - Убран `fallbackToDestructiveMigration()`.
+   - Включён `exportSchema = true`, путь схем — `app/schemas` через `room.schemaLocation`.
+   - Добавлены реальные миграции: 1→2 создаёт `chart_cache`, 2→3 добавляет `latitude`/`longitude`, 3→4 добавляет `season`.
+   - Фактическая история: версия 3 не выпускалась отдельно, поэтому координаты закреплены за v3, а сезон — за v4; существующие лайки и история не теряются.
+   - Добавлен JVM-тест миграции v1→v4 с проверкой сохранности лайка, истории и создания кэша чартов.
+6. **Транзакционный лайк**:
+   - `LikedTracksDao.toggleLikedTrack()` помечен `@Transaction`: чтение и запись выполняются атомарно, двойной тап не оставляет БД в неверном состоянии.
+   - `LikedTracksRepositoryImpl.toggleLike()` переведён на новый метод DAO.
+7. **Проверки**:
+   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+   - `.\gradlew test` — `BUILD SUCCESSFUL`, 43/43 теста в debug и release, 0 failures, 0 errors.
+   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 errors, 21 warning (без новых замечаний).
+
+### Файлы
+```
+app/build.gradle.kts
+app/src/main/AndroidManifest.xml
+app/src/main/java/com/my/music/core/player/MusicService.kt
+app/src/main/java/com/my/music/core/player/PlayerController.kt
+app/src/main/java/com/my/music/core/player/PlayerModule.kt (удалён)
+app/src/main/java/com/my/music/data/local/AppDatabase.kt
+app/src/main/java/com/my/music/data/local/DatabaseModule.kt
+app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt (новый)
+app/src/main/java/com/my/music/data/local/dao/LikedTracksDao.kt
+app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
+app/schemas/com.my.music.data.local.AppDatabase/4.json (новый)
+app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
+app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt (новый)
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1.1: бесконечная волна и настроения
 
 ### Что нужно сделать

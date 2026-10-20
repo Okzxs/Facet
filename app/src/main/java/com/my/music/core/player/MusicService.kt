@@ -2,9 +2,12 @@ package com.my.music.core.player
 
 import android.app.PendingIntent
 import android.content.Intent
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.my.music.MainActivity
@@ -12,20 +15,21 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 /**
- * Foreground-сервис для фонового воспроизведения.
- * Media3 автоматически показывает MediaStyle-уведомление с кнопками управления.
- * Кнопки Prev/Next перенаправляются в очередь PlayerController через ForwardingPlayer.
+ * Foreground-сервис фонового воспроизведения.
+ *
+ * ExoPlayer создаётся и живёт только здесь. Media3 сам показывает
+ * MediaStyle-уведомление и удерживает сервис в foreground, пока играет музыка.
+ * Кнопки Prev/Next перенаправляются в очередь [PlayerController].
  */
 @AndroidEntryPoint
 class MusicService : MediaSessionService() {
 
     @Inject
-    lateinit var exoPlayer: androidx.media3.exoplayer.ExoPlayer
-
-    @Inject
     lateinit var playerController: PlayerController
 
+    private var exoPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
+    private lateinit var sessionActivity: PendingIntent
 
     @UnstableApi
     override fun onCreate() {
@@ -35,14 +39,31 @@ class MusicService : MediaSessionService() {
         val activityIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-        val sessionActivity = PendingIntent.getActivity(
+        sessionActivity = PendingIntent.getActivity(
             this,
             0,
             activityIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+    }
 
-        val forwardingPlayer = object : ForwardingPlayer(exoPlayer) {
+    @UnstableApi
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+        mediaSession?.let { return it }
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .build()
+
+        val player = ExoPlayer.Builder(this)
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            .setHandleAudioBecomingNoisy(true)
+            // PARTIAL_WAKE_LOCK + Wi-Fi lock: музыка не прерывается при блокировке экрана
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .build()
+
+        val forwardingPlayer = object : ForwardingPlayer(player) {
             override fun isCommandAvailable(command: Int): Boolean {
                 return when (command) {
                     Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> true
@@ -77,20 +98,19 @@ class MusicService : MediaSessionService() {
             }
         }
 
-        mediaSession = MediaSession.Builder(this, forwardingPlayer)
+        exoPlayer = player
+        return MediaSession.Builder(this, forwardingPlayer)
             .setSessionActivity(sessionActivity)
             .build()
+            .also { mediaSession = it }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
-        mediaSession
-
+    @UnstableApi
     override fun onDestroy() {
-        mediaSession?.run {
-            exoPlayer.release()
-            release()
-            mediaSession = null
-        }
+        mediaSession?.release()
+        mediaSession = null
+        exoPlayer?.release()
+        exoPlayer = null
         super.onDestroy()
     }
 }

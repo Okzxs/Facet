@@ -1,7 +1,9 @@
 package com.my.music.core.player
 
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
@@ -21,18 +23,24 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 class PlayerControllerQueueTest {
 
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private lateinit var exoPlayer: ExoPlayer
+    private lateinit var mediaController: MediaController
     private lateinit var soundCloudRepository: SoundCloudRepository
     private lateinit var playHistoryRepository: PlayHistoryRepository
     private lateinit var controller: PlayerController
 
     private val listenerSlot = slot<Player.Listener>()
+    private val mediaItemSlot = slot<MediaItem>()
 
     private val tracks = listOf(
         track("one"),
@@ -42,16 +50,18 @@ class PlayerControllerQueueTest {
 
     @Before
     fun setUp() {
-        exoPlayer = mockk(relaxed = true)
+        mediaController = mockk(relaxed = true)
         soundCloudRepository = mockk(relaxed = true)
         playHistoryRepository = mockk(relaxed = true)
 
-        every { exoPlayer.addListener(capture(listenerSlot)) } just Runs
+        every { mediaController.addListener(capture(listenerSlot)) } just Runs
+        every { mediaController.setMediaItem(capture(mediaItemSlot)) } just Runs
+        every { mediaController.playbackParameters } returns PlaybackParameters(1f)
         coEvery { playHistoryRepository.addToHistory(any()) } just Runs
         coEvery { soundCloudRepository.resolveStreamUrl(any()) } returns
             Result.failure<AudioStreamResult>(IllegalStateException("test"))
 
-        controller = PlayerController(exoPlayer, soundCloudRepository, playHistoryRepository)
+        controller = PlayerController(mediaController, soundCloudRepository, playHistoryRepository)
     }
 
     @Test
@@ -133,13 +143,13 @@ class PlayerControllerQueueTest {
 
     @Test
     fun `previous restarts current track after three seconds`() {
-        every { exoPlayer.currentPosition } returns 5_000L
+        every { mediaController.currentPosition } returns 5_000L
         controller.setQueueAndPlay(tracks, 1)
 
         controller.playPrevious()
 
         assertEquals(1, controller.state.value.currentIndex)
-        verify { exoPlayer.seekTo(0L) }
+        verify { mediaController.seekTo(0L) }
     }
 
     @Test
@@ -184,8 +194,8 @@ class PlayerControllerQueueTest {
 
         assertEquals(1, controller.state.value.currentIndex)
         // seekTo(0) вызывается и при подготовке трека, поэтому проверяем хотя бы один вызов
-        verify { exoPlayer.seekTo(0L) }
-        verify(exactly = 1) { exoPlayer.play() }
+        verify { mediaController.seekTo(0L) }
+        verify(exactly = 1) { mediaController.play() }
     }
 
     @Test
@@ -206,7 +216,7 @@ class PlayerControllerQueueTest {
 
         assertEquals(tracks.lastIndex, controller.state.value.currentIndex)
         assertFalse(controller.state.value.isPlaying)
-        verify(exactly = 0) { exoPlayer.play() }
+        verify(exactly = 0) { mediaController.play() }
     }
 
     @Test
@@ -216,6 +226,21 @@ class PlayerControllerQueueTest {
         listenerSlot.captured.onPlaybackStateChanged(Player.STATE_ENDED)
 
         assertEquals(1, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `media item contains metadata for notification`() {
+        val track = tracks.first().copy(artworkUrl = "https://example.com/cover.jpg")
+        coEvery { soundCloudRepository.resolveStreamUrl(any()) } returns
+            Result.success(AudioStreamResult(url = "https://example.com/stream.mp3", isHls = false))
+
+        controller.setQueueAndPlay(listOf(track), 0)
+
+        val mediaItem = mediaItemSlot.captured
+        assertEquals(track.id, mediaItem.mediaId)
+        assertEquals(track.title, mediaItem.mediaMetadata.title?.toString())
+        assertEquals(track.artist, mediaItem.mediaMetadata.artist?.toString())
+        assertEquals(track.artworkUrl, mediaItem.mediaMetadata.artworkUri?.toString())
     }
 
     private fun track(id: String) = Track(

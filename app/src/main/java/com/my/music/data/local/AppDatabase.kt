@@ -19,7 +19,7 @@ import com.my.music.data.local.entity.PlayHistoryEntity
         ChartCacheEntity::class,
     ],
     version = 4,
-    exportSchema = false,
+    exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun likedTracksDao(): LikedTracksDao
