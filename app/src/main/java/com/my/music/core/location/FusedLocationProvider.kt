@@ -1,12 +1,9 @@
 package com.my.music.core.location
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.pm.PackageManager
 import android.location.Location
 import android.util.Log
-import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.tasks.Task
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -31,7 +28,7 @@ class FusedLocationProvider @Inject constructor(
 
     @SuppressLint("MissingPermission")
     override suspend fun lastKnownLocation(): GeoPoint? {
-        if (!hasLocationPermission()) {
+        if (!LocationPermissions.hasPermission(context)) {
             Log.d(tag, "Нет разрешения на геопозицию — лайк сохранится без координат")
             return null
         }
@@ -49,18 +46,6 @@ class FusedLocationProvider @Inject constructor(
         }
 
         return location?.let { GeoPoint(latitude = it.latitude, longitude = it.longitude) }
-    }
-
-    private fun hasLocationPermission(): Boolean {
-        val fine = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-        ) == PackageManager.PERMISSION_GRANTED
-        val coarse = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-        ) == PackageManager.PERMISSION_GRANTED
-        return fine || coarse
     }
 
     private suspend fun Task<Location?>.awaitResult(): Location? =

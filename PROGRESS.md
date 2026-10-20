@@ -1023,7 +1023,7 @@ MEMORY.md
    - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
    - `.\gradlew test` — `BUILD SUCCESSFUL`, 38/38 тестов в debug и release (31 прежний + SeasonProvider 2 + WaveRepository 3 + Room-сезон 1 + Воспоминания HomeViewModel 1), 0 failures, 0 errors.
    - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (17 — предложения обновить версии, включая play-services-location; 2 — non-lambda offset; отсутствие иконки приложения; exported MediaSessionService).
-5. **Ограничение**: runtime-запрос геопозиции не добавлен (по ТЗ менялся только манифест). Пока пользователь не выдаст разрешение в системных настройках, координаты в лайках будут null; сезон и «Воспоминания» работают независимо.
+5. **Ограничение (исправлено в фазе 6.1)**: runtime-запрос геопозиции в этой фазе не добавлялся (по ТЗ менялся только манифест), поэтому координаты сохранялись лишь при ручной выдаче доступа в системных настройках.
 
 ### Файлы
 ```
@@ -1057,12 +1057,44 @@ MEMORY.md
 
 ---
 
+## ✅ Фаза 6.1 — Runtime-разрешение геопозиции (20.10.2026)
+
+### Что сделано
+1. **Общий хелпер разрешений**:
+   - Новый `LocationPermissions` (core/location): список `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`, проверка любого из них (`hasPermission`) и переход в карточку приложения через `ACTION_APPLICATION_DETAILS_SETTINGS`.
+   - `FusedLocationProvider` переведён на общий хелпер — логика проверки больше не дублируется.
+2. **Плеер**:
+   - `rememberLauncherForActivityResult(RequestMultiplePermissions())`: при первом лайке без доступа показывается стандартный диалог Android; после выдачи координаты сразу сохраняются.
+   - Лайк не теряется при отказе: `pendingLike` срабатывает после ответа и сохраняет трек без координат.
+   - Ненавязчивый баннер «Геопозиция выключена — „Воспоминания“ не сохранят место лайка»; кнопка «Разрешить» вызывает диалог, после отказа превращается в «Настройки» и открывает системные настройки приложения.
+   - Статус разрешения перечитывается при возврате в приложение (`Lifecycle.Event.ON_RESUME`), поэтому баннер исчезает после выдачи доступа в настройках.
+3. **Экран настроек**:
+   - Новая секция «ГЕОПОЗИЦИЯ» со статусом «Геопозиция: Разрешено / Запрещено», иконкой и пояснением, зачем нужен доступ.
+   - Кнопка «Проверить разрешения»: перечитывает статус, а при запрете открывает настройки приложения; статус также обновляется при возврате из системных настроек.
+4. **Проверки**:
+   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+   - `.\gradlew test` — `BUILD SUCCESSFUL`, 41/41 тест в debug и release (добавлены 3 теста `LocationPermissionsTest`: отказ по умолчанию, достаточность приблизительного доступа, корректный intent системных настроек), 0 failures, 0 errors.
+   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (без новых замечаний).
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/location/LocationPermissions.kt (новый)
+app/src/main/java/com/my/music/core/location/FusedLocationProvider.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
+app/src/test/java/com/my/music/core/location/LocationPermissionsTest.kt (новый)
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — v1.1.1: бесконечная волна и настроения
 
 ### Что нужно сделать
 1. **Автодозагрузка**: при приближении к концу очереди запрашивать у `WaveRepository` следующую порцию и дописывать в `PlayerController` без обрыва воспроизведения.
 2. **Настроения волны**: вернуть осмысленные чипы (бодрая / спокойная / по любимым / открытия), влияющие на подбор жанров, а не декоративные.
-3. **Геопозиция**: добавить runtime-запрос разрешения (при первом лайке) и показ сохранённых координат/сезона в «Воспоминаниях».
+3. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
 4. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
 
 

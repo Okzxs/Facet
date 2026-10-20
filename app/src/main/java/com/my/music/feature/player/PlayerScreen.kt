@@ -14,6 +14,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -32,9 +34,11 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -52,6 +56,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,9 +65,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
@@ -110,6 +118,56 @@ fun PlayerScreen(
 
     var isLyricsMode by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
+
+    // ─── Разрешение на геопозицию ────────────────────────────────────────
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasLocationPermission by remember {
+        mutableStateOf(LocationPermissions.hasPermission(context))
+    }
+    var permissionRequested by rememberSaveable { mutableStateOf(false) }
+    var pendingLike by rememberSaveable { mutableStateOf(false) }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        permissionRequested = true
+        hasLocationPermission = result.values.any { it } ||
+            LocationPermissions.hasPermission(context)
+        // Лайк не теряем: без разрешения он сохранится без координат
+        if (pendingLike) {
+            pendingLike = false
+            viewModel.toggleLike()
+        }
+    }
+
+    // Разрешение могли выдать или отозвать в системных настройках — обновляем статус
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasLocationPermission = LocationPermissions.hasPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    fun toggleLikeWithPermission() {
+        if (!isLiked && !LocationPermissions.hasPermission(context)) {
+            pendingLike = true
+            locationPermissionLauncher.launch(LocationPermissions.permissions)
+        } else {
+            viewModel.toggleLike()
+        }
+    }
+
+    fun onPermissionBannerAction() {
+        if (permissionRequested && !LocationPermissions.hasPermission(context)) {
+            LocationPermissions.openAppSettings(context)
+        } else {
+            locationPermissionLauncher.launch(LocationPermissions.permissions)
+        }
+    }
 
     // Текущий трек берём из PlayerController (он всегда актуален после play())
     val track = playerState.currentTrack ?: uiState.track
@@ -239,11 +297,23 @@ fun PlayerScreen(
                     currentPositionMs = { viewModel.currentPositionMs() },
                     onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                     onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
-                    onToggleLike = { viewModel.toggleLike() },
+                    onToggleLike = { toggleLikeWithPermission() },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
                 )
+
+                // ─── Подсказка про геопозицию для «Воспоминаний» ─────────────
+                if (!hasLocationPermission) {
+                    LocationPermissionBanner(
+                        actionLabel = if (permissionRequested) "Настройки" else "Разрешить",
+                        onAction = { onPermissionBannerAction() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 6.dp),
+                    )
+                }
 
                 // ─── Сообщение об ошибке (скрывается, как только плеер в STATE_READY) ──
                 val isPlayerReady = playerState.playbackState == androidx.media3.common.Player.STATE_READY
@@ -320,6 +390,57 @@ fun PlayerScreen(
             onToggleRepeat = { viewModel.toggleRepeat() },
             onDismiss = { showQueueSheet = false },
         )
+    }
+}
+
+/**
+ * Ненавязчивая подсказка: без геопозиции лайк сохранится без места,
+ * а «Воспоминания» не смогут привязать трек к точке на карте.
+ */
+@Composable
+private fun LocationPermissionBanner(
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.LocationOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Геопозиция выключена",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                )
+                Text(
+                    text = "«Воспоминания» не сохранят место лайка",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(
+                onClick = onAction,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = actionLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
     }
 }
 

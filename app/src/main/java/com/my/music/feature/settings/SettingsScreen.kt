@@ -25,6 +25,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.LocationOff
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,19 +36,27 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.theme.AccentOption
 import com.my.music.core.ui.theme.AccentOptions
 
@@ -60,6 +71,23 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
 
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasLocationPermission by remember {
+        mutableStateOf(LocationPermissions.hasPermission(context))
+    }
+
+    // Статус мог измениться в системных настройках — перечитываем при возврате
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasLocationPermission = LocationPermissions.hasPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -68,6 +96,93 @@ fun SettingsScreen(
         SettingsHeader(onBack = onBack)
 
         Spacer(Modifier.height(8.dp))
+
+        Text(
+            text = "ГЕОПОЗИЦИЯ",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp,
+            ),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (hasLocationPermission) {
+                            Icons.Rounded.LocationOn
+                        } else {
+                            Icons.Rounded.LocationOff
+                        },
+                        contentDescription = null,
+                        tint = if (hasLocationPermission) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Геопозиция: ${
+                                if (hasLocationPermission) "Разрешено" else "Запрещено"
+                            }",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = if (hasLocationPermission) {
+                                "Координаты сохраняются при лайке и питают «Воспоминания»"
+                            } else {
+                                "Без доступа координаты лайков не сохраняются, а «Воспоминания» " +
+                                    "не привязываются к месту"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                FilledTonalButton(
+                    onClick = {
+                        hasLocationPermission = LocationPermissions.hasPermission(context)
+                        if (!hasLocationPermission) {
+                            LocationPermissions.openAppSettings(context)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text("Проверить разрешения")
+                }
+
+                if (!hasLocationPermission) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Если доступ запрещён, кнопка откроет настройки приложения",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
 
         Text(
             text = "ОФОРМЛЕНИЕ",
@@ -194,7 +309,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "Внешний вид и акценты",
+                text = "Внешний вид и разрешения",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
