@@ -69,7 +69,8 @@ com.my.music
 | Источник | Метод | Версия |
 |----------|-------|--------|
 | **SoundCloud** | NewPipe Extractor | ✅ v1 |
-| LRCLIB (тексты) | REST API (открытый) | 🔜 v1 |
+| LRCLIB (тексты) | REST API (открытый) | ✅ v1 |
+| Last.fm (похожие артисты) | Web API | ✅ v1 |
 | Spotify | Web API OAuth 2.0 PKCE | v2 |
 | Яндекс Музыка | Неофициальный API | v2 |
 | ВК Музыка | VK API | v2 |

@@ -153,6 +153,36 @@ class PlayerControllerQueueTest {
     }
 
     @Test
+    fun `append adds only new tracks and keeps playback position`() {
+        controller.setQueueAndPlay(tracks, 1)
+
+        controller.appendToQueue(
+            listOf(track("two"), track("four"), track("four"), track("")),
+        )
+
+        assertEquals(
+            listOf("one", "two", "three", "four"),
+            controller.state.value.queue.map { it.id },
+        )
+        assertEquals(1, controller.state.value.currentIndex)
+        assertEquals("two", controller.state.value.currentTrack?.id)
+    }
+
+    @Test
+    fun `appended tracks survive shuffle toggle`() {
+        controller.setQueueAndPlay(tracks, 1)
+        controller.appendToQueue(listOf(track("four")))
+
+        controller.toggleShuffle()
+        controller.toggleShuffle()
+
+        assertEquals(
+            listOf("one", "two", "three", "four"),
+            controller.state.value.queue.map { it.id },
+        )
+    }
+
+    @Test
     fun `shuffle keeps current track first and restores original order`() {
         controller.setQueueAndPlay(tracks, 2)
 

@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material3.FilledTonalButton
@@ -70,6 +71,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsState()
+    val russianPriority by viewModel.russianPriority.collectAsState()
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -275,6 +277,62 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
+
+        Text(
+            text = "МОЯ ВОЛНА",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp,
+            ),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Language,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Русская музыка в приоритете",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = "Волна чаще ставит треки с кириллицей в названии или имени артиста",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(
+                    checked = russianPriority,
+                    onCheckedChange = viewModel::setRussianPriority,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -309,7 +367,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "Внешний вид и разрешения",
+                text = "Внешний вид, волна и разрешения",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

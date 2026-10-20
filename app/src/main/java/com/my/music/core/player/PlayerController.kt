@@ -221,6 +221,24 @@ class PlayerController private constructor(
     }
 
     /**
+     * Дописать треки в конец очереди без прерывания воспроизведения.
+     * Дубликаты по id отбрасываются.
+     */
+    fun appendToQueue(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        val knownIds = _state.value.queue.mapTo(mutableSetOf()) { it.id }
+        val additions = tracks.filter { it.id.isNotBlank() && knownIds.add(it.id) }
+        if (additions.isEmpty()) return
+
+        originalQueue = if (originalQueue.isEmpty()) {
+            _state.value.queue + additions
+        } else {
+            originalQueue + additions
+        }
+        _state.update { it.copy(queue = it.queue + additions) }
+    }
+
+    /**
      * Воспроизвести трек по индексу в текущей очереди.
      */
     fun playTrackAt(index: Int) {

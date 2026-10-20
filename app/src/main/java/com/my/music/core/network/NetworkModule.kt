@@ -66,4 +66,19 @@ object NetworkModule {
     @Singleton
     fun provideLrclibApi(retrofit: Retrofit): com.my.music.data.source.lyrics.LrclibApi =
         retrofit.create(com.my.music.data.source.lyrics.LrclibApi::class.java)
+
+    /**
+     * Отдельный Retrofit для Last.fm: у сервиса другой базовый URL.
+     */
+    @Provides
+    @Singleton
+    fun provideLastFmApi(
+        okHttpClient: OkHttpClient,
+        json: Json,
+    ): com.my.music.data.source.lastfm.LastFmApi = Retrofit.Builder()
+        .baseUrl("https://ws.audioscrobbler.com/")
+        .client(okHttpClient)
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+        .create(com.my.music.data.source.lastfm.LastFmApi::class.java)
 }

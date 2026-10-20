@@ -1,6 +1,6 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 20.10.2026
+## Последнее обновление: 21.10.2026
 
 ---
 
@@ -1176,12 +1176,82 @@ MEMORY.md
 
 ---
 
-## 🔜 Следующий шаг — v1.1.1: бесконечная волна и настроения
+## ✅ Фаза 7 — Умная «Моя волна»: сессии, Last.fm и feedback (21.10.2026)
+
+### Что сделано
+1. **Сессионная бесконечная волна**:
+   - В `WaveRepository` добавлены `WaveSession`, `WaveBatch` и `StateFlow<WaveSession?> activeSession`; методы `startSession()`, `nextBatch()`, `reset()`.
+   - Старый `generateWave()` сохранён как совместимый вызов «новая сессия + первая пачка».
+   - Микс пачки: 40% похожие артисты Last.fm, 30% лайки, 20% история, 10% жанровые находки; пустые источники добираются из остальных, последний фолбэк — Top 10 SoundCloud.
+   - Внутри сессии ведётся `shownTrackIds`, поэтому треки не повторяются; накопительные счётчики источников обновляются после каждой пачки.
+   - `reset()` сразу обнуляет `activeSession`, затем ждёт mutex — летящий `nextBatch` не может дописать старую пачку в новую очередь.
+2. **Last.fm и семена вкусов**:
+   - Добавлены `LastFmApi`, DTO, `LastFmRepository` и `LastFmRepositoryImpl` (`artist.getsimilar`).
+   - Семена артистов: топ вкусов + история + лайки; семена жанров: топ вкусов + лайки + история.
+   - Похожие артисты ищутся в SoundCloud через NewPipe; ключ Last.fm берётся из `BuildConfig.LASTFM_API_KEY` (gradle property или env `LASTFM_API_KEY`). Без ключа волна работает на локальных источниках и чарте.
+3. **Локальный профиль вкусов и feedback**:
+   - Room v5: `genre_weights`, `artist_weights`, `user_preferences`; миграция `MIGRATION_4_5`, схема `5.json`.
+   - `TasteRepository`: дослушивание >80% — `+1`, скип <30 секунд — `-1`, лайк — `+3`, снятие лайка/дизлайк — `-3`; жанры и артисты нормализуются.
+   - `PlayerViewModel` считает реально проигранное время и пишет feedback при смене трека; лайки и снятие лайков также обновляют веса.
+4. **Автодозагрузка в плеере**:
+   - При 3 оставшихся треках `PlayerViewModel` запрашивает пачку из 12 и дописывает её через `PlayerController.appendToQueue()` без остановки текущего трека.
+   - `appendToQueue()` отбрасывает пустые id и дубликаты, сохраняет исходную очередь для корректного выключения shuffle.
+   - Ручной запуск трека из поиска или медиатеки сбрасывает сессию волны, чтобы автодозагрузка не подмешивала старую волну.
+5. **UI волны и настройки**:
+   - `WaveViewModel` синхронизирует список с очередью плеера, показывает накопительные счётчики всей сессии, жанры, RU-приоритет и состояние завершения.
+   - `WaveScreen`: бейджи «RU в приоритете»/«Все языки» и жанров, счётчик похожих, кнопки «Новая волна» и «Сбросить», сообщение о завершении волны.
+   - В настройках добавлен переключатель «Русская музыка в приоритете» (`pref_ru_language`), при включении кириллические треки идут первыми.
+6. **Проверки**:
+   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+   - `.\gradlew test` — `BUILD SUCCESSFUL`, 50/50 тестов в debug и release, 0 failures, 0 errors (+7 тестов: вкусы, сессия/дедупликация, RU-приоритет, appendToQueue, миграция v5).
+   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 errors, 21 warning (без новых замечаний).
+
+### Ограничения
+- Last.fm-ключ не входит в репозиторий; без него качество волны ниже, но приложение полностью работоспособно.
+- Настроения волны (бодрая/спокойная/по любимым/открытия) пока не реализованы — это следующий этап.
+- Координаты и сезон по-прежнему сохраняются в лайках, но в карточках «Воспоминаний» ещё не отображаются.
+
+### Файлы
+```
+app/build.gradle.kts
+app/schemas/com.my.music.data.local.AppDatabase/5.json (новый)
+app/src/main/java/com/my/music/core/di/RepositoryModule.kt
+app/src/main/java/com/my/music/core/network/NetworkModule.kt
+app/src/main/java/com/my/music/core/player/PlayerController.kt
+app/src/main/java/com/my/music/data/local/AppDatabase.kt
+app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/my/music/data/local/DatabaseModule.kt
+app/src/main/java/com/my/music/data/local/TasteRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/data/local/dao/TasteDao.kt (новый)
+app/src/main/java/com/my/music/data/local/entity/TasteEntities.kt (новый)
+app/src/main/java/com/my/music/data/repository/LastFmRepository.kt (новый)
+app/src/main/java/com/my/music/data/repository/TasteRepository.kt (новый)
+app/src/main/java/com/my/music/data/repository/WaveRepository.kt
+app/src/main/java/com/my/music/data/source/lastfm/LastFmApi.kt (новый)
+app/src/main/java/com/my/music/data/source/lastfm/LastFmRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/data/source/wave/WaveRepositoryImpl.kt
+app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
+app/src/main/java/com/my/music/feature/settings/SettingsViewModel.kt
+app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/my/music/feature/wave/WaveViewModel.kt
+app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
+app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
+app/src/test/java/com/my/music/data/local/TasteRepositoryTest.kt (новый)
+app/src/test/java/com/my/music/data/source/wave/WaveRepositoryTest.kt
+README.md
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
+## 🔜 Следующий шаг — настроения волны и «Воспоминания»
 
 ### Что нужно сделать
-1. **Автодозагрузка**: при приближении к концу очереди запрашивать у `WaveRepository` следующую порцию и дописывать в `PlayerController` без обрыва воспроизведения.
-2. **Настроения волны**: вернуть осмысленные чипы (бодрая / спокойная / по любимым / открытия), влияющие на подбор жанров, а не декоративные.
-3. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
+1. **Настроения волны**: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на жанры, темп и долю новых треков.
+2. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
+3. Проверить на реальном устройстве автодозагрузку, feedback и переключатель RU-приоритета.
 4. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
 
 

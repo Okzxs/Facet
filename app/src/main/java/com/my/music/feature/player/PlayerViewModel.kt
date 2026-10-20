@@ -1,5 +1,6 @@
 package com.my.music.feature.player
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,8 +19,11 @@ import com.my.music.data.repository.LyricsRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.SettingsRepository
 import com.my.music.data.repository.SoundCloudRepository
+import com.my.music.data.repository.TasteRepository
+import com.my.music.data.repository.WaveRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -37,9 +41,17 @@ class PlayerViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val playerController: PlayerController,
     private val locationProvider: LocationProvider,
+    private val tasteRepository: TasteRepository,
+    private val waveRepository: WaveRepository,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
+
+    private var feedbackTrack: Track? = null
+    private var feedbackPlayedMs = 0L
+    private var feedbackLastTickAt = 0L
+    private var feedbackWasPlaying = false
+    private var waveRefillJob: Job? = null
 
     // Доступные скорости воспроизведения (по референсу MD3 плеера)
     val availableSpeeds = listOf(1.0f, 1.25f, 1.5f, 2.0f, 0.5f)
@@ -124,6 +136,9 @@ class PlayerViewModel @Inject constructor(
                 }
             }
         }
+
+        observeTasteFeedback()
+        observeWaveRefill()
     }
 
     // ─── Публичные методы ─────────────────────────────────────────────────────
@@ -138,12 +153,17 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             val addingLike = !isLiked.value
             val point = if (addingLike) locationProvider.lastKnownLocation() else null
-            likedTracksRepository.toggleLike(
+            val nowLiked = likedTracksRepository.toggleLike(
                 track = track,
                 latitude = point?.latitude,
                 longitude = point?.longitude,
                 season = if (addingLike) SeasonProvider.currentSeason() else null,
             )
+            if (nowLiked) {
+                tasteRepository.onLike(track)
+            } else {
+                tasteRepository.onUnlike(track)
+            }
         }
     }
 
@@ -168,6 +188,12 @@ class PlayerViewModel @Inject constructor(
 
         viewModelScope.launch {
             loadLyrics(track)
+        }
+
+        // Ручной запуск из поиска/медиатеки завершает текущую волну
+        waveRefillJob?.cancel()
+        viewModelScope.launch {
+            waveRepository.reset()
         }
 
         playerController.setQueueAndPlay(targetQueue, startIndex)
@@ -266,6 +292,85 @@ class PlayerViewModel @Inject constructor(
 
     fun bufferedPositionMs(): Long = playerController.bufferedPositionMs()
     fun bufferedFraction(): Float = playerController.bufferedFraction()
+
+    /**
+     * Накопительное прослушивание: при смене трека отправляем
+     * дослушивание (>80%) или ранний скип (<30 секунд) в профиль вкусов.
+     */
+    private fun observeTasteFeedback() {
+        viewModelScope.launch {
+            playerController.state.collect { state ->
+                val now = SystemClock.elapsedRealtime()
+                if (feedbackWasPlaying && feedbackLastTickAt > 0L) {
+                    feedbackPlayedMs += (now - feedbackLastTickAt).coerceAtLeast(0L)
+                }
+                feedbackLastTickAt = now
+                feedbackWasPlaying = state.isPlaying
+
+                val track = state.currentTrack
+                if (track?.id != feedbackTrack?.id) {
+                    val previous = feedbackTrack
+                    val playedMs = feedbackPlayedMs
+                    feedbackTrack = track
+                    feedbackPlayedMs = 0L
+                    if (previous != null && playedMs > 0L) {
+                        recordTasteFeedback(previous, playedMs)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun recordTasteFeedback(track: Track, playedMs: Long) {
+        val fraction = if (track.durationMs > 0L) {
+            (playedMs.toFloat() / track.durationMs).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+
+        viewModelScope.launch {
+            when {
+                fraction > FINISHED_THRESHOLD -> tasteRepository.onTrackFinished(track, fraction)
+                playedMs < SKIP_THRESHOLD_MS -> tasteRepository.onSkip(track, playedMs)
+            }
+        }
+    }
+
+    /**
+     * Подгружает следующую пачку заранее, пока в очереди волны
+     * остаётся несколько треков.
+     */
+    private fun observeWaveRefill() {
+        viewModelScope.launch {
+            playerController.state.collect { state ->
+                val session = waveRepository.activeSession.value ?: return@collect
+                if (session.isTerminated) return@collect
+                if (state.currentTrack == null || state.queue.isEmpty()) return@collect
+
+                val remaining = state.queue.lastIndex - state.currentIndex
+                if (remaining > WAVE_REFILL_THRESHOLD) return@collect
+                if (waveRefillJob?.isActive == true) return@collect
+
+                waveRefillJob = viewModelScope.launch {
+                    waveRepository.nextBatch(size = WAVE_REFILL_BATCH).onSuccess { batch ->
+                        val active = waveRepository.activeSession.value
+                        if (batch.tracks.isNotEmpty() &&
+                            active?.sessionId == batch.session.sessionId
+                        ) {
+                            playerController.appendToQueue(batch.tracks)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private companion object {
+        const val FINISHED_THRESHOLD = 0.8f
+        const val SKIP_THRESHOLD_MS = 30_000L
+        const val WAVE_REFILL_THRESHOLD = 3
+        const val WAVE_REFILL_BATCH = 12
+    }
 }
 
 /**

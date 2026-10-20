@@ -39,7 +39,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -124,6 +127,7 @@ fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
             item(key = "wave_action") {
                 WaveActionButton(
                     isGenerating = uiState.isGenerating,
+                    hasTracks = uiState.tracks.isNotEmpty(),
                     onClick = viewModel::generateWave,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
                 )
@@ -139,12 +143,36 @@ fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
             }
 
             if (uiState.tracks.isNotEmpty()) {
+                item(key = "wave_meta") {
+                    WaveMetaBadges(
+                        isRussianPriority = uiState.isRussianPriority,
+                        genres = uiState.genres,
+                        onReset = viewModel::resetWave,
+                    )
+                }
+
                 item(key = "wave_breakdown") {
                     WaveBreakdown(
                         fromLikes = uiState.fromLikes,
                         fromHistory = uiState.fromHistory,
                         fromGenres = uiState.fromGenres,
+                        fromSimilar = uiState.fromSimilar,
                     )
+                }
+
+                if (uiState.isExhausted) {
+                    item(key = "wave_exhausted") {
+                        Text(
+                            text = "Волна закончилась — запустите новую, чтобы продолжить.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(
+                                start = 20.dp,
+                                end = 20.dp,
+                                top = 12.dp,
+                            ),
+                        )
+                    }
                 }
 
                 item(key = "wave_list_header") {
@@ -204,7 +232,7 @@ private fun WaveHeader() {
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "Бесконечный поток из ваших лайков, истории и находок",
+            text = "Бесконечный поток из ваших вкусов, похожих артистов и находок",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -371,6 +399,7 @@ private fun WaveHero(modifier: Modifier = Modifier) {
 @Composable
 private fun WaveActionButton(
     isGenerating: Boolean,
+    hasTracks: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -468,7 +497,11 @@ private fun WaveActionButton(
             }
             Spacer(Modifier.width(12.dp))
             Text(
-                text = if (isGenerating) "Собираем волну…" else "Включить волну",
+                text = when {
+                    isGenerating -> "Собираем волну…"
+                    hasTracks -> "Новая волна"
+                    else -> "Включить волну"
+                },
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.2.sp,
@@ -479,15 +512,82 @@ private fun WaveActionButton(
 }
 
 @Composable
-private fun WaveBreakdown(
-    fromLikes: Int,
-    fromHistory: Int,
-    fromGenres: Int,
+private fun WaveMetaBadges(
+    isRussianPriority: Boolean,
+    genres: List<String>,
+    onReset: () -> Unit,
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item(key = "meta_language") {
+            BreakdownChip(
+                icon = Icons.Rounded.Language,
+                label = if (isRussianPriority) "RU в приоритете" else "Все языки",
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        genres.distinctBy { it.lowercase() }.take(3).forEach { genre ->
+            item(key = "meta_genre_$genre") {
+                BreakdownChip(
+                    icon = Icons.Rounded.MusicNote,
+                    label = genre.replaceFirstChar { it.uppercase() },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item(key = "meta_reset") {
+            Surface(
+                onClick = onReset,
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Refresh,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Сбросить",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WaveBreakdown(
+    fromLikes: Int,
+    fromHistory: Int,
+    fromGenres: Int,
+    fromSimilar: Int,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (fromSimilar > 0) {
+            item(key = "breakdown_similar") {
+                BreakdownChip(
+                    icon = Icons.Rounded.Waves,
+                    label = "$fromSimilar похожих",
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+        }
         if (fromLikes > 0) {
             item(key = "breakdown_likes") {
                 BreakdownChip(
@@ -513,8 +613,8 @@ private fun WaveBreakdown(
                 BreakdownChip(
                     icon = Icons.Rounded.AutoAwesome,
                     label = "$fromGenres находок",
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -675,7 +775,8 @@ private fun WaveHintCard(modifier: Modifier = Modifier) {
             Spacer(Modifier.width(14.dp))
 
             Text(
-                text = "Нажмите «Включить волну» — соберём поток из ваших лайков, истории и свежих находок.",
+                text = "Нажмите «Включить волну» — соберём бесконечный поток " +
+                    "из ваших вкусов, похожих артистов и свежих находок.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

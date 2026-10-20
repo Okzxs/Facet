@@ -61,5 +61,17 @@ abstract class RepositoryModule {
     abstract fun bindWaveRepository(
         impl: com.my.music.data.source.wave.WaveRepositoryImpl,
     ): com.my.music.data.repository.WaveRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTasteRepository(
+        impl: com.my.music.data.local.TasteRepositoryImpl,
+    ): com.my.music.data.repository.TasteRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLastFmRepository(
+        impl: com.my.music.data.source.lastfm.LastFmRepositoryImpl,
+    ): com.my.music.data.repository.LastFmRepository
 }
 

@@ -1,3 +1,7 @@
+val lastFmApiKey: String = providers.gradleProperty("LASTFM_API_KEY")
+    .orElse(providers.environmentVariable("LASTFM_API_KEY"))
+    .getOrElse("")
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -17,6 +21,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
+
+        val escapedLastFmKey = lastFmApiKey
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+        buildConfigField("String", "LASTFM_API_KEY", "\"$escapedLastFmKey\"")
     }
 
     buildTypes {
@@ -34,6 +43,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     testOptions {
         unitTests {

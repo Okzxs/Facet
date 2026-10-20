@@ -19,11 +19,15 @@ data class WaveUiState(
     val fromLikes: Int = 0,
     val fromHistory: Int = 0,
     val fromGenres: Int = 0,
+    val fromSimilar: Int = 0,
+    val genres: List<String> = emptyList(),
+    val isRussianPriority: Boolean = true,
+    val isExhausted: Boolean = false,
     val error: String? = null,
 )
 
 /**
- * ViewModel «Моей волны»: генерирует очередь и запускает её в общем плеере.
+ * ViewModel «Моей волны»: запускает сессию и синхронизирует очередь плеера.
  */
 @HiltViewModel
 class WaveViewModel @Inject constructor(
@@ -34,36 +38,117 @@ class WaveViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(WaveUiState())
     val uiState: StateFlow<WaveUiState> = _uiState.asStateFlow()
 
+    init {
+        // Счётчики и жанры берём из накопленной сессии — они обновляются
+        // и при автодозагрузке следующих пачек.
+        viewModelScope.launch {
+            waveRepository.activeSession.collect { session ->
+                if (session == null) {
+                    _uiState.update {
+                        it.copy(
+                            tracks = emptyList(),
+                            fromLikes = 0,
+                            fromHistory = 0,
+                            fromGenres = 0,
+                            fromSimilar = 0,
+                            genres = emptyList(),
+                            isExhausted = false,
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            fromLikes = session.fromLikes,
+                            fromHistory = session.fromHistory,
+                            fromGenres = session.fromGenres,
+                            fromSimilar = session.fromSimilar,
+                            genres = session.seedGenres,
+                            isRussianPriority = session.isRussianPriority,
+                            isExhausted = session.isTerminated,
+                        )
+                    }
+                }
+            }
+        }
+
+        // Автодозагрузка меняет очередь напрямую в PlayerController —
+        // отражаем её в списке волны.
+        viewModelScope.launch {
+            playerController.state.collect { state ->
+                if (waveRepository.activeSession.value == null) return@collect
+                if (_uiState.value.isGenerating) return@collect
+                if (state.queue.isEmpty()) return@collect
+                _uiState.update { it.copy(tracks = state.queue) }
+            }
+        }
+    }
+
     /**
-     * Собрать новую волну и сразу начать воспроизведение.
+     * Собрать новую сессию волны и сразу начать воспроизведение.
      */
     fun generateWave() {
         if (_uiState.value.isGenerating) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isGenerating = true, error = null) }
+            _uiState.update {
+                it.copy(
+                    isGenerating = true,
+                    tracks = emptyList(),
+                    fromLikes = 0,
+                    fromHistory = 0,
+                    fromGenres = 0,
+                    fromSimilar = 0,
+                    genres = emptyList(),
+                    isExhausted = false,
+                    error = null,
+                )
+            }
 
-            waveRepository.generateWave()
-                .onSuccess { selection ->
-                    _uiState.update {
-                        it.copy(
-                            isGenerating = false,
-                            tracks = selection.tracks,
-                            fromLikes = selection.fromLikes,
-                            fromHistory = selection.fromHistory,
-                            fromGenres = selection.fromGenres,
-                            error = if (selection.tracks.isEmpty()) EMPTY_WAVE_MESSAGE else null,
-                        )
-                    }
-                    if (selection.tracks.isNotEmpty()) {
-                        playerController.setQueueAndPlay(selection.tracks, startIndex = 0)
-                    }
+            waveRepository.startSession()
+                .onSuccess {
+                    waveRepository.nextBatch()
+                        .onSuccess { batch ->
+                            if (batch.tracks.isEmpty()) {
+                                waveRepository.reset()
+                                _uiState.update {
+                                    it.copy(
+                                        isGenerating = false,
+                                        error = EMPTY_WAVE_MESSAGE,
+                                    )
+                                }
+                            } else {
+                                _uiState.update {
+                                    it.copy(
+                                        isGenerating = false,
+                                        tracks = batch.tracks,
+                                        fromLikes = batch.session.fromLikes,
+                                        fromHistory = batch.session.fromHistory,
+                                        fromGenres = batch.session.fromGenres,
+                                        fromSimilar = batch.session.fromSimilar,
+                                        genres = batch.session.seedGenres,
+                                        isRussianPriority = batch.session.isRussianPriority,
+                                        isExhausted = false,
+                                        error = null,
+                                    )
+                                }
+                                playerController.setQueueAndPlay(batch.tracks, startIndex = 0)
+                            }
+                        }
+                        .onFailure { error ->
+                            waveRepository.reset()
+                            _uiState.update {
+                                it.copy(
+                                    isGenerating = false,
+                                    error = error.message ?: GENERATE_ERROR,
+                                )
+                            }
+                        }
                 }
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(
                             isGenerating = false,
-                            error = error.message ?: "Не удалось собрать волну",
+                            error = error.message ?: GENERATE_ERROR,
                         )
                     }
                 }
@@ -81,8 +166,31 @@ class WaveViewModel @Inject constructor(
         playerController.setQueueAndPlay(tracks, startIndex = index)
     }
 
+    /**
+     * Завершить сессию волны. Текущая музыка продолжает играть,
+     * но автодозагрузка новых пачек останавливается.
+     */
+    fun resetWave() {
+        viewModelScope.launch {
+            waveRepository.reset()
+            _uiState.update {
+                it.copy(
+                    tracks = emptyList(),
+                    fromLikes = 0,
+                    fromHistory = 0,
+                    fromGenres = 0,
+                    fromSimilar = 0,
+                    genres = emptyList(),
+                    isExhausted = false,
+                    error = null,
+                )
+            }
+        }
+    }
+
     private companion object {
         const val EMPTY_WAVE_MESSAGE =
-            "Пока не из чего собрать волну. Добавьте лайки или послушайте несколько треков."
+            "Волна пока пуста. Добавьте лайки, послушайте треки или запустите её позже."
+        const val GENERATE_ERROR = "Не удалось собрать волну"
     }
 }

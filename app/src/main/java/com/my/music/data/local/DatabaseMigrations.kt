@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v1 → v2: появилась таблица кэша чартов.
  * v2 → v3: к лайкам добавлены координаты для «Воспоминаний».
  * v3 → v4: к лайкам добавлен сезон.
+ * v4 → v5: веса жанров/артистов и предпочтения волны.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -45,4 +46,38 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
-val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `genre_weights` (
+                `genre` TEXT NOT NULL,
+                `weight` REAL NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`genre`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `artist_weights` (
+                `artist` TEXT NOT NULL,
+                `weight` REAL NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`artist`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `user_preferences` (
+                `preferenceKey` TEXT NOT NULL,
+                `preferenceValue` TEXT NOT NULL,
+                PRIMARY KEY(`preferenceKey`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
+val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)

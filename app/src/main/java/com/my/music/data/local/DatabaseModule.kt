@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
+import com.my.music.data.local.dao.TasteDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -45,5 +46,11 @@ object DatabaseModule {
     @Singleton
     fun provideChartCacheDao(database: AppDatabase): com.my.music.data.local.dao.ChartCacheDao {
         return database.chartCacheDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideTasteDao(database: AppDatabase): TasteDao {
+        return database.tasteDao()
     }
 }

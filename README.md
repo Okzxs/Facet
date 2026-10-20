@@ -10,9 +10,9 @@
 ## Требования
 
 - VS Code или любой редактор; тестирование на реальном устройстве через adb
-- **JDK 17** (задаётся через `JAVA_HOME` или Android Studio)
+- **JDK 17** (задаётся через `JAVA_HOME`)
 - **Android SDK 35** (устанавливается автоматически при сборке)
-- Устройство или эмулятор **Android 8.0+ (API 26+)**
+- Реальное устройство **Android 8.0+ (API 26+)**, установка через adb
 
 ---
 
@@ -24,6 +24,19 @@
 
 # Release APK (требует настройки подписи)
 .\gradlew.bat assembleRelease
+```
+
+### Ключ Last.fm для «Моей волны»
+
+Похожие артисты подтягиваются через Last.fm. Ключ не хранится в репозитории; без него волна продолжит работать на лайках, истории и чарте.
+
+```powershell
+# Вариант 1: переменная окружения
+$env:LASTFM_API_KEY = "ваш_ключ"
+.\gradlew.bat assembleDebug
+
+# Вариант 2: в %USERPROFILE%\.gradle\gradle.properties
+# LASTFM_API_KEY=ваш_ключ
 ```
 
 ### Путь к APK после сборки
@@ -54,12 +67,13 @@ app/src/main/java/com/my/music/
 
 ---
 
-## Планируемые источники
+## Источники
 
 | Источник | Статус |
 |----------|--------|
-| SoundCloud | ✅ Поиск работает |
-| LRCLIB (тексты) | 🔜 В разработке |
+| SoundCloud | ✅ Поиск и воспроизведение |
+| LRCLIB (тексты) | ✅ Синхронные тексты |
+| Last.fm (похожие артисты) | ✅ «Моя волна» |
 | Spotify | 📋 v2 |
 | Яндекс Музыка | 📋 v2 |
 | ВК Музыка | 📋 v2 |
@@ -68,4 +82,4 @@ app/src/main/java/com/my/music/
 
 ## Технологии
 
-Kotlin 2.0.21 · Jetpack Compose · Material 3 · Hilt · Media3 · Room · NewPipe Extractor · Coil 3
+Kotlin 2.0.21 · Jetpack Compose · Material 3 · Hilt · Media3 · Room · NewPipe Extractor · Last.fm · Coil 3
