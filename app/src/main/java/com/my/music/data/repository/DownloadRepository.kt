@@ -3,11 +3,10 @@ package com.my.music.data.repository
 import com.my.music.data.model.DownloadedTrack
 import com.my.music.data.model.Track
 import kotlinx.coroutines.flow.Flow
-import java.io.File
 
 /**
  * Репозиторий офлайн-режима: хранит записи о скачанных треках
- * и отдаёт путь к локальному файлу для воспроизведения.
+ * и отдаёт данные для воспроизведения из кэша Media3.
  */
 interface DownloadRepository {
 
@@ -20,17 +19,15 @@ interface DownloadRepository {
     /** Все скачанные треки в порядке убывания времени скачивания. */
     fun observeDownloadedTracks(): Flow<List<DownloadedTrack>>
 
+    /**
+     * Скачанный трек для воспроизведения, если данные Media3 реально на месте.
+     * Битые записи (кэш очищен, файл удалён) автоматически вычищаются.
+     */
     suspend fun getDownloadedTrack(trackId: String): DownloadedTrack?
 
-    /**
-     * Локальный файл трека, если запись есть и файл реально лежит на диске.
-     * Битые записи (файл удалён) автоматически вычищаются.
-     */
-    suspend fun getLocalFile(trackId: String): File?
+    /** Сохранить запись о скачанном треке после успешной загрузки Media3. */
+    suspend fun save(track: Track, mediaUrl: String, mimeType: String)
 
-    /** Сохранить запись о скачанном треке. */
-    suspend fun save(track: Track, localFilePath: String)
-
-    /** Удалить запись и сам файл. */
+    /** Удалить запись и связанные с ней данные из кэша. */
     suspend fun remove(trackId: String)
 }

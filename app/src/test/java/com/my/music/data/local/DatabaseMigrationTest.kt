@@ -3,6 +3,9 @@ package com.my.music.data.local
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.my.music.data.local.entity.ChartCacheEntity
 import com.my.music.data.local.entity.DownloadedTrackEntity
@@ -39,7 +42,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 6 preserves likes and creates wave and download tables`() = runBlocking {
+    fun `migration from version 1 to 7 preserves likes and creates wave and download tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -76,9 +79,9 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(6, database.openHelper.writableDatabase.version)
+            assertEquals(7, database.openHelper.writableDatabase.version)
 
-            // Таблица офлайн-режима создана миграцией 5 → 6
+            // Таблица офлайн-режима создана миграцией 5 → 6 и обновлена в 6 → 7
             database.downloadedTracksDao().insert(
                 DownloadedTrackEntity(
                     id = "downloaded-1",
@@ -86,7 +89,8 @@ class DatabaseMigrationTest {
                     artist = "Offline artist",
                     artworkUrl = null,
                     durationMs = 60_000L,
-                    localFilePath = "/data/user/0/com.my.music/files/downloads/offline.mp3",
+                    mediaUrl = "https://api.soundcloud.com/media/offline.m3u8",
+                    mimeType = "application/x-mpegURL",
                     downloadedAt = 5_000L,
                 ),
             )
@@ -112,6 +116,68 @@ class DatabaseMigrationTest {
             assertNull(database.tasteDao().getPreference("missing"))
         } finally {
             database.close()
+        }
+    }
+
+    @Test
+    fun `migration 6 to 7 converts legacy local file path into media url`() {
+        val databaseName = "migration-6-7-test.db"
+        context.deleteDatabase(databaseName)
+
+        val config = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(databaseName)
+            .callback(
+                object : SupportSQLiteOpenHelper.Callback(1) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            """
+                            CREATE TABLE IF NOT EXISTS `downloaded_tracks` (
+                                `id` TEXT NOT NULL,
+                                `title` TEXT NOT NULL,
+                                `artist` TEXT NOT NULL,
+                                `artworkUrl` TEXT,
+                                `durationMs` INTEGER NOT NULL,
+                                `localFilePath` TEXT NOT NULL,
+                                `downloadedAt` INTEGER NOT NULL,
+                                PRIMARY KEY(`id`)
+                            )
+                            """.trimIndent(),
+                        )
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                },
+            )
+            .build()
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(config)
+        try {
+            val db = helper.writableDatabase
+            db.execSQL(
+                """
+                INSERT INTO `downloaded_tracks`
+                    (`id`, `title`, `artist`, `artworkUrl`, `durationMs`, `localFilePath`, `downloadedAt`)
+                VALUES
+                    ('legacy-offline', 'Offline track', 'Artist', NULL, 60000,
+                     '/data/user/0/com.my.music/files/downloads/offline.mp3', 5000)
+                """.trimIndent(),
+            )
+
+            MIGRATION_6_7.migrate(db)
+
+            db.query(
+                "SELECT `mediaUrl`, `mimeType` FROM `downloaded_tracks` WHERE `id` = 'legacy-offline'",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(
+                    "file:///data/user/0/com.my.music/files/downloads/offline.mp3",
+                    cursor.getString(0),
+                )
+                assertEquals("audio/mpeg", cursor.getString(1))
+            }
+        } finally {
+            helper.close()
+            context.deleteDatabase(databaseName)
         }
     }
 

@@ -1350,12 +1350,72 @@ MEMORY.md
 
 ---
 
+## ✅ Хотфикс — Media3 DownloadManager для HLS (21.10.2026)
+
+### Причина
+- Воркер падал с `Result.failure`: SoundCloud отдаёт трек с `deliveryMethod=HLS`, а старый OkHttp-загрузчик умел скачивать только один прогрессивный файл.
+
+### Что сделано
+1. **Зависимости**: явно добавлены `androidx.media3:media3-datasource:1.5.0` и `androidx.media3:media3-database:1.5.0` (exoplayer и exoplayer-hls уже были).
+2. **Кэш и DownloadManager**:
+   - `OfflineMediaModule` (Hilt, `@Singleton`): `StandaloneDatabaseProvider` (в Media3 это замена `ExoDatabaseProvider`), `SimpleCache(filesDir/media_cache, NoOpCacheEvictor)`, `CacheDataSource.Factory` для плеера и Media3 `DownloadManager` с upstream `DefaultDataSource`/`DefaultHttpDataSource` (UA `MyMusicApp/1.0`).
+   - Кэш один на процесс: и загрузчик, и `MusicService` используют один `SimpleCache`.
+3. **`OfflineDownloadManager`**:
+   - `enqueue(track, stream)`: `DownloadRequest.Builder(track.id, uri).setMimeType(...)`; HLS → `MimeTypes.APPLICATION_M3U8`, MP3 → `AUDIO_MPEG`; повторная постановка активной/готовой загрузки пропускается.
+   - `observeDownload(trackId)`: `Flow<MediaDownloadState>` через `DownloadManager.Listener` + начальное состояние из `DownloadIndex` на IO.
+   - `awaitCompletion(...)`: ожидание терминального состояния с публикацией прогресса (блокирующего API в Media3 нет).
+   - `remove(trackId)`, `isCompleted(trackId)`.
+4. **`DownloadTrackWorker`** переписан: resolve → `enqueue` → `awaitCompletion` → Room `save(mediaUrl, mimeType)`; отмена удаляет недокачанные данные; любая ошибка → `Result.failure` (WorkInfo FAILED → UI Failed).
+5. **Room v7**:
+   - `DownloadedTrackEntity`/`DownloadedTrack`: `mediaUrl` + `mimeType` вместо `localFilePath`; `DownloadRepository.save(track, mediaUrl, mimeType)`; `getDownloadedTrack` проверяет наличие данных в кэше Media3 (или файла после миграции).
+   - `MIGRATION_6_7`: пересоздание таблицы, старые `localFilePath` → `file://...`, `mimeType = audio/mpeg`; `AppDatabase` v7, схема `7.json`.
+6. **Плеер и UI**:
+   - `MusicService`: `ExoPlayer` создаётся с `DefaultMediaSourceFactory(cacheDataSourceFactory)` — скачанные HLS-сегменты и MP3 играют из общего кэша без сети.
+   - `PlayerController.resolveAndPlay`: скачанный трек играет по `mediaUrl`, `isHls` определяется по `mimeType`.
+   - `DownloadManager` (обёртка): `observeState` объединяет Room + `MediaDownloadState` + WorkInfo; активная задача приоритетнее старых записей unique work.
+   - `PlayerScreen`: `SnackbarHost` + `LaunchedEffect(downloadState)` с текстом «Не удалось скачать трек (доступен только онлайн)».
+
+### Проверки
+- `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+- `.\gradlew testDebugUnitTest` — 54/54, 0 failures, 0 errors (+1 тест миграции 6→7: конвертация пути в `file://`-URL и `audio/mpeg`).
+
+### Ограничения
+- HLS не превращается в один mp3: офлайн-воспроизведение возможно только через `CacheDataSource` в этом приложении (файл не экспортируется).
+- Обложка офлайн не сохраняется (в Room только URL для UI).
+- Отдельного экрана «Скачанное» и удаления из UI по-прежнему нет — удаление возможно через очистку данных приложения.
+
+### Файлы
+```
+app/build.gradle.kts
+app/src/main/java/com/my/music/core/download/OfflineMediaModule.kt (новый)
+app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt (новый)
+app/src/main/java/com/my/music/core/download/MediaDownloadState.kt (новый)
+app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/my/music/core/download/DownloadManager.kt
+app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
+app/src/main/java/com/my/music/core/player/MusicService.kt
+app/src/main/java/com/my/music/core/player/PlayerController.kt
+app/src/main/java/com/my/music/data/local/AppDatabase.kt
+app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/my/music/data/local/DownloadRepositoryImpl.kt
+app/src/main/java/com/my/music/data/local/entity/DownloadedTrackEntity.kt
+app/src/main/java/com/my/music/data/model/DownloadedTrack.kt
+app/src/main/java/com/my/music/data/repository/DownloadRepository.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
+app/schemas/com.my.music.data.local.AppDatabase/7.json (новый)
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — настроения волны и «Воспоминания»
 
 ### Что нужно сделать
 1. **Настроения волны**: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на жанры, темп и долю новых треков.
 2. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
-3. **Скачанное**: экран/секция со скачанными треками, удаление файла из UI и индикация занятого места.
+3. **Скачанное**: экран/секция со скачанными треками, удаление из кэша Media3 и индикация занятого места.
 4. Проверить на реальном устройстве автодозагрузку, feedback и переключатель RU-приоритета.
 5. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
 

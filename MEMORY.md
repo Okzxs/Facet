@@ -3,11 +3,11 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Офлайн-режим: скачивание треков (21.10.2026) | Экран «Скачанное» и удаление файлов из UI |
+| MyMusic | активен  | Media3-скачивание HLS и MP3 (21.10.2026) | Экран «Скачанное» и удаление из кэша |
 
 ## Ожидающие задачи
 ### Высокий приоритет
-- [x] Офлайн-режим: Room v6 (`downloaded_tracks`), WorkManager-воркер скачивания в `filesDir/downloads`, локальный файл в приоритете `PlayerController`, кнопка скачивания в плеере и галочка в `TrackCard`; 53 JVM-теста
+- [x] Офлайн-режим: Media3 DownloadManager (HLS + MP3 в SimpleCache), Room v7 (`mediaUrl` + `mimeType`), прогресс из `DownloadManager.Listener`, Snackbar ошибки; 54 JVM-теста
 - [ ] Экран «Скачанное»: список, удаление файлов, занятое место
 - [x] Фаза 7: бесконечная волна с сессией, Last.fm, локальным feedback, автодозагрузкой, RU-приоритетом и счётчиками источников; Room v5; 50 JVM-тестов
 - [ ] Настроения волны: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на подбор
@@ -39,13 +39,13 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
-- [Офлайн 21.10] Room v6: таблица `downloaded_tracks` (`DownloadedTrackEntity` + `DownloadedTracksDao`), миграция 5→6, схема в `app/schemas`; репозиторий отдаёт `Flow<Set<String>>` идентификаторов скачанного
-- [Офлайн 21.10] `DownloadTrackWorker` получает зависимости через Hilt `@EntryPoint`, поэтому `androidx.hilt:hilt-work` не добавлялся; WorkManager инициализируется штатным `androidx.startup`
-- [Офлайн 21.10] Воркер качает отдельным `OkHttpClient` без `callTimeout`: общий клиент с лимитом 15 с обрывал длинные загрузки
-- [Офлайн 21.10] Скачивается только progressive MP3; HLS-поток (m3u8) сохранить одним файлом нельзя — задача завершается `Result.failure()`
-- [Офлайн 21.10] Имя файла — sanitized `track.id` + хэш + `.mp3`: у SoundCloud `id` является URL со слэшами и двоеточиями
-- [Офлайн 21.10] `PlayerController.resolveAndPlay()` проверяет `DownloadRepository.getLocalFile()` до сети и играет `file://`-URI; параметр `downloadRepository` в тестовом конструкторе nullable, тесты не тронуты
-- [Офлайн 21.10] Кнопка в плеере: `DownloadState` (NotDownloaded / InProgress(progress) / Downloaded / Failed); клик во время загрузки отменяет задачу, для готового трека — no-op
+- [Офлайн 21.10] Скачивание переведено на Media3 DownloadManager: HLS (m3u8 + сегменты) и MP3 качаются в общий SimpleCache `filesDir/media_cache`; `ExoDatabaseProvider` в Media3 называется `StandaloneDatabaseProvider`
+- [Офлайн 21.10] Один `SimpleCache` на процесс (Hilt `@Singleton`), его делят `OfflineDownloadManager` и `MusicService`; плеер создаётся с `DefaultMediaSourceFactory(CacheDataSource.Factory)`, поэтому скачанное играет без сети
+- [Офлайн 21.10] `OfflineDownloadManager` ставит `DownloadRequest` (mimeType `APPLICATION_M3U8` для HLS, `AUDIO_MPEG` для MP3), отдаёт прогресс UI через `DownloadManager.Listener`; воркер ждёт завершения опросом индекса — блокирующего API в Media3 нет
+- [Офлайн 21.10] `DownloadTrackWorker` получает зависимости через Hilt `@EntryPoint`, резолвит поток, ставит загрузку Media3 и сохраняет в Room `mediaUrl` + `mimeType`; при ошибке — `Result.failure` и Snackbar «Не удалось скачать трек (доступен только онлайн)»
+- [Офлайн 21.10] Room v7: `downloaded_tracks` вместо `localFilePath` хранит `mediaUrl` + `mimeType`; миграция 6→7 пересоздаёт таблицу и превращает старые пути в `file://`-URL
+- [Офлайн 21.10] `PlayerController.resolveAndPlay()` играет скачанный трек по сохранённому URL через кэш; `DownloadRepositoryImpl.getDownloadedTrack()` проверяет наличие данных в Media3 и чистит битые записи
+- [Офлайн 21.10] Кнопка в плеере: `DownloadState` (NotDownloaded / InProgress / Downloaded / Failed); отмена WorkManager удаляет недокачанные данные из кэша, готовый трек не трогается
 - [Офлайн 21.10] В манифест добавлен `ACCESS_NETWORK_STATE` для сетевого constraint'а WorkManager
 - [Хотфикс 21.10] `ExpressivePlayerSlider` принимает жесты только в полосе ±14dp вокруг волны (высота 38dp): невидимая область слайдера больше не перехватывает клик по Play/Pause; зазор до ряда кнопок — 14dp, заглушка загрузки равна 38dp
 - [Хотфикс 21.10] Волна делит кандидатов на строгий и запасной пул: при RU-приоритете кириллица заполняет квоты первой, латиница — только добор при нехватке своих треков
@@ -142,7 +142,7 @@
 - Язык: комментарии в коде, служебные файлы (MEMORY.md, PROGRESS.md) и документация — строго на русском языке
 
 ## Последние сессии
-- Офлайн-режим: Room v6, WorkManager (`work-runtime-ktx:2.9.1`), скачивание в `filesDir/downloads`, локальный файл в приоритете плеера, кнопка скачивания с прогрессом и галочки в карточках; 53 JVM-теста, 0 failures
+- Офлайн-режим переведён на Media3 DownloadManager: HLS и MP3 качаются в SimpleCache, плеер читает кэш через CacheDataSource, Room v7 (`mediaUrl` + `mimeType`), прогресс из `DownloadManager.Listener`, Snackbar при ошибке; 54 JVM-теста, 0 failures
 - Хотфикс: клик Play/Pause и зона касания волнового слайдера (38dp + полоса ±14dp, зазор 14dp); волна — строгий/запасной пулы по языку, проверка артиста и жанра, отсев мусорных жанров; 53 JVM-теста, 0 failures
 - Фаза 7: сессионная «Моя волна» (Last.fm + лайки + история + жанры, 40/30/20/10), Room v5 для вкусов, feedback в плеере, автодозагрузка пачками по 12, RU-приоритет и обновлённый WaveScreen; 50 JVM-тестов, lint 0 errors
 - Фаза 6.5: фоновый плеер переведён на MediaSessionService + MediaController, добавлены metadata/artwork, audio focus, wake mode; Room переведён на реальные миграции 1→4 с экспортом схем, лайк стал транзакционным; 43 JVM-теста, lint 21 warning без errors

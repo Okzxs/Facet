@@ -18,12 +18,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Обёртка над WorkManager: ставит задачи скачивания и отдаёт их состояние в UI.
+ * Обёртка над WorkManager для UI: ставит задачи скачивания
+ * и объединяет состояние Room с реальным состоянием Media3 DownloadManager.
  */
 @Singleton
 class DownloadManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val downloadRepository: DownloadRepository,
+    private val offlineDownloadManager: OfflineDownloadManager,
 ) {
 
     private val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
@@ -61,40 +63,57 @@ class DownloadManager @Inject constructor(
         )
     }
 
-    /** Отменяет активное скачивание (уже готовый файл не трогаем). */
+    /**
+     * Отменяет активное скачивание. Недокачанные данные из кэша
+     * удаляет сам воркер при отмене; готовый трек не трогаем.
+     */
     fun cancel(trackId: String) {
         workManager.cancelUniqueWork(uniqueWorkName(trackId))
     }
 
     /**
      * Наблюдает состояние скачивания конкретного трека:
-     * запись в Room + статус задачи WorkManager.
+     * запись в Room + прогресс Media3 + статус задачи WorkManager.
      */
     fun observeState(trackId: String): Flow<DownloadState> {
         return combine(
             downloadRepository.observeIsDownloaded(trackId),
+            offlineDownloadManager.observeDownload(trackId),
             workManager.getWorkInfosForUniqueWorkFlow(uniqueWorkName(trackId)),
-        ) { isDownloaded, workInfos ->
-            if (isDownloaded) {
-                DownloadState.Downloaded
-            } else {
-                when (val info = workInfos.lastOrNull()) {
-                    null -> DownloadState.NotDownloaded
-                    else -> when (info.state) {
-                        WorkInfo.State.ENQUEUED,
-                        WorkInfo.State.BLOCKED,
-                        WorkInfo.State.RUNNING,
-                        -> DownloadState.InProgress(
-                            info.progress.getFloat(DownloadTrackWorker.KEY_PROGRESS, 0f),
-                        )
+        ) { isDownloaded, mediaState, workInfos ->
+            val workInfo = activeWorkInfo(workInfos)
+            val workProgress = workInfo
+                ?.progress
+                ?.getFloat(DownloadTrackWorker.KEY_PROGRESS, 0f)
+                ?: 0f
 
-                        WorkInfo.State.SUCCEEDED -> DownloadState.Downloaded
-                        WorkInfo.State.FAILED -> DownloadState.Failed
-                        WorkInfo.State.CANCELLED -> DownloadState.NotDownloaded
-                    }
-                }
+            when {
+                isDownloaded -> DownloadState.Downloaded
+                mediaState is MediaDownloadState.InProgress ->
+                    DownloadState.InProgress(mediaState.progress)
+
+                mediaState is MediaDownloadState.Queued ->
+                    DownloadState.InProgress(workProgress)
+
+                mediaState is MediaDownloadState.Failed -> DownloadState.Failed
+                workInfo?.state == WorkInfo.State.FAILED -> DownloadState.Failed
+                // Media3 уже докачал, но Room-запись появится чуть позже
+                mediaState is MediaDownloadState.Completed -> DownloadState.Downloaded
+                workInfo != null && workInfo.state in ACTIVE_WORK_STATES ->
+                    DownloadState.InProgress(workProgress)
+
+                else -> DownloadState.NotDownloaded
             }
         }.distinctUntilChanged()
+    }
+
+    /** Активная задача важнее старых записей в цепочке unique work. */
+    private fun activeWorkInfo(workInfos: List<WorkInfo>): WorkInfo? {
+        return workInfos.lastOrNull { it.state == WorkInfo.State.RUNNING }
+            ?: workInfos.lastOrNull {
+                it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED
+            }
+            ?: workInfos.lastOrNull()
     }
 
     private fun uniqueWorkName(trackId: String): String = "download:$trackId"
@@ -102,5 +121,11 @@ class DownloadManager @Inject constructor(
     companion object {
         /** Тег всех задач скачивания — для диагностики и массовой отмены. */
         const val TAG_DOWNLOAD = "download"
+
+        private val ACTIVE_WORK_STATES = setOf(
+            WorkInfo.State.ENQUEUED,
+            WorkInfo.State.BLOCKED,
+            WorkInfo.State.RUNNING,
+        )
     }
 }

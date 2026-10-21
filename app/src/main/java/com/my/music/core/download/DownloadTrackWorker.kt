@@ -2,6 +2,7 @@ package com.my.music.core.download
 
 import android.content.Context
 import android.util.Log
+import androidx.media3.common.util.UnstableApi
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -10,24 +11,20 @@ import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
- * Фоновое скачивание трека в приватное хранилище приложения.
+ * Фоновое скачивание трека через Media3 DownloadManager.
  *
  * Порядок работы:
  * 1. получает прямую ссылку через SoundCloudRepository.resolveStreamUrl;
- * 2. качает файл в filesDir/downloads/<безопасное имя>.mp3;
- * 3. сохраняет запись в Room, чтобы плеер мог играть трек офлайн.
+ * 2. ставит DownloadRequest в Media3 — он сам качает MP3 или HLS-сегменты;
+ * 3. дожидается завершения и сохраняет запись в Room.
+ *
+ * HLS-поток не превращается в один mp3-файл: сегменты лежат в общем
+ * SimpleCache, а плеер играет их через CacheDataSource.
  */
+@UnstableApi
 class DownloadTrackWorker(
     appContext: Context,
     params: WorkerParameters,
@@ -52,49 +49,47 @@ class DownloadTrackWorker(
             Log.e(TAG, "Не удалось получить ссылку на поток: ${track.title}")
             return@withContext Result.failure()
         }
-        // HLS — это плейлист из сегментов, одним mp3-файлом его не сохранить
-        if (streamResult.isHls) {
-            Log.w(TAG, "Трек доступен только по HLS, скачивание невозможно: ${track.title}")
-            return@withContext Result.failure()
-        }
 
-        val downloadsDir = File(applicationContext.filesDir, DOWNLOADS_DIR)
-        if (!downloadsDir.exists() && !downloadsDir.mkdirs()) {
-            Log.e(TAG, "Не удалось создать каталог ${downloadsDir.absolutePath}")
-            return@withContext Result.failure()
-        }
-
-        val targetFile = File(downloadsDir, downloadFileName(track.id))
-        val tempFile = File(downloadsDir, "${targetFile.name}.part")
-
+        val offlineDownloadManager = entryPoint.offlineDownloadManager()
         try {
-            downloadToFile(streamResult.url, tempFile)
+            offlineDownloadManager.enqueue(track, streamResult)
+
+            val outcome = offlineDownloadManager.awaitCompletion(track.id) { progress ->
+                setProgress(progressData(progress))
+            }
+
+            when (outcome) {
+                is OfflineDownloadManager.DownloadOutcome.Completed -> Unit
+                is OfflineDownloadManager.DownloadOutcome.Failed -> {
+                    Log.e(
+                        TAG,
+                        "Media3 не смог скачать '${track.title}': ${outcome.reason}",
+                    )
+                    return@withContext Result.failure(
+                        workDataOf(KEY_ERROR to (outcome.reason ?: "unknown")),
+                    )
+                }
+            }
+
+            entryPoint.downloadRepository().save(
+                track = track,
+                mediaUrl = streamResult.url,
+                mimeType = OfflineDownloadManager.mimeTypeOf(streamResult),
+            )
+            setProgress(progressData(1f))
+            Log.d(
+                TAG,
+                "Трек скачан: '${track.title}' (isHls=${streamResult.isHls})",
+            )
+            Result.success()
         } catch (e: CancellationException) {
-            tempFile.delete()
+            // Пользователь отменил скачивание — убираем недокачанные данные из кэша
+            offlineDownloadManager.remove(track.id)
             throw e
         } catch (e: Exception) {
-            tempFile.delete()
             Log.e(TAG, "Ошибка скачивания '${track.title}'", e)
-            return@withContext Result.failure()
+            Result.failure(workDataOf(KEY_ERROR to (e.message ?: "unknown")))
         }
-
-        if (!tempFile.exists() || tempFile.length() == 0L) {
-            tempFile.delete()
-            Log.e(TAG, "Получен пустой файл для '${track.title}'")
-            return@withContext Result.failure()
-        }
-
-        // Атомарно подменяем готовый файл (старый мог остаться от прошлой версии)
-        if (targetFile.exists()) targetFile.delete()
-        if (!tempFile.renameTo(targetFile)) {
-            tempFile.copyTo(targetFile, overwrite = true)
-            tempFile.delete()
-        }
-
-        entryPoint.downloadRepository().save(track, targetFile.absolutePath)
-        setProgress(progressData(1f))
-        Log.d(TAG, "Трек скачан: '${track.title}' → ${targetFile.absolutePath}")
-        Result.success()
     }
 
     /** Восстанавливает трек из входных данных WorkManager. */
@@ -133,54 +128,8 @@ class DownloadTrackWorker(
         return null
     }
 
-    /**
-     * Скачивает поток в [targetFile], регулярно публикуя прогресс.
-     * Таймауты отличаются от API-клиента: файл может качаться дольше 15 секунд.
-     */
-    private suspend fun downloadToFile(url: String, targetFile: File) {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
-            .build()
-
-        DOWNLOAD_CLIENT.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IOException("HTTP ${response.code} при скачивании $url")
-            }
-            val body = response.body ?: throw IOException("Пустой ответ для $url")
-            val totalBytes = body.contentLength()
-
-            body.byteStream().use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    var downloaded = 0L
-                    var lastPercent = -1
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        downloaded += read
-
-                        if (totalBytes > 0L) {
-                            val percent = (downloaded * 100 / totalBytes).toInt()
-                            if (percent >= lastPercent + 5 || percent == 100) {
-                                lastPercent = percent
-                                setProgress(progressData(percent / 100f))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     companion object {
         private const val TAG = "DownloadWorker"
-        private const val USER_AGENT = "MyMusicApp/1.0"
-
-        /** Подкаталог во внутреннем хранилище приложения. */
-        const val DOWNLOADS_DIR = "downloads"
 
         const val KEY_TRACK_ID = "track_id"
         const val KEY_TITLE = "title"
@@ -191,31 +140,8 @@ class DownloadTrackWorker(
         const val KEY_STREAM_URL = "stream_url"
         const val KEY_TRANSCODING_URL = "transcoding_url"
         const val KEY_PROGRESS = "progress"
-
-        /**
-         * Имя файла: track.id — это URL, поэтому оставляем только безопасные символы
-         * и добавляем хэш, чтобы разные треки не перекрывали друг друга.
-         */
-        fun downloadFileName(trackId: String): String {
-            val safe = trackId
-                .replace(Regex("[^A-Za-z0-9]+"), "_")
-                .trim('_')
-                .take(48)
-                .ifBlank { "track" }
-            val hash = Integer.toHexString(trackId.hashCode())
-            return "${safe}_$hash.mp3"
-        }
+        const val KEY_ERROR = "error"
 
         fun progressData(progress: Float) = workDataOf(KEY_PROGRESS to progress.coerceIn(0f, 1f))
-
-        private val DOWNLOAD_CLIENT: OkHttpClient by lazy {
-            OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                // Общий лимит на весь запрос не ставим: трек может качаться минутами
-                .callTimeout(0, TimeUnit.MILLISECONDS)
-                .retryOnConnectionFailure(true)
-                .build()
-        }
     }
 }

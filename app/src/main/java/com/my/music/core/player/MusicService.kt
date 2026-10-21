@@ -7,7 +7,9 @@ import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.my.music.MainActivity
@@ -21,11 +23,16 @@ import javax.inject.Inject
  * MediaStyle-уведомление и удерживает сервис в foreground, пока играет музыка.
  * Кнопки Prev/Next перенаправляются в очередь [PlayerController].
  */
+@UnstableApi
 @AndroidEntryPoint
 class MusicService : MediaSessionService() {
 
     @Inject
     lateinit var playerController: PlayerController
+
+    /** Читает скачанные HLS-сегменты и MP3 из общего кэша Media3. */
+    @Inject
+    lateinit var cacheDataSourceFactory: CacheDataSource.Factory
 
     private var exoPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
@@ -57,6 +64,7 @@ class MusicService : MediaSessionService() {
             .build()
 
         val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(cacheDataSourceFactory))
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .setHandleAudioBecomingNoisy(true)
             // PARTIAL_WAKE_LOCK + Wi-Fi lock: музыка не прерывается при блокировке экрана

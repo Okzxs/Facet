@@ -1,6 +1,9 @@
 package com.my.music.data.local
 
+import android.net.Uri
+import com.my.music.core.download.OfflineDownloadManager
 import com.my.music.data.local.dao.DownloadedTracksDao
+import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.toDomain
 import com.my.music.data.local.entity.toDownloadEntity
 import com.my.music.data.model.DownloadedTrack
@@ -17,10 +20,13 @@ import javax.inject.Singleton
 
 /**
  * Реализация репозитория скачанных треков на базе Room.
+ * Перед воспроизведением проверяет, что данные всё ещё лежат в кэше Media3
+ * (или в старом локальном файле после миграции).
  */
 @Singleton
 class DownloadRepositoryImpl @Inject constructor(
     private val downloadedTracksDao: DownloadedTracksDao,
+    private val offlineDownloadManager: OfflineDownloadManager,
 ) : DownloadRepository {
 
     override fun observeDownloadedIds(): Flow<Set<String>> {
@@ -40,27 +46,20 @@ class DownloadRepositoryImpl @Inject constructor(
             .flowOn(Dispatchers.IO)
     }
 
-    override suspend fun getDownloadedTrack(trackId: String): DownloadedTrack? {
-        return withContext(Dispatchers.IO) {
-            downloadedTracksDao.getById(trackId)?.toDomain()
-        }
-    }
-
-    override suspend fun getLocalFile(trackId: String): File? = withContext(Dispatchers.IO) {
-        val entry = downloadedTracksDao.getById(trackId) ?: return@withContext null
-        val file = File(entry.localFilePath)
-        if (file.exists() && file.length() > 0L) {
-            file
-        } else {
-            // Файл удалён извне — запись больше не валидна
-            downloadedTracksDao.delete(trackId)
-            null
-        }
-    }
-
-    override suspend fun save(track: Track, localFilePath: String) {
+    override suspend fun getDownloadedTrack(trackId: String): DownloadedTrack? =
         withContext(Dispatchers.IO) {
-            downloadedTracksDao.insert(track.toDownloadEntity(localFilePath))
+            val entry = downloadedTracksDao.getById(trackId) ?: return@withContext null
+            if (!isPlayable(entry)) {
+                // Кэш очищен или старый файл удалён — запись больше не валидна
+                downloadedTracksDao.delete(trackId)
+                return@withContext null
+            }
+            entry.toDomain()
+        }
+
+    override suspend fun save(track: Track, mediaUrl: String, mimeType: String) {
+        withContext(Dispatchers.IO) {
+            downloadedTracksDao.insert(track.toDownloadEntity(mediaUrl, mimeType))
         }
     }
 
@@ -68,9 +67,23 @@ class DownloadRepositoryImpl @Inject constructor(
         withContext(Dispatchers.IO) {
             val entry = downloadedTracksDao.getById(trackId)
             downloadedTracksDao.delete(trackId)
-            entry?.localFilePath?.let { path ->
-                runCatching { File(path).delete() }
+            if (entry != null) {
+                if (entry.mediaUrl.startsWith("file://")) {
+                    val path = Uri.parse(entry.mediaUrl).path
+                    if (path != null) runCatching { File(path).delete() }
+                } else {
+                    offlineDownloadManager.remove(trackId)
+                }
             }
         }
+    }
+
+    private suspend fun isPlayable(entry: DownloadedTrackEntity): Boolean {
+        if (entry.mediaUrl.startsWith("file://")) {
+            val path = Uri.parse(entry.mediaUrl).path ?: return false
+            val file = File(path)
+            return file.exists() && file.length() > 0L
+        }
+        return offlineDownloadManager.isCompleted(entry.id)
     }
 }

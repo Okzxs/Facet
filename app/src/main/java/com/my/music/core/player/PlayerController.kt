@@ -2,7 +2,6 @@ package com.my.music.core.player
 
 import android.content.ComponentName
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -453,21 +452,24 @@ class PlayerController private constructor(
                 }
             }
 
-            // Офлайн-режим: если трек скачан и файл на месте — играем локально,
+            // Офлайн-режим: если трек скачан, играем его из кэша Media3,
             // не обращаясь к сети (важно при отсутствии интернета).
-            val localFile = try {
-                downloadRepository?.getLocalFile(track.id)
+            val downloaded = try {
+                downloadRepository?.getDownloadedTrack(track.id)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(tag, "Не удалось проверить локальный файл трека", e)
+                Log.e(tag, "Не удалось проверить скачанный трек", e)
                 null
             }
 
             val streamResult: Result<AudioStreamResult> = when {
-                localFile != null ->
+                downloaded != null ->
                     Result.success(
-                        AudioStreamResult(url = Uri.fromFile(localFile).toString(), isHls = false),
+                        AudioStreamResult(
+                            url = downloaded.mediaUrl,
+                            isHls = downloaded.mimeType == MimeTypes.APPLICATION_M3U8,
+                        ),
                     )
                 track.streamUrl != null ->
                     Result.success(AudioStreamResult(url = track.streamUrl, isHls = false))
@@ -477,8 +479,11 @@ class PlayerController private constructor(
                     Result.failure(IllegalStateException("Нет ссылки на поток для трека: ${track.id}"))
             }.rethrowCancellation()
 
-            if (localFile != null) {
-                Log.d(tag, "Офлайн-воспроизведение трека '${track.title}' из ${localFile.absolutePath}")
+            if (downloaded != null) {
+                Log.d(
+                    tag,
+                    "Офлайн-воспроизведение трека '${track.title}' из кэша: ${downloaded.mediaUrl}",
+                )
             }
 
             streamResult

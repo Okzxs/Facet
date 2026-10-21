@@ -91,6 +91,9 @@ import kotlinx.coroutines.delay
  */
 private const val PLAYER_LAYOUT_VARIANT = 1
 
+/** Единый текст ошибки скачивания: трек можно слушать только онлайн. */
+private const val DOWNLOAD_FAILED_MESSAGE = "Не удалось скачать трек (доступен только онлайн)"
+
 /** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
     val widthFraction: Float,
@@ -123,6 +126,7 @@ fun PlayerScreen(
 
     var isLyricsMode by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // ─── Разрешение на геопозицию ────────────────────────────────────────
     val context = LocalContext.current
@@ -177,6 +181,13 @@ fun PlayerScreen(
     // Текущий трек берём из PlayerController (он всегда актуален после play())
     val track = playerState.currentTrack ?: uiState.track
 
+    // Скачивание невозможно (нет прав/404/HLS-ошибка) — сообщаем пользователю
+    LaunchedEffect(downloadState, track?.id) {
+        if (downloadState is DownloadState.Failed) {
+            snackbarHostState.showSnackbar(DOWNLOAD_FAILED_MESSAGE)
+        }
+    }
+
     // Гарантируем запрос текста при открытии экрана или смене трека
     LaunchedEffect(track?.id) {
         if (track != null && uiState.lyrics == null && !uiState.isLyricsLoading) {
@@ -228,6 +239,7 @@ fun PlayerScreen(
 
     Scaffold(
         containerColor = Color.Transparent,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 navigationIcon = {

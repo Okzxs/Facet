@@ -7,6 +7,9 @@ import com.my.music.data.model.Track
 
 /**
  * Сущность скачанного трека для таблицы downloaded_tracks в Room.
+ *
+ * Для HLS-трека нет одного локального файла: Media3 складывает сегменты
+ * в SimpleCache, поэтому храним ссылку на поток и его MIME-тип.
  * Обложка здесь только для UI — сам файл изображения не сохраняется.
  */
 @Entity(tableName = "downloaded_tracks")
@@ -17,7 +20,10 @@ data class DownloadedTrackEntity(
     val artist: String,
     val artworkUrl: String?,
     val durationMs: Long,
-    val localFilePath: String,
+    /** URL потока: m3u8-плейлист или прямой MP3. */
+    val mediaUrl: String,
+    /** MimeTypes.APPLICATION_M3U8 для HLS либо MimeTypes.AUDIO_MPEG. */
+    val mimeType: String,
     val downloadedAt: Long = System.currentTimeMillis(),
 )
 
@@ -27,12 +33,14 @@ fun DownloadedTrackEntity.toDomain(): DownloadedTrack = DownloadedTrack(
     artist = artist,
     artworkUrl = artworkUrl,
     durationMs = durationMs,
-    localFilePath = localFilePath,
+    mediaUrl = mediaUrl,
+    mimeType = mimeType,
     downloadedAt = downloadedAt,
 )
 
 fun Track.toDownloadEntity(
-    localFilePath: String,
+    mediaUrl: String,
+    mimeType: String,
     downloadedAt: Long = System.currentTimeMillis(),
 ): DownloadedTrackEntity = DownloadedTrackEntity(
     id = id,
@@ -40,6 +48,7 @@ fun Track.toDownloadEntity(
     artist = artist,
     artworkUrl = artworkUrl,
     durationMs = durationMs,
-    localFilePath = localFilePath,
+    mediaUrl = mediaUrl,
+    mimeType = mimeType,
     downloadedAt = downloadedAt,
 )
