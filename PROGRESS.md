@@ -114,10 +114,12 @@ navigation/AppNavGraph.kt
 - ✅ Очередь: шторка `PlayerQueueSheet`, shuffle, repeat OFF/ALL/ONE, скорость 0.5–2.0×, удаление треков, переход к выбранному
 - ✅ Тексты LRCLIB: синхронный караоке-режим, автоцентрирование, тап по строке = перемотка
 - ✅ Лайки в Room v5 с геопозицией и сезоном, миграции 1→5 с экспортом схем (без destructive fallback)
+- ✅ Офлайн-режим: скачивание треков через WorkManager в `filesDir/downloads`, Room v6 (`downloaded_tracks`), локальный файл в приоритете воспроизведения, кнопка скачивания в плеере и галочка в карточках
 - ✅ «Моя волна»: бесконечная сессия, Last.fm + лайки + история + жанры (40/30/20/10), локальный feedback вкусов, автодозагрузка пачками по 12, RU-приоритет с языковой фильтрацией
 - ✅ Слайдер-волна с корректной зоной касания (фикс клика Play/Pause)
 
 ### Пока не реализовано
+- ❌ Управление скачанным: удаление из UI, лимит хранилища, отдельный экран «Скачанное»
 - ❌ Плейлисты (нет ни в UI, ни в БД) — это v2
 - ❌ Настроения волны («Бодрая / Спокойная / По любимым / Открытия»)
 - ❌ Показ координат и сезона в карточках «Воспоминаний», действие «Открыть на карте»
@@ -1283,12 +1285,78 @@ MEMORY.md
 
 ---
 
+## ✅ Сессия 9 — Офлайн-режим: скачивание треков (21.10.2026)
+
+### Что сделано
+1. **Room v6 — таблица скачанных треков**:
+   - `DownloadedTrackEntity` (`downloaded_tracks`): `id`, `title`, `artist`, `artworkUrl`, `durationMs`, `localFilePath`, `downloadedAt`.
+   - `DownloadedTracksDao`: `insert` (REPLACE), `delete`, `getById`, `isDownloaded(): Flow<Boolean>`, `getDownloadedIds(): Flow<List<String>>`, `getAll(): Flow<List<DownloadedTrackEntity>>`.
+   - `AppDatabase` → версия 6; `MIGRATION_5_6` создаёт таблицу; схема `app/schemas/com.my.music.data.local.AppDatabase/6.json` экспортирована.
+   - Доменная модель `DownloadedTrack` + мапперы; `DownloadRepository` / `DownloadRepositoryImpl`: проверка существования файла, автоочистка битых записей, удаление файла вместе с записью; Hilt-биндинги в `RepositoryModule` и `DatabaseModule`.
+2. **WorkManager — фоновое скачивание**:
+   - Добавлена зависимость `androidx.work:work-runtime-ktx:2.9.1` (единственная новая версия в проекте).
+   - `DownloadTrackWorker` (CoroutineWorker): резолвит поток через `SoundCloudRepository.resolveStreamUrl`, качает OkHttp в `filesDir/downloads/`, публикует прогресс в WorkManager, затем сохраняет запись в Room. Используется отдельный OkHttp-клиент: у общего `callTimeout = 15 с`, который убивал длинные загрузки.
+   - HLS (m3u8) одним mp3-файлом не сохранить — воркер завершает задачу ошибкой; прогрессивный MP3 резолвится приоритетно.
+   - Имя файла — безопасная версия `track.id` + короткий хэш + `.mp3`: у SoundCloud `id` — это URL со слэшами и двоеточиями.
+   - `DownloadManager`: `download(track)` ставит уникальную работу (`ExistingWorkPolicy.KEEP`, constraint `NetworkType.CONNECTED`), `cancel(trackId)`, `observeState(trackId): Flow<DownloadState>` (Room + WorkInfo).
+   - Зависимости воркера — через Hilt `@EntryPoint` (`DownloadWorkerEntryPoint`), без дополнительной зависимости `androidx.hilt:hilt-work`.
+3. **Плеер — локальный файл в приоритете**:
+   - `PlayerController.resolveAndPlay()` сначала спрашивает `DownloadRepository.getLocalFile(track.id)`; если файл существует — `MediaItem` строится из `file://`-URI, сеть не используется. Нет файла — прежний путь через `resolveStreamUrl`.
+   - В JVM-тестах конструктор принимает `downloadRepository = null` — 17 тестов очереди не менялись.
+4. **UI**:
+   - `PlayerScreen`: рядом с лайком — кнопка скачивания 46dp с тремя состояниями: стрелка вниз → круговой прогресс (детерминированный при известном размере) → галочка `DownloadDone`. Клик: скачать / отменить / ничего для уже готового трека.
+   - `PlayerViewModel`: `downloadState: StateFlow<DownloadState>` через `flatMapLatest` по текущему треку и `toggleDownload()`.
+   - `TrackCard`: маленькая галочка на обложке скачанного трека; `LibraryViewModel` и `SearchViewModel` отдают `downloadedIds: StateFlow<Set<String>>` из Room.
+   - В манифест добавлен `ACCESS_NETWORK_STATE` — он нужен сетевому constraint'у WorkManager.
+5. **Проверки**:
+   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL` после каждого из четырёх шагов.
+   - `.\gradlew test` — 53/53 теста, 0 failures (тест миграций обновлён под v6 и дополнительно проверяет таблицу `downloaded_tracks`).
+
+### Ограничения
+- Скачивается только прогрессивный MP3; треки, доступные лишь по HLS, офлайн недоступны.
+- Обложка офлайн не сохраняется (в Room только URL для UI).
+- Удаление скачанного трека пока возможно только через очистку данных приложения — отдельного экрана «Скачанное» нет.
+
+### Файлы
+```
+app/build.gradle.kts
+app/src/main/AndroidManifest.xml
+data/model/DownloadedTrack.kt (новый)
+data/local/entity/DownloadedTrackEntity.kt (новый)
+data/local/dao/DownloadedTracksDao.kt (новый)
+data/local/DownloadRepositoryImpl.kt (новый)
+data/repository/DownloadRepository.kt (новый)
+data/local/AppDatabase.kt
+data/local/DatabaseMigrations.kt
+data/local/DatabaseModule.kt
+core/di/RepositoryModule.kt
+core/download/DownloadState.kt (новый)
+core/download/DownloadTrackWorker.kt (новый)
+core/download/DownloadManager.kt (новый)
+core/download/DownloadWorkerEntryPoint.kt (новый)
+core/player/PlayerController.kt
+feature/player/PlayerViewModel.kt
+feature/player/PlayerScreen.kt
+core/ui/components/TrackCard.kt
+feature/library/LibraryViewModel.kt
+feature/library/LibraryScreen.kt
+feature/search/SearchViewModel.kt
+feature/search/SearchScreen.kt
+app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
+app/schemas/com.my.music.data.local.AppDatabase/6.json (новый)
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
 ## 🔜 Следующий шаг — настроения волны и «Воспоминания»
 
 ### Что нужно сделать
 1. **Настроения волны**: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на жанры, темп и долю новых треков.
 2. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
-3. Проверить на реальном устройстве автодозагрузку, feedback и переключатель RU-приоритета.
-4. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
+3. **Скачанное**: экран/секция со скачанными треками, удаление файла из UI и индикация занятого места.
+4. Проверить на реальном устройстве автодозагрузку, feedback и переключатель RU-приоритета.
+5. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
 
 

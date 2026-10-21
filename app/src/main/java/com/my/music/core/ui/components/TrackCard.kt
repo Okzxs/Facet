@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -52,6 +54,7 @@ fun TrackCard(
     track: Track,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isDownloaded: Boolean = false,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -116,10 +119,29 @@ fun TrackCard(
                 )
             },
             leadingContent = {
-                TrackArtwork(
-                    url = track.artworkUrl,
-                    contentDescription = "${track.title} обложка",
-                )
+                Box {
+                    TrackArtwork(
+                        url = track.artworkUrl,
+                        contentDescription = "${track.title} обложка",
+                    )
+                    // Значок «скачано» — маленькая галочка поверх обложки
+                    if (isDownloaded) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(18.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.DownloadDone,
+                                contentDescription = "Трек скачан",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.padding(2.dp),
+                            )
+                        }
+                    }
+                }
             },
             trailingContent = trailingContent,
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),

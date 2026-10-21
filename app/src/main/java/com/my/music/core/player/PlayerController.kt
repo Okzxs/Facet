@@ -2,6 +2,7 @@ package com.my.music.core.player
 
 import android.content.ComponentName
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -15,6 +16,7 @@ import androidx.media3.session.SessionToken
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Track
+import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.SoundCloudRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -45,6 +47,8 @@ class PlayerController private constructor(
     private val appContext: Context?,
     private val soundCloudRepository: SoundCloudRepository,
     private val playHistoryRepository: PlayHistoryRepository,
+    /** Репозиторий скачанных треков; null только в JVM-тестах. */
+    private val downloadRepository: DownloadRepository?,
     initialController: MediaController?,
 ) {
 
@@ -53,14 +57,16 @@ class PlayerController private constructor(
         @ApplicationContext context: Context,
         soundCloudRepository: SoundCloudRepository,
         playHistoryRepository: PlayHistoryRepository,
-    ) : this(context, soundCloudRepository, playHistoryRepository, null)
+        downloadRepository: DownloadRepository,
+    ) : this(context, soundCloudRepository, playHistoryRepository, downloadRepository, null)
 
     /** Конструктор для JVM-тестов: готовый контроллер без подключения к сервису. */
     internal constructor(
         mediaController: MediaController,
         soundCloudRepository: SoundCloudRepository,
         playHistoryRepository: PlayHistoryRepository,
-    ) : this(null, soundCloudRepository, playHistoryRepository, mediaController)
+        downloadRepository: DownloadRepository? = null,
+    ) : this(null, soundCloudRepository, playHistoryRepository, downloadRepository, mediaController)
 
     private val tag = "PlayerController"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -447,7 +453,22 @@ class PlayerController private constructor(
                 }
             }
 
+            // Офлайн-режим: если трек скачан и файл на месте — играем локально,
+            // не обращаясь к сети (важно при отсутствии интернета).
+            val localFile = try {
+                downloadRepository?.getLocalFile(track.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(tag, "Не удалось проверить локальный файл трека", e)
+                null
+            }
+
             val streamResult: Result<AudioStreamResult> = when {
+                localFile != null ->
+                    Result.success(
+                        AudioStreamResult(url = Uri.fromFile(localFile).toString(), isHls = false),
+                    )
                 track.streamUrl != null ->
                     Result.success(AudioStreamResult(url = track.streamUrl, isHls = false))
                 track.transcodingUrl != null ->
@@ -455,6 +476,10 @@ class PlayerController private constructor(
                 else ->
                     Result.failure(IllegalStateException("Нет ссылки на поток для трека: ${track.id}"))
             }.rethrowCancellation()
+
+            if (localFile != null) {
+                Log.d(tag, "Офлайн-воспроизведение трека '${track.title}' из ${localFile.absolutePath}")
+            }
 
             streamResult
                 .onSuccess { result ->

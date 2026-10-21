@@ -85,6 +85,7 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val downloadedIds by viewModel.downloadedIds.collectAsState()
 
     val contentState = when {
         state.isLoading -> SearchContentState.Loading
@@ -147,6 +148,7 @@ fun SearchScreen(
                     SearchContentState.Empty -> EmptyResultsState(query = state.query)
                     SearchContentState.Results -> ResultsList(
                         tracks = state.results,
+                        downloadedIds = downloadedIds,
                         onTrackClick = onTrackClick,
                     )
                 }
@@ -493,6 +495,7 @@ private fun ErrorState(
 @Composable
 private fun ResultsList(
     tracks: List<Track>,
+    downloadedIds: Set<String>,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -535,6 +538,7 @@ private fun ResultsList(
             ) { track ->
                 TrackCard(
                     track = track,
+                    isDownloaded = track.id in downloadedIds,
                     onClick = { onTrackClick(track, tracks) },
                 )
             }

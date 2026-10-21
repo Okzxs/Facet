@@ -121,6 +121,9 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
+    // WorkManager (фоновое скачивание треков)
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     // NewPipe Extractor (SoundCloud и другие сервисы без официального API)
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
 

@@ -73,5 +73,11 @@ abstract class RepositoryModule {
     abstract fun bindLastFmRepository(
         impl: com.my.music.data.source.lastfm.LastFmRepositoryImpl,
     ): com.my.music.data.repository.LastFmRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindDownloadRepository(
+        impl: com.my.music.data.local.DownloadRepositoryImpl,
+    ): com.my.music.data.repository.DownloadRepository
 }
 

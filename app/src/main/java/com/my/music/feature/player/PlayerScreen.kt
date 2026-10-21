@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.*
@@ -71,6 +73,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.core.download.DownloadState
 import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
@@ -115,6 +118,7 @@ fun PlayerScreen(
     val playerState by viewModel.playerState.collectAsState()
     val isBuffering by viewModel.isBuffering.collectAsState()
     val isLiked by viewModel.isLiked.collectAsState()
+    val downloadState by viewModel.downloadState.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
 
     var isLyricsMode by remember { mutableStateOf(false) }
@@ -288,6 +292,7 @@ fun PlayerScreen(
                     artist = track?.artist ?: "—",
                     artworkUrl = track?.artworkUrl,
                     isLiked = isLiked,
+                    downloadState = downloadState,
                     isLyricsMode = isLyricsMode,
                     lyricsResult = uiState.lyrics,
                     isLyricsLoading = uiState.isLyricsLoading,
@@ -299,6 +304,7 @@ fun PlayerScreen(
                     onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                     onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
                     onToggleLike = { toggleLikeWithPermission() },
+                    onDownloadClick = { viewModel.toggleDownload() },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
@@ -457,6 +463,7 @@ private fun ExpressiveHeroZone(
     artist: String,
     artworkUrl: String?,
     isLiked: Boolean,
+    downloadState: DownloadState,
     isLyricsMode: Boolean,
     lyricsResult: LyricsResult?,
     isLyricsLoading: Boolean,
@@ -468,6 +475,7 @@ private fun ExpressiveHeroZone(
     onSeekToLine: (Long) -> Unit,
     onRetryLyrics: () -> Unit,
     onToggleLike: () -> Unit,
+    onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val style = heroStyle(variant)
@@ -619,10 +627,12 @@ private fun ExpressiveHeroZone(
                     title = title,
                     artist = artist,
                     isLiked = isLiked,
+                    downloadState = downloadState,
                     primaryColor = palette.primary,
                     primaryContainerColor = palette.primaryContainer,
                     surfaceColor = palette.surfaceContainerHigh,
                     onToggleLike = onToggleLike,
+                    onDownloadClick = onDownloadClick,
                 )
             }
         }
@@ -640,10 +650,12 @@ private fun CoverForeground(
     title: String,
     artist: String,
     isLiked: Boolean,
+    downloadState: DownloadState,
     primaryColor: Color,
     primaryContainerColor: Color,
     surfaceColor: Color,
     onToggleLike: () -> Unit,
+    onDownloadClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -677,6 +689,13 @@ private fun CoverForeground(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(12.dp))
+                DownloadSquircle(
+                    state = downloadState,
+                    primaryColor = primaryColor,
+                    primaryContainerColor = primaryContainerColor,
+                    onClick = onDownloadClick,
+                )
+                Spacer(Modifier.width(8.dp))
                 LikeSquircle(
                     isLiked = isLiked,
                     primaryColor = primaryColor,
@@ -690,10 +709,12 @@ private fun CoverForeground(
                 title = title,
                 artist = artist,
                 isLiked = isLiked,
+                downloadState = downloadState,
                 primaryColor = primaryColor,
                 primaryContainerColor = primaryContainerColor,
                 surfaceColor = surfaceColor,
                 onToggleLike = onToggleLike,
+                onDownloadClick = onDownloadClick,
                 modifier = Modifier.offset(y = -style.overlap),
             )
         }
@@ -709,10 +730,12 @@ private fun TrackGlassCard(
     title: String,
     artist: String,
     isLiked: Boolean,
+    downloadState: DownloadState,
     primaryColor: Color,
     primaryContainerColor: Color,
     surfaceColor: Color,
     onToggleLike: () -> Unit,
+    onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cardShape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp, bottomEnd = 34.dp, bottomStart = 12.dp)
@@ -762,6 +785,13 @@ private fun TrackGlassCard(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(12.dp))
+                DownloadSquircle(
+                    state = downloadState,
+                    primaryColor = primaryColor,
+                    primaryContainerColor = primaryContainerColor,
+                    onClick = onDownloadClick,
+                )
+                Spacer(Modifier.width(8.dp))
                 LikeSquircle(
                     isLiked = isLiked,
                     primaryColor = primaryColor,
@@ -769,6 +799,64 @@ private fun TrackGlassCard(
                     onToggleLike = onToggleLike,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Кнопка скачивания 46dp с тремя состояниями:
+ * стрелка вниз → круговой прогресс → галочка «скачано».
+ */
+@Composable
+private fun DownloadSquircle(
+    state: DownloadState,
+    primaryColor: Color,
+    primaryContainerColor: Color,
+    onClick: () -> Unit,
+) {
+    val isDownloaded = state == DownloadState.Downloaded
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(46.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = if (isDownloaded) primaryContainerColor
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+            contentColor = if (isDownloaded) primaryColor else MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
+        when (state) {
+            is DownloadState.Downloaded -> Icon(
+                imageVector = Icons.Rounded.DownloadDone,
+                contentDescription = "Трек скачан",
+                modifier = Modifier.size(22.dp),
+            )
+
+            is DownloadState.InProgress -> {
+                if (state.progress > 0f) {
+                    CircularProgressIndicator(
+                        progress = { state.progress },
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.5.dp,
+                        color = primaryColor,
+                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.5.dp,
+                        color = primaryColor,
+                    )
+                }
+            }
+
+            DownloadState.NotDownloaded,
+            DownloadState.Failed,
+            -> Icon(
+                imageVector = Icons.Rounded.Download,
+                contentDescription = "Скачать трек",
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }

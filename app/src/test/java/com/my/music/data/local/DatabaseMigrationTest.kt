@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.my.music.data.local.entity.ChartCacheEntity
+import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.GenreWeightEntity
 import com.my.music.data.local.entity.UserPreferenceEntity
 import kotlinx.coroutines.flow.first
@@ -38,7 +39,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 5 preserves likes and creates wave tables`() = runBlocking {
+    fun `migration from version 1 to 6 preserves likes and creates wave and download tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -75,7 +76,22 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(5, database.openHelper.writableDatabase.version)
+            assertEquals(6, database.openHelper.writableDatabase.version)
+
+            // Таблица офлайн-режима создана миграцией 5 → 6
+            database.downloadedTracksDao().insert(
+                DownloadedTrackEntity(
+                    id = "downloaded-1",
+                    title = "Offline track",
+                    artist = "Offline artist",
+                    artworkUrl = null,
+                    durationMs = 60_000L,
+                    localFilePath = "/data/user/0/com.my.music/files/downloads/offline.mp3",
+                    downloadedAt = 5_000L,
+                ),
+            )
+            assertTrue(database.downloadedTracksDao().isDownloaded("downloaded-1").first())
+            assertEquals(1, database.downloadedTracksDao().getAll().first().size)
 
             database.tasteDao().upsertGenreWeight(
                 GenreWeightEntity(genre = "rock", weight = 2.5, updatedAt = 2_000L),

@@ -29,6 +29,7 @@ fun LibraryScreen(
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val likedTracks by viewModel.likedTracks.collectAsState()
+    val downloadedIds by viewModel.downloadedIds.collectAsState()
 
     Scaffold(
         topBar = {
@@ -142,6 +143,7 @@ fun LibraryScreen(
                 ) { track ->
                     TrackCard(
                         track = track,
+                        isDownloaded = track.id in downloadedIds,
                         onClick = { onTrackClick(track, likedTracks) },
                         trailingContent = {
                             IconButton(onClick = { viewModel.removeLike(track) }) {

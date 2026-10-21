@@ -4,6 +4,8 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.my.music.core.download.DownloadManager
+import com.my.music.core.download.DownloadState
 import com.my.music.core.location.LocationProvider
 import com.my.music.core.player.ERROR_LYRICS
 import com.my.music.core.player.PlayerController
@@ -43,6 +45,7 @@ class PlayerViewModel @Inject constructor(
     private val locationProvider: LocationProvider,
     private val tasteRepository: TasteRepository,
     private val waveRepository: WaveRepository,
+    private val downloadManager: DownloadManager,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
@@ -98,6 +101,24 @@ class PlayerViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = false,
+        )
+
+    /** Состояние скачивания текущего трека: не скачан / в процессе / скачан. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val downloadState: StateFlow<DownloadState> = playerController.state
+        .map { it.currentTrack?.id ?: _uiState.value.track?.id }
+        .distinctUntilChanged()
+        .flatMapLatest { trackId ->
+            if (trackId != null) {
+                downloadManager.observeState(trackId)
+            } else {
+                flowOf(DownloadState.NotDownloaded)
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = DownloadState.NotDownloaded,
         )
 
     init {
@@ -164,6 +185,20 @@ class PlayerViewModel @Inject constructor(
             } else {
                 tasteRepository.onUnlike(track)
             }
+        }
+    }
+
+    /**
+     * Кнопка скачивания в плеере.
+     * Не скачан / ошибка → ставим в очередь, в процессе → отменяем,
+     * уже скачан → ничего не делаем (файл остаётся офлайн).
+     */
+    fun toggleDownload() {
+        val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
+        when (downloadState.value) {
+            is DownloadState.Downloaded -> Unit
+            is DownloadState.InProgress -> downloadManager.cancel(track.id)
+            DownloadState.NotDownloaded, DownloadState.Failed -> downloadManager.download(track)
         }
     }
 

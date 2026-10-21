@@ -3,10 +3,12 @@ package com.my.music.data.local
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.my.music.data.local.dao.ChartCacheDao
+import com.my.music.data.local.dao.DownloadedTracksDao
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
 import com.my.music.data.local.dao.TasteDao
 import com.my.music.data.local.entity.ChartCacheEntity
+import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.LikedTrackEntity
 import com.my.music.data.local.entity.PlayHistoryEntity
 import com.my.music.data.local.entity.ArtistWeightEntity
@@ -24,8 +26,9 @@ import com.my.music.data.local.entity.UserPreferenceEntity
         GenreWeightEntity::class,
         ArtistWeightEntity::class,
         UserPreferenceEntity::class,
+        DownloadedTrackEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,4 +36,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playHistoryDao(): PlayHistoryDao
     abstract fun chartCacheDao(): ChartCacheDao
     abstract fun tasteDao(): TasteDao
+    abstract fun downloadedTracksDao(): DownloadedTracksDao
 }
