@@ -52,9 +52,9 @@ class DownloadTrackWorker(
 
         val offlineDownloadManager = entryPoint.offlineDownloadManager()
         try {
-            offlineDownloadManager.enqueue(track, streamResult)
+            val requestedAt = offlineDownloadManager.enqueue(track, streamResult)
 
-            val outcome = offlineDownloadManager.awaitCompletion(track.id) { progress ->
+            val outcome = offlineDownloadManager.awaitCompletion(track.id, requestedAt) { progress ->
                 setProgress(progressData(progress))
             }
 

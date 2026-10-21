@@ -42,17 +42,24 @@ class OfflineDownloadManager @Inject constructor(
      * Ставит трек в очередь Media3, если он ещё не скачан и не качается.
      * Повторный вызов безопасен: незавершённую/проваленную загрузку Media3
      * перезапустит, а готовую — пропустит.
+     *
+     * @return время постановки запроса: по нему [awaitCompletion] отличает
+     *         старую ошибку от результата новой попытки.
      */
-    suspend fun enqueue(track: Track, stream: AudioStreamResult) {
-        if (track.id.isBlank() || stream.url.isBlank()) return
-        withContext(Dispatchers.IO) {
+    suspend fun enqueue(track: Track, stream: AudioStreamResult): Long {
+        if (track.id.isBlank() || stream.url.isBlank()) return 0L
+        return withContext(Dispatchers.IO) {
+            val requestedAt = System.currentTimeMillis()
             val existing = loadDownload(track.id)
-            if (existing != null && existing.state in ACTIVE_OR_DONE_STATES) return@withContext
+            if (existing != null && existing.state in ACTIVE_OR_DONE_STATES) {
+                return@withContext requestedAt
+            }
 
             val request = DownloadRequest.Builder(track.id, Uri.parse(stream.url))
                 .setMimeType(mimeTypeOf(stream))
                 .build()
             downloadManager.addDownload(request)
+            requestedAt
         }
     }
 
@@ -66,16 +73,22 @@ class OfflineDownloadManager @Inject constructor(
      *
      * Media3 не даёт блокирующего API, поэтому воркер опрашивает
      * DownloadIndex. Для UI используется событийный [observeDownload].
+     *
+     * @param requestedAtMs время из [enqueue]: старые FAILED/STOPPED-записи
+     *        (до этой отметки) игнорируются, пока Media3 не обработает
+     *        новый `addDownload`. Иначе повтор после ошибки сразу вернул бы
+     *        провал, не дождавшись новой попытки.
      */
     suspend fun awaitCompletion(
         trackId: String,
+        requestedAtMs: Long,
         onProgress: suspend (Float) -> Unit,
     ): DownloadOutcome = withContext(Dispatchers.IO) {
-        var download = loadDownload(trackId)
+        var download = loadDownload(trackId)?.takeIf { it.isFresh(requestedAtMs) }
         val deadline = System.currentTimeMillis() + APPEAR_TIMEOUT_MS
         while (download == null && System.currentTimeMillis() < deadline) {
             delay(APPEAR_POLL_MS)
-            download = loadDownload(trackId)
+            download = loadDownload(trackId)?.takeIf { it.isFresh(requestedAtMs) }
         }
         if (download == null) {
             return@withContext DownloadOutcome.Failed("Media3 не поставил загрузку в очередь")
@@ -100,7 +113,7 @@ class OfflineDownloadManager @Inject constructor(
                         onProgress((percent / 100f).coerceIn(0f, 1f))
                     }
                     delay(PROGRESS_POLL_MS)
-                    download = loadDownload(trackId)
+                    download = loadDownload(trackId)?.takeIf { it.isFresh(requestedAtMs) }
                 }
             }
         }
@@ -161,6 +174,17 @@ class OfflineDownloadManager @Inject constructor(
         null
     }
 
+    /**
+     * Терминальное состояние с временем обновления раньше запроса — это
+     * прошлая попытка: Media3 ещё не выполнил новый `addDownload`.
+     */
+    private fun Download.isFresh(requestedAtMs: Long): Boolean {
+        return when (state) {
+            Download.STATE_FAILED, Download.STATE_STOPPED -> updateTimeMs >= requestedAtMs
+            else -> true
+        }
+    }
+
     private fun Download.toMediaState(finalException: Exception? = null): MediaDownloadState {
         return when (state) {
             Download.STATE_COMPLETED -> MediaDownloadState.Completed
@@ -210,6 +234,7 @@ class OfflineDownloadManager @Inject constructor(
         private val ACTIVE_OR_DONE_STATES = setOf(
             Download.STATE_QUEUED,
             Download.STATE_DOWNLOADING,
+            Download.STATE_RESTARTING,
             Download.STATE_COMPLETED,
         )
 
