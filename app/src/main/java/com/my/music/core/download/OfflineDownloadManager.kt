@@ -40,18 +40,44 @@ class OfflineDownloadManager @Inject constructor(
 
     /**
      * Ставит трек в очередь Media3, если он ещё не скачан и не качается.
-     * Повторный вызов безопасен: незавершённую/проваленную загрузку Media3
-     * перезапустит, а готовую — пропустит.
+     * Повторный вызов безопасен.
+     *
+     * @param forceRestart новая попытка пользователя: старую запись Media3
+     *        (даже активную или зависшую) нужно удалить и начать заново.
+     *        Готовый трек не удаляем — воркер просто восстановит запись в Room.
      *
      * @return время постановки запроса: по нему [awaitCompletion] отличает
      *         старую ошибку от результата новой попытки.
      */
-    suspend fun enqueue(track: Track, stream: AudioStreamResult): Long {
+    suspend fun enqueue(
+        track: Track,
+        stream: AudioStreamResult,
+        forceRestart: Boolean = false,
+    ): Long {
         if (track.id.isBlank() || stream.url.isBlank()) return 0L
         return withContext(Dispatchers.IO) {
+            val current = loadDownload(track.id)
+
+            // Готовый кэш не трогаем: пусть воркер сохранит его в Room.
+            if (current?.state == Download.STATE_COMPLETED) {
+                Log.d(TAG, "enqueue(): ${track.id} уже завершён, пропускаем")
+                return@withContext System.currentTimeMillis()
+            }
+
+            if (forceRestart) {
+                Log.d(
+                    TAG,
+                    "enqueue(): принудительный перезапуск ${track.id}, " +
+                        "было state=${current?.state}",
+                )
+                downloadManager.removeDownload(track.id)
+                awaitRemoval(track.id)
+            }
+
             val requestedAt = System.currentTimeMillis()
             val existing = loadDownload(track.id)
             if (existing != null && existing.state in ACTIVE_OR_DONE_STATES) {
+                Log.d(TAG, "enqueue(): ${track.id} уже активен, state=${existing.state}")
                 return@withContext requestedAt
             }
 
@@ -59,6 +85,11 @@ class OfflineDownloadManager @Inject constructor(
                 .setMimeType(mimeTypeOf(stream))
                 .build()
             downloadManager.addDownload(request)
+            Log.d(
+                TAG,
+                "enqueue(): addDownload ${track.id}, isHls=${stream.isHls}, " +
+                    "mime=${mimeTypeOf(stream)}",
+            )
             requestedAt
         }
     }
@@ -104,8 +135,12 @@ class OfflineDownloadManager @Inject constructor(
                     "failureReason=${current.failureReason}",
                 )
 
-                Download.STATE_REMOVING ->
-                    return@withContext DownloadOutcome.Failed("Загрузка удалена")
+                Download.STATE_REMOVING -> {
+                    // Удаление старой записи перед новой постановкой:
+                    // дождёмся, пока Media3 закончит и появится свежая запись.
+                    delay(PROGRESS_POLL_MS)
+                    download = loadDownload(trackId)?.takeIf { it.isFresh(requestedAtMs) }
+                }
 
                 else -> {
                     val percent = current.percentDownloaded
@@ -123,6 +158,7 @@ class OfflineDownloadManager @Inject constructor(
 
     /** Удаляет загрузку из индекса и связанные данные из кэша. */
     fun remove(trackId: String) {
+        Log.d(TAG, "remove(): удаляем загрузку $trackId")
         runCatching { downloadManager.removeDownload(trackId) }
             .onFailure { Log.e(TAG, "Не удалось удалить загрузку $trackId", it) }
     }
@@ -165,6 +201,16 @@ class OfflineDownloadManager @Inject constructor(
         } finally {
             downloadManager.removeListener(listener)
         }
+    }
+
+    /** Ждёт исчезновения записи из индекса после removeDownload. */
+    private suspend fun awaitRemoval(trackId: String) {
+        val deadline = System.currentTimeMillis() + REMOVE_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            if (loadDownload(trackId) == null) return
+            delay(REMOVE_POLL_MS)
+        }
+        Log.w(TAG, "awaitRemoval(): не дождались удаления $trackId")
     }
 
     private fun loadDownload(trackId: String): Download? = try {
@@ -230,6 +276,8 @@ class OfflineDownloadManager @Inject constructor(
         private const val APPEAR_TIMEOUT_MS = 10_000L
         private const val APPEAR_POLL_MS = 200L
         private const val PROGRESS_POLL_MS = 500L
+        private const val REMOVE_TIMEOUT_MS = 5_000L
+        private const val REMOVE_POLL_MS = 100L
 
         private val ACTIVE_OR_DONE_STATES = setOf(
             Download.STATE_QUEUED,

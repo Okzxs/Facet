@@ -14,6 +14,15 @@ sealed interface DownloadState {
     /** Трек скачан и доступен офлайн. */
     data object Downloaded : DownloadState
 
-    /** Скачивание завершилось ошибкой — можно повторить по нажатию. */
-    data object Failed : DownloadState
+    /**
+     * Ошибка или отмена задачи.
+     * UI показывает крестик, затем через секунду возвращает иконку скачивания.
+     */
+    data class Error(val cause: Cause) : DownloadState
+
+    /** Причина крестика: отмена пользователем или реальный провал загрузки. */
+    enum class Cause {
+        CANCELLED,
+        FAILED,
+    }
 }

@@ -1,6 +1,6 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 21.10.2026
+## Последнее обновление: 22.10.2026
 
 ---
 
@@ -1404,6 +1404,50 @@ app/src/main/java/com/my/music/data/repository/DownloadRepository.kt
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
 app/schemas/com.my.music.data.local.AppDatabase/7.json (новый)
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
+## ✅ Хотфикс — кнопка скачивания и перезапуск после отмены (22.10.2026)
+
+### Причина
+- UI залипал на `InProgress` из-за старой записи Media3/WorkInfo: клики уходили в `cancel()`, а не в новую задачу. В логах — `WM-WorkerWrapper: Work [...] was cancelled`, повторного запуска `DownloadTrackWorker` не было.
+- `ExistingWorkPolicy.KEEP` не гарантировал новую задачу после отменённой цепочки.
+- `DownloadState.Failed` не различал отмену и реальную ошибку, поэтому не было крестика и возврата к кнопке скачивания.
+
+### Что сделано
+1. **`DownloadManager`**:
+   - WorkInfo — главный источник состояния. Последняя попытка выбирается по тегу `download-at:<millis>`, потому что порядок списка WorkManager не гарантирован.
+   - `CANCELLED`/`FAILED` → `DownloadState.Error(CANCELLED/FAILED)`, `SUCCEEDED` → `Downloaded`. Терминальный WorkInfo приоритетнее старого прогресса Media3; осиротевшая запись Media3 без активной задачи прогрессом не считается.
+   - `ExistingWorkPolicy.REPLACE`, защита от двойного тапа 700 мс, `KEY_FORCE_RESTART=true`.
+   - `cancel()` теперь сразу удаляет запись Media3 (а не только отменяет WorkManager).
+2. **`OfflineDownloadManager`**:
+   - `enqueue(forceRestart)` удаляет старую запись Media3 и ждёт её исчезновения; `COMPLETED` не перекачивается (воркер восстановит Room).
+   - `STATE_REMOVING` в `awaitCompletion` больше не даёт мгновенную ошибку — ожидается новая запись.
+3. **`DownloadTrackWorker`**:
+   - `Log.d` первой строкой `doWork()` — в logcat видно сам факт запуска (тег `DownloadWorker`).
+   - Передаёт `forceRestart`; при `CancellationException` не удаляет Media3, иначе REPLACE-попытка убивала бы новую загрузку.
+4. **`PlayerViewModel`**: `Error` держится 1 секунду и сменяется на `NotDownloaded`; клик по крестику запускает новую попытку.
+5. **`PlayerScreen`**: крестик `Icons.Rounded.Close` с `AnimatedContent`-морфингом обратно в стрелку; Snackbar «Не удалось скачать трек (доступен только онлайн)» показывается только для реальной ошибки (`FAILED`), не для отмены.
+6. **Тест** `DownloadStateResolutionTest` (10 кейсов приоритета состояний).
+
+### Проверки
+- `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+- `.\gradlew testDebugUnitTest` — 64/64, 0 failures, 0 errors.
+- APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
+- Диагностика на устройстве: `adb logcat -s DownloadWorker DownloadFlow OfflineDownload`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/download/DownloadState.kt
+app/src/main/java/com/my/music/core/download/DownloadManager.kt
+app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt
+app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/test/java/com/my/music/core/download/DownloadStateResolutionTest.kt (новый)
 PROGRESS.md
 MEMORY.md
 ```

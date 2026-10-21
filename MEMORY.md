@@ -1,12 +1,13 @@
-# Активный контекст — Обновлено 21.10.2026
+# Активный контекст — Обновлено 22.10.2026
 
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Media3-скачивание HLS и MP3 (21.10.2026) | Экран «Скачанное» и удаление из кэша |
+| MyMusic | активен  | Стабильная кнопка скачивания: WorkInfo + REPLACE (22.10.2026) | Экран «Скачанное» и удаление из кэша |
 
 ## Ожидающие задачи
 ### Высокий приоритет
+- [x] Хотфикс 22.10: WorkInfo — главный источник состояния (CANCELLED/FAILED → крестик, SUCCEEDED → галочка), REPLACE после отмены, защита от двойного тапа, `forceRestart` Media3, лог в первой строке `doWork()`; 64 JVM-теста
 - [x] Офлайн-режим: Media3 DownloadManager (HLS + MP3 в SimpleCache), Room v7 (`mediaUrl` + `mimeType`), прогресс из `DownloadManager.Listener`, Snackbar ошибки; 54 JVM-теста
 - [ ] Экран «Скачанное»: список, удаление файлов, занятое место
 - [x] Фаза 7: бесконечная волна с сессией, Last.fm, локальным feedback, автодозагрузкой, RU-приоритетом и счётчиками источников; Room v5; 50 JVM-тестов
@@ -39,6 +40,12 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
+- [Скачивание 22.10] WorkInfo — источник истины для UI: терминальные CANCELLED/FAILED показываются как `DownloadState.Error` (крестик на 1 с → стрелка), SUCCEEDED — галочка; старый прогресс Media3 не может перебить терминальный WorkInfo
+- [Скачивание 22.10] Последняя попытка выбирается по тегу `download-at:<millis>`: `getWorkInfosForUniqueWorkFlow` не гарантирует порядок, `lastOrNull()` мог вернуть старую CANCELLED-задачу
+- [Скачивание 22.10] `ExistingWorkPolicy.REPLACE` + дебаунс 700 мс + `KEY_FORCE_RESTART=true`: после отмены/падения создаётся новая задача, а старая запись Media3 удаляется и пересоздаётся
+- [Скачивание 22.10] `cancel()` чистит Media3 сразу; воркер при `CancellationException` не удаляет запись, потому что при REPLACE отменяется старая попытка, а новая должна продолжить загрузку
+- [Скачивание 22.10] Осиротевшая запись Media3 без активного WorkInfo не показывается как прогресс — иначе кнопка навсегда залипает на «загрузке»; повторный клик перезапускает загрузку
+- [Скачивание 22.10] Диагностика: тег logcat `DownloadWorker` — первая строка `doWork()`, `DownloadFlow` — постановка/отмена задачи, `OfflineDownload` — Media3
 - [Офлайн 21.10] Скачивание переведено на Media3 DownloadManager: HLS (m3u8 + сегменты) и MP3 качаются в общий SimpleCache `filesDir/media_cache`; `ExoDatabaseProvider` в Media3 называется `StandaloneDatabaseProvider`
 - [Офлайн 21.10] Один `SimpleCache` на процесс (Hilt `@Singleton`), его делят `OfflineDownloadManager` и `MusicService`; плеер создаётся с `DefaultMediaSourceFactory(CacheDataSource.Factory)`, поэтому скачанное играет без сети
 - [Офлайн 21.10] `OfflineDownloadManager` ставит `DownloadRequest` (mimeType `APPLICATION_M3U8` для HLS, `AUDIO_MPEG` для MP3), отдаёт прогресс UI через `DownloadManager.Listener`; воркер ждёт завершения опросом индекса — блокирующего API в Media3 нет
@@ -143,6 +150,7 @@
 - Язык: комментарии в коде, служебные файлы (MEMORY.md, PROGRESS.md) и документация — строго на русском языке
 
 ## Последние сессии
+- Хотфикс 22.10: WorkInfo управляет кнопкой скачивания (CANCELLED/FAILED → крестик и возврат к стрелке через секунду, SUCCEEDED → галочка), REPLACE после отмены, защита от двойного тапа, force-restart Media3, стартовый лог воркера; 64 JVM-теста, 0 failures
 - Офлайн-режим переведён на Media3 DownloadManager: HLS и MP3 качаются в SimpleCache, плеер читает кэш через CacheDataSource, Room v7 (`mediaUrl` + `mimeType`), прогресс из `DownloadManager.Listener`, Snackbar при ошибке; 54 JVM-теста, 0 failures
 - Хотфикс: клик Play/Pause и зона касания волнового слайдера (38dp + полоса ±14dp, зазор 14dp); волна — строгий/запасной пулы по языку, проверка артиста и жанра, отсев мусорных жанров; 53 JVM-теста, 0 failures
 - Фаза 7: сессионная «Моя волна» (Last.fm + лайки + история + жанры, 40/30/20/10), Room v5 для вкусов, feedback в плеере, автодозагрузка пачками по 12, RU-приоритет и обновлённый WaveScreen; 50 JVM-тестов, lint 0 errors

@@ -11,6 +11,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.LocationOff
@@ -82,6 +85,7 @@ import com.my.music.core.ui.theme.PlayerDynamicColors
 import com.my.music.core.ui.theme.rememberPlayerDynamicColors
 import com.my.music.data.model.LyricsResult
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Вариант компоновки hero-зоны (для сравнения на устройстве, поменяй цифру и пересобери):
@@ -181,10 +185,16 @@ fun PlayerScreen(
     // Текущий трек берём из PlayerController (он всегда актуален после play())
     val track = playerState.currentTrack ?: uiState.track
 
-    // Скачивание невозможно (нет прав/404/HLS-ошибка) — сообщаем пользователю
+    // Скачивание невозможно (нет прав/404/HLS-ошибка) — сообщаем пользователю.
+    // Крестик живёт секунду, поэтому Snackbar запускаем в scope композиции,
+    // иначе смена состояния отменила бы его вместе с LaunchedEffect.
+    val snackbarScope = rememberCoroutineScope()
     LaunchedEffect(downloadState, track?.id) {
-        if (downloadState is DownloadState.Failed) {
-            snackbarHostState.showSnackbar(DOWNLOAD_FAILED_MESSAGE)
+        val error = downloadState as? DownloadState.Error
+        if (error?.cause == DownloadState.Cause.FAILED) {
+            snackbarScope.launch {
+                snackbarHostState.showSnackbar(DOWNLOAD_FAILED_MESSAGE)
+            }
         }
     }
 
@@ -815,9 +825,24 @@ private fun TrackGlassCard(
     }
 }
 
+/** Визуальные состояния кнопки: прогресс не перезапускает анимацию иконки. */
+private enum class DownloadButtonKind {
+    Download,
+    Progress,
+    Done,
+    Error,
+}
+
+private fun DownloadState.toButtonKind(): DownloadButtonKind = when (this) {
+    is DownloadState.Downloaded -> DownloadButtonKind.Done
+    is DownloadState.InProgress -> DownloadButtonKind.Progress
+    is DownloadState.Error -> DownloadButtonKind.Error
+    DownloadState.NotDownloaded -> DownloadButtonKind.Download
+}
+
 /**
- * Кнопка скачивания 46dp с тремя состояниями:
- * стрелка вниз → круговой прогресс → галочка «скачано».
+ * Кнопка скачивания 46dp: стрелка → прогресс → галочка,
+ * при отмене/ошибке — крестик, который через секунду морфится обратно.
  */
 @Composable
 private fun DownloadSquircle(
@@ -826,28 +851,49 @@ private fun DownloadSquircle(
     primaryContainerColor: Color,
     onClick: () -> Unit,
 ) {
-    val isDownloaded = state == DownloadState.Downloaded
+    val kind = state.toButtonKind()
+    val progress = (state as? DownloadState.InProgress)?.progress ?: 0f
+    val contentColor = when (kind) {
+        DownloadButtonKind.Done -> primaryColor
+        DownloadButtonKind.Error -> MaterialTheme.colorScheme.error
+        DownloadButtonKind.Download, DownloadButtonKind.Progress ->
+            MaterialTheme.colorScheme.onSurface
+    }
+    val containerColor = when (kind) {
+        DownloadButtonKind.Done -> primaryContainerColor
+        DownloadButtonKind.Error ->
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+        DownloadButtonKind.Download, DownloadButtonKind.Progress ->
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    }
+
     FilledTonalIconButton(
         onClick = onClick,
         modifier = Modifier.size(46.dp),
         shape = RoundedCornerShape(16.dp),
         colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = if (isDownloaded) primaryContainerColor
-            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-            contentColor = if (isDownloaded) primaryColor else MaterialTheme.colorScheme.onSurface,
+            containerColor = containerColor,
+            contentColor = contentColor,
         ),
     ) {
-        when (state) {
-            is DownloadState.Downloaded -> Icon(
-                imageVector = Icons.Rounded.DownloadDone,
-                contentDescription = "Трек скачан",
-                modifier = Modifier.size(22.dp),
-            )
+        AnimatedContent(
+            targetState = kind,
+            transitionSpec = {
+                (fadeIn(tween(180)) + scaleIn(initialScale = 0.7f)) togetherWith
+                    (fadeOut(tween(120)) + scaleOut(targetScale = 0.7f))
+            },
+            label = "downloadIcon",
+        ) { target ->
+            when (target) {
+                DownloadButtonKind.Download -> Icon(
+                    imageVector = Icons.Rounded.Download,
+                    contentDescription = "Скачать трек",
+                    modifier = Modifier.size(22.dp),
+                )
 
-            is DownloadState.InProgress -> {
-                if (state.progress > 0f) {
+                DownloadButtonKind.Progress -> if (progress > 0f) {
                     CircularProgressIndicator(
-                        progress = { state.progress },
+                        progress = { progress },
                         modifier = Modifier.size(22.dp),
                         strokeWidth = 2.5.dp,
                         color = primaryColor,
@@ -860,15 +906,19 @@ private fun DownloadSquircle(
                         color = primaryColor,
                     )
                 }
-            }
 
-            DownloadState.NotDownloaded,
-            DownloadState.Failed,
-            -> Icon(
-                imageVector = Icons.Rounded.Download,
-                contentDescription = "Скачать трек",
-                modifier = Modifier.size(22.dp),
-            )
+                DownloadButtonKind.Done -> Icon(
+                    imageVector = Icons.Rounded.DownloadDone,
+                    contentDescription = "Трек скачан",
+                    modifier = Modifier.size(22.dp),
+                )
+
+                DownloadButtonKind.Error -> Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Скачивание отменено",
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
     }
 }

@@ -26,6 +26,7 @@ import com.my.music.data.repository.WaveRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -103,7 +104,13 @@ class PlayerViewModel @Inject constructor(
             initialValue = false,
         )
 
-    /** Состояние скачивания текущего трека: не скачан / в процессе / скачан. */
+    /**
+     * Состояние скачивания текущего трека.
+     *
+     * Ошибка/отмена показывается крестиком ровно секунду, затем UI снова
+     * предлагает скачать трек. Если за это время начнётся новая попытка,
+     * transformLatest отменит таймер и покажет её прогресс.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
     val downloadState: StateFlow<DownloadState> = playerController.state
         .map { it.currentTrack?.id ?: _uiState.value.track?.id }
@@ -113,6 +120,15 @@ class PlayerViewModel @Inject constructor(
                 downloadManager.observeState(trackId)
             } else {
                 flowOf(DownloadState.NotDownloaded)
+            }
+        }
+        .transformLatest { state ->
+            if (state is DownloadState.Error) {
+                emit(state)
+                delay(ERROR_ICON_DURATION_MS)
+                emit(DownloadState.NotDownloaded)
+            } else {
+                emit(state)
             }
         }
         .stateIn(
@@ -198,7 +214,7 @@ class PlayerViewModel @Inject constructor(
         when (downloadState.value) {
             is DownloadState.Downloaded -> Unit
             is DownloadState.InProgress -> downloadManager.cancel(track.id)
-            DownloadState.NotDownloaded, DownloadState.Failed -> downloadManager.download(track)
+            is DownloadState.Error, DownloadState.NotDownloaded -> downloadManager.download(track)
         }
     }
 
@@ -405,6 +421,9 @@ class PlayerViewModel @Inject constructor(
         const val SKIP_THRESHOLD_MS = 30_000L
         const val WAVE_REFILL_THRESHOLD = 3
         const val WAVE_REFILL_BATCH = 12
+
+        /** Сколько держать крестик ошибки/отмены перед возвратом иконки скачивания. */
+        const val ERROR_ICON_DURATION_MS = 1_000L
     }
 }
 
