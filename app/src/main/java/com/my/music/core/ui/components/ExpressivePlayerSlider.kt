@@ -32,10 +32,24 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.sin
 
 /** Полный оборот фазы волны (радианы). */
 private const val TWO_PI = 6.283185307179586
+
+/**
+ * Высота слайдера. Волна с амплитудой 9dp и обводкой 3dp занимает ~21dp,
+ * поэтому 46dp оставляли большой невидимый слой, который перехватывал
+ * касания у кнопок управления плеером.
+ */
+private val SLIDER_HEIGHT = 38.dp
+
+/**
+ * Полуширина вертикальной зоны, в которой жест считается перемоткой.
+ * Касания выше и ниже волны игнорируются — их должны получать соседние контролы.
+ */
+private val TOUCH_BAND_HALF = 14.dp
 
 /**
  * Слайдер прогресса «волна»: анимированная синусоида вместо прямой дорожки.
@@ -95,23 +109,35 @@ fun ExpressivePlayerSlider(
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(46.dp)
+            .height(SLIDER_HEIGHT)
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 val padPx = 8.dp.toPx()
+                val bandPx = TOUCH_BAND_HALF.toPx()
+                // Жест «активен» только если палец попал в полосу волны
+                var tracking = false
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
+                        tracking = abs(offset.y - size.height / 2f) <= bandPx
+                        if (!tracking) return@detectHorizontalDragGestures
                         isDragging = true
                         val span = (size.width - padPx * 2f).coerceAtLeast(1f)
                         dragValue = ((offset.x - padPx) / span).coerceIn(0f, 1f)
                         onValueChange(dragValue)
                     },
                     onDragEnd = {
-                        isDragging = false
-                        onValueChangeFinished(dragValue)
+                        if (tracking) {
+                            isDragging = false
+                            onValueChangeFinished(dragValue)
+                        }
+                        tracking = false
                     },
-                    onDragCancel = { isDragging = false },
+                    onDragCancel = {
+                        isDragging = false
+                        tracking = false
+                    },
                     onHorizontalDrag = { change, dragAmount ->
+                        if (!tracking) return@detectHorizontalDragGestures
                         change.consume()
                         val span = (size.width - padPx * 2f).coerceAtLeast(1f)
                         dragValue = (dragValue + dragAmount / span).coerceIn(0f, 1f)
@@ -122,7 +148,13 @@ fun ExpressivePlayerSlider(
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 val padPx = 8.dp.toPx()
+                val bandPx = TOUCH_BAND_HALF.toPx()
                 detectTapGestures { offset ->
+                    // Касания вне полосы волны не перематывают трек:
+                    // иначе промах по кнопке Play/Pause приводил к перемотке.
+                    if (abs(offset.y - size.height / 2f) > bandPx) {
+                        return@detectTapGestures
+                    }
                     val span = (size.width - padPx * 2f).coerceAtLeast(1f)
                     val fraction = ((offset.x - padPx) / span).coerceIn(0f, 1f)
                     onValueChange(fraction)

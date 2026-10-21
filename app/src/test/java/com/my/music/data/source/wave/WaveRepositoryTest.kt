@@ -148,15 +148,83 @@ class WaveRepositoryTest {
         assertTrue(repository.activeSession.value?.isTerminated ?: false)
     }
 
+    @Test
+    fun `russian priority fills the wave with local tracks before foreign ones`() = runBlocking {
+        coEvery { tasteRepository.isRussianPriority() } returns true
+        val liked = (1..12).map {
+            track("ru$it", null, title = "Русский трек $it", artist = "Артист $it")
+        }
+        every { likedTracksRepository.getLikedTracks() } returns flowOf(liked)
+        coEvery { chartsRepository.getTop50() } returns Result.success(
+            (1..10).map { track("en$it", null, title = "English $it", artist = "Foreign $it") },
+        )
+
+        repository.startSession().getOrThrow()
+        val batch = repository.nextBatch(size = 20).getOrThrow()
+
+        val cyrillic = '\u0400'..'\u04FF'
+        assertEquals(20, batch.tracks.size)
+        assertEquals(12, batch.session.fromLikes)
+        // Пока хватает своих треков, западные идут только после них
+        assertTrue(batch.tracks.take(12).all { it.title.any { char -> char in cyrillic } })
+        assertTrue(batch.tracks.drop(12).none { it.title.any { char -> char in cyrillic } })
+    }
+
+    @Test
+    fun `genre findings skip tracks with a different genre`() = runBlocking {
+        val liked = (1..20).map { track("l$it", "House") }
+        every { likedTracksRepository.getLikedTracks() } returns flowOf(liked)
+        coEvery { soundCloudRepository.search("House", 6) } returns Result.success(
+            listOf(
+                track("g-ok", "House"),
+                track("g-wrong-1", "Rap"),
+                track("g-wrong-2", null),
+            ),
+        )
+
+        repository.startSession().getOrThrow()
+        val batch = repository.nextBatch(size = 20).getOrThrow()
+
+        assertTrue(batch.tracks.any { it.id == "g-ok" })
+        assertTrue(batch.tracks.none { it.id.startsWith("g-wrong") })
+    }
+
+    @Test
+    fun `similar tracks are taken from the requested artist when available`() = runBlocking {
+        val liked = (1..5).map { track("l$it", null) }
+        every { likedTracksRepository.getLikedTracks() } returns flowOf(liked)
+        coEvery { tasteRepository.getTopArtists(any()) } returns
+            listOf(TasteWeight("Artist", 10.0))
+        coEvery { lastFmRepository.getSimilarArtists("Artist", 4) } returns
+            Result.success(listOf("Similar A"))
+        coEvery { soundCloudRepository.search("Similar A", 5) } returns Result.success(
+            listOf(
+                track("wrong-1", null, artist = "Чужой"),
+                track("wrong-2", null, artist = "Другой"),
+                track("right-1", null, artist = "Similar A"),
+                track("right-2", null, artist = "Similar A feat. X"),
+            ),
+        )
+
+        repository.startSession().getOrThrow()
+        val batch = repository.nextBatch(size = 20).getOrThrow()
+
+        // SoundCloud отдаёт чужие треки по запросу — берём только самого артиста
+        assertTrue(batch.tracks.any { it.id == "right-1" })
+        assertTrue(batch.tracks.any { it.id == "right-2" })
+        assertTrue(batch.tracks.none { it.id.startsWith("wrong") })
+    }
+
     private fun track(
         id: String,
         genre: String?,
         title: String = "Title $id",
+        artist: String = "Artist",
     ) = Track(
         id = id,
         source = Source.SOUNDCLOUD,
         title = title,
-        artist = "Artist",
+        artist = artist,
         artworkUrl = null,
         streamUrl = null,
         durationMs = 60_000L,

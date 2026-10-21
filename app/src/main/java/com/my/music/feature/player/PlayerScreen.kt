@@ -1291,7 +1291,8 @@ private fun PlayerProgressSection(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(46.dp),
+                        // Высота совпадает со слайдером — лейаут не прыгает при Crossfade
+                        .height(38.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     LinearProgressIndicator(

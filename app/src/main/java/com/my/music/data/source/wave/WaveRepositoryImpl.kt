@@ -29,6 +29,13 @@ import kotlin.math.roundToInt
 /**
  * Собирает бесконечную волну из лайков, истории, похожих артистов Last.fm
  * и находок по жанрам. Соотношение источников — 40/30/20/10.
+ *
+ * Чтобы подборка не превращалась в кашу, кандидаты каждого источника
+ * делятся на два пула:
+ * - строгий — кириллица (при RU-приоритете) и подтверждённое совпадение
+ *   артиста/жанра; он заполняет квоту первым;
+ * - запасной — латиница и неподтверждённые результаты; он подключается,
+ *   только когда строгих треков не хватило на всю пачку.
  */
 @Singleton
 class WaveRepositoryImpl @Inject constructor(
@@ -104,6 +111,8 @@ class WaveRepositoryImpl @Inject constructor(
         }
 
         val target = size.coerceIn(MIN_BATCH_SIZE, MAX_BATCH_SIZE)
+        val russianPriority = tasteRepository.isRussianPriority()
+
         val liked = likedTracksRepository.getLikedTracks().first()
         val history = playHistoryRepository.getPlayHistory().first()
 
@@ -122,7 +131,7 @@ class WaveRepositoryImpl @Inject constructor(
         fun take(candidates: List<Track>, limit: Int, origin: WaveOrigin) {
             if (limit <= 0) return
             var taken = 0
-            for (candidate in prioritize(candidates, session.isRussianPriority)) {
+            for (candidate in prioritize(candidates, russianPriority)) {
                 if (taken >= limit || entries.size >= target) break
                 if (candidate.id.isBlank() || !knownIds.add(candidate.id)) continue
                 entries[candidate.id] = WavePick(candidate, origin)
@@ -130,40 +139,56 @@ class WaveRepositoryImpl @Inject constructor(
             }
         }
 
-        val similarCandidates = loadSimilarTracks(
+        val similar = loadSimilarTracks(
             seedArtists = seedArtists,
-            excludedIds = knownIds,
+            excludedIds = session.shownTrackIds,
+            russianPriority = russianPriority,
         )
-        val genreCandidates = loadGenreTracks(
+        val genres = loadGenreTracks(
             seedGenres = seedGenres,
-            excludedIds = knownIds,
+            excludedIds = session.shownTrackIds,
+            russianPriority = russianPriority,
         )
+        val likedPool = splitByLanguage(liked, russianPriority)
+        val historyPool = splitByLanguage(history, russianPriority)
 
         val likesQuota = (target * LIKES_SHARE).roundToInt()
         val historyQuota = (target * HISTORY_SHARE).roundToInt()
         val genresQuota = (target * GENRES_SHARE).roundToInt()
         val similarQuota = target - likesQuota - historyQuota - genresQuota
 
-        take(similarCandidates, similarQuota, WaveOrigin.SIMILAR)
-        take(liked, likesQuota, WaveOrigin.LIKES)
-        take(history, historyQuota, WaveOrigin.HISTORY)
-        take(genreCandidates, genresQuota, WaveOrigin.GENRES)
+        // ── Фаза 1: строгие треки в пределах квот ────────────────────────
+        take(similar.strict, similarQuota, WaveOrigin.SIMILAR)
+        take(likedPool.strict, likesQuota, WaveOrigin.LIKES)
+        take(historyPool.strict, historyQuota, WaveOrigin.HISTORY)
+        take(genres.strict, genresQuota, WaveOrigin.GENRES)
 
-        // Если какой-то источник пуст, добираем из оставшихся пулов
-        take(similarCandidates, target - entries.size, WaveOrigin.SIMILAR)
-        take(liked, target - entries.size, WaveOrigin.LIKES)
-        take(history, target - entries.size, WaveOrigin.HISTORY)
-        take(genreCandidates, target - entries.size, WaveOrigin.GENRES)
+        // ── Фаза 2: строгие сверх квот — если какой-то источник пуст ─────
+        take(similar.strict, target - entries.size, WaveOrigin.SIMILAR)
+        take(likedPool.strict, target - entries.size, WaveOrigin.LIKES)
+        take(historyPool.strict, target - entries.size, WaveOrigin.HISTORY)
+        take(genres.strict, target - entries.size, WaveOrigin.GENRES)
 
+        // ── Фаза 3: запасные (другой язык / жанр не подтверждён) ─────────
+        take(similar.loose, target - entries.size, WaveOrigin.SIMILAR)
+        take(likedPool.loose, target - entries.size, WaveOrigin.LIKES)
+        take(historyPool.loose, target - entries.size, WaveOrigin.HISTORY)
+        take(genres.loose, target - entries.size, WaveOrigin.GENRES)
+
+        // ── Фаза 4: чарты — последний фолбэк ────────────────────────────
         if (entries.size < target) {
-            val chartTracks = chartsRepository.getTop50().getOrNull().orEmpty()
-            take(chartTracks, target - entries.size, WaveOrigin.CATALOG)
+            val charts = splitByLanguage(
+                chartsRepository.getTop50().getOrNull().orEmpty(),
+                russianPriority,
+            )
+            take(charts.strict, target - entries.size, WaveOrigin.CATALOG)
+            take(charts.loose, target - entries.size, WaveOrigin.CATALOG)
         }
 
         val orderedEntries = entries.entries
             .shuffled()
             .let { shuffled ->
-                if (session.isRussianPriority) {
+                if (russianPriority) {
                     shuffled.sortedByDescending { (_, pick) -> pick.track.cyrillicScore() }
                 } else {
                     shuffled
@@ -177,7 +202,7 @@ class WaveRepositoryImpl @Inject constructor(
             seedGenres = seedGenres,
             shownTrackIds = session.shownTrackIds + entries.keys,
             batchNumber = session.batchNumber + 1,
-            isRussianPriority = tasteRepository.isRussianPriority(),
+            isRussianPriority = russianPriority,
             isTerminated = tracks.isEmpty(),
             fromLikes = session.fromLikes + counts.getOrDefault(WaveOrigin.LIKES, 0),
             fromHistory = session.fromHistory + counts.getOrDefault(WaveOrigin.HISTORY, 0),
@@ -219,20 +244,26 @@ class WaveRepositoryImpl @Inject constructor(
         val genres = LinkedHashMap<String, String>()
 
         tasteRepository.getTopGenres(SEED_GENRE_LIMIT).forEach { taste ->
-            addDistinct(genres, taste.value)
+            if (isUsefulGenre(taste.value)) addDistinct(genres, taste.value)
         }
         (liked + history).forEach { track ->
-            addDistinct(genres, track.genre)
+            if (isUsefulGenre(track.genre)) addDistinct(genres, track.genre)
         }
 
         return genres.values.take(SEED_GENRE_LIMIT)
     }
 
+    /**
+     * Похожие артисты Last.fm ищутся в SoundCloud.
+     * SoundCloud по запросу «артист» отдаёт и чужие треки, поэтому совпадение
+     * по имени артиста проверяется и такие треки идут первыми.
+     */
     private suspend fun loadSimilarTracks(
         seedArtists: List<String>,
         excludedIds: Set<String>,
-    ): List<Track> {
-        if (seedArtists.isEmpty()) return emptyList()
+        russianPriority: Boolean,
+    ): WavePool {
+        if (seedArtists.isEmpty()) return WavePool()
 
         val similarArtists = LinkedHashMap<String, String>()
         for (seed in seedArtists.take(SIMILAR_SEED_ARTISTS)) {
@@ -243,43 +274,125 @@ class WaveRepositoryImpl @Inject constructor(
             found.forEach { addDistinct(similarArtists, it) }
             if (similarArtists.size >= SIMILAR_ARTISTS_TO_SEARCH) break
         }
+        if (similarArtists.isEmpty()) return WavePool()
 
-        val picks = mutableListOf<Track>()
-        for (artist in similarArtists.values.take(SIMILAR_ARTISTS_TO_SEARCH)) {
+        // Last.fm часто подмешивает западных артистов к русским семенам:
+        // при RU-приоритете сначала ищем тех, чьё имя записано кириллицей
+        val orderedArtists = if (russianPriority) {
+            similarArtists.values.sortedByDescending { it.containsCyrillic() }
+        } else {
+            similarArtists.values.toList()
+        }
+
+        val candidates = mutableListOf<Candidate>()
+        for (artist in orderedArtists.take(SIMILAR_ARTISTS_TO_SEARCH)) {
             val result = soundCloudRepository
                 .search(query = artist, limit = SIMILAR_SEARCH_LIMIT)
                 .getOrNull()
                 .orEmpty()
-            result.asSequence()
                 .filter { it.id.isNotBlank() && it.id !in excludedIds }
+
+            // Сначала берём треки самого искомого артиста, и только если их нет —
+            // всё, что нашлось (каверы, ремиксы, чужие треки по запросу)
+            val verified = result
+                .filter { artistMatches(it.artist, artist) }
                 .take(SIMILAR_TRACKS_PER_ARTIST)
-                .forEach { picks += it }
-            if (picks.size >= SIMILAR_BUFFER_LIMIT) break
+                .map { Candidate(track = it, verified = true) }
+            candidates += verified.ifEmpty {
+                result
+                    .take(SIMILAR_TRACKS_PER_ARTIST)
+                    .map { Candidate(track = it, verified = false) }
+            }
+            if (candidates.size >= SIMILAR_BUFFER_LIMIT) break
         }
 
-        return picks.distinctBy { it.id }
+        return toPool(rankCandidates(candidates.distinctBy { it.track.id }, russianPriority), russianPriority)
     }
 
+    /**
+     * Находки по жанрам: в строгий пул попадают только треки, чей жанр
+     * действительно совпал с семенем. Остальное — на самый крайний случай.
+     */
     private suspend fun loadGenreTracks(
         seedGenres: List<String>,
         excludedIds: Set<String>,
-    ): List<Track> {
-        if (seedGenres.isEmpty()) return emptyList()
+        russianPriority: Boolean,
+    ): WavePool {
+        if (seedGenres.isEmpty()) return WavePool()
 
-        val picks = mutableListOf<Track>()
+        val candidates = mutableListOf<Candidate>()
         for (genre in seedGenres.take(GENRE_SEEDS_TO_SEARCH)) {
             val result = soundCloudRepository
                 .search(query = genre, limit = GENRE_SEARCH_LIMIT)
                 .getOrNull()
                 .orEmpty()
-            result.asSequence()
                 .filter { it.id.isNotBlank() && it.id !in excludedIds }
+
+            // Точное попадание в жанр приоритетнее: SoundCloud по слову «rap»
+            // отдаёт и поп, и всё подряд
+            val verified = result
+                .filter { genreMatches(it.genre, genre) }
                 .take(GENRE_TRACKS_PER_SEED)
-                .forEach { picks += it }
-            if (picks.size >= GENRE_BUFFER_LIMIT) break
+                .map { Candidate(track = it, verified = true) }
+            candidates += verified.ifEmpty {
+                result
+                    .take(GENRE_TRACKS_PER_SEED)
+                    .map { Candidate(track = it, verified = false) }
+            }
+            if (candidates.size >= GENRE_BUFFER_LIMIT) break
         }
 
-        return picks.distinctBy { it.id }
+        val ranked = rankCandidates(candidates.distinctBy { it.track.id }, russianPriority)
+        val isStrict: (Candidate) -> Boolean = { candidate ->
+            candidate.verified && (!russianPriority || candidate.track.hasCyrillic())
+        }
+        return WavePool(
+            strict = ranked.filter(isStrict).map { it.track },
+            loose = ranked.filterNot(isStrict).map { it.track },
+        )
+    }
+
+    /**
+     * При RU-приоритете кириллица идёт в строгий пул, латиница — только в запасной:
+     * западные треки не должны разбавлять волну, пока хватает своих.
+     */
+    private fun splitByLanguage(tracks: List<Track>, russianPriority: Boolean): WavePool =
+        if (!russianPriority) {
+            WavePool(strict = tracks)
+        } else {
+            WavePool(
+                strict = tracks.filter { it.hasCyrillic() },
+                loose = tracks.filterNot { it.hasCyrillic() },
+            )
+        }
+
+    private fun toPool(candidates: List<Candidate>, russianPriority: Boolean): WavePool =
+        splitByLanguage(candidates.map { it.track }, russianPriority)
+
+    /**
+     * Порядок кандидатов: подтверждённые совпадения раньше остальных,
+     * при RU-приоритете кириллица раньше латиницы.
+     */
+    private fun rankCandidates(
+        candidates: List<Candidate>,
+        russianPriority: Boolean,
+    ): List<Candidate> {
+        val tiers = if (russianPriority) {
+            val cyrillic = candidates.filter { it.track.hasCyrillic() }
+            val latin = candidates.filterNot { it.track.hasCyrillic() }
+            listOf(
+                cyrillic.filter { it.verified },
+                cyrillic.filterNot { it.verified },
+                latin.filter { it.verified },
+                latin.filterNot { it.verified },
+            )
+        } else {
+            listOf(
+                candidates.filter { it.verified },
+                candidates.filterNot { it.verified },
+            )
+        }
+        return tiers.flatMap { it.shuffled() }
     }
 
     private fun prioritize(candidates: List<Track>, russianPriority: Boolean): List<Track> {
@@ -303,10 +416,58 @@ class WaveRepositoryImpl @Inject constructor(
         return result.values.toList()
     }
 
-    private fun Track.cyrillicScore(): Int {
-        val text = "$title $artist"
-        return if (text.any { it in CYRILLIC_RANGE }) 1 else 0
+    /** Сравнение артистов без регистра и пунктуации: «Kizaru» == «KIZARU feat. X». */
+    private fun artistMatches(trackArtist: String, seedArtist: String): Boolean {
+        val track = normalizeWords(trackArtist)
+        val seed = normalizeWords(seedArtist)
+        if (track.isEmpty() || seed.isEmpty()) return false
+        return track == seed || track.contains(seed) || seed.contains(track)
     }
+
+    /**
+     * Жанр SoundCloud — свободный текст («Hip-hop & Rap», «Русский рэп»),
+     * поэтому сравниваем по словам, переводя частые русские названия в латинские.
+     */
+    private fun genreMatches(trackGenre: String?, seedGenre: String): Boolean {
+        val trackTokens = genreTokens(trackGenre)
+        val seedTokens = genreTokens(seedGenre)
+        return trackTokens.isNotEmpty() && seedTokens.isNotEmpty() && trackTokens.any { it in seedTokens }
+    }
+
+    private fun genreTokens(value: String?): Set<String> =
+        normalizeWords(value.orEmpty())
+            .split(' ')
+            .asSequence()
+            .filter { it.length >= MIN_GENRE_TOKEN_LENGTH }
+            .map { token -> GENRE_ALIASES[token] ?: token }
+            .toSet()
+
+    /** «Music», «Audio», «Podcast» — не жанры, по ним бессмысленно искать. */
+    private fun isUsefulGenre(value: String?): Boolean {
+        val normalized = normalizeWords(value.orEmpty())
+        return normalized.isNotEmpty() && normalized !in JUNK_GENRES
+    }
+
+    private fun normalizeWords(value: String): String =
+        NON_WORD_CHARS.replace(value.lowercase(Locale.ROOT), " ").trim()
+
+    private fun String.containsCyrillic(): Boolean = any { it in CYRILLIC_RANGE }
+
+    private fun Track.hasCyrillic(): Boolean = "$title $artist".containsCyrillic()
+
+    private fun Track.cyrillicScore(): Int = if (hasCyrillic()) 1 else 0
+
+    /** Кандидат поиска и признак подтверждённого совпадения артиста или жанра. */
+    private data class Candidate(
+        val track: Track,
+        val verified: Boolean,
+    )
+
+    /** Кандидаты источника: строгий пул и запасной. */
+    private data class WavePool(
+        val strict: List<Track> = emptyList(),
+        val loose: List<Track> = emptyList(),
+    )
 
     private data class WavePick(
         val track: Track,
@@ -338,6 +499,42 @@ class WaveRepositoryImpl @Inject constructor(
         const val GENRE_TRACKS_PER_SEED = 3
         const val GENRE_BUFFER_LIMIT = 6
 
+        const val MIN_GENRE_TOKEN_LENGTH = 3
+
         val CYRILLIC_RANGE = '\u0400'..'\u04FF'
+
+        val NON_WORD_CHARS = Regex("[^\\p{L}\\p{N}]+")
+
+        /** Служебные подписи вместо жанра */
+        val JUNK_GENRES = setOf(
+            "music", "музыка", "audio", "аудио", "other", "другое",
+            "misc", "podcast", "подкаст", "soundcloud",
+        )
+
+        /** Частые русские названия жанров → латинские токены */
+        val GENRE_ALIASES = mapOf(
+            "рэп" to "rap",
+            "реп" to "rap",
+            "хип" to "hip",
+            "хоп" to "hop",
+            "трэп" to "trap",
+            "трап" to "trap",
+            "хаус" to "house",
+            "техно" to "techno",
+            "дабстеп" to "dubstep",
+            "фонк" to "phonk",
+            "рок" to "rock",
+            "поп" to "pop",
+            "джаз" to "jazz",
+            "соул" to "soul",
+            "фанк" to "funk",
+            "панк" to "punk",
+            "метал" to "metal",
+            "электро" to "electro",
+            "эмбиент" to "ambient",
+            "регги" to "reggae",
+            "классика" to "classical",
+            "диско" to "disco",
+        )
     }
 }

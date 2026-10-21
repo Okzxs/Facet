@@ -116,7 +116,9 @@ fun PlayerControlIsland(
             ) {
                 progressContent()
 
-                Spacer(Modifier.height(8.dp))
+                // Запас между волной и рядом кнопок: палец, целящийся в Play/Pause,
+                // не должен задевать зону перемотки
+                Spacer(Modifier.height(14.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
