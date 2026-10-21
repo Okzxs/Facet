@@ -1,6 +1,15 @@
+import java.util.Properties
+
+val localLastFmApiKey: String = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}.getProperty("LASTFM_API_KEY").orEmpty().trim()
+
 val lastFmApiKey: String = providers.gradleProperty("LASTFM_API_KEY")
     .orElse(providers.environmentVariable("LASTFM_API_KEY"))
-    .getOrElse("")
+    .getOrElse(localLastFmApiKey)
 
 plugins {
     id("com.android.application")
