@@ -1715,3 +1715,36 @@ MEMORY.md
 - `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 80 JVM-тестов, 0 failures, 0 errors.
 - `lintDebug`: новых замечаний в HomeScreen нет; остаётся существующая ошибка Media3 `UnstableApi` в `PlayerController` (плеер не трогали).
 - APK: `app/build/outputs/apk/debug/app-debug.apk`.
+
+---
+
+## ✅ Сессия 7 — Рекомендации вместо чартов (23.10.2026)
+
+### Что сделано
+- Блок «Чарты» (`Top RU` / `Top US`) полностью удалён из Home.
+- Вместо него добавлен блок «Для вас»: горизонтальная `LazyRow` с рекомендациями.
+- Карточка рекомендации: обложка 140dp в `SquircleShape`, название (до 2 строк) и артист под обложкой, press-scale 0.96.
+- `HomeViewModel` строит персональные запросы по последним лайкам и истории: первый жанр и первый артист, два параллельных запроса `YouTubeRepository.search()` (`"<жанр> music mix"`, `"<артист> best songs"`).
+- Если лайков/истории нет — загружаются популярные треки (`popular music 2026`).
+- Если персонализированный поиск пуст или упал, включается тот же популярный fallback.
+- Результаты фильтруются по длительности 45–900 секунд, дедуплицируются и исключают треки, уже находящиеся в лайках/истории.
+- Повторные запросы защищены ключом персонализации: одинаковые жанр/артист не запускают новую загрузку; при новых сигналах старый запрос отменяется.
+- Ошибка загрузки не затирает уже показанные рекомендации; для пустого состояния есть кнопка «Повторить»/«Обновить».
+- В «Недавнем» обложки переведены на `RoundedCornerShape(18.dp)`, скрим усилен до `0.56f`, подписи получили больший контраст.
+- Hero, опциональная карточка, отступы, reveal-анимации и press-scale остальных блоков не менялись. Плеер и поиск не трогались.
+
+### Файлы
+```
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt (новый)
+app/src/test/java/com/my/music/feature/home/HomeViewModelChartsTest.kt (удалён)
+PROGRESS.md
+MEMORY.md
+```
+
+### Проверка
+- `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
+- `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 81 JVM-тест, 0 failures, 0 errors.
+- `lintDebug`: новых замечаний в Home нет; остаётся существующая ошибка Media3 `UnstableApi` в `PlayerController` (плеер не трогали).
+- APK: `app/build/outputs/apk/debug/app-debug.apk`.

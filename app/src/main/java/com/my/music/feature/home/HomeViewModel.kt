@@ -13,11 +13,13 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -29,15 +31,20 @@ data class GenreSection(
 
 data class HomeUiState(
     val isRefreshing: Boolean = false,
-    val isChartsLoading: Boolean = true,
-    val chartsError: String? = null,
-    val topRu: List<Track> = emptyList(),
-    val topUs: List<Track> = emptyList(),
+    val isRecommendationsLoading: Boolean = true,
+    val recommendationsError: String? = null,
+    val recommendations: List<Track> = emptyList(),
     val recentTracks: List<Track> = emptyList(),
     val likedTracks: List<Track> = emptyList(),
     val memories: List<SeasonMemory> = emptyList(),
     val memorySeason: String = SeasonProvider.currentSeason(),
     val genreSections: List<GenreSection> = emptyList(),
+)
+
+private data class LocalSignals(
+    val recent: List<Track>,
+    val liked: List<Track>,
+    val genres: List<GenreSection>,
 )
 
 @HiltViewModel
@@ -53,11 +60,12 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState(memorySeason = memorySeason))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    private var chartsJob: Job? = null
+    private var recommendationsJob: Job? = null
+    private var recommendationsKey: String? = null
+    private var recommendationsRequestId = 0
 
     init {
         observeLocalData()
-        loadCharts(forceRefresh = false)
     }
 
     /**
@@ -83,103 +91,206 @@ class HomeViewModel @Inject constructor(
                     .map { (genre, tracks) -> GenreSection(genre = genre, tracks = tracks) }
                     .sortedByDescending { it.tracks.size }
 
-                Triple(recent, liked, genres)
-            }.collect { (recent, liked, genres) ->
-                _uiState.update {
-                    it.copy(
-                        recentTracks = recent,
-                        likedTracks = liked,
-                        genreSections = genres,
-                    )
-                }
+                LocalSignals(recent = recent, liked = liked, genres = genres)
             }
+                .distinctUntilChanged()
+                .collect { signals ->
+                    _uiState.update {
+                        it.copy(
+                            recentTracks = signals.recent,
+                            likedTracks = signals.liked,
+                            genreSections = signals.genres,
+                        )
+                    }
+                    updateRecommendations(signals.liked, signals.recent)
+                }
         }
     }
 
     /**
-     * Чарты Top RU / Top US через YouTubeRepository.
-     * При ошибке уже загруженные данные не затираются.
+     * Персональные рекомендации: жанр и артист из последних лайков и истории.
+     * Если данных нет — загружаем популярные треки.
      */
-    fun loadCharts(forceRefresh: Boolean = false) {
-        if (chartsJob?.isActive == true) return
+    private fun updateRecommendations(
+        liked: List<Track>,
+        recent: List<Track>,
+        forceRefresh: Boolean = false,
+    ) {
+        val excludedIds = (liked + recent).mapTo(mutableSetOf()) { it.id }
+        val current = _uiState.value.recommendations
+        val remaining = current.filterNot { it.id in excludedIds }
+        val lostAllRecommendations = current.isNotEmpty() && remaining.isEmpty()
 
-        chartsJob = viewModelScope.launch {
-            val hasCharts = _uiState.value.topRu.isNotEmpty() || _uiState.value.topUs.isNotEmpty()
+        if (remaining.size != current.size) {
+            _uiState.update { it.copy(recommendations = remaining) }
+        }
+
+        val queries = buildRecommendationQueries(liked, recent)
+        val key = queries.joinToString(separator = "|")
+        if (!forceRefresh && key == recommendationsKey && !lostAllRecommendations) return
+
+        recommendationsKey = key
+        loadRecommendations(
+            queries = queries,
+            excludedIds = excludedIds,
+            forceRefresh = forceRefresh,
+        )
+    }
+
+    private fun buildRecommendationQueries(
+        liked: List<Track>,
+        recent: List<Track>,
+    ): List<String> {
+        val signals = (liked.take(PERSONALIZATION_WINDOW) + recent.take(PERSONALIZATION_WINDOW))
+            .distinctBy { it.id }
+        val genre = signals.firstNotNullOfOrNull { track ->
+            track.genre?.trim()?.takeIf { it.isNotEmpty() }
+        }
+        val artist = signals.firstNotNullOfOrNull { track ->
+            track.artist.trim().takeIf { it.isNotEmpty() }
+        }
+
+        return buildList {
+            genre?.let { add("$it music mix") }
+            artist?.let { add("$it best songs") }
+        }.distinct().ifEmpty { listOf(POPULAR_QUERY) }
+    }
+
+    private fun loadRecommendations(
+        queries: List<String>,
+        excludedIds: Set<String>,
+        forceRefresh: Boolean,
+    ) {
+        val requestId = ++recommendationsRequestId
+        recommendationsJob?.cancel()
+        recommendationsJob = viewModelScope.launch {
+            val hasTracks = _uiState.value.recommendations.isNotEmpty()
             _uiState.update {
                 it.copy(
                     isRefreshing = forceRefresh,
-                    isChartsLoading = !hasCharts,
-                    chartsError = if (forceRefresh || !hasCharts) null else it.chartsError,
+                    isRecommendationsLoading = !hasTracks,
+                    recommendationsError = if (!hasTracks || forceRefresh) {
+                        null
+                    } else {
+                        it.recommendationsError
+                    },
                 )
             }
 
             try {
-                val (ruResult, usResult) = coroutineScope {
-                    val ruDeferred = async {
-                        youtubeRepository.search(TOP_RU_QUERY, CHART_LIMIT)
-                    }
-                    val usDeferred = async {
-                        youtubeRepository.search(TOP_US_QUERY, CHART_LIMIT)
-                    }
-                    ruDeferred.await() to usDeferred.await()
-                }
+                val result = loadRecommendationTracks(queries, excludedIds)
+                if (requestId != recommendationsRequestId) return@launch
 
-                val ruTracks = ruResult.getOrNull().orEmpty().asChartTracks()
-                val usTracks = usResult.getOrNull().orEmpty().asChartTracks()
-
-                _uiState.update { state ->
-                    val topRu = if (ruResult.isSuccess) ruTracks else state.topRu
-                    val topUs = if (usResult.isSuccess) usTracks else state.topUs
-                    val ruMissing = ruResult.isFailure && topRu.isEmpty()
-                    val usMissing = usResult.isFailure && topUs.isEmpty()
-                    val error = when {
-                        ruMissing && usMissing -> "Не удалось загрузить чарты"
-                        ruMissing -> "Не удалось загрузить Top RU"
-                        usMissing -> "Не удалось загрузить Top US"
-                        else -> null
-                    }
-
-                    state.copy(
-                        topRu = topRu,
-                        topUs = topUs,
-                        chartsError = error,
-                    )
-                }
+                result.fold(
+                    onSuccess = { tracks ->
+                        _uiState.update {
+                            it.copy(
+                                recommendations = tracks,
+                                recommendationsError = null,
+                            )
+                        }
+                    },
+                    onFailure = { error ->
+                        Log.e(tag, "Ошибка загрузки рекомендаций: ${error.message}", error)
+                        _uiState.update {
+                            it.copy(
+                                recommendationsError = error.message
+                                    ?: "Не удалось загрузить рекомендации",
+                            )
+                        }
+                    },
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(tag, "Ошибка загрузки чартов YouTube: ${e.message}", e)
-                _uiState.update {
-                    it.copy(chartsError = e.message ?: "Ошибка загрузки чартов")
+                if (requestId == recommendationsRequestId) {
+                    Log.e(tag, "Ошибка загрузки рекомендаций: ${e.message}", e)
+                    _uiState.update {
+                        it.copy(
+                            recommendationsError = e.message
+                                ?: "Не удалось загрузить рекомендации",
+                        )
+                    }
                 }
             } finally {
-                _uiState.update {
-                    it.copy(
-                        isRefreshing = false,
-                        isChartsLoading = false,
-                    )
+                if (requestId == recommendationsRequestId) {
+                    _uiState.update {
+                        it.copy(
+                            isRefreshing = false,
+                            isRecommendationsLoading = false,
+                        )
+                    }
                 }
             }
         }
     }
 
-    private fun List<Track>.asChartTracks(): List<Track> {
-        val music = filter { it.durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS }
-        return music.ifEmpty { this }
-            .distinctBy { it.id }
-            .take(CHART_TRACKS_LIMIT)
+    private suspend fun loadRecommendationTracks(
+        queries: List<String>,
+        excludedIds: Set<String>,
+    ): Result<List<Track>> = coroutineScope {
+        val primaryResults = queries
+            .map { query ->
+                async { youtubeRepository.search(query, RECOMMENDATION_SEARCH_LIMIT) }
+            }
+            .awaitAll()
+
+        val primaryTracks = primaryResults
+            .flatMap { it.getOrElse { emptyList() } }
+            .asRecommendations(excludedIds)
+
+        if (primaryTracks.isNotEmpty()) {
+            return@coroutineScope Result.success(primaryTracks)
+        }
+
+        val hasPersonalQuery = queries.any { it != POPULAR_QUERY }
+        if (!hasPersonalQuery) {
+            val firstError = primaryResults.firstNotNullOfOrNull { it.exceptionOrNull() }
+            return@coroutineScope if (primaryResults.any { it.isSuccess }) {
+                Result.success(emptyList())
+            } else {
+                Result.failure(
+                    firstError ?: IllegalStateException("Не удалось загрузить рекомендации"),
+                )
+            }
+        }
+
+        val fallbackResult = youtubeRepository.search(
+            POPULAR_QUERY,
+            RECOMMENDATION_SEARCH_LIMIT,
+        )
+        fallbackResult.fold(
+            onSuccess = { Result.success(it.asRecommendations(excludedIds)) },
+            onFailure = { fallbackError ->
+                val primaryError = primaryResults.firstNotNullOfOrNull { it.exceptionOrNull() }
+                Result.failure(primaryError ?: fallbackError)
+            },
+        )
     }
+
+    private fun List<Track>.asRecommendations(excludedIds: Set<String>): List<Track> =
+        asSequence()
+            .filter { it.durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS }
+            .filterNot { it.id in excludedIds }
+            .distinctBy { it.id }
+            .take(RECOMMENDATION_TRACKS_LIMIT)
+            .toList()
 
     /** Принудительное обновление для Pull-to-refresh. */
     fun refresh() {
-        loadCharts(forceRefresh = true)
+        val state = _uiState.value
+        updateRecommendations(
+            liked = state.likedTracks,
+            recent = state.recentTracks,
+            forceRefresh = true,
+        )
     }
 
     private companion object {
-        const val TOP_RU_QUERY = "Top 100 Russia music"
-        const val TOP_US_QUERY = "Top 100 USA music"
-        const val CHART_LIMIT = 8
-        const val CHART_TRACKS_LIMIT = 5
+        const val POPULAR_QUERY = "popular music 2026"
+        const val RECOMMENDATION_SEARCH_LIMIT = 12
+        const val RECOMMENDATION_TRACKS_LIMIT = 10
+        const val PERSONALIZATION_WINDOW = 20
         const val MUSIC_MIN_DURATION_MS = 45_000L
         const val MUSIC_MAX_DURATION_MS = 900_000L
     }

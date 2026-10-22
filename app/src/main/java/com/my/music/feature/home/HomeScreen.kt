@@ -1,6 +1,5 @@
 package com.my.music.feature.home
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -30,10 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -44,10 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,11 +77,6 @@ import java.util.Locale
 private val ScreenPadding = 20.dp
 private val BlockGap = 26.dp
 
-private enum class ChartRegion {
-    RU,
-    US,
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -98,7 +87,6 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val recentTracks = uiState.recentTracks
     val heroTrack = recentTracks.firstOrNull()
-    var chartRegion by rememberSaveable { mutableStateOf(ChartRegion.RU) }
 
     PullToRefreshBox(
         isRefreshing = uiState.isRefreshing,
@@ -133,15 +121,12 @@ fun HomeScreen(
                 }
             }
 
-            item(key = "charts") {
+            item(key = "recommendations") {
                 RevealBlock(index = 2) {
-                    ChartsBlock(
-                        topRu = uiState.topRu,
-                        topUs = uiState.topUs,
-                        selectedRegion = chartRegion,
-                        isLoading = uiState.isChartsLoading,
-                        error = uiState.chartsError,
-                        onRegionSelected = { chartRegion = it },
+                    RecommendationsBlock(
+                        tracks = uiState.recommendations,
+                        isLoading = uiState.isRecommendationsLoading,
+                        error = uiState.recommendationsError,
                         onTrackClick = onTrackClick,
                         onRetry = viewModel::refresh,
                     )
@@ -353,279 +338,195 @@ private fun ContinueListeningCard(
 }
 
 @Composable
-private fun ChartsBlock(
-    topRu: List<Track>,
-    topUs: List<Track>,
-    selectedRegion: ChartRegion,
+private fun RecommendationsBlock(
+    tracks: List<Track>,
     isLoading: Boolean,
     error: String?,
-    onRegionSelected: (ChartRegion) -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
     onRetry: () -> Unit,
 ) {
-    val containerColor = MaterialTheme.colorScheme.primaryContainer
-    val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-    val tracks = when (selectedRegion) {
-        ChartRegion.RU -> topRu
-        ChartRegion.US -> topUs
-    }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = containerColor,
-        contentColor = contentColor,
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Чарты",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = contentColor,
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = "YouTube",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.62f),
-                        maxLines = 1,
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ChartRegionChip(
-                        label = "Top RU",
-                        selected = selectedRegion == ChartRegion.RU,
-                        containerColor = containerColor,
-                        contentColor = contentColor,
-                        onClick = { onRegionSelected(ChartRegion.RU) },
-                    )
-                    ChartRegionChip(
-                        label = "Top US",
-                        selected = selectedRegion == ChartRegion.US,
-                        containerColor = containerColor,
-                        contentColor = contentColor,
-                        onClick = { onRegionSelected(ChartRegion.US) },
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            when {
-                isLoading && tracks.isEmpty() -> ChartSkeleton(contentColor = contentColor)
-                tracks.isEmpty() && error != null -> ChartError(
-                    message = error,
-                    contentColor = contentColor,
-                    onRetry = onRetry,
-                )
-                tracks.isEmpty() -> Text(
-                    text = "Нет данных",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = contentColor.copy(alpha = 0.68f),
-                )
-                else -> tracks.take(3).forEachIndexed { index, track ->
-                    ChartTrackRow(
-                        index = index,
-                        track = track,
-                        contentColor = contentColor,
-                        onClick = { onTrackClick(track, tracks) },
-                    )
-                    if (index < minOf(tracks.size, 3) - 1) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 44.dp),
-                            color = contentColor.copy(alpha = 0.14f),
-                        )
-                    }
-                }
-            }
+    Column {
+        Text(
+            text = "Для вас",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(12.dp))
+        when {
+            tracks.isNotEmpty() -> RecommendationsRow(
+                tracks = tracks,
+                onTrackClick = onTrackClick,
+            )
+            isLoading -> RecommendationsSkeleton()
+            error != null -> RecommendationsMessage(
+                title = "Не удалось загрузить рекомендации",
+                message = error,
+                actionLabel = "Повторить",
+                onAction = onRetry,
+            )
+            else -> RecommendationsMessage(
+                title = "Пока нет рекомендаций",
+                message = "Попробуйте обновить подборку.",
+                actionLabel = "Обновить",
+                onAction = onRetry,
+            )
         }
     }
 }
 
 @Composable
-private fun ChartRegionChip(
-    label: String,
-    selected: Boolean,
-    containerColor: Color,
-    contentColor: Color,
+private fun RecommendationsRow(
+    tracks: List<Track>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(
+            items = tracks,
+            key = { it.id },
+        ) { track ->
+            RecommendationCard(
+                track = track,
+                onClick = { onTrackClick(track, tracks) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecommendationCard(
+    track: Track,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.95f else 1f,
+        targetValue = if (pressed) 0.96f else 1f,
         animationSpec = spring(
             dampingRatio = 0.8f,
             stiffness = Spring.StiffnessMedium,
         ),
-        label = "chartChipScale",
-    )
-    val background by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            contentColor.copy(alpha = 0.08f)
-        },
-        animationSpec = spring(dampingRatio = 0.8f),
-        label = "chartChipBackground",
-    )
-    val foreground by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.onPrimary
-        } else {
-            contentColor
-        },
-        animationSpec = spring(dampingRatio = 0.8f),
-        label = "chartChipForeground",
+        label = "recommendationScale",
     )
 
-    Surface(
-        modifier = Modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                role = Role.Button,
-                onClick = onClick,
-            ),
-        shape = PillShape,
-        color = background,
-        contentColor = foreground,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
-private fun ChartTrackRow(
-    index: Int,
-    track: Track,
-    contentColor: Color,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = (index + 1).toString().padStart(2, '0'),
-            style = MaterialTheme.typography.headlineSmall.copy(
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.6).sp,
-            ),
-            color = contentColor.copy(alpha = 0.66f),
-            modifier = Modifier.width(38.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.bodySmall,
-                color = contentColor.copy(alpha = 0.68f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+    Column(modifier = Modifier.width(140.dp)) {
+        Box(
+            modifier = Modifier
+                .size(140.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(SquircleShape)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .semantics {
+                    contentDescription = "Воспроизвести ${track.title}, ${track.artist}"
+                },
+        ) {
+            Artwork(
+                url = track.artworkUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                shape = SquircleShape,
             )
         }
-        Spacer(Modifier.width(8.dp))
-        Icon(
-            imageVector = Icons.Rounded.PlayArrow,
-            contentDescription = null,
-            tint = contentColor.copy(alpha = 0.5f),
-            modifier = Modifier.size(18.dp),
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = track.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            minLines = 2,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = track.artist,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 @Composable
-private fun ChartSkeleton(contentColor: Color) {
-    Column {
-        repeat(3) { index ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(PillShape)
-                        .background(contentColor.copy(alpha = 0.18f)),
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+private fun RecommendationsSkeleton() {
+    val placeholder = MaterialTheme.colorScheme.surfaceContainerHigh
+
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        userScrollEnabled = false,
+    ) {
+        repeat(4) {
+            item {
+                Column(modifier = Modifier.width(140.dp)) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.62f)
+                            .size(140.dp)
+                            .clip(SquircleShape)
+                            .background(placeholder),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
                             .height(14.dp)
                             .clip(PillShape)
-                            .background(contentColor.copy(alpha = 0.18f)),
+                            .background(placeholder),
                     )
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(6.dp))
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.4f)
+                            .fillMaxWidth(0.58f)
                             .height(10.dp)
                             .clip(PillShape)
-                            .background(contentColor.copy(alpha = 0.12f)),
+                            .background(placeholder.copy(alpha = 0.7f)),
                     )
                 }
             }
-            if (index < 2) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 42.dp),
-                    color = contentColor.copy(alpha = 0.10f),
-                )
-            }
         }
     }
 }
 
 @Composable
-private fun ChartError(
+private fun RecommendationsMessage(
+    title: String,
     message: String,
-    contentColor: Color,
-    onRetry: () -> Unit,
+    actionLabel: String,
+    onAction: () -> Unit,
 ) {
     Column {
         Text(
-            text = "Не удалось загрузить чарт",
+            text = title,
             style = MaterialTheme.typography.titleSmall,
-            color = contentColor,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = message,
             style = MaterialTheme.typography.bodySmall,
-            color = contentColor.copy(alpha = 0.68f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(4.dp))
         TextButton(
-            onClick = onRetry,
+            onClick = onAction,
             contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
-            colors = ButtonDefaults.textButtonColors(contentColor = contentColor),
         ) {
-            Text("Повторить")
+            Text(actionLabel)
         }
     }
 }
@@ -676,6 +577,8 @@ private fun RecentCover(
         label = "recentScale",
     )
 
+    val coverShape = RoundedCornerShape(18.dp)
+
     Box(
         modifier = Modifier
             .size(126.dp)
@@ -683,7 +586,7 @@ private fun RecentCover(
                 scaleX = scale
                 scaleY = scale
             }
-            .clip(SquircleShape)
+            .clip(coverShape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -698,19 +601,19 @@ private fun RecentCover(
             url = track.artworkUrl,
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
-            shape = SquircleShape,
+            shape = coverShape,
         )
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(50.dp)
-                .background(Color.Black.copy(alpha = 0.46f)),
+                .height(52.dp)
+                .background(Color.Black.copy(alpha = 0.56f)),
         )
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 9.dp, vertical = 6.dp),
         ) {
             Text(
                 text = track.title,
@@ -722,7 +625,7 @@ private fun RecentCover(
             Text(
                 text = track.artist,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.76f),
+                color = Color.White.copy(alpha = 0.82f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
