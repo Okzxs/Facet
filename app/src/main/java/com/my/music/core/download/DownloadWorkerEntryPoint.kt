@@ -22,8 +22,6 @@ interface DownloadWorkerEntryPoint {
 
     fun downloadRepository(): DownloadRepository
 
-    fun offlineDownloadManager(): OfflineDownloadManager
-
     companion object {
         fun from(context: Context): DownloadWorkerEntryPoint =
             EntryPointAccessors.fromApplication(

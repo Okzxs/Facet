@@ -3,14 +3,15 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Стабильная кнопка скачивания: WorkInfo + REPLACE (22.10.2026) | Поиск прогрессивного MP3-потока для скачивания |
+| MyMusic | активен  | Скачивание только progressive MP3 через OkHttp (22.10.2026) | Экран «Скачанное» и очистка старых данных |
 
 ## Ожидающие задачи
 ### Высокий приоритет
-- [x] Хотфикс 22.10: WorkInfo — главный источник состояния (CANCELLED/FAILED → крестик, SUCCEEDED → галочка), REPLACE после отмены, защита от двойного тапа, `forceRestart` Media3, лог в первой строке `doWork()`; 64 JVM-теста
-- [ ] Найти прогрессивный MP3-поток SoundCloud для скачивания: проверить `transcodingUrl`/alternate formats, HLS через Media3 оставить fallback; цель — один MP3-файл вместо сегментов в SimpleCache
+- [x] Progressive MP3 22.10: скачивание только через OkHttp в один файл, `requireProgressive=true`, HLS-only → крестик/Snackbar; удалены Media3-классы скачивания; 64 JVM-теста
+- [x] Хотфикс 22.10: WorkInfo — главный источник состояния (CANCELLED/FAILED → крестик, SUCCEEDED → галочка), REPLACE после отмены, защита от двойного тапа, лог в первой строке `doWork()`; 64 JVM-теста
 - [x] Офлайн-режим: Media3 DownloadManager (HLS + MP3 в SimpleCache), Room v7 (`mediaUrl` + `mimeType`), прогресс из `DownloadManager.Listener`, Snackbar ошибки; 54 JVM-теста
 - [ ] Экран «Скачанное»: список, удаление файлов, занятое место
+- [ ] Очистка legacy после перехода на MP3: удалить `filesDir/media_cache` и старые HLS-записи из Room
 - [x] Фаза 7: бесконечная волна с сессией, Last.fm, локальным feedback, автодозагрузкой, RU-приоритетом и счётчиками источников; Room v5; 50 JVM-тестов
 - [ ] Настроения волны: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на подбор
 - [ ] «Воспоминания»: показ координат/сезона в карточках и действие «Открыть на карте»
@@ -41,21 +42,21 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
-- [Скачивание 22.10] WorkInfo — источник истины для UI: терминальные CANCELLED/FAILED показываются как `DownloadState.Error` (крестик на 1 с → стрелка), SUCCEEDED — галочка; старый прогресс Media3 не может перебить терминальный WorkInfo
+- [Скачивание 22.10] Офлайн переведён на progressive MP3 + OkHttp: файл `filesDir/downloads/<safe>_<hash>.mp3`, в Room — `file://` + `AUDIO_MPEG`; HLS-сегменты больше не скачиваются
+- [Скачивание 22.10] Для загрузки вызывается `resolveStreamUrl(requireProgressive = true)`: при отсутствии progressive — ошибка «Трек доступен только для онлайн-прослушивания»; для онлайн-плеера HLS-фолбэк сохранён, иначе HLS-only треки перестали бы играть
+- [Скачивание 22.10] Удалены `OfflineDownloadManager`, `OfflineMediaModule`, `MediaDownloadState`; `MusicService` снова использует дефолтный ExoPlayer без `SimpleCache`/`CacheDataSource`
+- [Скачивание 22.10] `DownloadManager` объединяет только Room + WorkInfo, прогресс берётся из `setProgress()` воркера; `REPLACE` и дебаунс 700 мс сохранены
+- [Скачивание 22.10] Старые HLS-записи Room инвалидируются в `getDownloadedTrack()` (нет `file://`-файла); для полной очистки нужен отдельный проход/экран «Скачанное»
+- [Скачивание 22.10] `DownloadStateResolutionTest` обновлён под новую сигнатуру: 10 кейсов Room/WorkInfo/прогресса
+- [Скачивание 22.10] WorkInfo — источник истины для UI: терминальные CANCELLED/FAILED показываются как `DownloadState.Error` (крестик на 1 с → стрелка), SUCCEEDED — галочка; терминальный статус приоритетнее прогресса воркера
 - [Скачивание 22.10] Последняя попытка выбирается по тегу `download-at:<millis>`: `getWorkInfosForUniqueWorkFlow` не гарантирует порядок, `lastOrNull()` мог вернуть старую CANCELLED-задачу
-- [Скачивание 22.10] `ExistingWorkPolicy.REPLACE` + дебаунс 700 мс + `KEY_FORCE_RESTART=true`: после отмены/падения создаётся новая задача, а старая запись Media3 удаляется и пересоздаётся
-- [Скачивание 22.10] `cancel()` чистит Media3 сразу; воркер при `CancellationException` не удаляет запись, потому что при REPLACE отменяется старая попытка, а новая должна продолжить загрузку
-- [Скачивание 22.10] Осиротевшая запись Media3 без активного WorkInfo не показывается как прогресс — иначе кнопка навсегда залипает на «загрузке»; повторный клик перезапускает загрузку
-- [Скачивание 22.10] Диагностика: тег logcat `DownloadWorker` — первая строка `doWork()`, `DownloadFlow` — постановка/отмена задачи, `OfflineDownload` — Media3
-- [Скачивание 22.10] Следующий шаг — прогрессивный MP3-поток: сейчас HLS-треки качаются сегментами в SimpleCache, нужен один MP3-файл; искать альтернативный progressive-формат в ответе SoundCloud/NewPipe (`transcodingUrl`, `deliveryMethod`), HLS через Media3 оставить fallback
-- [Офлайн 21.10] Скачивание переведено на Media3 DownloadManager: HLS (m3u8 + сегменты) и MP3 качаются в общий SimpleCache `filesDir/media_cache`; `ExoDatabaseProvider` в Media3 называется `StandaloneDatabaseProvider`
-- [Офлайн 21.10] Один `SimpleCache` на процесс (Hilt `@Singleton`), его делят `OfflineDownloadManager` и `MusicService`; плеер создаётся с `DefaultMediaSourceFactory(CacheDataSource.Factory)`, поэтому скачанное играет без сети
-- [Офлайн 21.10] `OfflineDownloadManager` ставит `DownloadRequest` (mimeType `APPLICATION_M3U8` для HLS, `AUDIO_MPEG` для MP3), отдаёт прогресс UI через `DownloadManager.Listener`; воркер ждёт завершения опросом индекса — блокирующего API в Media3 нет
-- [Офлайн 21.10] Повтор после `FAILED`: `enqueue` возвращает `requestedAt`, а `awaitCompletion` игнорирует старые `FAILED`/`STOPPED` с `updateTimeMs < requestedAt`, пока Media3 не обработает новый `addDownload` — иначе воркер мгновенно возвращал бы прошлую ошибку
-- [Офлайн 21.10] `DownloadTrackWorker` получает зависимости через Hilt `@EntryPoint`, резолвит поток, ставит загрузку Media3 и сохраняет в Room `mediaUrl` + `mimeType`; при ошибке — `Result.failure` и Snackbar «Не удалось скачать трек (доступен только онлайн)»
+- [Скачивание 22.10] `ExistingWorkPolicy.REPLACE` + дебаунс 700 мс остаются: после отмены/падения создаётся новая задача; `KEY_FORCE_RESTART` и очистка Media3 больше не нужны
+- [Скачивание 22.10] `cancel()` отменяет WorkManager; недокачанный `.part` удаляет воркер при `CancellationException`; готовый файл и запись Room не трогаются
+- [Скачивание 22.10] Диагностика: тег logcat `DownloadWorker` — старт, резолв progressive-потока и ошибки; `DownloadFlow` — постановка/отмена задачи
+- [История, заменено 22.10] Ранее офлайн работал через Media3 DownloadManager, `SimpleCache` и `CacheDataSource`; эти классы удалены, актуальная схема — OkHttp + один mp3-файл
 - [Офлайн 21.10] Room v7: `downloaded_tracks` вместо `localFilePath` хранит `mediaUrl` + `mimeType`; миграция 6→7 пересоздаёт таблицу и превращает старые пути в `file://`-URL
-- [Офлайн 21.10] `PlayerController.resolveAndPlay()` играет скачанный трек по сохранённому URL через кэш; `DownloadRepositoryImpl.getDownloadedTrack()` проверяет наличие данных в Media3 и чистит битые записи
-- [Офлайн 21.10] Кнопка в плеере: `DownloadState` (NotDownloaded / InProgress / Downloaded / Failed); отмена WorkManager удаляет недокачанные данные из кэша, готовый трек не трогается
+- [Офлайн 21.10] `PlayerController.resolveAndPlay()` играет скачанный трек по `file://`-URL напрямую с диска; `DownloadRepositoryImpl.getDownloadedTrack()` проверяет существование файла и чистит битые записи
+- [Офлайн 21.10] Кнопка в плеере: `DownloadState` (NotDownloaded / InProgress / Downloaded / Error); отмена WorkManager удаляет недокачанный `.part`, готовый трек не трогается
 - [Офлайн 21.10] В манифест добавлен `ACCESS_NETWORK_STATE` для сетевого constraint'а WorkManager
 - [Хотфикс 21.10] `ExpressivePlayerSlider` принимает жесты только в полосе ±14dp вокруг волны (высота 38dp): невидимая область слайдера больше не перехватывает клик по Play/Pause; зазор до ряда кнопок — 14dp, заглушка загрузки равна 38dp
 - [Хотфикс 21.10] Волна делит кандидатов на строгий и запасной пул: при RU-приоритете кириллица заполняет квоты первой, латиница — только добор при нехватке своих треков
@@ -152,6 +153,7 @@
 - Язык: комментарии в коде, служебные файлы (MEMORY.md, PROGRESS.md) и документация — строго на русском языке
 
 ## Последние сессии
+- Progressive MP3 22.10: скачивание переведено с Media3 DownloadManager на прямой OkHttp в `filesDir/downloads`; HLS-only треки завершаются ошибкой и показывают крестик + Snackbar; Media3-классы скачивания удалены; 64 JVM-теста, 0 failures. Следующий шаг — экран «Скачанное» и очистка legacy.
 - Хотфикс 22.10: WorkInfo управляет кнопкой скачивания (CANCELLED/FAILED → крестик и возврат к стрелке через секунду, SUCCEEDED → галочка), REPLACE после отмены, защита от двойного тапа, force-restart Media3, стартовый лог воркера; 64 JVM-теста, 0 failures. Следующий шаг — поиск прогрессивного MP3-потока для скачивания.
 - Офлайн-режим переведён на Media3 DownloadManager: HLS и MP3 качаются в SimpleCache, плеер читает кэш через CacheDataSource, Room v7 (`mediaUrl` + `mimeType`), прогресс из `DownloadManager.Listener`, Snackbar при ошибке; 54 JVM-теста, 0 failures
 - Хотфикс: клик Play/Pause и зона касания волнового слайдера (38dp + полоса ±14dp, зазор 14dp); волна — строгий/запасной пулы по языку, проверка артиста и жанра, отсев мусорных жанров; 53 JVM-теста, 0 failures

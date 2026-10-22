@@ -14,7 +14,14 @@ interface SoundCloudRepository {
     /**
      * Получить аудио-поток для трека.
      * Возвращает [AudioStreamResult] с URL и признаком HLS.
-     * Progressive предпочтителен, HLS — фолбэк (ExoPlayer играет оба нативно).
+     *
+     * Progressive предпочтителен всегда. Для онлайн-плеера допустим HLS-фолбэк:
+     * ExoPlayer играет m3u8 нативно. Для скачивания передавайте
+     * [requireProgressive] = true — тогда HLS-треки завершатся ошибкой,
+     * потому что из сегментов нельзя собрать один mp3-файл.
      */
-    suspend fun resolveStreamUrl(transcodingUrl: String): Result<AudioStreamResult>
+    suspend fun resolveStreamUrl(
+        transcodingUrl: String,
+        requireProgressive: Boolean = false,
+    ): Result<AudioStreamResult>
 }

@@ -47,14 +47,20 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
      * Получить прямой URL аудио-потока по URL трека на SoundCloud.
      *
      * Логика выбора:
-     *  1. PROGRESSIVE (прямой MP3) с максимальным битрейтом — предпочтительно
-     *  2. HLS (m3u8) с максимальным битрейтом — фолбэк (ExoPlayer играет нативно)
-     *  3. Нет ни тех ни других — исключение с реальной причиной из NewPipe
+     *  1. PROGRESSIVE (прямой MP3) с максимальным битрейтом — всегда приоритетно
+     *  2. Если [requireProgressive] = true, HLS не подходит: из сегментов нельзя
+     *     собрать один mp3-файл, поэтому возвращаем ошибку «только онлайн»
+     *  3. HLS (m3u8) с максимальным битрейтом — фолбэк для онлайн-плеера
+     *  4. Нет ни тех ни других — исключение с реальной причиной из NewPipe
      *
      * @param transcodingUrl — URL страницы трека на SC (например https://soundcloud.com/artist/track)
+     * @param requireProgressive — true для скачивания: HLS-фолбэк запрещён
      * @return [AudioStreamResult] с URL и флагом isHls для корректного mimeType в ExoPlayer
      */
-    override suspend fun resolveStreamUrl(transcodingUrl: String): Result<AudioStreamResult> =
+    override suspend fun resolveStreamUrl(
+        transcodingUrl: String,
+        requireProgressive: Boolean,
+    ): Result<AudioStreamResult> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val service = NewPipe.getService(ServiceList.SoundCloud.serviceId)
@@ -103,7 +109,24 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
                     )
                 }
 
-                // 2) HLS (m3u8) — фолбэк
+                // 2) Для скачивания HLS не годится: нужен один mp3-файл
+                if (requireProgressive) {
+                    val newPipeError = streamInfo.errors.firstOrNull()?.message
+                    if (streamInfo.audioStreams.isNotEmpty()) {
+                        Log.w(
+                            tag,
+                            "Прогрессивный поток не найден, есть только " +
+                                streamInfo.audioStreams.joinToString { it.deliveryMethod.name },
+                        )
+                        error(ERROR_PROGRESSIVE_UNAVAILABLE)
+                    }
+                    error(
+                        "Не удалось получить поток для '$transcodingUrl': " +
+                            (newPipeError ?: "нет доступных аудио-потоков"),
+                    )
+                }
+
+                // 3) HLS (m3u8) — фолбэк только для онлайн-воспроизведения
                 val hls = streamInfo.audioStreams
                     .filter { it.deliveryMethod == DeliveryMethod.HLS }
                     .maxByOrNull { it.averageBitrate }
@@ -116,7 +139,7 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
                     )
                 }
 
-                // 3) Совсем нет потоков — реальная причина из NewPipe
+                // 4) Совсем нет потоков — реальная причина из NewPipe
                 val newPipeError = streamInfo.errors.firstOrNull()
                 val cause = newPipeError?.message ?: "нет доступных аудио-потоков"
                 error("Не удалось получить поток для '$transcodingUrl': $cause")
@@ -141,5 +164,11 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
             genre = null,                    // недоступно в результатах поиска NewPipe
             transcodingUrl = url,            // SC track URL для последующего resolve
         )
+    }
+
+    companion object {
+        /** Единый текст ошибки, когда progressive MP3 недоступен. */
+        const val ERROR_PROGRESSIVE_UNAVAILABLE =
+            "Трек доступен только для онлайн-прослушивания"
     }
 }

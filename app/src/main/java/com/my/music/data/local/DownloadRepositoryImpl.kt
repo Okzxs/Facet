@@ -1,7 +1,6 @@
 package com.my.music.data.local
 
 import android.net.Uri
-import com.my.music.core.download.OfflineDownloadManager
 import com.my.music.data.local.dao.DownloadedTracksDao
 import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.toDomain
@@ -20,13 +19,14 @@ import javax.inject.Singleton
 
 /**
  * Реализация репозитория скачанных треков на базе Room.
- * Перед воспроизведением проверяет, что данные всё ещё лежат в кэше Media3
- * (или в старом локальном файле после миграции).
+ *
+ * Скачанный трек — это один mp3-файл в `filesDir/downloads`.
+ * Перед воспроизведением проверяем, что файл реально существует:
+ * если его удалили, запись автоматически вычищается.
  */
 @Singleton
 class DownloadRepositoryImpl @Inject constructor(
     private val downloadedTracksDao: DownloadedTracksDao,
-    private val offlineDownloadManager: OfflineDownloadManager,
 ) : DownloadRepository {
 
     override fun observeDownloadedIds(): Flow<Set<String>> {
@@ -50,7 +50,8 @@ class DownloadRepositoryImpl @Inject constructor(
         withContext(Dispatchers.IO) {
             val entry = downloadedTracksDao.getById(trackId) ?: return@withContext null
             if (!isPlayable(entry)) {
-                // Кэш очищен или старый файл удалён — запись больше не валидна
+                // Файл удалён или запись осталась от старого HLS-кэша —
+                // такая запись больше не валидна.
                 downloadedTracksDao.delete(trackId)
                 return@withContext null
             }
@@ -67,23 +68,22 @@ class DownloadRepositoryImpl @Inject constructor(
         withContext(Dispatchers.IO) {
             val entry = downloadedTracksDao.getById(trackId)
             downloadedTracksDao.delete(trackId)
-            if (entry != null) {
-                if (entry.mediaUrl.startsWith("file://")) {
-                    val path = Uri.parse(entry.mediaUrl).path
-                    if (path != null) runCatching { File(path).delete() }
-                } else {
-                    offlineDownloadManager.remove(trackId)
-                }
-            }
+            entry?.let { localFileOf(it)?.delete() }
         }
     }
 
-    private suspend fun isPlayable(entry: DownloadedTrackEntity): Boolean {
-        if (entry.mediaUrl.startsWith("file://")) {
-            val path = Uri.parse(entry.mediaUrl).path ?: return false
-            val file = File(path)
-            return file.exists() && file.length() > 0L
-        }
-        return offlineDownloadManager.isCompleted(entry.id)
+    private fun isPlayable(entry: DownloadedTrackEntity): Boolean {
+        val file = localFileOf(entry) ?: return false
+        return file.exists() && file.length() > 0L
+    }
+
+    /**
+     * Возвращает локальный файл только для записей вида `file://`.
+     * Старые записи Media3 (m3u8/HTTP) больше не поддерживаются.
+     */
+    private fun localFileOf(entry: DownloadedTrackEntity): File? {
+        if (!entry.mediaUrl.startsWith("file://")) return null
+        val path = Uri.parse(entry.mediaUrl).path ?: return null
+        return File(path)
     }
 }

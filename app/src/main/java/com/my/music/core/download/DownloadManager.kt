@@ -21,17 +21,16 @@ import javax.inject.Singleton
 
 /**
  * Обёртка над WorkManager для UI: ставит задачи скачивания
- * и объединяет состояние Room, WorkInfo и Media3 DownloadManager.
+ * и объединяет состояние Room и WorkInfo.
  *
  * WorkInfo — главный источник состояния задачи: если воркер отменён или
- * упал, UI обязан это показать, даже если Media3 оставил старую запись
- * в индексе (иначе кнопка навсегда залипает на «загрузка»).
+ * упал, UI обязан это показать. Прогресс приходит из `setProgress()` воркера,
+ * поэтому отдельный Media3 DownloadManager больше не нужен.
  */
 @Singleton
 class DownloadManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val downloadRepository: DownloadRepository,
-    private val offlineDownloadManager: OfflineDownloadManager,
 ) {
 
     private val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
@@ -69,7 +68,6 @@ class DownloadManager @Inject constructor(
                     DownloadTrackWorker.KEY_SOURCE to track.source.name,
                     DownloadTrackWorker.KEY_STREAM_URL to track.streamUrl,
                     DownloadTrackWorker.KEY_TRANSCODING_URL to track.transcodingUrl,
-                    DownloadTrackWorker.KEY_FORCE_RESTART to true,
                 ),
             )
             .setConstraints(
@@ -93,28 +91,25 @@ class DownloadManager @Inject constructor(
     }
 
     /**
-     * Отменяет активное скачивание и сразу убирает запись Media3.
+     * Отменяет активное скачивание.
      *
-     * Важно: чистим кэш именно здесь, а не в catch воркера. При REPLACE
-     * старый воркер тоже отменяется, и его очистка удалила бы загрузку
-     * новой попытки.
+     * Недокачанный `.part`-файл удаляет сам воркер при CancellationException.
+     * Готовый файл и запись в Room не трогаем.
      */
     fun cancel(trackId: String) {
-        Log.d(TAG, "cancel(): отменяем задачу и чистим Media3 для $trackId")
+        Log.d(TAG, "cancel(): отменяем задачу скачивания $trackId")
         workManager.cancelUniqueWork(uniqueWorkName(trackId))
-        offlineDownloadManager.remove(trackId)
     }
 
     /**
      * Наблюдает состояние скачивания конкретного трека:
-     * запись в Room + прогресс Media3 + статус задачи WorkManager.
+     * запись в Room + статус и прогресс задачи WorkManager.
      */
     fun observeState(trackId: String): Flow<DownloadState> {
         return combine(
             downloadRepository.observeIsDownloaded(trackId),
-            offlineDownloadManager.observeDownload(trackId),
             workManager.getWorkInfosForUniqueWorkFlow(uniqueWorkName(trackId)),
-        ) { isDownloaded, mediaState, workInfos ->
+        ) { isDownloaded, workInfos ->
             val workInfo = latestWorkInfo(workInfos)
             val workProgress = workInfo
                 ?.progress
@@ -123,7 +118,6 @@ class DownloadManager @Inject constructor(
 
             resolveDownloadState(
                 isDownloaded = isDownloaded,
-                mediaState = mediaState,
                 workState = workInfo?.state,
                 workProgress = workProgress,
             )
@@ -170,13 +164,11 @@ class DownloadManager @Inject constructor(
          * Приоритет:
          * 1. запись в Room — трек точно доступен офлайн;
          * 2. терминальный WorkInfo (SUCCEEDED/CANCELLED/FAILED);
-         * 3. активный WorkInfo + прогресс Media3;
-         * 4. без активной задачи прогресс Media3 не показываем:
-         *    осиротевшая запись иначе залипает навсегда.
+         * 3. активный WorkInfo — прогресс из `setProgress()` воркера;
+         * 4. без активной задачи считаем, что трек не скачан.
          */
         internal fun resolveDownloadState(
             isDownloaded: Boolean,
-            mediaState: MediaDownloadState,
             workState: WorkInfo.State?,
             workProgress: Float,
         ): DownloadState {
@@ -190,17 +182,8 @@ class DownloadManager @Inject constructor(
                 workState == WorkInfo.State.FAILED ->
                     DownloadState.Error(DownloadState.Cause.FAILED)
 
-                workState != null && workState in ACTIVE_WORK_STATES -> when (mediaState) {
-                    is MediaDownloadState.InProgress ->
-                        DownloadState.InProgress(mediaState.progress.coerceIn(0f, 1f))
-
-                    is MediaDownloadState.Completed -> DownloadState.Downloaded
-                    is MediaDownloadState.Failed ->
-                        DownloadState.Error(DownloadState.Cause.FAILED)
-
-                    is MediaDownloadState.Queued, MediaDownloadState.Missing ->
-                        DownloadState.InProgress(safeProgress)
-                }
+                workState != null && workState in ACTIVE_WORK_STATES ->
+                    DownloadState.InProgress(safeProgress)
 
                 else -> DownloadState.NotDownloaded
             }

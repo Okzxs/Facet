@@ -120,7 +120,7 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
             """.trimIndent(),
         )
         // Старые записи указывали на локальный mp3 — превращаем путь в file:// URL,
-        // чтобы плеер мог играть их через CacheDataSource (промах кэша → файл).
+        // который ExoPlayer играет напрямую с диска.
         database.execSQL(
             """
             INSERT OR REPLACE INTO `downloaded_tracks_new`

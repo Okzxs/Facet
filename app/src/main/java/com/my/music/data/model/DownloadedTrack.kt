@@ -4,8 +4,8 @@ package com.my.music.data.model
  * Скачанный трек, доступный без интернета.
  *
  * @param trackId      идентификатор трека в исходном источнике (для SC — URL трека)
- * @param mediaUrl     URL потока, который лежит в кэше Media3 (m3u8 или MP3)
- * @param mimeType     MIME-тип потока: MimeTypes.APPLICATION_M3U8 или AUDIO_MPEG
+ * @param mediaUrl     локальный `file://` URL mp3-файла
+ * @param mimeType     MIME-тип файла (для mp3 — AUDIO_MPEG)
  * @param downloadedAt время завершения скачивания (мс с начала эпохи)
  */
 data class DownloadedTrack(
@@ -21,7 +21,7 @@ data class DownloadedTrack(
 
 /**
  * Превращает скачанный трек в доменную модель для плеера.
- * Поток отдаёт тот же URL: плеер найдёт его в общем SimpleCache.
+ * [mediaUrl] указывает на локальный файл, поэтому сеть не нужна.
  */
 fun DownloadedTrack.toTrack(): Track = Track(
     id = trackId,

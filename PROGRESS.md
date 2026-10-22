@@ -1440,7 +1440,7 @@ MEMORY.md
 - Диагностика на устройстве: `adb logcat -s DownloadWorker DownloadFlow OfflineDownload`.
 
 ### Следующий шаг
-- Искать прогрессивный MP3-поток SoundCloud для скачивания: сейчас HLS-треки сохраняются сегментами в SimpleCache, а нужен один MP3-файл. HLS через Media3 остаётся fallback, пока MP3 недоступен.
+- ~~Искать прогрессивный MP3-поток SoundCloud для скачивания~~ — выполнено в разделе «Скачивание только progressive MP3 через OkHttp» ниже.
 
 ### Файлы
 ```
@@ -1457,19 +1457,61 @@ MEMORY.md
 
 ---
 
-## 🔜 Следующий шаг — прогрессивный MP3-поток для скачивания
+## ✅ Скачивание только progressive MP3 через OkHttp (22.10.2026)
+
+### Причина
+- HLS — это набор сегментов, а не один файл. Media3 DownloadManager складывал их в `SimpleCache`, из-за чего офлайн-скачивание зависало, а готового mp3 не появлялось.
+- Для офлайна нужен ровно один progressive MP3-файл; если его нет — честная ошибка вместо бесконечной загрузки.
+
+### Что сделано
+1. **`SoundCloudRepository.resolveStreamUrl(..., requireProgressive = false)`**:
+   - progressive MP3 с максимальным битрейтом выбирается всегда первым;
+   - для скачивания передаётся `requireProgressive = true`: если progressive нет, возвращается ошибка «Трек доступен только для онлайн-прослушивания»;
+   - для онлайн-плеера HLS-фолбэк сохранён, иначе HLS-only треки перестали бы играть.
+2. **`DownloadTrackWorker`**:
+   - вся логика Media3 DownloadManager удалена;
+   - OkHttp качает progressive MP3 в `filesDir/downloads/<safe>_<hash>.mp3`;
+   - загрузка идёт в `.part`, после успеха файл переименовывается; прогресс публикуется через `setProgress`;
+   - при отмене `.part` удаляется, при HLS-only — `Result.failure`, UI показывает крестик и Snackbar.
+3. **Удалены** `OfflineDownloadManager`, `OfflineMediaModule`, `MediaDownloadState`; `MusicService` больше не использует `SimpleCache` и `CacheDataSource`.
+4. **`DownloadManager`** упрощён: Room + WorkInfo, прогресс из воркера; `ExistingWorkPolicy.REPLACE` и защита от двойного тапа 700 мс сохранены.
+5. **`DownloadRepositoryImpl`** проверяет только локальные `file://`-файлы; старые HLS-записи из Room инвалидируются при обращении.
+6. **`DownloadStateResolutionTest`** переписан под новую сигнатуру (10 кейсов).
+
+### Проверки
+- `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+- `.\gradlew testDebugUnitTest` — 64/64, 0 failures, 0 errors.
+- APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
+- Диагностика на устройстве: `adb logcat -s DownloadWorker DownloadFlow`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/download/DownloadManager.kt
+app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
+app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt (удалён)
+app/src/main/java/com/my/music/core/download/OfflineMediaModule.kt (удалён)
+app/src/main/java/com/my/music/core/download/MediaDownloadState.kt (удалён)
+app/src/main/java/com/my/music/core/player/MusicService.kt
+app/src/main/java/com/my/music/data/local/DownloadRepositoryImpl.kt
+app/src/main/java/com/my/music/data/local/entity/DownloadedTrackEntity.kt
+app/src/main/java/com/my/music/data/model/DownloadedTrack.kt
+app/src/main/java/com/my/music/data/repository/DownloadRepository.kt
+app/src/main/java/com/my/music/data/repository/SoundCloudRepository.kt
+app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/test/java/com/my/music/core/download/DownloadStateResolutionTest.kt
+PROGRESS.md
+MEMORY.md
+```
+
+---
+
+## 🔜 Следующий шаг — экран «Скачанное» и очистка старых данных
 
 ### Что нужно сделать
-1. **Прогрессивный MP3 вместо HLS для офлайна** (главная задача):
-   - исследовать ответ SoundCloud/NewPipe: `deliveryMethod`, `transcodingUrl`, alternate streaming formats;
-   - найти способ получать прямой прогрессивный MP3-поток для треков, которые сейчас отдаются только как HLS;
-   - цель — скачивать один MP3-файл, а не набор HLS-сегментов в SimpleCache;
-   - HLS через Media3 оставить fallback, пока MP3 недоступен;
-   - проверить, что выбор MP3 не ломает воспроизведение и текущие 64 теста.
-2. **Скачанное**: экран/секция со скачанными треками, удаление из кэша Media3 и индикация занятого места.
-3. **Настроения волны**: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на жанры, темп и долю новых треков.
-4. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
-5. Проверить на реальном устройстве автодозагрузку, feedback и переключатель RU-приоритета.
+1. **Экран/секция «Скачанное»**: список локальных mp3, удаление файла и записи Room, индикация занятого места.
+2. **Очистка legacy**: удалить оставшийся каталог `filesDir/media_cache` и старые HLS-записи из Room, чтобы они не занимали место и не показывались как скачанные.
+3. **Проверка на устройстве**: скачать progressive-трек, включить авиарежим и воспроизвести; для HLS-only трека проверить крестик и Snackbar «Не удалось скачать трек (доступен только онлайн)».
+4. **Настроения волны**: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на жанры, темп и долю новых треков.
+5. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
 6. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
-
-

@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * Проверяет приоритет источников состояния скачивания:
- * Room → терминальный WorkInfo → активный WorkInfo + Media3.
+ * Room → терминальный WorkInfo → активный WorkInfo с прогрессом.
  */
 class DownloadStateResolutionTest {
 
@@ -16,8 +16,8 @@ class DownloadStateResolutionTest {
             DownloadState.Downloaded,
             resolve(
                 isDownloaded = true,
-                mediaState = MediaDownloadState.InProgress(0.2f),
                 workState = WorkInfo.State.RUNNING,
+                workProgress = 0.2f,
             ),
         )
     }
@@ -26,110 +26,95 @@ class DownloadStateResolutionTest {
     fun `succeeded work shows checkmark`() {
         assertEquals(
             DownloadState.Downloaded,
-            resolve(
-                mediaState = MediaDownloadState.Missing,
-                workState = WorkInfo.State.SUCCEEDED,
-            ),
+            resolve(workState = WorkInfo.State.SUCCEEDED),
         )
     }
 
     @Test
-    fun `cancelled work overrides stale media progress`() {
+    fun `cancelled work shows error even with progress`() {
         assertEquals(
             DownloadState.Error(DownloadState.Cause.CANCELLED),
             resolve(
-                mediaState = MediaDownloadState.InProgress(0.8f),
                 workState = WorkInfo.State.CANCELLED,
+                workProgress = 0.8f,
             ),
         )
     }
 
     @Test
-    fun `failed work overrides queued media`() {
+    fun `failed work shows error`() {
         assertEquals(
             DownloadState.Error(DownloadState.Cause.FAILED),
-            resolve(
-                mediaState = MediaDownloadState.Queued,
-                workState = WorkInfo.State.FAILED,
-            ),
+            resolve(workState = WorkInfo.State.FAILED),
         )
     }
 
     @Test
-    fun `active work uses media progress`() {
+    fun `running work uses worker progress`() {
         assertEquals(
             DownloadState.InProgress(0.35f),
             resolve(
-                mediaState = MediaDownloadState.InProgress(0.35f),
                 workState = WorkInfo.State.RUNNING,
+                workProgress = 0.35f,
             ),
         )
     }
 
     @Test
-    fun `active work without media entry falls back to work progress`() {
+    fun `enqueued work shows indeterminate progress`() {
+        assertEquals(
+            DownloadState.InProgress(0f),
+            resolve(workState = WorkInfo.State.ENQUEUED),
+        )
+    }
+
+    @Test
+    fun `blocked work still shows progress`() {
         assertEquals(
             DownloadState.InProgress(0.1f),
             resolve(
-                mediaState = MediaDownloadState.Missing,
-                workState = WorkInfo.State.ENQUEUED,
+                workState = WorkInfo.State.BLOCKED,
                 workProgress = 0.1f,
             ),
         )
     }
 
     @Test
-    fun `completed media during active work shows checkmark`() {
-        assertEquals(
-            DownloadState.Downloaded,
-            resolve(
-                mediaState = MediaDownloadState.Completed,
-                workState = WorkInfo.State.RUNNING,
-            ),
-        )
-    }
-
-    @Test
-    fun `media failure during active work shows error`() {
-        assertEquals(
-            DownloadState.Error(DownloadState.Cause.FAILED),
-            resolve(
-                mediaState = MediaDownloadState.Failed("404"),
-                workState = WorkInfo.State.RUNNING,
-            ),
-        )
-    }
-
-    @Test
-    fun `orphaned media progress without work is not shown`() {
+    fun `no work means track is not downloaded`() {
         assertEquals(
             DownloadState.NotDownloaded,
+            resolve(workState = null),
+        )
+    }
+
+    @Test
+    fun `progress above one is clamped`() {
+        assertEquals(
+            DownloadState.InProgress(1f),
             resolve(
-                mediaState = MediaDownloadState.InProgress(0.9f),
-                workState = null,
+                workState = WorkInfo.State.RUNNING,
+                workProgress = 4.2f,
             ),
         )
     }
 
     @Test
-    fun `orphaned completed media without room is not treated as downloaded`() {
+    fun `negative progress is clamped to zero`() {
         assertEquals(
-            DownloadState.NotDownloaded,
+            DownloadState.InProgress(0f),
             resolve(
-                mediaState = MediaDownloadState.Completed,
-                workState = null,
+                workState = WorkInfo.State.RUNNING,
+                workProgress = -0.5f,
             ),
         )
     }
 
     private fun resolve(
         isDownloaded: Boolean = false,
-        mediaState: MediaDownloadState,
         workState: WorkInfo.State?,
         workProgress: Float = 0f,
     ): DownloadState = DownloadManager.resolveDownloadState(
         isDownloaded = isDownloaded,
-        mediaState = mediaState,
         workState = workState,
         workProgress = workProgress,
     )

@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Репозиторий офлайн-режима: хранит записи о скачанных треках
- * и отдаёт данные для воспроизведения из кэша Media3.
+ * и отдаёт локальные файлы для воспроизведения.
  */
 interface DownloadRepository {
 
@@ -20,14 +20,14 @@ interface DownloadRepository {
     fun observeDownloadedTracks(): Flow<List<DownloadedTrack>>
 
     /**
-     * Скачанный трек для воспроизведения, если данные Media3 реально на месте.
-     * Битые записи (кэш очищен, файл удалён) автоматически вычищаются.
+     * Скачанный трек для воспроизведения, если локальный файл реально на месте.
+     * Битые записи (файл удалён) автоматически вычищаются.
      */
     suspend fun getDownloadedTrack(trackId: String): DownloadedTrack?
 
-    /** Сохранить запись о скачанном треке после успешной загрузки Media3. */
+    /** Сохранить запись о скачанном треке после успешной загрузки. */
     suspend fun save(track: Track, mediaUrl: String, mimeType: String)
 
-    /** Удалить запись и связанные с ней данные из кэша. */
+    /** Удалить запись и связанный с ней локальный файл. */
     suspend fun remove(trackId: String)
 }
