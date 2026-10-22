@@ -1,17 +1,22 @@
 package com.my.music.core.player
 
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import com.my.music.data.model.AudioStreamResult
+import com.my.music.data.model.DownloadedTrack
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
+import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.SoundCloudRepository
+import com.my.music.data.repository.YouTubeRepository
 import com.my.music.testutil.MainDispatcherRule
 import io.mockk.Runs
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -36,6 +41,7 @@ class PlayerControllerQueueTest {
 
     private lateinit var mediaController: MediaController
     private lateinit var soundCloudRepository: SoundCloudRepository
+    private lateinit var youTubeRepository: YouTubeRepository
     private lateinit var playHistoryRepository: PlayHistoryRepository
     private lateinit var controller: PlayerController
 
@@ -52,6 +58,7 @@ class PlayerControllerQueueTest {
     fun setUp() {
         mediaController = mockk(relaxed = true)
         soundCloudRepository = mockk(relaxed = true)
+        youTubeRepository = mockk(relaxed = true)
         playHistoryRepository = mockk(relaxed = true)
 
         every { mediaController.addListener(capture(listenerSlot)) } just Runs
@@ -61,7 +68,12 @@ class PlayerControllerQueueTest {
         coEvery { soundCloudRepository.resolveStreamUrl(any()) } returns
             Result.failure<AudioStreamResult>(IllegalStateException("test"))
 
-        controller = PlayerController(mediaController, soundCloudRepository, playHistoryRepository)
+        controller = PlayerController(
+            mediaController,
+            soundCloudRepository,
+            playHistoryRepository,
+            youTubeRepository,
+        )
     }
 
     @Test
@@ -262,7 +274,13 @@ class PlayerControllerQueueTest {
     fun `media item contains metadata for notification`() {
         val track = tracks.first().copy(artworkUrl = "https://example.com/cover.jpg")
         coEvery { soundCloudRepository.resolveStreamUrl(any()) } returns
-            Result.success(AudioStreamResult(url = "https://example.com/stream.mp3", isHls = false))
+            Result.success(
+                AudioStreamResult(
+                    url = "https://example.com/stream.mp3",
+                    isHls = false,
+                    mimeType = MimeTypes.AUDIO_MPEG,
+                ),
+            )
 
         controller.setQueueAndPlay(listOf(track), 0)
 
@@ -271,6 +289,61 @@ class PlayerControllerQueueTest {
         assertEquals(track.title, mediaItem.mediaMetadata.title?.toString())
         assertEquals(track.artist, mediaItem.mediaMetadata.artist?.toString())
         assertEquals(track.artworkUrl, mediaItem.mediaMetadata.artworkUri?.toString())
+        assertEquals(MimeTypes.AUDIO_MPEG, mediaItem.localConfiguration?.mimeType)
+    }
+
+    @Test
+    fun `youtube track resolves via youtube repository and uses m4a mime`() {
+        val videoUrl = "https://www.youtube.com/watch?v=test"
+        val youTubeTrack = track("youtube").copy(
+            source = Source.YOUTUBE,
+            transcodingUrl = videoUrl,
+        )
+        coEvery { youTubeRepository.resolveStreamUrl(videoUrl) } returns
+            Result.success(
+                AudioStreamResult(
+                    url = "https://example.com/audio.m4a",
+                    isHls = false,
+                    mimeType = MimeTypes.AUDIO_MP4,
+                ),
+            )
+
+        controller.setQueueAndPlay(listOf(youTubeTrack), 0)
+
+        coVerify(exactly = 1) { youTubeRepository.resolveStreamUrl(videoUrl) }
+        coVerify(exactly = 0) { soundCloudRepository.resolveStreamUrl(any()) }
+        assertEquals(MimeTypes.AUDIO_MP4, mediaItemSlot.captured.localConfiguration?.mimeType)
+    }
+
+    @Test
+    fun `offline m4a keeps mime type from room`() {
+        val youTubeTrack = track("offline").copy(
+            source = Source.YOUTUBE,
+            transcodingUrl = "https://www.youtube.com/watch?v=offline",
+        )
+        val downloadRepository = mockk<DownloadRepository>()
+        coEvery { downloadRepository.getDownloadedTrack(youTubeTrack.id) } returns DownloadedTrack(
+            trackId = youTubeTrack.id,
+            title = youTubeTrack.title,
+            artist = youTubeTrack.artist,
+            artworkUrl = null,
+            durationMs = youTubeTrack.durationMs,
+            mediaUrl = "file:///data/user/0/com.my.music/files/downloads/offline.m4a",
+            mimeType = MimeTypes.AUDIO_MP4,
+            downloadedAt = 0L,
+        )
+        controller = PlayerController(
+            mediaController,
+            soundCloudRepository,
+            playHistoryRepository,
+            youTubeRepository,
+            downloadRepository,
+        )
+
+        controller.setQueueAndPlay(listOf(youTubeTrack), 0)
+
+        assertEquals(MimeTypes.AUDIO_MP4, mediaItemSlot.captured.localConfiguration?.mimeType)
+        coVerify(exactly = 0) { youTubeRepository.resolveStreamUrl(any()) }
     }
 
     private fun track(id: String) = Track(

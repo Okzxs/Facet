@@ -172,6 +172,17 @@ fun AppNavGraph() {
             ) {
                 PlayerScreen(
                     onBack = { navController.popBackStack() },
+                    onFindOnYouTube = { track ->
+                        playerViewModel.findOnYouTube(track)
+                        navController.navigate(Screen.Search.route) {
+                            // Уходим из полноэкранного плеера в поиск, сохраняя вкладки
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                     viewModel = playerViewModel,
                 )
             }

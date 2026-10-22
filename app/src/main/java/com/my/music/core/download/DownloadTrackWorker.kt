@@ -25,14 +25,16 @@ import java.util.concurrent.TimeUnit
 /**
  * Фоновое скачивание трека в приватное хранилище приложения.
  *
- * Скачиваем только progressive MP3: HLS — это набор сегментов, из которого
- * нельзя собрать один файл. Если progressive-потока нет, задача завершается
- * ошибкой, и UI показывает крестик со Snackbar «доступен только онлайн».
+ * Скачиваем только progressive-файлы: HLS — это набор сегментов, из которого
+ * нельзя собрать один файл. Источник выбирается по [Track.source]:
+ * SoundCloud отдаёт MP3, YouTube — M4A (реже WEBM/Opus).
+ * Если progressive-потока нет, задача завершается ошибкой, и UI показывает
+ * крестик со Snackbar «доступен только онлайн».
  *
  * Порядок работы:
- * 1. получает прямой progressive-URL через SoundCloudRepository.resolveStreamUrl;
- * 2. качает файл в filesDir/downloads/<безопасное имя>.mp3 через OkHttp;
- * 3. сохраняет запись в Room, чтобы плеер мог играть трек офлайн.
+ * 1. получает прямой progressive-URL через репозиторий нужного источника;
+ * 2. качает файл в filesDir/downloads/<безопасное имя>.<mp3|m4a|webm> через OkHttp;
+ * 3. сохраняет запись и её MIME в Room, чтобы плеер мог играть трек офлайн.
  */
 class DownloadTrackWorker(
     appContext: Context,
@@ -70,8 +72,9 @@ class DownloadTrackWorker(
                 )
             }
 
-            // Страховка: HLS нельзя сохранить одним mp3-файлом.
-            if (streamResult.isHls) {
+            val mimeType = mimeTypeFor(track.source, streamResult)
+            // Страховка: HLS нельзя сохранить одним файлом.
+            if (streamResult.isHls || mimeType == MimeTypes.APPLICATION_M3U8) {
                 Log.w(TAG, "Трек доступен только по HLS, скачивание невозможно: ${track.title}")
                 return@withContext Result.failure(
                     workDataOf(KEY_ERROR to ERROR_ONLINE_ONLY),
@@ -86,7 +89,8 @@ class DownloadTrackWorker(
                 )
             }
 
-            val targetFile = File(downloadsDir, downloadFileName(track.id))
+            val extension = extensionFor(mimeType, track.source)
+            val targetFile = File(downloadsDir, downloadFileName(track.id, extension))
             // Уникальный .part на попытку: при REPLACE старый воркер не должен
             // удалить недокачанный файл новой задачи.
             val tempFile = File(downloadsDir, "${targetFile.name}.$id.part")
@@ -140,7 +144,7 @@ class DownloadTrackWorker(
                 entryPoint.downloadRepository().save(
                     track = track,
                     mediaUrl = Uri.fromFile(targetFile).toString(),
-                    mimeType = MimeTypes.AUDIO_MPEG,
+                    mimeType = mimeType,
                 )
             } catch (e: CancellationException) {
                 // Файл не удаляем: его могла уже перезаписать новая попытка.
@@ -179,25 +183,55 @@ class DownloadTrackWorker(
     }
 
     /**
-     * Разрешает поток только в progressive-режиме.
+     * Разрешает поток через репозиторий источника.
      * HLS-фолбэк для скачивания запрещён: вернётся ошибка «только онлайн».
      */
     private suspend fun resolveStream(
         track: Track,
         entryPoint: DownloadWorkerEntryPoint,
-    ): kotlin.Result<AudioStreamResult> {
-        val transcodingUrl = track.transcodingUrl
-        if (!transcodingUrl.isNullOrBlank()) {
-            return entryPoint.soundCloudRepository()
-                .resolveStreamUrl(transcodingUrl, requireProgressive = true)
+    ): kotlin.Result<AudioStreamResult> = when (track.source) {
+        Source.YOUTUBE -> {
+            // У YouTube в transcodingUrl лежит страница видео, а не аудиофайл
+            val videoUrl = track.transcodingUrl ?: track.streamUrl
+            if (videoUrl.isNullOrBlank()) {
+                kotlin.Result.failure(
+                    IllegalStateException("Нет YouTube-ссылки для трека: ${track.id}"),
+                )
+            } else {
+                entryPoint.youTubeRepository().resolveStreamUrl(videoUrl)
+            }
         }
-        val directUrl = track.streamUrl
-        if (!directUrl.isNullOrBlank() && !directUrl.startsWith("file:")) {
-            return kotlin.Result.success(AudioStreamResult(url = directUrl, isHls = false))
+        Source.SOUNDCLOUD -> {
+            val transcodingUrl = track.transcodingUrl
+            if (!transcodingUrl.isNullOrBlank()) {
+                entryPoint.soundCloudRepository()
+                    .resolveStreamUrl(transcodingUrl, requireProgressive = true)
+            } else {
+                directStream(track)
+            }
         }
-        return kotlin.Result.failure(
-            IllegalStateException("Нет ссылки на поток для трека: ${track.id}"),
+        Source.LOCAL -> kotlin.Result.failure(
+            IllegalStateException("Локальный трек не нужно скачивать: ${track.id}"),
         )
+        // Для будущих источников используем уже готовый прямой URL
+        else -> directStream(track)
+    }
+
+    private fun directStream(track: Track): kotlin.Result<AudioStreamResult> {
+        val directUrl = track.streamUrl
+        return if (!directUrl.isNullOrBlank() && !directUrl.startsWith("file:")) {
+            kotlin.Result.success(
+                AudioStreamResult(
+                    url = directUrl,
+                    isHls = false,
+                    mimeType = defaultMimeType(track.source),
+                ),
+            )
+        } else {
+            kotlin.Result.failure(
+                IllegalStateException("Нет ссылки на поток для трека: ${track.id}"),
+            )
+        }
     }
 
     /**
@@ -246,7 +280,7 @@ class DownloadTrackWorker(
         private const val TAG = "DownloadWorker"
         private const val USER_AGENT = "MyMusicApp/1.0"
 
-        /** Единый текст ошибки, когда progressive MP3 недоступен. */
+        /** Единый текст ошибки, когда progressive-файл недоступен. */
         const val ERROR_ONLINE_ONLY = "Трек доступен только для онлайн-прослушивания"
 
         /** Подкаталог во внутреннем хранилище приложения. */
@@ -263,18 +297,39 @@ class DownloadTrackWorker(
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
 
+        /** MIME из результата resolve либо безопасный фолбэк по источнику. */
+        internal fun mimeTypeFor(source: Source, result: AudioStreamResult): String =
+            result.mimeType?.takeIf { it.isNotBlank() } ?: defaultMimeType(source)
+
+        internal fun defaultMimeType(source: Source): String = when (source) {
+            Source.YOUTUBE -> MimeTypes.AUDIO_MP4
+            else -> MimeTypes.AUDIO_MPEG
+        }
+
+        /** Расширение файла по MIME: Room и ExoPlayer должны видеть один формат. */
+        internal fun extensionFor(mimeType: String, source: Source): String = when (mimeType) {
+            MimeTypes.AUDIO_MP4, MimeTypes.AUDIO_AAC -> "m4a"
+            MimeTypes.AUDIO_WEBM, MimeTypes.AUDIO_OPUS -> "webm"
+            MimeTypes.AUDIO_MPEG -> "mp3"
+            else -> if (source == Source.YOUTUBE) "m4a" else "mp3"
+        }
+
         /**
          * Имя файла: track.id — это URL, поэтому оставляем только безопасные символы
          * и добавляем хэш, чтобы разные треки не перекрывали друг друга.
          */
-        fun downloadFileName(trackId: String): String {
+        fun downloadFileName(trackId: String, extension: String = "mp3"): String {
             val safe = trackId
                 .replace(Regex("[^A-Za-z0-9]+"), "_")
                 .trim('_')
                 .take(48)
                 .ifBlank { "track" }
             val hash = Integer.toHexString(trackId.hashCode())
-            return "${safe}_$hash.mp3"
+            val safeExtension = extension
+                .lowercase()
+                .takeIf { it.matches(Regex("[a-z0-9]{1,5}")) }
+                ?: "mp3"
+            return "${safe}_$hash.$safeExtension"
         }
 
         fun progressData(progress: Float) = workDataOf(KEY_PROGRESS to progress.coerceIn(0f, 1f))

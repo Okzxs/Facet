@@ -7,10 +7,12 @@ import androidx.lifecycle.viewModelScope
 import com.my.music.core.download.DownloadManager
 import com.my.music.core.download.DownloadState
 import com.my.music.core.location.LocationProvider
+import com.my.music.core.navigation.NavigationEvents
 import com.my.music.core.player.ERROR_LYRICS
 import com.my.music.core.player.PlayerController
 import com.my.music.core.player.PlayerState
 import com.my.music.core.player.toFriendlyPlaybackMessage
+import com.my.music.core.service.ServiceType
 import com.my.music.core.util.SeasonProvider
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.LyricsResult
@@ -47,6 +49,7 @@ class PlayerViewModel @Inject constructor(
     private val tasteRepository: TasteRepository,
     private val waveRepository: WaveRepository,
     private val downloadManager: DownloadManager,
+    private val navigationEvents: NavigationEvents,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
@@ -215,6 +218,19 @@ class PlayerViewModel @Inject constructor(
             is DownloadState.Downloaded -> Unit
             is DownloadState.InProgress -> downloadManager.cancel(track.id)
             is DownloadState.Error, DownloadState.NotDownloaded -> downloadManager.download(track)
+        }
+    }
+
+    /**
+     * Умный редирект: отправить в поиск запрос «Артист - Название»
+     * с уже выбранным YouTube. Навигацию выполняет AppNavGraph.
+     */
+    fun findOnYouTube(track: Track) {
+        val query = listOf(track.artist.trim(), track.title.trim())
+            .filter { it.isNotBlank() }
+            .joinToString(" - ")
+        if (query.isNotBlank()) {
+            navigationEvents.requestSearch(query = query, service = ServiceType.YOUTUBE)
         }
     }
 

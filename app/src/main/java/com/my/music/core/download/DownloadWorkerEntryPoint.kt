@@ -3,6 +3,7 @@ package com.my.music.core.download
 import android.content.Context
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.SoundCloudRepository
+import com.my.music.data.repository.YouTubeRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -19,6 +20,8 @@ import dagger.hilt.components.SingletonComponent
 interface DownloadWorkerEntryPoint {
 
     fun soundCloudRepository(): SoundCloudRepository
+
+    fun youTubeRepository(): YouTubeRepository
 
     fun downloadRepository(): DownloadRepository
 

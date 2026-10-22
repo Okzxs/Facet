@@ -2,6 +2,8 @@ package com.my.music.feature.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.my.music.core.navigation.NavigationEvents
+import com.my.music.core.navigation.SearchIntent
 import com.my.music.core.service.ServiceHealth
 import com.my.music.core.service.ServiceStatusManager
 import com.my.music.core.service.ServiceType
@@ -46,6 +48,7 @@ class SearchViewModel @Inject constructor(
     private val soundCloudRepository: SoundCloudRepository,
     private val youTubeRepository: YouTubeRepository,
     private val serviceStatusManager: ServiceStatusManager,
+    private val navigationEvents: NavigationEvents,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
 
@@ -69,17 +72,38 @@ class SearchViewModel @Inject constructor(
 
     private var searchJob: Job? = null
 
+    /**
+     * Запрос извне уже выполняется напрямую. Его дубль из debounce-потока
+     * нужно пропустить, иначе YouTube получит два одинаковых запроса.
+     */
+    private var directRequest: SearchRequest? = null
+
     init {
         // Без distinctUntilChanged: при быстром переключении источник может
         // вернуться к прежнему значению, и поиск всё равно должен перезапуститься.
         requestFlow
             .debounce(400L)
             .filter { it.query.length >= 2 } // минимум 2 символа
-            .onEach { request -> startSearch(request) }
+            .onEach { request ->
+                if (request == directRequest) {
+                    directRequest = null
+                } else {
+                    startSearch(request)
+                }
+            }
             .launchIn(viewModelScope)
+
+        // Намерение из плеера: поиск должен выполниться сразу, без debounce.
+        viewModelScope.launch {
+            navigationEvents.searchIntents.collect { intent ->
+                navigationEvents.consumeSearchIntent()
+                openExternalSearch(intent)
+            }
+        }
     }
 
     fun onQueryChange(query: String) {
+        directRequest = null
         _uiState.update { it.copy(query = query, error = null) }
         requestFlow.update { it.copy(query = query) }
 
@@ -97,6 +121,7 @@ class SearchViewModel @Inject constructor(
         if (_uiState.value.selectedService == service) return
 
         val query = _uiState.value.query
+        directRequest = null
         searchJob?.cancel()
         _uiState.update {
             it.copy(
@@ -119,6 +144,33 @@ class SearchViewModel @Inject constructor(
     /** Ручное обновление статусов из меню. */
     fun refreshStatuses() {
         serviceStatusManager.refreshStatus()
+    }
+
+    /**
+     * Внешнее намерение из плеера: переключаем источник, подставляем запрос
+     * и запускаем поиск немедленно, не дожидаясь 400 мс.
+     */
+    private fun openExternalSearch(intent: SearchIntent) {
+        val query = intent.query.trim()
+        val request = SearchRequest(query = query, service = intent.service)
+
+        directRequest = request
+        searchJob?.cancel()
+        requestFlow.value = request
+
+        _uiState.update {
+            it.copy(
+                query = query,
+                selectedService = intent.service,
+                results = emptyList(),
+                error = null,
+                isLoading = query.length >= 2,
+            )
+        }
+
+        if (query.length >= 2) {
+            startSearch(request)
+        }
     }
 
     private fun startSearch(request: SearchRequest) {

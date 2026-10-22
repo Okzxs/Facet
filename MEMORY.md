@@ -3,14 +3,14 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | YouTube Music шаги 1–3 + глобальные статусы (22.10.2026) | Шаг 4: PlayerController и DownloadTrackWorker по Track.source, MIME MP3/M4A/WEBM |
+| MyMusic | активен  | YouTube Music, шаг 4: плеер, скачивание и редирект (22.10.2026) | Шаг 5: импорт плейлистов YouTube или экран «Скачанное» |
 
 ## Ожидающие задачи
 ### Высокий приоритет
 - [x] YouTube Music, шаг 1: `Source.YOUTUBE` + `YouTubeRepository`/impl через NewPipe, progressive M4A/WEBM_OPUS, Hilt-биндинг
 - [x] YouTube Music, шаг 2: `ServiceStatusManager` (Singleton, `StateFlow`, проверка поиском «test» лимит 1, refresh из UI, вызов при старте и ошибках поиска); 5 JVM-тестов
 - [x] YouTube Music, шаг 3: переключатель SoundCloud/YouTube в поиске, меню статусов, предупреждение о недоступном сервисе; 69 JVM-тестов всего
-- [ ] YouTube Music, шаг 4 (позже): `PlayerController`/`DownloadTrackWorker` по `Track.source`, MIME MP3/M4A/WEBM
+- [x] YouTube Music, шаг 4: `PlayerController`/`DownloadTrackWorker` по `Track.source`, MIME MP3/M4A/WEBM, Snackbar и автопоиск YouTube; 78 JVM-тестов
 - [ ] YouTube Music, шаг 5 (позже): импорт плейлистов YouTube через NewPipe
 - [x] Progressive MP3 22.10: скачивание только через OkHttp в один файл, `requireProgressive=true`, HLS-only → крестик/Snackbar; удалены Media3-классы скачивания; 64 JVM-теста
 - [x] Хотфикс 22.10: WorkInfo — главный источник состояния (CANCELLED/FAILED → крестик, SUCCEEDED → галочка), REPLACE после отмены, защита от двойного тапа, лог в первой строке `doWork()`; 64 JVM-теста
@@ -53,8 +53,12 @@
 - [YouTube 22.10] `YouTubeRepository` живёт в `data/repository`, impl — в `data/source/youtube`; поиск через `ServiceList.YouTube` с фильтром `videos`, прогрессивный поток — M4A (приоритет) или WEBMA_OPUS, `isHls=false`. Живой тест подтвердил M4A itag=140
 - [Статусы 22.10] `checkAllServices()` вызывается в `MyMusicApp` после `NewPipe.init()` и после ошибок поиска; проверки идут параллельно, повторный запуск защищён Mutex/Job; успешный поиск вызывает `markAvailable()`
 - [Поиск 22.10] `SearchViewModel` использует единый поток `(query, service)`; `distinctUntilChanged` убран, чтобы быстрое переключение SC→YT→SC не оставляло экран в вечной загрузке; `retry()` запускает поиск напрямую
-- [Ограничение 22.10] Плеер и загрузчик YouTube ещё не интегрированы: `PlayerController`/`DownloadTrackWorker` используют `SoundCloudRepository` — YouTube-результаты пока только ищутся
-- [Скачивание 22.10] Офлайн переведён на progressive MP3 + OkHttp: файл `filesDir/downloads/<safe>_<hash>.mp3`, в Room — `file://` + `AUDIO_MPEG`; HLS-сегменты больше не скачиваются
+- [Шаг 4 22.10] `AudioStreamResult.mimeType` протянут из репозиториев в плеер и загрузчик: SC — `AUDIO_MPEG`/`APPLICATION_M3U8`, YouTube — `AUDIO_MP4`/`AUDIO_WEBM`; офлайн-MIME читается из Room
+- [Шаг 4 22.10] `PlayerController.resolveAndPlay()` source-aware: YouTube резолвится через `YouTubeRepository`, SoundCloud — через `SoundCloudRepository`; `isHls=false` для progressive M4A
+- [Шаг 4 22.10] `DownloadTrackWorker` выбирает репозиторий по `Track.source`, пишет `.mp3`/`.m4a`/`.webm` и тот же MIME в Room; ошибка любого этапа → `Result.failure` → WorkInfo `FAILED`
+- [Шаг 4 22.10] Для упавшего SC-скачивания Snackbar «Не удалось скачать (только онлайн). Найти на YouTube?» с action «Найти»; для YouTube — нейтральное сообщение без редиректа
+- [Шаг 4 22.10] `NavigationEvents` (Singleton, `SharedFlow` replay=1) передаёт в `SearchViewModel` запрос `"Артист - Название"` + `YOUTUBE`; поиск выполняется сразу, replay-кэш сбрасывается после обработки
+- [Скачивание 22.10] Офлайн переведён на progressive-файлы + OkHttp: `filesDir/downloads/<safe>_<hash>.<ext>`, в Room — `file://` + MIME; HLS-сегменты больше не скачиваются
 - [Скачивание 22.10] Для загрузки вызывается `resolveStreamUrl(requireProgressive = true)`: при отсутствии progressive — ошибка «Трек доступен только для онлайн-прослушивания»; для онлайн-плеера HLS-фолбэк сохранён, иначе HLS-only треки перестали бы играть
 - [Скачивание 22.10] Удалены `OfflineDownloadManager`, `OfflineMediaModule`, `MediaDownloadState`; `MusicService` снова использует дефолтный ExoPlayer без `SimpleCache`/`CacheDataSource`
 - [Скачивание 22.10] `DownloadManager` объединяет только Room + WorkInfo, прогресс берётся из `setProgress()` воркера; `REPLACE` и дебаунс 700 мс сохранены
@@ -65,7 +69,7 @@
 - [Скачивание 22.10] `ExistingWorkPolicy.REPLACE` + дебаунс 700 мс остаются: после отмены/падения создаётся новая задача; `KEY_FORCE_RESTART` и очистка Media3 больше не нужны
 - [Скачивание 22.10] `cancel()` отменяет WorkManager; недокачанный `.part` удаляет воркер при `CancellationException`; готовый файл и запись Room не трогаются
 - [Скачивание 22.10] Диагностика: тег logcat `DownloadWorker` — старт, резолв progressive-потока и ошибки; `DownloadFlow` — постановка/отмена задачи
-- [История, заменено 22.10] Ранее офлайн работал через Media3 DownloadManager, `SimpleCache` и `CacheDataSource`; эти классы удалены, актуальная схема — OkHttp + один mp3-файл
+- [История, заменено 22.10] Ранее офлайн работал через Media3 DownloadManager, `SimpleCache` и `CacheDataSource`; эти классы удалены, актуальная схема — OkHttp + один progressive-файл (MP3/M4A/WEBM)
 - [Офлайн 21.10] Room v7: `downloaded_tracks` вместо `localFilePath` хранит `mediaUrl` + `mimeType`; миграция 6→7 пересоздаёт таблицу и превращает старые пути в `file://`-URL
 - [Офлайн 21.10] `PlayerController.resolveAndPlay()` играет скачанный трек по `file://`-URL напрямую с диска; `DownloadRepositoryImpl.getDownloadedTrack()` проверяет существование файла и чистит битые записи
 - [Офлайн 21.10] Кнопка в плеере: `DownloadState` (NotDownloaded / InProgress / Downloaded / Error); отмена WorkManager удаляет недокачанный `.part`, готовый трек не трогается
@@ -165,6 +169,7 @@
 - Язык: комментарии в коде, служебные файлы (MEMORY.md, PROGRESS.md) и документация — строго на русском языке
 
 ## Последние сессии
+- YouTube Music, шаг 4 (22.10): `PlayerController` и `DownloadTrackWorker` стали source-aware, MIME MP3/M4A/WEBM сохраняется для онлайна и Room; при провале SC-скачивания Snackbar предлагает «Найти» на YouTube, `NavigationEvents` сразу запускает поиск с источником YouTube; 78 JVM-тестов, 0 failures. Следующий шаг — импорт плейлистов YouTube или экран «Скачанное».
 - Progressive MP3 22.10: скачивание переведено с Media3 DownloadManager на прямой OkHttp в `filesDir/downloads`; HLS-only треки завершаются ошибкой и показывают крестик + Snackbar; Media3-классы скачивания удалены; 64 JVM-теста, 0 failures. Следующий шаг — экран «Скачанное» и очистка legacy.
 - Хотфикс 22.10: WorkInfo управляет кнопкой скачивания (CANCELLED/FAILED → крестик и возврат к стрелке через секунду, SUCCEEDED → галочка), REPLACE после отмены, защита от двойного тапа, force-restart Media3, стартовый лог воркера; 64 JVM-теста, 0 failures. Следующий шаг — поиск прогрессивного MP3-потока для скачивания.
 - Офлайн-режим переведён на Media3 DownloadManager: HLS и MP3 качаются в SimpleCache, плеер читает кэш через CacheDataSource, Room v7 (`mediaUrl` + `mimeType`), прогресс из `DownloadManager.Listener`, Snackbar при ошибке; 54 JVM-теста, 0 failures

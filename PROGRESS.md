@@ -1524,7 +1524,7 @@ MEMORY.md
 1. **База и модель**: добавить `Source.YOUTUBE`, убедиться, что `Track` и Room-конвертеры работают с новым источником.
 2. **Репозиторий**: `YouTubeRepository` через NewPipe (`YoutubeService`): поиск + progressive M4A/WEBM_OPUS без HLS.
 3. **UI поиска**: переключатель SoundCloud / YouTube, единый список результатов, ошибки и пустые состояния под выбранный источник.
-4. **Плеер и загрузчик**: научить `PlayerController` и `DownloadTrackWorker` выбирать репозиторий по `Track.source` и корректно определять MIME (MP3/M4A/WEBM). **Пока не трогаем.**
+4. **Плеер и загрузчик**: научить `PlayerController` и `DownloadTrackWorker` выбирать репозиторий по `Track.source` и корректно определять MIME (MP3/M4A/WEBM). **Выполнено в шаге 4 (см. выше).**
 5. **Импорт плейлистов (на будущее)**: через NewPipe вытаскивать плейлисты YouTube и добавлять в очередь/медиатеку.
 6. **Статусы сервисов**: `ServiceStatusManager` + меню статусов в поиске, ручное обновление, предупреждение о недоступном источнике.
 
@@ -1571,3 +1571,59 @@ MEMORY.md
 - Правки `PlayerController` и MIME в плеере.
 - Импорт YouTube-плейлистов.
 - Экран «Скачанное» и очистка legacy-кэша.
+
+---
+
+## ✅ Шаг 4 — плеер и скачивание YouTube + умный редирект (22.10.2026)
+
+### Что сделано
+1. **MIME в результате resolve**:
+   - `AudioStreamResult` дополнен `mimeType`; старые вызовы без формата получают безопасный фолбэк.
+   - SoundCloud отдаёт `AUDIO_MPEG` для progressive и `APPLICATION_M3U8` для HLS.
+   - YouTube отдаёт `AUDIO_MP4` для M4A и `AUDIO_WEBM` для Opus-фолбэка.
+2. **`PlayerController`**:
+   - `resolveAndPlay()` выбирает репозиторий по `Track.source`: YouTube → `YouTubeRepository`, SoundCloud → `SoundCloudRepository`.
+   - ExoPlayer получает `audio/mp4` для YouTube M4A, `audio/webm` для WEBM и `audio/mpeg` для SoundCloud.
+   - Офлайн-воспроизведение берёт MIME из Room, поэтому скачанный M4A больше не теряет формат.
+3. **`DownloadTrackWorker`**:
+   - Поток резолвится через репозиторий выбранного источника; для SoundCloud сохранён `requireProgressive = true`.
+   - Имя файла зависит от MIME: `.mp3`, `.m4a` или `.webm`; в Room пишется тот же MIME.
+   - HLS и ошибки resolve/download/save по-прежнему завершают задачу через `Result.failure`, WorkInfo становится `FAILED`, UI показывает крестик.
+4. **Умный редирект**:
+   - При `WorkInfo.FAILED` для SoundCloud-трека показывается Snackbar «Не удалось скачать (только онлайн). Найти на YouTube?» с действием «Найти».
+   - Для YouTube-ошибки остаётся нейтральное сообщение без действия.
+   - `NavigationEvents` (Singleton, `SharedFlow` с replay = 1) передаёт запрос `"Артист - Название"` и `YOUTUBE` в `SearchViewModel`.
+   - `SearchViewModel` обрабатывает намерение сразу, без debounce, очищает старые результаты и переключает источник; replay-кэш сбрасывается после обработки.
+   - `AppNavGraph` открывает вкладку поиска с сохранением состояния нижней навигации.
+5. **Тесты**:
+   - `PlayerControllerQueueTest`: YouTube-трек уходит в `YouTubeRepository`, MIME `AUDIO_MP4`; офлайн-M4A сохраняет MIME из Room.
+   - `DownloadWorkerFormatTest`: расширения `.m4a`/`.mp3`/`.webm`, фолбэки MIME и безопасное имя файла.
+   - `SearchViewModelExternalRequestTest`: внешний запрос сразу выбирает YouTube, не ждёт debounce и не повторяется при повторном открытии экрана.
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/navigation/NavigationEvents.kt (новый)
+app/src/main/java/com/my/music/core/player/PlayerController.kt
+app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
+app/src/main/java/com/my/music/data/model/AudioStreamResult.kt
+app/src/main/java/com/my/music/data/model/DownloadedTrack.kt
+app/src/main/java/com/my/music/data/local/DownloadRepositoryImpl.kt
+app/src/main/java/com/my/music/data/local/entity/DownloadedTrackEntity.kt
+app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/my/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/my/music/feature/search/SearchViewModel.kt
+app/src/main/java/com/my/music/navigation/AppNavGraph.kt
+app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
+app/src/test/java/com/my/music/core/download/DownloadWorkerFormatTest.kt (новый)
+app/src/test/java/com/my/music/feature/search/SearchViewModelExternalRequestTest.kt (новый)
+PROGRESS.md
+MEMORY.md
+```
+
+### Проверка
+- `.\gradlew assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL.
+- 78 JVM-тестов, 0 failures, 0 errors.
+- APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.

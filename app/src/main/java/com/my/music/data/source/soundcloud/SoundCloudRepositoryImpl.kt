@@ -1,6 +1,7 @@
 package com.my.music.data.source.soundcloud
 
 import android.util.Log
+import androidx.media3.common.MimeTypes
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
@@ -106,6 +107,7 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
                     return@runCatching AudioStreamResult(
                         url = progressive.content,
                         isHls = false,
+                        mimeType = MimeTypes.AUDIO_MPEG,
                     )
                 }
 
@@ -136,6 +138,7 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
                     return@runCatching AudioStreamResult(
                         url = hls.content,
                         isHls = true,
+                        mimeType = MimeTypes.APPLICATION_M3U8,
                     )
                 }
 

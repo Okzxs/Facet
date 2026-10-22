@@ -14,10 +14,12 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
+import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.SoundCloudRepository
+import com.my.music.data.repository.YouTubeRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -45,6 +47,8 @@ import javax.inject.Singleton
 class PlayerController private constructor(
     private val appContext: Context?,
     private val soundCloudRepository: SoundCloudRepository,
+    /** Репозиторий YouTube; null только в старых JVM-тестах без YouTube-сценариев. */
+    private val youTubeRepository: YouTubeRepository?,
     private val playHistoryRepository: PlayHistoryRepository,
     /** Репозиторий скачанных треков; null только в JVM-тестах. */
     private val downloadRepository: DownloadRepository?,
@@ -55,17 +59,33 @@ class PlayerController private constructor(
     constructor(
         @ApplicationContext context: Context,
         soundCloudRepository: SoundCloudRepository,
+        youTubeRepository: YouTubeRepository,
         playHistoryRepository: PlayHistoryRepository,
         downloadRepository: DownloadRepository,
-    ) : this(context, soundCloudRepository, playHistoryRepository, downloadRepository, null)
+    ) : this(
+        context,
+        soundCloudRepository,
+        youTubeRepository,
+        playHistoryRepository,
+        downloadRepository,
+        null,
+    )
 
     /** Конструктор для JVM-тестов: готовый контроллер без подключения к сервису. */
     internal constructor(
         mediaController: MediaController,
         soundCloudRepository: SoundCloudRepository,
         playHistoryRepository: PlayHistoryRepository,
+        youTubeRepository: YouTubeRepository? = null,
         downloadRepository: DownloadRepository? = null,
-    ) : this(null, soundCloudRepository, playHistoryRepository, downloadRepository, mediaController)
+    ) : this(
+        null,
+        soundCloudRepository,
+        youTubeRepository,
+        playHistoryRepository,
+        downloadRepository,
+        mediaController,
+    )
 
     private val tag = "PlayerController"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -469,11 +489,31 @@ class PlayerController private constructor(
                         AudioStreamResult(
                             url = downloaded.mediaUrl,
                             isHls = downloaded.mimeType == MimeTypes.APPLICATION_M3U8,
+                            // MIME из Room критичен для офлайн-M4A: по file:// его не угадать
+                            mimeType = downloaded.mimeType,
                         ),
                     )
+                // Для YouTube у трека хранится URL видео, а не аудио: его резолвит репозиторий
+                track.source == Source.YOUTUBE -> {
+                    val videoUrl = track.transcodingUrl ?: track.streamUrl
+                    val repository = youTubeRepository
+                    if (!videoUrl.isNullOrBlank() && repository != null) {
+                        repository.resolveStreamUrl(videoUrl)
+                    } else {
+                        Result.failure(
+                            IllegalStateException("Нет YouTube-ссылки для трека: ${track.id}"),
+                        )
+                    }
+                }
                 track.streamUrl != null ->
-                    Result.success(AudioStreamResult(url = track.streamUrl, isHls = false))
-                track.transcodingUrl != null ->
+                    Result.success(
+                        AudioStreamResult(
+                            url = track.streamUrl,
+                            isHls = false,
+                            mimeType = defaultMimeType(track.source),
+                        ),
+                    )
+                track.source == Source.SOUNDCLOUD && track.transcodingUrl != null ->
                     soundCloudRepository.resolveStreamUrl(track.transcodingUrl)
                 else ->
                     Result.failure(IllegalStateException("Нет ссылки на поток для трека: ${track.id}"))
@@ -488,7 +528,11 @@ class PlayerController private constructor(
 
             streamResult
                 .onSuccess { result ->
-                    Log.d(tag, "Воспроизведение трека '${track.title}': isHls=${result.isHls}")
+                    Log.d(
+                        tag,
+                        "Воспроизведение трека '${track.title}': " +
+                            "isHls=${result.isHls}, mime=${result.mimeType ?: "auto"}",
+                    )
                     playStream(track, result)
                 }
                 .onFailure { error ->
@@ -533,6 +577,12 @@ class PlayerController private constructor(
         }
     }
 
+    /** MIME по умолчанию для прямых URL, если источник его не сообщил. */
+    private fun defaultMimeType(source: Source): String = when (source) {
+        Source.YOUTUBE -> MimeTypes.AUDIO_MP4
+        else -> MimeTypes.AUDIO_MPEG
+    }
+
     private suspend fun playStream(track: Track, streamResult: AudioStreamResult) {
         val controller = awaitController()
         if (controller == null) {
@@ -547,7 +597,7 @@ class PlayerController private constructor(
             return
         }
 
-        val mimeType = if (streamResult.isHls) {
+        val mimeType = streamResult.mimeType ?: if (streamResult.isHls) {
             MimeTypes.APPLICATION_M3U8
         } else {
             MimeTypes.AUDIO_MPEG

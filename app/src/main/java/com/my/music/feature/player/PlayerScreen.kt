@@ -84,6 +84,8 @@ import com.my.music.core.ui.components.PlayerQueueSheet
 import com.my.music.core.ui.theme.PlayerDynamicColors
 import com.my.music.core.ui.theme.rememberPlayerDynamicColors
 import com.my.music.data.model.LyricsResult
+import com.my.music.data.model.Source
+import com.my.music.data.model.Track
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -95,8 +97,14 @@ import kotlinx.coroutines.launch
  */
 private const val PLAYER_LAYOUT_VARIANT = 1
 
-/** Единый текст ошибки скачивания: трек можно слушать только онлайн. */
+/** Ошибка скачивания без альтернативы (например, YouTube). */
 private const val DOWNLOAD_FAILED_MESSAGE = "Не удалось скачать трек (доступен только онлайн)"
+
+/** SoundCloud-трек не скачался — предлагаем найти его на YouTube. */
+private const val SOUNDCLOUD_DOWNLOAD_FAILED_MESSAGE =
+    "Не удалось скачать (только онлайн). Найти на YouTube?"
+
+private const val FIND_ON_YOUTUBE_ACTION = "Найти"
 
 /** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
@@ -119,6 +127,7 @@ private fun heroStyle(variant: Int): HeroStyle = when (variant) {
 @Composable
 fun PlayerScreen(
     onBack: () -> Unit,
+    onFindOnYouTube: (Track) -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -191,9 +200,21 @@ fun PlayerScreen(
     val snackbarScope = rememberCoroutineScope()
     LaunchedEffect(downloadState, track?.id) {
         val error = downloadState as? DownloadState.Error
-        if (error?.cause == DownloadState.Cause.FAILED) {
-            snackbarScope.launch {
-                snackbarHostState.showSnackbar(DOWNLOAD_FAILED_MESSAGE)
+        if (error?.cause != DownloadState.Cause.FAILED || track == null) return@LaunchedEffect
+
+        val isSoundCloud = track.source == Source.SOUNDCLOUD
+        snackbarScope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = if (isSoundCloud) {
+                    SOUNDCLOUD_DOWNLOAD_FAILED_MESSAGE
+                } else {
+                    DOWNLOAD_FAILED_MESSAGE
+                },
+                actionLabel = if (isSoundCloud) FIND_ON_YOUTUBE_ACTION else null,
+                duration = if (isSoundCloud) SnackbarDuration.Long else SnackbarDuration.Short,
+            )
+            if (isSoundCloud && result == SnackbarResult.ActionPerformed) {
+                onFindOnYouTube(track)
             }
         }
     }

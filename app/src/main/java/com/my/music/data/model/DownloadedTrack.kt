@@ -4,8 +4,8 @@ package com.my.music.data.model
  * Скачанный трек, доступный без интернета.
  *
  * @param trackId      идентификатор трека в исходном источнике (для SC — URL трека)
- * @param mediaUrl     локальный `file://` URL mp3-файла
- * @param mimeType     MIME-тип файла (для mp3 — AUDIO_MPEG)
+ * @param mediaUrl     локальный `file://` URL скачанного файла
+ * @param mimeType     MIME-тип файла (MP3 — AUDIO_MPEG, M4A — AUDIO_MP4, WEBM — AUDIO_WEBM)
  * @param downloadedAt время завершения скачивания (мс с начала эпохи)
  */
 data class DownloadedTrack(
