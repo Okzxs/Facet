@@ -12,9 +12,10 @@ data class AccentOption(
 )
 
 /**
- * Базовые акцентные цвета (первый — фиолетовый, совпадает с дефолтом приложения).
+ * Базовые акцентные цвета для Android ниже 12 (первый совпадает с fallback-палитрой).
  */
 val AccentOptions = listOf(
+    AccentOption("Коралловый", Color(0xFFA63A2B)),
     AccentOption("Фиолетовый", Color(0xFF7B5EA7)),
     AccentOption("Синий", Color(0xFF3F6BD8)),
     AccentOption("Бирюзовый", Color(0xFF0F9B8E)),

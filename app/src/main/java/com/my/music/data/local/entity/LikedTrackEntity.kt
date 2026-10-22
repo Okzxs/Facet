@@ -2,6 +2,7 @@ package com.my.music.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 
@@ -39,6 +40,14 @@ fun LikedTrackEntity.toTrack(): Track = Track(
     genre = genre,
     liked = true,
     transcodingUrl = transcodingUrl,
+)
+
+fun LikedTrackEntity.toSeasonMemory(): SeasonMemory = SeasonMemory(
+    track = toTrack(),
+    season = season,
+    latitude = latitude,
+    longitude = longitude,
+    likedAt = likedAt,
 )
 
 fun Track.toLikedEntity(

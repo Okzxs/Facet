@@ -102,6 +102,13 @@ class LikedTracksRepositoryTest {
             repository.getLikedTracksBySeason("Autumn").first().map { it.id },
         )
         assertTrue(repository.getLikedTracksBySeason("Winter").first().isEmpty())
+
+        val memory = repository.getSeasonMemories("Autumn").first().single()
+        assertEquals(sampleTrack.id, memory.track.id)
+        assertEquals("Autumn", memory.season)
+        assertEquals(55.7558, memory.latitude ?: 0.0, 0.0001)
+        assertEquals(37.6173, memory.longitude ?: 0.0, 0.0001)
+        assertTrue(repository.getSeasonMemories("Winter").first().isEmpty())
     }
 
     @Test

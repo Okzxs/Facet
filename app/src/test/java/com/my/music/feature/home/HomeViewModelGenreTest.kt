@@ -1,10 +1,11 @@
 package com.my.music.feature.home
 
+import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
-import com.my.music.data.repository.SoundCloudChartsRepository
+import com.my.music.data.repository.YouTubeRepository
 import com.my.music.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.every
@@ -25,29 +26,24 @@ class HomeViewModelGenreTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private val newAndHotFlow = MutableStateFlow<List<Track>>(emptyList())
-    private val top50Flow = MutableStateFlow<List<Track>>(emptyList())
     private val historyFlow = MutableStateFlow<List<Track>>(emptyList())
     private val likedFlow = MutableStateFlow<List<Track>>(emptyList())
-    private val memoriesFlow = MutableStateFlow<List<Track>>(emptyList())
+    private val memoriesFlow = MutableStateFlow<List<SeasonMemory>>(emptyList())
 
     private lateinit var viewModel: HomeViewModel
 
     @Before
     fun setUp() {
-        val chartsRepository = mockk<SoundCloudChartsRepository>()
+        val youtubeRepository = mockk<YouTubeRepository>()
         val likedTracksRepository = mockk<LikedTracksRepository>()
         val playHistoryRepository = mockk<PlayHistoryRepository>()
 
-        every { chartsRepository.observeNewAndHot() } returns newAndHotFlow
-        every { chartsRepository.observeTop50() } returns top50Flow
-        coEvery { chartsRepository.getNewAndHot(any()) } returns Result.success(emptyList())
-        coEvery { chartsRepository.getTop50(any()) } returns Result.success(emptyList())
+        coEvery { youtubeRepository.search(any(), any()) } returns Result.success(emptyList())
         every { likedTracksRepository.getLikedTracks() } returns likedFlow
-        every { likedTracksRepository.getLikedTracksBySeason(any()) } returns memoriesFlow
+        every { likedTracksRepository.getSeasonMemories(any()) } returns memoriesFlow
         every { playHistoryRepository.getPlayHistory() } returns historyFlow
 
-        viewModel = HomeViewModel(chartsRepository, likedTracksRepository, playHistoryRepository)
+        viewModel = HomeViewModel(youtubeRepository, likedTracksRepository, playHistoryRepository)
     }
 
     @Test
@@ -102,22 +98,21 @@ class HomeViewModelGenreTest {
 
     @Test
     fun `memories reflect likes of the current season`() {
-        memoriesFlow.value = listOf(track("m1", "Rock"))
+        memoriesFlow.value = listOf(
+            SeasonMemory(
+                track = track("m1", "Rock"),
+                season = "Autumn",
+                latitude = 55.7558,
+                longitude = 37.6173,
+                likedAt = 1_000L,
+            ),
+        )
 
         val state = viewModel.uiState.value
 
-        assertEquals(listOf("m1"), state.memories.map { it.id })
-    }
-
-    @Test
-    fun `chart caches are observed reactively`() {
-        newAndHotFlow.value = listOf(track("n1", null))
-        top50Flow.value = listOf(track("t1", null))
-
-        val state = viewModel.uiState.value
-
-        assertEquals(listOf("n1"), state.newAndHot.map { it.id })
-        assertEquals(listOf("t1"), state.top50.map { it.id })
+        assertEquals(listOf("m1"), state.memories.map { it.track.id })
+        assertEquals(55.7558, state.memories.single().latitude ?: 0.0, 0.0001)
+        assertEquals(37.6173, state.memories.single().longitude ?: 0.0, 0.0001)
     }
 
     private fun track(id: String, genre: String?) = Track(

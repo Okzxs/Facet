@@ -4,13 +4,16 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.my.music.core.util.SeasonProvider
+import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
-import com.my.music.data.repository.SoundCloudChartsRepository
+import com.my.music.data.repository.YouTubeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,28 +28,32 @@ data class GenreSection(
 )
 
 data class HomeUiState(
-    val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
-    val newAndHot: List<Track> = emptyList(),
-    val top50: List<Track> = emptyList(),
+    val isChartsLoading: Boolean = true,
+    val chartsError: String? = null,
+    val topRu: List<Track> = emptyList(),
+    val topUs: List<Track> = emptyList(),
     val recentTracks: List<Track> = emptyList(),
     val likedTracks: List<Track> = emptyList(),
-    val memories: List<Track> = emptyList(),
+    val memories: List<SeasonMemory> = emptyList(),
+    val memorySeason: String = SeasonProvider.currentSeason(),
     val genreSections: List<GenreSection> = emptyList(),
-    val error: String? = null,
 )
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val chartsRepository: SoundCloudChartsRepository,
+    private val youtubeRepository: YouTubeRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
 ) : ViewModel() {
 
     private val tag = "HomeViewModel"
+    private val memorySeason = SeasonProvider.currentSeason()
 
-    private val _uiState = MutableStateFlow(HomeUiState())
+    private val _uiState = MutableStateFlow(HomeUiState(memorySeason = memorySeason))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    private var chartsJob: Job? = null
 
     init {
         observeLocalData()
@@ -54,36 +61,15 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Непрерывное наблюдение за локальными данными Room:
-     * - Кэш чартов (New & hot, Top 10)
-     * - Недавние треки (Play history)
-     * - Лайкнутые треки (Liked tracks)
-     * - Воспоминания (лайки текущего сезона)
-     * - Динамические жанровые подборки
+     * Локальные данные Room: история, лайки, воспоминания и жанровые подборки.
      */
     private fun observeLocalData() {
-        // Наблюдение за кэшем чартов
         viewModelScope.launch {
-            chartsRepository.observeNewAndHot().collect { tracks ->
-                _uiState.update { it.copy(newAndHot = tracks) }
+            likedTracksRepository.getSeasonMemories(memorySeason).collect { memories ->
+                _uiState.update { it.copy(memories = memories) }
             }
         }
 
-        viewModelScope.launch {
-            chartsRepository.observeTop50().collect { tracks ->
-                _uiState.update { it.copy(top50 = tracks) }
-            }
-        }
-
-        // «Воспоминания»: лайки, поставленные в текущем сезоне
-        viewModelScope.launch {
-            likedTracksRepository.getLikedTracksBySeason(SeasonProvider.currentSeason())
-                .collect { tracks ->
-                    _uiState.update { it.copy(memories = tracks) }
-                }
-        }
-
-        // Наблюдение за личными данными (история и лайки) и группировка по жанрам
         viewModelScope.launch {
             combine(
                 playHistoryRepository.getPlayHistory(),
@@ -111,55 +97,90 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Загрузка чартов из репозитория (кэш Room / сеть NewPipe).
+     * Чарты Top RU / Top US через YouTubeRepository.
+     * При ошибке уже загруженные данные не затираются.
      */
     fun loadCharts(forceRefresh: Boolean = false) {
-        viewModelScope.launch {
-            if (forceRefresh) {
-                _uiState.update { it.copy(isRefreshing = true, error = null) }
-            } else if (_uiState.value.newAndHot.isEmpty() && _uiState.value.top50.isEmpty()) {
-                _uiState.update { it.copy(isLoading = true, error = null) }
+        if (chartsJob?.isActive == true) return
+
+        chartsJob = viewModelScope.launch {
+            val hasCharts = _uiState.value.topRu.isNotEmpty() || _uiState.value.topUs.isNotEmpty()
+            _uiState.update {
+                it.copy(
+                    isRefreshing = forceRefresh,
+                    isChartsLoading = !hasCharts,
+                    chartsError = if (forceRefresh || !hasCharts) null else it.chartsError,
+                )
             }
 
             try {
-                val newHotDeferred = async { chartsRepository.getNewAndHot(forceRefresh) }
-                val top50Deferred = async { chartsRepository.getTop50(forceRefresh) }
-
-                val newHotResult = newHotDeferred.await()
-                val top50Result = top50Deferred.await()
-
-                val errorMessage = when {
-                    newHotResult.isFailure && top50Result.isFailure ->
-                        newHotResult.exceptionOrNull()?.message ?: "Не удалось загрузить чарты"
-                    else -> null
+                val (ruResult, usResult) = coroutineScope {
+                    val ruDeferred = async {
+                        youtubeRepository.search(TOP_RU_QUERY, CHART_LIMIT)
+                    }
+                    val usDeferred = async {
+                        youtubeRepository.search(TOP_US_QUERY, CHART_LIMIT)
+                    }
+                    ruDeferred.await() to usDeferred.await()
                 }
 
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        error = errorMessage,
+                val ruTracks = ruResult.getOrNull().orEmpty().asChartTracks()
+                val usTracks = usResult.getOrNull().orEmpty().asChartTracks()
+
+                _uiState.update { state ->
+                    val topRu = if (ruResult.isSuccess) ruTracks else state.topRu
+                    val topUs = if (usResult.isSuccess) usTracks else state.topUs
+                    val ruMissing = ruResult.isFailure && topRu.isEmpty()
+                    val usMissing = usResult.isFailure && topUs.isEmpty()
+                    val error = when {
+                        ruMissing && usMissing -> "Не удалось загрузить чарты"
+                        ruMissing -> "Не удалось загрузить Top RU"
+                        usMissing -> "Не удалось загрузить Top US"
+                        else -> null
+                    }
+
+                    state.copy(
+                        topRu = topRu,
+                        topUs = topUs,
+                        chartsError = error,
                     )
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(tag, "Ошибка при обновлении чартов: ${e.message}", e)
+                Log.e(tag, "Ошибка загрузки чартов YouTube: ${e.message}", e)
+                _uiState.update {
+                    it.copy(chartsError = e.message ?: "Ошибка загрузки чартов")
+                }
+            } finally {
                 _uiState.update {
                     it.copy(
-                        isLoading = false,
                         isRefreshing = false,
-                        error = e.message ?: "Ошибка загрузки",
+                        isChartsLoading = false,
                     )
                 }
             }
         }
     }
 
-    /**
-     * Принудительное обновление для Pull-to-refresh.
-     */
+    private fun List<Track>.asChartTracks(): List<Track> {
+        val music = filter { it.durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS }
+        return music.ifEmpty { this }
+            .distinctBy { it.id }
+            .take(CHART_TRACKS_LIMIT)
+    }
+
+    /** Принудительное обновление для Pull-to-refresh. */
     fun refresh() {
         loadCharts(forceRefresh = true)
+    }
+
+    private companion object {
+        const val TOP_RU_QUERY = "Top 100 Russia music"
+        const val TOP_US_QUERY = "Top 100 USA music"
+        const val CHART_LIMIT = 8
+        const val CHART_TRACKS_LIMIT = 5
+        const val MUSIC_MIN_DURATION_MS = 45_000L
+        const val MUSIC_MAX_DURATION_MS = 900_000L
     }
 }

@@ -2,7 +2,9 @@ package com.my.music.data.local
 
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.entity.toLikedEntity
+import com.my.music.data.local.entity.toSeasonMemory
 import com.my.music.data.local.entity.toTrack
+import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +32,12 @@ class LikedTracksRepositoryImpl @Inject constructor(
     override fun getLikedTracksBySeason(season: String): Flow<List<Track>> {
         return likedTracksDao.getLikedTracksBySeason(season)
             .map { list -> list.map { it.toTrack() } }
+            .flowOn(Dispatchers.IO)
+    }
+
+    override fun getSeasonMemories(season: String): Flow<List<SeasonMemory>> {
+        return likedTracksDao.getLikedTracksBySeason(season)
+            .map { list -> list.map { it.toSeasonMemory() } }
             .flowOn(Dispatchers.IO)
     }
 

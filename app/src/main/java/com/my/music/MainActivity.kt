@@ -1,5 +1,6 @@
 package com.my.music
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,9 +26,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
-            // Динамика обложки выключена — фиксируем акцент (по умолчанию фиолетовый);
-            // включена — плеер берёт палитру обложки, общая тема остаётся фиолетовой
-            val accentOverride = if (settings.dynamicCoverColors) null else Color(settings.accentColorArgb)
+            // Android 12+ всегда использует Dynamic Color системы.
+            // Ручной акцент из настроек применяется только на старых версиях.
+            val accentOverride = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                Color(settings.accentColorArgb)
+            } else {
+                null
+            }
 
             MyMusicTheme(accentColor = accentOverride) {
                 AppNavGraph()

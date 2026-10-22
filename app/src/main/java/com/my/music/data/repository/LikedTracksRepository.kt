@@ -1,5 +1,6 @@
 package com.my.music.data.repository
 
+import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Track
 import kotlinx.coroutines.flow.Flow
 
@@ -18,6 +19,11 @@ interface LikedTracksRepository {
      * Основа секции «Воспоминания».
      */
     fun getLikedTracksBySeason(season: String): Flow<List<Track>>
+
+    /**
+     * Лайки сезона вместе с геометками — для крупной карточки «Воспоминания».
+     */
+    fun getSeasonMemories(season: String): Flow<List<SeasonMemory>>
 
     /**
      * Наблюдение за статусом лайка конкретного трека.

@@ -1627,3 +1627,64 @@ MEMORY.md
 - `.\gradlew assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL.
 - 78 JVM-тестов, 0 failures, 0 errors.
 - APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
+
+---
+
+## ✅ Сессия 5 — MD3 Expressive: Dynamic Color и новый Home (22.10.2026)
+
+### Что сделано
+1. **Фундамент темы**:
+   - на Android 12+ `MyMusicTheme` всегда использует `dynamicDarkColorScheme` / `dynamicLightColorScheme` от системы;
+   - ручной акцент из настроек применяется только на Android ниже 12;
+   - fallback-палитра переведена с фиолетовой на тёплый глубокий фон + коралловый акцент, добавлены все `surfaceContainer*`, `surfaceDim/Bright`, `outlineVariant` и inverse-роли;
+   - создан `Shape.kt`: настоящая squircle-форма через суперэллипс, крупные M3-скругления, Pill и Bento-токены; `shapes` подключены к `MaterialTheme`;
+   - `Type.kt` усилен: ExtraBold Display/Headline, крупнее Display Small, плотный трекинг.
+2. **Главный экран полностью переписан**:
+   - шапка без emoji и refresh: дата, крупное приветствие, одна иконка настроек, pull-to-refresh;
+   - hero «Продолжить слушать» из последнего трека истории: компактная карточка, пружинный scale 0.95, морфинг скругления и цвета;
+   - Bento-раздел «Чарты»: два тональных блока `Top RU` / `Top US` с крупными номерами 01/02/03 и кликабельными треками;
+   - «Хроника»: горизонтальная карусель с чередованием карточек 160dp / 120dp, разной высотой и вертикальным смещением;
+   - «Воспоминания»: одна крупная Bento-карточка с сезонным акцентом, координатами, счётчиком, стеком обложек и запуском очереди;
+   - ниже — Bento-пара «Любимое» и «Ваш жанр» с реальными счётчиками;
+   - появление секций — staggered на Spring с `dampingRatio = 0.8f`.
+3. **Данные**:
+   - добавлена доменная модель `SeasonMemory` и `LikedTracksRepository.getSeasonMemories()`, координаты/сезон больше не теряются при чтении из Room;
+   - `HomeViewModel` больше не грузит старые SoundCloud-чарты для Home; Top RU/US загружаются параллельно через `YouTubeRepository.search()` (`Top 100 Russia music`, `Top 100 USA music`, лимит 8, фильтр длительности);
+   - при ошибке одного региона второй сохраняется, при неудачном refresh старые чарты не затираются;
+   - приложение больше не зависит от обложки на главном: цвета берутся из системной Dynamic Color или fallback-палитры.
+4. **Настройки**:
+   - подпись акцента объясняет, что на Android 12+ используются системные цвета;
+   - ручные акценты доступны только на старых версиях, дефолтный акцент — коралловый.
+5. **Тесты**:
+   - обновлён `HomeViewModelGenreTest` под `SeasonMemory` и YouTube-репозиторий;
+   - добавлен `HomeViewModelChartsTest`: успешная параллельная загрузка, частичная ошибка, сохранение старых чартов при неудачном refresh;
+   - `LikedTracksRepositoryTest` проверяет координаты и сезон через `getSeasonMemories()`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/ui/theme/Color.kt
+app/src/main/java/com/my/music/core/ui/theme/Theme.kt
+app/src/main/java/com/my/music/core/ui/theme/Type.kt
+app/src/main/java/com/my/music/core/ui/theme/Shape.kt (новый)
+app/src/main/java/com/my/music/core/ui/theme/AccentPalette.kt
+app/src/main/java/com/my/music/MainActivity.kt
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt (полностью переписан)
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
+app/src/main/java/com/my/music/data/model/SeasonMemory.kt (новый)
+app/src/main/java/com/my/music/data/local/entity/LikedTrackEntity.kt
+app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
+app/src/main/java/com/my/music/data/repository/LikedTracksRepository.kt
+app/src/main/java/com/my/music/data/repository/SettingsRepository.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelChartsTest.kt (новый)
+app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt
+PROGRESS.md
+MEMORY.md
+```
+
+### Проверка
+- `.\gradlew assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL.
+- 80 JVM-тестов, 0 failures, 0 errors.
+- `lintDebug`: новых замечаний в файлах Home/темы нет; единственная ошибка — существующий Media3 `UnstableApi` в `PlayerController` (плеер по условию не трогали).
+- Плеер и поиск не изменялись.

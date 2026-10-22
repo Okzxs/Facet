@@ -38,6 +38,18 @@ private val LightColorScheme = lightColorScheme(
     surfaceVariant = SurfaceVariant,
     onSurfaceVariant = OnSurfaceVariant,
     outline = Outline,
+    outlineVariant = OutlineVariant,
+    surfaceDim = SurfaceDim,
+    surfaceBright = SurfaceBright,
+    surfaceContainerLowest = SurfaceContainerLowest,
+    surfaceContainerLow = SurfaceContainerLow,
+    surfaceContainer = SurfaceContainer,
+    surfaceContainerHigh = SurfaceContainerHigh,
+    surfaceContainerHighest = SurfaceContainerHighest,
+    inverseSurface = InverseSurface,
+    inverseOnSurface = InverseOnSurface,
+    inversePrimary = InversePrimary,
+    surfaceTint = Primary,
 )
 
 private val DarkColorScheme = darkColorScheme(
@@ -53,6 +65,10 @@ private val DarkColorScheme = darkColorScheme(
     onTertiary = OnTertiaryDark,
     tertiaryContainer = TertiaryContainerDark,
     onTertiaryContainer = OnTertiaryContainerDark,
+    error = ErrorDark,
+    onError = OnErrorDark,
+    errorContainer = ErrorContainerDark,
+    onErrorContainer = OnErrorContainerDark,
     background = BackgroundDark,
     onBackground = OnBackgroundDark,
     surface = SurfaceDark,
@@ -60,11 +76,23 @@ private val DarkColorScheme = darkColorScheme(
     surfaceVariant = SurfaceVariantDark,
     onSurfaceVariant = OnSurfaceVariantDark,
     outline = OutlineDark,
+    outlineVariant = OutlineVariantDark,
+    surfaceDim = SurfaceDimDark,
+    surfaceBright = SurfaceBrightDark,
+    surfaceContainerLowest = SurfaceContainerLowestDark,
+    surfaceContainerLow = SurfaceContainerLowDark,
+    surfaceContainer = SurfaceContainerDark,
+    surfaceContainerHigh = SurfaceContainerHighDark,
+    surfaceContainerHighest = SurfaceContainerHighestDark,
+    inverseSurface = InverseSurfaceDark,
+    inverseOnSurface = InverseOnSurfaceDark,
+    inversePrimary = InversePrimaryDark,
+    surfaceTint = PrimaryDark,
 )
 
 /**
- * Схема из пользовательского акцента: primary-группа генерируется из seed через HSL,
- * остальные поверхности берутся из фиксированных схем приложения.
+ * Схема из пользовательского акцента для Android ниже 12:
+ * primary-группа генерируется из seed, поверхности остаются тёплыми.
  */
 private fun accentColorScheme(accent: Color, darkTheme: Boolean): ColorScheme {
     val hsl = FloatArray(3)
@@ -111,22 +139,22 @@ private fun accentColorScheme(accent: Color, darkTheme: Boolean): ColorScheme {
 
 /**
  * Главная тема приложения.
- * Приоритет: ручной акцент из настроек → Dynamic Color (только если явно включён) → фиксированная фиолетовая палитра.
- * По умолчанию Dynamic Color выключен: приложение всегда стартует в фирменной фиолетовой теме.
+ * Приоритет: Dynamic Color системы (Android 12+) → ручной акцент (Android ниже 12) → fallback-палитра.
+ * Цвета главного экрана не зависят от обложки альбома.
  */
 @Composable
 fun MyMusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // фиолетовая палитра по умолчанию; true — системные цвета Android 12+
-    accentColor: Color? = null, // задан — строим схему от акцента (акцент выбран в настройках)
+    dynamicColor: Boolean = true,
+    accentColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
     val colorScheme = when {
-        accentColor != null -> accentColorScheme(accentColor, darkTheme)
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
+        accentColor != null -> accentColorScheme(accentColor, darkTheme)
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
@@ -134,6 +162,7 @@ fun MyMusicTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
+        shapes = AppShapes,
         content = content,
     )
 }

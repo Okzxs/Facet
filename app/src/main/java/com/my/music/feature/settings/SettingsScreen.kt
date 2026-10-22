@@ -1,5 +1,6 @@
 package com.my.music.feature.settings
 
+import android.os.Build
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -72,6 +73,7 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val russianPriority by viewModel.russianPriority.collectAsState()
+    val supportsDynamicColors = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -253,8 +255,8 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        text = if (settings.dynamicCoverColors) {
-                            "Выбор применится, когда динамические цвета выключены"
+                        text = if (supportsDynamicColors) {
+                            "На Android 12+ тема следует системным цветам. Ручной акцент доступен только на старых версиях."
                         } else {
                             "Тема приложения построена на выбранном цвете"
                         },
@@ -267,7 +269,7 @@ fun SettingsScreen(
                             AccentDot(
                                 option = option,
                                 selected = option.color.toArgb() == settings.accentColorArgb,
-                                enabled = !settings.dynamicCoverColors,
+                                enabled = !supportsDynamicColors,
                                 onClick = { viewModel.setAccentColor(option.color) },
                             )
                         }

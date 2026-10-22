@@ -6,15 +6,15 @@ import kotlinx.coroutines.flow.Flow
  * Пользовательские настройки оформления.
  *
  * @param dynamicCoverColors динамические цвета обложки (палитра плеера от artwork);
- * @param accentColorArgb выбранный вручную акцентный цвет (ARGB), применяется когда динамика выключена.
+ * @param accentColorArgb выбранный вручную акцентный цвет (ARGB), применяется на Android ниже 12.
  */
 data class AppSettings(
     val dynamicCoverColors: Boolean = false,
     val accentColorArgb: Int = DEFAULT_ACCENT_ARGB,
 ) {
     companion object {
-        /** Базовый фиолетовый — совпадает с фиксированной палитрой приложения. */
-        const val DEFAULT_ACCENT_ARGB: Int = 0xFF7B5EA7.toInt()
+        /** Базовый коралловый — совпадает с fallback-палитрой приложения. */
+        const val DEFAULT_ACCENT_ARGB: Int = 0xFFA63A2B.toInt()
     }
 }
 
