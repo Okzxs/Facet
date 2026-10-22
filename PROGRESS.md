@@ -1515,3 +1515,59 @@ MEMORY.md
 4. **Настроения волны**: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на жанры, темп и долю новых треков.
 5. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
 6. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
+
+---
+
+## 📋 План — YouTube Music и глобальные статусы сервисов (22.10.2026)
+
+### Общий план
+1. **База и модель**: добавить `Source.YOUTUBE`, убедиться, что `Track` и Room-конвертеры работают с новым источником.
+2. **Репозиторий**: `YouTubeRepository` через NewPipe (`YoutubeService`): поиск + progressive M4A/WEBM_OPUS без HLS.
+3. **UI поиска**: переключатель SoundCloud / YouTube, единый список результатов, ошибки и пустые состояния под выбранный источник.
+4. **Плеер и загрузчик**: научить `PlayerController` и `DownloadTrackWorker` выбирать репозиторий по `Track.source` и корректно определять MIME (MP3/M4A/WEBM). **Пока не трогаем.**
+5. **Импорт плейлистов (на будущее)**: через NewPipe вытаскивать плейлисты YouTube и добавлять в очередь/медиатеку.
+6. **Статусы сервисов**: `ServiceStatusManager` + меню статусов в поиске, ручное обновление, предупреждение о недоступном источнике.
+
+### Текущая итерация — только шаги 1–3
+- [x] `Source.YOUTUBE` в модели.
+- [x] `YouTubeRepository` + `YouTubeRepositoryImpl` + Hilt-биндинг.
+- [x] `ServiceStatusManager`, `ServiceType`, `ServiceHealth`.
+- [x] `SearchViewModel`: выбранный источник + подписка на статусы.
+- [x] `SearchScreen`: переключатель источников, меню статусов, предупреждение о недоступном сервисе.
+- [x] Сборка, тесты, коммит, пуш.
+
+### Что сделано (22.10.2026)
+- `Source.YOUTUBE` добавлен в `Track.kt`; Room хранит имя enum, миграция не нужна.
+- `YouTubeRepository` + `YouTubeRepositoryImpl`:
+  - поиск через `ServiceList.YouTube` с фильтром `videos`;
+  - маппинг `StreamInfoItem` → `Track` (`id`/`transcodingUrl` = URL видео, артист без суффикса ` - Topic`);
+  - `resolveStreamUrl()` выбирает только `DeliveryMethod.PROGRESSIVE_HTTP` + `M4A`/`WEBMA_OPUS`, сначала M4A по максимальному битрейту, затем Opus; `isHls = false`;
+  - Hilt-биндинг в `RepositoryModule`.
+- `ServiceStatusManager` (Singleton):
+  - `ServiceType { SOUNDCLOUD, YOUTUBE }`, `ServiceHealth(isAvailable, isChecking)`;
+  - `StateFlow<Map<ServiceType, ServiceHealth>>`, параллельная проверка поиском `"test"` с лимитом 1;
+  - `checkAllServices()` при старте (`MyMusicApp` после `NewPipe.init`) и после ошибок поиска;
+  - `refreshStatus()` из меню, защита от параллельных проверок, `markAvailable()` после успешного поиска;
+  - 5 JVM-тестов на успех/failure/exception/начальное состояние.
+- `SearchViewModel`:
+  - выбранный `ServiceType`, поиск через соответствующий репозиторий;
+  - общий поток `(query, service)` с debounce 400 мс, отмена устаревших запросов;
+  - `retry()` действительно перезапускает поиск (раньше повторный `onQueryChange` с тем же текстом игнорировался);
+  - подписка на глобальные статусы, `refreshStatuses()`.
+- `SearchScreen`:
+  - переключатель SoundCloud / YouTube с пружинными анимациями и красной обводкой недоступного сервиса;
+  - иконка `Radar` с цветным индикатором и MD3 `DropdownMenu` (список сервисов, точки «Онлайн»/«Ошибка», спиннер «Проверка», кнопка «Обновить статусы»);
+  - предупреждающий баннер для выбранного недоступного сервиса;
+  - динамические подписи источника в idle/empty/results, кнопка «Повторить» через `retry()`.
+
+### Проверка
+- `.\gradlew assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL.
+- 69 JVM-тестов, 0 failures, 0 errors.
+- Живая проверка через временный тест: поиск YouTube вернул результаты, `resolveStreamUrl()` отдал progressive M4A (`itag=140`, `isHls=false`). Временный тест удалён.
+- Ограничение текущей итерации: `PlayerController` и `DownloadTrackWorker` всё ещё используют `SoundCloudRepository`, поэтому воспроизведение и скачивание YouTube-результатов пока не работают — это шаг 4.
+
+### Явно вне текущей итерации
+- Скачивание YouTube-треков и правки `DownloadTrackWorker`.
+- Правки `PlayerController` и MIME в плеере.
+- Импорт YouTube-плейлистов.
+- Экран «Скачанное» и очистка legacy-кэша.

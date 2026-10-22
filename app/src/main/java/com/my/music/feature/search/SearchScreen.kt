@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -19,6 +20,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,11 +44,17 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
+import androidx.compose.material.icons.rounded.SmartDisplay
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,26 +65,37 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.my.music.core.service.ServiceHealth
+import com.my.music.core.service.ServiceType
 import com.my.music.core.ui.components.TrackCard
 import com.my.music.data.model.Track
 
 private enum class SearchContentState { Idle, Loading, Error, Empty, Results }
 
 private val searchSuggestions = listOf("Electronic", "Hip-Hop", "Rock", "Chill", "Pop", "R&B")
+
+// Семантические цвета статусов: зелёный/красный не должны зависеть от Dynamic Color.
+private val OnlineGreenLight = Color(0xFF1E8E3E)
+private val OnlineGreenDark = Color(0xFF81C995)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -86,6 +105,7 @@ fun SearchScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val downloadedIds by viewModel.downloadedIds.collectAsState()
+    val serviceStatuses by viewModel.serviceStatuses.collectAsState()
 
     val contentState = when {
         state.isLoading -> SearchContentState.Loading
@@ -110,6 +130,14 @@ fun SearchScreen(
                 query = state.query,
                 onQueryChange = viewModel::onQueryChange,
                 modifier = Modifier.padding(horizontal = 20.dp),
+            )
+
+            SourceSwitcher(
+                selected = state.selectedService,
+                statuses = serviceStatuses,
+                onSelect = viewModel::onServiceSelected,
+                onRefreshStatuses = viewModel::refreshStatuses,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp),
             )
 
             AnimatedVisibility(
@@ -139,16 +167,23 @@ fun SearchScreen(
                 label = "searchContent",
             ) { target ->
                 when (target) {
-                    SearchContentState.Idle -> IdleState(query = state.query)
+                    SearchContentState.Idle -> IdleState(
+                        query = state.query,
+                        serviceName = state.selectedService.displayName,
+                    )
                     SearchContentState.Loading -> SearchSkeletonList()
                     SearchContentState.Error -> ErrorState(
                         message = state.error.orEmpty(),
-                        onRetry = { viewModel.onQueryChange(state.query) },
+                        onRetry = viewModel::retry,
                     )
-                    SearchContentState.Empty -> EmptyResultsState(query = state.query)
+                    SearchContentState.Empty -> EmptyResultsState(
+                        query = state.query,
+                        serviceName = state.selectedService.displayName,
+                    )
                     SearchContentState.Results -> ResultsList(
                         tracks = state.results,
                         downloadedIds = downloadedIds,
+                        serviceName = state.selectedService.displayName,
                         onTrackClick = onTrackClick,
                     )
                 }
@@ -171,12 +206,439 @@ private fun SearchHeader() {
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "Найди свой саунд на SoundCloud",
+            text = "Найди свой саунд на SoundCloud и YouTube",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
+@Composable
+private fun SourceSwitcher(
+    selected: ServiceType,
+    statuses: Map<ServiceType, ServiceHealth>,
+    onSelect: (ServiceType) -> Unit,
+    onRefreshStatuses: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val selectedHealth = statuses[selected] ?: ServiceHealth(isChecking = true)
+
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ServiceType.entries.forEachIndexed { index, service ->
+                ServiceSourceChip(
+                    service = service,
+                    selected = service == selected,
+                    health = statuses[service] ?: ServiceHealth(),
+                    onClick = { onSelect(service) },
+                    modifier = Modifier.weight(1f),
+                )
+                if (index < ServiceType.entries.lastIndex) {
+                    Spacer(Modifier.width(8.dp))
+                }
+            }
+
+            Spacer(Modifier.width(10.dp))
+
+            ServiceStatusButton(
+                statuses = statuses,
+                onRefresh = onRefreshStatuses,
+            )
+        }
+
+        UnavailableServiceWarning(
+            service = selected,
+            health = selectedHealth,
+        )
+    }
+}
+
+@Composable
+private fun ServiceSourceChip(
+    service: ServiceType,
+    selected: Boolean,
+    health: ServiceHealth,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val unavailable = !health.isAvailable && !health.isChecking
+
+    val containerColor by animateColorAsState(
+        targetValue = when {
+            unavailable -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.62f)
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        animationSpec = spring(
+            dampingRatio = 0.75f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "sourceContainer",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = when {
+            unavailable -> MaterialTheme.colorScheme.onErrorContainer
+            selected -> MaterialTheme.colorScheme.onPrimaryContainer
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = tween(180),
+        label = "sourceContent",
+    )
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            unavailable -> MaterialTheme.colorScheme.error.copy(alpha = 0.75f)
+            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        },
+        animationSpec = tween(180),
+        label = "sourceBorder",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.97f,
+        animationSpec = spring(
+            dampingRatio = 0.55f,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "sourceScale",
+    )
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .height(46.dp)
+            .scale(scale),
+        shape = RoundedCornerShape(16.dp),
+        color = containerColor,
+        contentColor = contentColor,
+        border = BorderStroke(
+            width = if (unavailable) 1.5.dp else 1.dp,
+            color = borderColor,
+        ),
+        tonalElevation = if (selected) 2.dp else 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = serviceIcon(service),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = service.displayName,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (unavailable) {
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServiceStatusButton(
+    statuses: Map<ServiceType, ServiceHealth>,
+    onRefresh: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val anyChecking = statuses.values.any { it.isChecking }
+    val anyUnavailable = statuses.values.any { !it.isAvailable && !it.isChecking }
+    val onlineColor = serviceOnlineColor()
+
+    val indicatorColor by animateColorAsState(
+        targetValue = when {
+            anyChecking -> MaterialTheme.colorScheme.primary
+            anyUnavailable -> MaterialTheme.colorScheme.error
+            else -> onlineColor
+        },
+        animationSpec = spring(
+            dampingRatio = 0.7f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "statusBadge",
+    )
+    val iconTint by animateColorAsState(
+        targetValue = when {
+            anyUnavailable -> MaterialTheme.colorScheme.error
+            anyChecking -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = tween(180),
+        label = "statusIcon",
+    )
+
+    Box {
+        Surface(
+            onClick = { expanded = true },
+            modifier = Modifier.size(46.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(
+                1.dp,
+                if (anyUnavailable) {
+                    MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                },
+            ),
+            tonalElevation = 1.dp,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.Radar,
+                    contentDescription = when {
+                        anyChecking -> "Проверка статусов сервисов"
+                        anyUnavailable -> "Есть недоступные сервисы"
+                        else -> "Все сервисы онлайн"
+                    },
+                    tint = iconTint,
+                    modifier = Modifier.size(23.dp),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 9.dp, end = 9.dp)
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(indicatorColor),
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(304.dp),
+            offset = DpOffset(x = 0.dp, y = 6.dp),
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 4.dp,
+            shadowElevation = 12.dp,
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Text(
+                    text = "Статусы сервисов",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Проверка доступности в реальном времени",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+
+                ServiceType.entries.forEachIndexed { index, service ->
+                    ServiceStatusRow(
+                        service = service,
+                        health = statuses[service] ?: ServiceHealth(isChecking = true),
+                    )
+                    if (index < ServiceType.entries.lastIndex) {
+                        Spacer(Modifier.height(2.dp))
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                )
+
+                FilledTonalButton(
+                    onClick = onRefresh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) {
+                    if (anyChecking) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text("Обновить статусы")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServiceStatusRow(
+    service: ServiceType,
+    health: ServiceHealth,
+) {
+    val onlineColor = serviceOnlineColor()
+    val isUnavailable = !health.isAvailable && !health.isChecking
+    val statusColor = when {
+        health.isChecking -> MaterialTheme.colorScheme.primary
+        health.isAvailable -> onlineColor
+        else -> MaterialTheme.colorScheme.error
+    }
+    val statusLabel = when {
+        health.isChecking -> "Проверка"
+        health.isAvailable -> "Онлайн"
+        else -> "Ошибка"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            modifier = Modifier.size(36.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = if (isUnavailable) {
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            },
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = serviceIcon(service),
+                    contentDescription = null,
+                    tint = if (isUnavailable) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        Text(
+            text = service.displayName,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (health.isChecking) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 1.8.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(statusColor),
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = statusLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = statusColor,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun UnavailableServiceWarning(
+    service: ServiceType,
+    health: ServiceHealth,
+) {
+    AnimatedVisibility(
+        visible = !health.isAvailable && !health.isChecking,
+        enter = fadeIn(tween(180)) +
+            expandVertically(
+                expandFrom = Alignment.Top,
+                animationSpec = spring(
+                    dampingRatio = 0.8f,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ),
+        exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.error.copy(alpha = 0.35f),
+            ),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.CloudOff,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "${service.displayName} сейчас недоступен. " +
+                        "Проверь подключение или обнови статусы.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
+    }
+}
+
+private fun serviceIcon(service: ServiceType) = when (service) {
+    ServiceType.SOUNDCLOUD -> Icons.Rounded.Cloud
+    ServiceType.YOUTUBE -> Icons.Rounded.SmartDisplay
+}
+
+@Composable
+private fun serviceOnlineColor(): Color =
+    if (isSystemInDarkTheme()) OnlineGreenDark else OnlineGreenLight
 
 @Composable
 private fun ExpressiveSearchField(
@@ -348,7 +810,10 @@ private fun SuggestionChips(onSuggestion: (String) -> Unit) {
 }
 
 @Composable
-private fun IdleState(query: String) {
+private fun IdleState(
+    query: String,
+    serviceName: String,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -385,7 +850,7 @@ private fun IdleState(query: String) {
         Spacer(Modifier.height(8.dp))
         Text(
             text = if (query.isEmpty()) {
-                "Введи название трека или имя артиста — мы поищем на SoundCloud"
+                "Введи название трека или имя артиста — мы поищем на $serviceName"
             } else {
                 "Ещё чуть-чуть — введи минимум 2 символа"
             },
@@ -397,7 +862,10 @@ private fun IdleState(query: String) {
 }
 
 @Composable
-private fun EmptyResultsState(query: String) {
+private fun EmptyResultsState(
+    query: String,
+    serviceName: String,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -426,7 +894,8 @@ private fun EmptyResultsState(query: String) {
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "По запросу «$query» пусто. Попробуй изменить запрос.",
+            text = "По запросу «$query» на $serviceName пусто. " +
+                "Попробуй изменить запрос или выбрать другой источник.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -496,6 +965,7 @@ private fun ErrorState(
 private fun ResultsList(
     tracks: List<Track>,
     downloadedIds: Set<String>,
+    serviceName: String,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -506,7 +976,7 @@ private fun ResultsList(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "РЕЗУЛЬТАТЫ · SOUNDCLOUD",
+                text = "РЕЗУЛЬТАТЫ · ${serviceName.uppercase()}",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp,

@@ -3,7 +3,9 @@ package com.my.music.core.di
 import com.my.music.core.location.FusedLocationProvider
 import com.my.music.core.location.LocationProvider
 import com.my.music.data.repository.SoundCloudRepository
+import com.my.music.data.repository.YouTubeRepository
 import com.my.music.data.source.soundcloud.SoundCloudRepositoryImpl
+import com.my.music.data.source.youtube.YouTubeRepositoryImpl
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -19,6 +21,12 @@ abstract class RepositoryModule {
     abstract fun bindSoundCloudRepository(
         impl: SoundCloudRepositoryImpl,
     ): SoundCloudRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindYouTubeRepository(
+        impl: YouTubeRepositoryImpl,
+    ): YouTubeRepository
 
     @Binds
     @Singleton

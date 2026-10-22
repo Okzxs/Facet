@@ -3,10 +3,15 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Скачивание только progressive MP3 через OkHttp (22.10.2026) | Экран «Скачанное» и очистка старых данных |
+| MyMusic | активен  | YouTube Music шаги 1–3 + глобальные статусы (22.10.2026) | Шаг 4: PlayerController и DownloadTrackWorker по Track.source, MIME MP3/M4A/WEBM |
 
 ## Ожидающие задачи
 ### Высокий приоритет
+- [x] YouTube Music, шаг 1: `Source.YOUTUBE` + `YouTubeRepository`/impl через NewPipe, progressive M4A/WEBM_OPUS, Hilt-биндинг
+- [x] YouTube Music, шаг 2: `ServiceStatusManager` (Singleton, `StateFlow`, проверка поиском «test» лимит 1, refresh из UI, вызов при старте и ошибках поиска); 5 JVM-тестов
+- [x] YouTube Music, шаг 3: переключатель SoundCloud/YouTube в поиске, меню статусов, предупреждение о недоступном сервисе; 69 JVM-тестов всего
+- [ ] YouTube Music, шаг 4 (позже): `PlayerController`/`DownloadTrackWorker` по `Track.source`, MIME MP3/M4A/WEBM
+- [ ] YouTube Music, шаг 5 (позже): импорт плейлистов YouTube через NewPipe
 - [x] Progressive MP3 22.10: скачивание только через OkHttp в один файл, `requireProgressive=true`, HLS-only → крестик/Snackbar; удалены Media3-классы скачивания; 64 JVM-теста
 - [x] Хотфикс 22.10: WorkInfo — главный источник состояния (CANCELLED/FAILED → крестик, SUCCEEDED → галочка), REPLACE после отмены, защита от двойного тапа, лог в первой строке `doWork()`; 64 JVM-теста
 - [x] Офлайн-режим: Media3 DownloadManager (HLS + MP3 в SimpleCache), Room v7 (`mediaUrl` + `mimeType`), прогресс из `DownloadManager.Listener`, Snackbar ошибки; 54 JVM-теста
@@ -42,6 +47,13 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
+- [План 22.10] Добавляем YouTube Music как второй источник: `Source.YOUTUBE`, `YouTubeRepository` через NewPipe, глобальный `ServiceStatusManager`; текущая итерация — только шаги 1–3 (модель, репозиторий, статусы и UI поиска), плеер/загрузчик не трогаем
+- [План 22.10] YouTube progressive-потоки ищем в `audioStreams` с `DeliveryMethod.PROGRESSIVE_HTTP` и форматами M4A/WEBM_OPUS; предпочитаем M4A, HLS не используем
+- [План 22.10] Статусы сервисов проверяются лёгким поиском `"test"` с лимитом 1; `ServiceHealth(isAvailable, isChecking)`, `StateFlow<Map<ServiceType, ServiceHealth>>`, ручной `refreshStatus()` из меню
+- [YouTube 22.10] `YouTubeRepository` живёт в `data/repository`, impl — в `data/source/youtube`; поиск через `ServiceList.YouTube` с фильтром `videos`, прогрессивный поток — M4A (приоритет) или WEBMA_OPUS, `isHls=false`. Живой тест подтвердил M4A itag=140
+- [Статусы 22.10] `checkAllServices()` вызывается в `MyMusicApp` после `NewPipe.init()` и после ошибок поиска; проверки идут параллельно, повторный запуск защищён Mutex/Job; успешный поиск вызывает `markAvailable()`
+- [Поиск 22.10] `SearchViewModel` использует единый поток `(query, service)`; `distinctUntilChanged` убран, чтобы быстрое переключение SC→YT→SC не оставляло экран в вечной загрузке; `retry()` запускает поиск напрямую
+- [Ограничение 22.10] Плеер и загрузчик YouTube ещё не интегрированы: `PlayerController`/`DownloadTrackWorker` используют `SoundCloudRepository` — YouTube-результаты пока только ищутся
 - [Скачивание 22.10] Офлайн переведён на progressive MP3 + OkHttp: файл `filesDir/downloads/<safe>_<hash>.mp3`, в Room — `file://` + `AUDIO_MPEG`; HLS-сегменты больше не скачиваются
 - [Скачивание 22.10] Для загрузки вызывается `resolveStreamUrl(requireProgressive = true)`: при отсутствии progressive — ошибка «Трек доступен только для онлайн-прослушивания»; для онлайн-плеера HLS-фолбэк сохранён, иначе HLS-only треки перестали бы играть
 - [Скачивание 22.10] Удалены `OfflineDownloadManager`, `OfflineMediaModule`, `MediaDownloadState`; `MusicService` снова использует дефолтный ExoPlayer без `SimpleCache`/`CacheDataSource`

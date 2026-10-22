@@ -11,15 +11,15 @@ data class Track(
     /** URL обложки. Может быть null если SC не вернул artwork. */
     val artworkUrl: String?,
     /**
-     * URL потока. Для SoundCloud — null до вызова resolve(),
-     * потому что v2 API возвращает только ссылку на transcoding endpoint.
+     * URL потока. Для SoundCloud и YouTube — null до вызова resolve():
+     * источник возвращает только ссылку на страницу трека/видео.
      */
     val streamUrl: String?,
     val durationMs: Long,
     val genre: String?,
     val liked: Boolean = false,
-    /** Для SC: URL transcoding endpoint (требует дополнительного resolve) */
+    /** URL страницы трека/видео для последующего resolve потока. */
     val transcodingUrl: String? = null,
 )
 
-enum class Source { SOUNDCLOUD, SPOTIFY, YANDEX, VK, LOCAL }
+enum class Source { SOUNDCLOUD, YOUTUBE, SPOTIFY, YANDEX, VK, LOCAL }
