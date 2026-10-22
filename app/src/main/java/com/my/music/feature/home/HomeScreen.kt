@@ -3,12 +3,10 @@ package com.my.music.feature.home
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -21,26 +19,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -54,12 +44,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -69,9 +60,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,23 +69,24 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
-import com.my.music.core.ui.theme.BentoCardShape
-import com.my.music.core.ui.theme.HeroShape
 import com.my.music.core.ui.theme.PillShape
 import com.my.music.core.ui.theme.SquircleShape
 import com.my.music.core.util.SeasonProvider
 import com.my.music.data.model.SeasonMemory
-import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import kotlin.math.abs
 
 private val ScreenPadding = 20.dp
-private val SectionGap = 30.dp
+private val BlockGap = 26.dp
+
+private enum class ChartRegion {
+    RU,
+    US,
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,8 +97,8 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val recentTracks = uiState.recentTracks
-    val firstRecent = recentTracks.firstOrNull()
-    val firstGenre = uiState.genreSections.firstOrNull { it.tracks.isNotEmpty() }
+    val heroTrack = recentTracks.firstOrNull()
+    var chartRegion by rememberSaveable { mutableStateOf(ChartRegion.RU) }
 
     PullToRefreshBox(
         isRefreshing = uiState.isRefreshing,
@@ -117,20 +107,25 @@ fun HomeScreen(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 10.dp, bottom = 34.dp),
-            verticalArrangement = Arrangement.spacedBy(SectionGap),
+            contentPadding = PaddingValues(
+                start = ScreenPadding,
+                end = ScreenPadding,
+                top = 10.dp,
+                bottom = 30.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(BlockGap),
         ) {
             item(key = "header") {
-                RevealSection(index = 0) {
+                RevealBlock(index = 0) {
                     HomeHeader(onSettingsClick = onSettingsClick)
                 }
             }
 
-            if (firstRecent != null) {
+            if (heroTrack != null) {
                 item(key = "hero") {
-                    RevealSection(index = 1) {
-                        ContinueListeningHero(
-                            track = firstRecent,
+                    RevealBlock(index = 1) {
+                        ContinueListeningCard(
+                            track = heroTrack,
                             queue = recentTracks,
                             onTrackClick = onTrackClick,
                         )
@@ -139,12 +134,14 @@ fun HomeScreen(
             }
 
             item(key = "charts") {
-                RevealSection(index = 2) {
-                    ChartsSection(
+                RevealBlock(index = 2) {
+                    ChartsBlock(
                         topRu = uiState.topRu,
                         topUs = uiState.topUs,
+                        selectedRegion = chartRegion,
                         isLoading = uiState.isChartsLoading,
                         error = uiState.chartsError,
+                        onRegionSelected = { chartRegion = it },
                         onTrackClick = onTrackClick,
                         onRetry = viewModel::refresh,
                     )
@@ -152,9 +149,9 @@ fun HomeScreen(
             }
 
             if (recentTracks.isNotEmpty()) {
-                item(key = "chronicle") {
-                    RevealSection(index = 3) {
-                        ChronicleSection(
+                item(key = "recent") {
+                    RevealBlock(index = 3) {
+                        RecentBlock(
                             tracks = recentTracks,
                             onTrackClick = onTrackClick,
                         )
@@ -163,23 +160,20 @@ fun HomeScreen(
             }
 
             if (uiState.memories.isNotEmpty()) {
-                item(key = "memories") {
-                    RevealSection(index = 4) {
-                        MemoriesBentoCard(
+                item(key = "memory") {
+                    RevealBlock(index = 4) {
+                        MemoryCard(
                             memories = uiState.memories,
                             season = uiState.memorySeason,
                             onTrackClick = onTrackClick,
                         )
                     }
                 }
-            }
-
-            if (uiState.likedTracks.isNotEmpty() || firstGenre != null) {
-                item(key = "collection") {
-                    RevealSection(index = 5) {
-                        CollectionBentoRow(
-                            likedTracks = uiState.likedTracks,
-                            genre = firstGenre,
+            } else if (uiState.likedTracks.isNotEmpty()) {
+                item(key = "liked") {
+                    RevealBlock(index = 4) {
+                        LikedCard(
+                            tracks = uiState.likedTracks,
                             onTrackClick = onTrackClick,
                         )
                     }
@@ -190,34 +184,33 @@ fun HomeScreen(
 }
 
 /**
- * Появление секции на пружине: лёгкий подъём, масштаб и stagger по индексу.
+ * Мягкое появление блока: только прозрачность и небольшой подъём.
  */
 @Composable
-private fun RevealSection(
+private fun RevealBlock(
     index: Int,
     content: @Composable () -> Unit,
 ) {
     val progress = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        delay(index * 45L)
+        delay(index * 35L)
         progress.animateTo(
             targetValue = 1f,
             animationSpec = spring(
                 dampingRatio = 0.8f,
-                stiffness = Spring.StiffnessLow,
+                stiffness = Spring.StiffnessMediumLow,
             ),
         )
     }
 
     Box(
-        modifier = Modifier.graphicsLayer {
-            alpha = progress.value
-            translationY = (1f - progress.value) * 26.dp.toPx()
-            val scale = 0.98f + 0.02f * progress.value
-            scaleX = scale
-            scaleY = scale
-        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = progress.value
+                translationY = (1f - progress.value) * 12.dp.toPx()
+            },
     ) {
         content()
     }
@@ -241,54 +234,46 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
     }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = ScreenPadding),
-        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = dateLabel,
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.4.sp,
+                    letterSpacing = 1.2.sp,
                 ),
                 color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.height(7.dp))
-            Text(
-                text = greeting,
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
-                text = "Чарты, любимое и немного ностальгии.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = greeting,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(8.dp))
         FilledTonalIconButton(
             onClick = onSettingsClick,
-            modifier = Modifier
-                .padding(top = 4.dp)
-                .size(50.dp),
-            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.size(42.dp),
+            shape = RoundedCornerShape(14.dp),
         ) {
             Icon(
                 imageVector = Icons.Rounded.Settings,
                 contentDescription = "Настройки",
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(20.dp),
             )
         }
     }
 }
 
 @Composable
-private fun ContinueListeningHero(
+private fun ContinueListeningCard(
     track: Track,
     queue: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
@@ -298,33 +283,15 @@ private fun ContinueListeningHero(
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.95f else 1f,
         animationSpec = spring(
-            dampingRatio = 0.55f,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "heroScale",
-    )
-    val cornerRadius by animateDpAsState(
-        targetValue = if (pressed) 22.dp else 32.dp,
-        animationSpec = spring(
             dampingRatio = 0.8f,
             stiffness = Spring.StiffnessMedium,
         ),
-        label = "heroCorner",
-    )
-    val containerColor by animateColorAsState(
-        targetValue = if (pressed) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        animationSpec = spring(dampingRatio = 0.8f),
-        label = "heroContainer",
+        label = "heroScale",
     )
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = ScreenPadding)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -338,8 +305,8 @@ private fun ContinueListeningHero(
             .semantics {
                 contentDescription = "Продолжить слушать ${track.title}"
             },
-        shape = RoundedCornerShape(cornerRadius),
-        color = containerColor,
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -347,18 +314,19 @@ private fun ContinueListeningHero(
         ) {
             Artwork(
                 url = track.artworkUrl,
-                contentDescription = track.title,
-                modifier = Modifier.size(112.dp),
-                shape = RoundedCornerShape(26.dp),
+                contentDescription = null,
+                modifier = Modifier.size(88.dp),
+                shape = SquircleShape,
             )
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "ПРОДОЛЖИТЬ СЛУШАТЬ",
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
+                    text = "Продолжить слушать",
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.titleLarge,
@@ -366,209 +334,174 @@ private fun ContinueListeningHero(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
                     text = track.artist,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = track.source.displayName(),
-                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.6.sp),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        shape = PillShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = "Включить",
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        }
-                    }
-                }
             }
+            Spacer(Modifier.width(10.dp))
+            PlayBadge(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            )
         }
     }
 }
 
 @Composable
-private fun ChartsSection(
+private fun ChartsBlock(
     topRu: List<Track>,
     topUs: List<Track>,
+    selectedRegion: ChartRegion,
     isLoading: Boolean,
     error: String?,
+    onRegionSelected: (ChartRegion) -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
     onRetry: () -> Unit,
 ) {
-    Column {
-        SectionHeader(
-            eyebrow = "YOUTUBE",
-            title = "Чарты",
-            subtitle = "Top RU и Top US прямо сейчас",
-        )
-        Spacer(Modifier.height(14.dp))
-
-        when {
-            isLoading && topRu.isEmpty() && topUs.isEmpty() -> ChartSkeletonRow()
-            topRu.isEmpty() && topUs.isEmpty() && error != null -> ChartErrorCard(
-                message = error,
-                onRetry = onRetry,
-            )
-            else -> Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = ScreenPadding),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                ChartBentoCard(
-                    region = "RU",
-                    tracks = topRu,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    queue = topRu,
-                    onTrackClick = onTrackClick,
-                    modifier = Modifier.weight(1f),
-                )
-                ChartBentoCard(
-                    region = "US",
-                    tracks = topUs,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    queue = topUs,
-                    onTrackClick = onTrackClick,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+    val containerColor = MaterialTheme.colorScheme.primaryContainer
+    val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+    val tracks = when (selectedRegion) {
+        ChartRegion.RU -> topRu
+        ChartRegion.US -> topUs
     }
-}
 
-@Composable
-private fun SectionHeader(
-    eyebrow: String,
-    title: String,
-    subtitle: String,
-) {
-    Column(modifier = Modifier.padding(horizontal = ScreenPadding)) {
-        Text(
-            text = eyebrow,
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun ChartBentoCard(
-    region: String,
-    tracks: List<Track>,
-    containerColor: Color,
-    contentColor: Color,
-    queue: List<Track>,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    modifier: Modifier = Modifier,
-) {
     Surface(
-        modifier = modifier,
-        shape = SquircleShape,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
         color = containerColor,
         contentColor = contentColor,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 15.dp),
-        ) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "TOP",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            letterSpacing = 1.4.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        color = contentColor.copy(alpha = 0.62f),
-                    )
-                    Text(
-                        text = region,
-                        style = MaterialTheme.typography.displaySmall,
+                        text = "Чарты",
+                        style = MaterialTheme.typography.headlineSmall,
                         color = contentColor,
                         maxLines = 1,
                     )
+                    Text(
+                        text = "YouTube",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.62f),
+                        maxLines = 1,
+                    )
                 }
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(contentColor.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.size(20.dp),
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ChartRegionChip(
+                        label = "Top RU",
+                        selected = selectedRegion == ChartRegion.RU,
+                        containerColor = containerColor,
+                        contentColor = contentColor,
+                        onClick = { onRegionSelected(ChartRegion.RU) },
+                    )
+                    ChartRegionChip(
+                        label = "Top US",
+                        selected = selectedRegion == ChartRegion.US,
+                        containerColor = containerColor,
+                        contentColor = contentColor,
+                        onClick = { onRegionSelected(ChartRegion.US) },
                     )
                 }
             }
+
             Spacer(Modifier.height(10.dp))
 
-            if (tracks.isEmpty()) {
-                Text(
+            when {
+                isLoading && tracks.isEmpty() -> ChartSkeleton(contentColor = contentColor)
+                tracks.isEmpty() && error != null -> ChartError(
+                    message = error,
+                    contentColor = contentColor,
+                    onRetry = onRetry,
+                )
+                tracks.isEmpty() -> Text(
                     text = "Нет данных",
                     style = MaterialTheme.typography.bodySmall,
-                    color = contentColor.copy(alpha = 0.65f),
+                    color = contentColor.copy(alpha = 0.68f),
                 )
-            } else {
-                tracks.take(3).forEachIndexed { index, track ->
+                else -> tracks.take(3).forEachIndexed { index, track ->
                     ChartTrackRow(
                         index = index,
                         track = track,
                         contentColor = contentColor,
-                        onClick = { onTrackClick(track, queue) },
+                        onClick = { onTrackClick(track, tracks) },
                     )
                     if (index < minOf(tracks.size, 3) - 1) {
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 32.dp),
+                            modifier = Modifier.padding(start = 44.dp),
                             color = contentColor.copy(alpha = 0.14f),
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ChartRegionChip(
+    label: String,
+    selected: Boolean,
+    containerColor: Color,
+    contentColor: Color,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "chartChipScale",
+    )
+    val background by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            contentColor.copy(alpha = 0.08f)
+        },
+        animationSpec = spring(dampingRatio = 0.8f),
+        label = "chartChipBackground",
+    )
+    val foreground by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            contentColor
+        },
+        animationSpec = spring(dampingRatio = 0.8f),
+        label = "chartChipForeground",
+    )
+
+    Surface(
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        shape = PillShape,
+        color = background,
+        contentColor = foreground,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            maxLines = 1,
+        )
     }
 }
 
@@ -582,177 +515,144 @@ private fun ChartTrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = (index + 1).toString().padStart(2, '0'),
-            style = MaterialTheme.typography.titleLarge.copy(
+            style = MaterialTheme.typography.headlineSmall.copy(
                 fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.5).sp,
+                letterSpacing = (-0.6).sp,
             ),
-            color = contentColor.copy(alpha = 0.58f),
-            modifier = Modifier.width(29.dp),
+            color = contentColor.copy(alpha = 0.66f),
+            modifier = Modifier.width(38.dp),
         )
-        Spacer(Modifier.width(5.dp))
+        Spacer(Modifier.width(6.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = track.title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = track.artist,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    letterSpacing = 0.2.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
+                style = MaterialTheme.typography.bodySmall,
                 color = contentColor.copy(alpha = 0.68f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.width(8.dp))
+        Icon(
+            imageVector = Icons.Rounded.PlayArrow,
+            contentDescription = null,
+            tint = contentColor.copy(alpha = 0.5f),
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
 @Composable
-private fun ChartSkeletonRow() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = ScreenPadding),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        repeat(2) { index ->
-            val containerColor = if (index == 0) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.secondaryContainer
-            }
-            val contentColor = if (index == 0) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSecondaryContainer
-            }
-
-            Surface(
+private fun ChartSkeleton(contentColor: Color) {
+    Column {
+        repeat(3) { index ->
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .height(220.dp),
-                shape = SquircleShape,
-                color = containerColor,
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    SkeletonBlock(
-                        color = contentColor.copy(alpha = 0.22f),
-                        widthFraction = 0.38f,
-                        height = 12.dp,
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(PillShape)
+                        .background(contentColor.copy(alpha = 0.18f)),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.62f)
+                            .height(14.dp)
+                            .clip(PillShape)
+                            .background(contentColor.copy(alpha = 0.18f)),
                     )
-                    Spacer(Modifier.height(8.dp))
-                    SkeletonBlock(
-                        color = contentColor.copy(alpha = 0.30f),
-                        widthFraction = 0.72f,
-                        height = 38.dp,
+                    Spacer(Modifier.height(5.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.4f)
+                            .height(10.dp)
+                            .clip(PillShape)
+                            .background(contentColor.copy(alpha = 0.12f)),
                     )
-                    Spacer(Modifier.height(18.dp))
-                    repeat(3) {
-                        SkeletonBlock(
-                            color = contentColor.copy(alpha = 0.18f),
-                            widthFraction = 1f,
-                            height = 18.dp,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                    }
                 }
             }
+            if (index < 2) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 42.dp),
+                    color = contentColor.copy(alpha = 0.10f),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun SkeletonBlock(
-    color: Color,
-    widthFraction: Float,
-    height: androidx.compose.ui.unit.Dp,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth(widthFraction)
-            .height(height)
-            .clip(PillShape)
-            .background(color),
-    )
-}
-
-@Composable
-private fun ChartErrorCard(
+private fun ChartError(
     message: String,
+    contentColor: Color,
     onRetry: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = ScreenPadding),
-        shape = BentoCardShape,
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Column {
+        Text(
+            text = "Не удалось загрузить чарт",
+            style = MaterialTheme.typography.titleSmall,
+            color = contentColor,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodySmall,
+            color = contentColor.copy(alpha = 0.68f),
+        )
+        Spacer(Modifier.height(4.dp))
+        TextButton(
+            onClick = onRetry,
+            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = contentColor),
         ) {
-            Icon(
-                imageVector = Icons.Rounded.Refresh,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Чарты не загрузились",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.78f),
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            TextButton(onClick = onRetry) {
-                Text("Повторить")
-            }
+            Text("Повторить")
         }
     }
 }
 
 @Composable
-private fun ChronicleSection(
+private fun RecentBlock(
     tracks: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     Column {
-        SectionHeader(
-            eyebrow = "ВАША ИСТОРИЯ",
-            title = "Хроника",
-            subtitle = "Последние прослушивания",
+        Text(
+            text = "Недавнее",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
         LazyRow(
-            contentPadding = PaddingValues(horizontal = ScreenPadding),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            itemsIndexed(
-                items = tracks,
-                key = { _, track -> track.id },
-            ) { index, track ->
-                ChronicleCard(
+            items(
+                items = tracks.take(10),
+                key = { it.id },
+            ) { track ->
+                RecentCover(
                     track = track,
-                    index = index,
                     onClick = { onTrackClick(track, tracks) },
                 )
             }
@@ -761,125 +661,91 @@ private fun ChronicleSection(
 }
 
 @Composable
-private fun ChronicleCard(
+private fun RecentCover(
     track: Track,
-    index: Int,
     onClick: () -> Unit,
 ) {
-    val isWide = index % 3 != 1
-    val cardWidth = if (isWide) 160.dp else 120.dp
-    val imageHeight = if (isWide) 190.dp else 144.dp
-    val topOffset = if (isWide) 0.dp else 26.dp
-    val restCorner = if (isWide) 28.dp else 22.dp
-
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.96f else 1f,
         animationSpec = spring(
-            dampingRatio = 0.55f,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "chronicleScale",
-    )
-    val corner by animateDpAsState(
-        targetValue = if (pressed) restCorner - 6.dp else restCorner,
-        animationSpec = spring(
             dampingRatio = 0.8f,
             stiffness = Spring.StiffnessMedium,
         ),
-        label = "chronicleCorner",
+        label = "recentScale",
     )
-    val shape = RoundedCornerShape(corner)
 
-    Column(
+    Box(
         modifier = Modifier
-            .width(cardWidth)
-            .padding(top = topOffset)
+            .size(126.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
+            .clip(SquircleShape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 role = Role.Button,
                 onClick = onClick,
-            ),
+            )
+            .semantics {
+                contentDescription = "Воспроизвести ${track.title}"
+            },
     ) {
+        Artwork(
+            url = track.artworkUrl,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            shape = SquircleShape,
+        )
         Box(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(imageHeight)
-                .clip(shape),
+                .height(50.dp)
+                .background(Color.Black.copy(alpha = 0.46f)),
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
         ) {
-            Artwork(
-                url = track.artworkUrl,
-                contentDescription = track.title,
-                modifier = Modifier.fillMaxSize(),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.78f),
-                            ),
-                        ),
-                    ),
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = formatDuration(track.durationMs),
+                text = track.artist,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(9.dp)
-                    .background(Color.Black.copy(alpha = 0.42f), PillShape)
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                color = Color.White.copy(alpha = 0.76f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = track.title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = track.artist,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
 @Composable
-private fun MemoriesBentoCard(
+private fun MemoryCard(
     memories: List<SeasonMemory>,
     season: String,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     val memoryTracks = remember(memories) { memories.map { it.track } }
     val firstTrack = memoryTracks.firstOrNull() ?: return
-    val containerColor = seasonContainerColor(season)
-    val contentColor = seasonContentColor(season)
-    val locale = remember { Locale.forLanguageTag("ru-RU") }
-    val seasonYear = remember { SimpleDateFormat("yyyy", Locale.US).format(Date()) }
-    val seasonName = seasonDisplayName(season)
-    val coordinates = remember(memories) { memories.formatCoordinates() }
-
+    val containerColor = MaterialTheme.colorScheme.tertiaryContainer
+    val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
+        targetValue = if (pressed) 0.95f else 1f,
         animationSpec = spring(
-            dampingRatio = 0.55f,
+            dampingRatio = 0.8f,
             stiffness = Spring.StiffnessMedium,
         ),
         label = "memoryScale",
@@ -888,7 +754,6 @@ private fun MemoriesBentoCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = ScreenPadding)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -899,230 +764,81 @@ private fun MemoriesBentoCard(
                 role = Role.Button,
                 onClick = { onTrackClick(firstTrack, memoryTracks) },
             ),
-        shape = SquircleShape,
+        shape = RoundedCornerShape(16.dp),
         color = containerColor,
         contentColor = contentColor,
     ) {
-        Box {
-            Text(
-                text = seasonName.uppercase(locale),
-                style = MaterialTheme.typography.displayLarge,
-                color = contentColor.copy(alpha = 0.08f),
-                maxLines = 1,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .offset(x = 14.dp, y = 16.dp),
-            )
-
-            Column(modifier = Modifier.padding(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "ВОСПОМИНАНИЯ · ${seasonName.uppercase(locale)} $seasonYear",
-                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.1.sp),
-                        color = contentColor.copy(alpha = 0.72f),
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        shape = PillShape,
-                        color = contentColor.copy(alpha = 0.13f),
-                        contentColor = contentColor,
-                    ) {
-                        Text(
-                            text = memories.size.toString(),
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(13.dp))
-                Row(verticalAlignment = Alignment.Top) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = seasonHeadline(season),
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = contentColor,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            text = "${memories.size} ${tracksWord(memories.size)} за сезон",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = contentColor.copy(alpha = 0.76f),
-                        )
-                    }
-                    if (memories.count { !it.track.artworkUrl.isNullOrBlank() } >= 2) {
-                        Spacer(Modifier.width(14.dp))
-                        MemoryArtworkStack(
-                            memories = memories,
-                            borderColor = containerColor,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(18.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Rounded.LocationOn,
-                        contentDescription = null,
-                        tint = contentColor.copy(alpha = 0.82f),
-                        modifier = Modifier.size(17.dp),
-                    )
-                    Spacer(Modifier.width(5.dp))
-                    Text(
-                        text = coordinates ?: "Геометка не сохранена",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = contentColor.copy(alpha = 0.82f),
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        shape = PillShape,
-                        color = contentColor.copy(alpha = 0.13f),
-                        contentColor = contentColor,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = "Слушать",
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        }
-                    }
-                }
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Воспоминания",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = contentColor.copy(alpha = 0.7f),
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = seasonDisplayName(season),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = contentColor,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "За этот сезон",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = contentColor.copy(alpha = 0.68f),
+                    maxLines = 1,
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun MemoryArtworkStack(
-    memories: List<SeasonMemory>,
-    borderColor: Color,
-) {
-    val artworks = remember(memories) {
-        memories.mapNotNull { it.track.artworkUrl }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .take(2)
-    }
-    val stackShape = RoundedCornerShape(20.dp)
-
-    Box(
-        modifier = Modifier
-            .width(94.dp)
-            .height(96.dp),
-    ) {
-        Artwork(
-            url = artworks.getOrNull(0),
-            contentDescription = null,
-            modifier = Modifier
-                .size(68.dp)
-                .align(Alignment.TopStart)
-                .rotate(-7f)
-                .border(2.dp, borderColor, stackShape),
-            shape = stackShape,
-        )
-        if (artworks.size > 1) {
-            Artwork(
-                url = artworks[1],
-                contentDescription = null,
-                modifier = Modifier
-                    .size(68.dp)
-                    .align(Alignment.BottomEnd)
-                    .rotate(6f)
-                    .border(2.dp, borderColor, stackShape),
-                shape = stackShape,
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = memories.size.toString(),
+                    style = MaterialTheme.typography.displaySmall,
+                    color = contentColor,
+                    maxLines = 1,
+                )
+                Text(
+                    text = tracksWord(memories.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.65f),
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            PlayBadge(
+                containerColor = contentColor,
+                contentColor = containerColor,
             )
         }
     }
 }
 
 @Composable
-private fun CollectionBentoRow(
-    likedTracks: List<Track>,
-    genre: GenreSection?,
+private fun LikedCard(
+    tracks: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
-    if (likedTracks.isEmpty() && genre == null) return
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = ScreenPadding),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        if (likedTracks.isNotEmpty()) {
-            CollectionTile(
-                label = "ЛЮБИМОЕ",
-                value = likedTracks.size.toString().padStart(2, '0'),
-                subtitle = "${likedTracks.size} ${tracksWord(likedTracks.size)}",
-                action = "Включить",
-                icon = Icons.Rounded.Favorite,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                valueStyle = MaterialTheme.typography.displaySmall,
-                onClick = { onTrackClick(likedTracks.first(), likedTracks) },
-                modifier = Modifier.weight(1.05f),
-            )
-        }
-        if (genre != null) {
-            CollectionTile(
-                label = "ВАШ ЖАНР",
-                value = genre.genre,
-                subtitle = "${genre.tracks.size} ${tracksWord(genre.tracks.size)}",
-                action = "Слушать",
-                icon = Icons.Rounded.GraphicEq,
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                valueStyle = MaterialTheme.typography.titleLarge,
-                onClick = { onTrackClick(genre.tracks.first(), genre.tracks) },
-                modifier = Modifier.weight(if (likedTracks.isNotEmpty()) 0.95f else 1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun CollectionTile(
-    label: String,
-    value: String,
-    subtitle: String,
-    action: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    containerColor: Color,
-    contentColor: Color,
-    valueStyle: TextStyle,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+    val containerColor = MaterialTheme.colorScheme.secondaryContainer
+    val contentColor = MaterialTheme.colorScheme.onSecondaryContainer
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
+        targetValue = if (pressed) 0.95f else 1f,
         animationSpec = spring(
-            dampingRatio = 0.55f,
+            dampingRatio = 0.8f,
             stiffness = Spring.StiffnessMedium,
         ),
-        label = "collectionScale",
+        label = "likedScale",
     )
 
     Surface(
-        modifier = modifier
-            .heightIn(min = 158.dp)
+        modifier = Modifier
+            .fillMaxWidth()
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -1131,60 +847,63 @@ private fun CollectionTile(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 role = Role.Button,
-                onClick = onClick,
+                onClick = { onTrackClick(tracks.first(), tracks) },
             ),
-        shape = SquircleShape,
+        shape = RoundedCornerShape(16.dp),
         color = containerColor,
         contentColor = contentColor,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
+                    text = "Любимое",
+                    style = MaterialTheme.typography.labelMedium,
                     color = contentColor.copy(alpha = 0.7f),
-                    modifier = Modifier.weight(1f),
                     maxLines = 1,
                 )
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = contentColor.copy(alpha = 0.72f),
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = value,
-                style = valueStyle,
-                color = contentColor,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = contentColor.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(13.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    text = action,
-                    style = MaterialTheme.typography.labelLarge,
+                    text = tracks.size.toString(),
+                    style = MaterialTheme.typography.displaySmall,
                     color = contentColor,
+                    maxLines = 1,
                 )
-                Spacer(Modifier.width(3.dp))
-                Icon(
-                    imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = null,
-                    tint = contentColor,
-                    modifier = Modifier.size(16.dp),
+                Text(
+                    text = tracksWord(tracks.size),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = contentColor.copy(alpha = 0.68f),
+                    maxLines = 1,
                 )
             }
+            PlayBadge(
+                containerColor = contentColor,
+                contentColor = containerColor,
+            )
         }
+    }
+}
+
+@Composable
+private fun PlayBadge(
+    containerColor: Color,
+    contentColor: Color,
+) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(PillShape)
+            .background(containerColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.PlayArrow,
+            contentDescription = null,
+            tint = contentColor,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 
@@ -1193,7 +912,7 @@ private fun Artwork(
     url: String?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(20.dp),
+    shape: Shape = SquircleShape,
 ) {
     val context = LocalContext.current
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
@@ -1234,34 +953,11 @@ private fun Artwork(
     }
 }
 
-@Composable
-private fun seasonContainerColor(season: String): Color = when (season) {
-    SeasonProvider.WINTER -> MaterialTheme.colorScheme.secondaryContainer
-    SeasonProvider.SPRING -> MaterialTheme.colorScheme.tertiaryContainer
-    SeasonProvider.SUMMER -> MaterialTheme.colorScheme.primaryContainer
-    else -> MaterialTheme.colorScheme.tertiaryContainer
-}
-
-@Composable
-private fun seasonContentColor(season: String): Color = when (season) {
-    SeasonProvider.WINTER -> MaterialTheme.colorScheme.onSecondaryContainer
-    SeasonProvider.SPRING -> MaterialTheme.colorScheme.onTertiaryContainer
-    SeasonProvider.SUMMER -> MaterialTheme.colorScheme.onPrimaryContainer
-    else -> MaterialTheme.colorScheme.onTertiaryContainer
-}
-
 private fun seasonDisplayName(season: String): String = when (season) {
     SeasonProvider.WINTER -> "Зима"
     SeasonProvider.SPRING -> "Весна"
     SeasonProvider.SUMMER -> "Лето"
     else -> "Осень"
-}
-
-private fun seasonHeadline(season: String): String = when (season) {
-    SeasonProvider.WINTER -> "Зима, которую вы сохранили"
-    SeasonProvider.SPRING -> "Весна в вашем плейлисте"
-    SeasonProvider.SUMMER -> "Летний саундтрек"
-    else -> "Осень, которая звучит"
 }
 
 private fun tracksWord(count: Int): String {
@@ -1273,37 +969,4 @@ private fun tracksWord(count: Int): String {
         last in 2..4 -> "трека"
         else -> "треков"
     }
-}
-
-private fun List<SeasonMemory>.formatCoordinates(): String? {
-    val memory = firstOrNull { it.latitude != null && it.longitude != null } ?: return null
-    val latitude = formatCoordinate(memory.latitude!!, "N", "S")
-    val longitude = formatCoordinate(memory.longitude!!, "E", "W")
-    return "$latitude · $longitude"
-}
-
-private fun formatCoordinate(value: Double, positive: String, negative: String): String {
-    val hemisphere = if (value >= 0) positive else negative
-    return String.format(Locale.US, "%.2f° %s", abs(value), hemisphere)
-}
-
-private fun formatDuration(durationMs: Long): String {
-    val totalSeconds = durationMs.coerceAtLeast(0L) / 1000L
-    val hours = totalSeconds / 3600L
-    val minutes = (totalSeconds % 3600L) / 60L
-    val seconds = totalSeconds % 60L
-    return if (hours > 0) {
-        "$hours:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
-    } else {
-        "$minutes:${seconds.toString().padStart(2, '0')}"
-    }
-}
-
-private fun Source.displayName(): String = when (this) {
-    Source.SOUNDCLOUD -> "SoundCloud"
-    Source.YOUTUBE -> "YouTube"
-    Source.SPOTIFY -> "Spotify"
-    Source.YANDEX -> "Яндекс Музыка"
-    Source.VK -> "ВКонтакте"
-    Source.LOCAL -> "Локальный файл"
 }
