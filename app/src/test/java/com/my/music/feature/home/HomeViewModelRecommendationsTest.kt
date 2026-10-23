@@ -42,82 +42,165 @@ class HomeViewModelRecommendationsTest {
 
     @Test
     fun `builds personalized recommendations from likes and history`() {
-        likedFlow.value = listOf(
-            track("l1", artist = "Artist B", genre = null),
-        )
-        historyFlow.value = listOf(
-            track("h1", artist = "Artist A", genre = "Rock"),
+        likedFlow.value = listOf(track("l1", artist = "Artist B", genre = null))
+        historyFlow.value = listOf(track("h1", artist = "Artist A", genre = "Rock"))
+        coEvery {
+            youtubeRepository.search("Rock official audio", 24)
+        } returns Result.success(
+            (1..20).map { index ->
+                track("rec-$index", title = "Original Song $index")
+            },
         )
         coEvery {
-            youtubeRepository.search("Rock music mix", 12)
+            youtubeRepository.search("Artist B official audio", 24)
+        } returns Result.success(emptyList())
+
+        val state = createViewModel().uiState.value
+
+        assertEquals(15, state.recommendations.size)
+        assertEquals("rec-1", state.recommendations.first().id)
+        assertEquals("rec-15", state.recommendations.last().id)
+        assertFalse(state.isRecommendationsLoading)
+        assertNull(state.recommendationsError)
+        coVerify(exactly = 1) { youtubeRepository.search("Rock official audio", 24) }
+        coVerify(exactly = 1) { youtubeRepository.search("Artist B official audio", 24) }
+        coVerify(exactly = 0) { youtubeRepository.search("popular songs official audio", 24) }
+    }
+
+    @Test
+    fun `filters translations remixes covers and live versions`() {
+        likedFlow.value = listOf(track("l1", artist = "Band", genre = "Rock"))
+        coEvery {
+            youtubeRepository.search("Rock official audio", 24)
         } returns Result.success(
             listOf(
-                track("rec-1", durationMs = 180_000L),
-                track("h1", durationMs = 180_000L),
-                track("too-long", durationMs = 1_200_000L),
+                track("good-1", title = "Original Song"),
+                track("translated", title = "Original Song (перевод на русский)"),
+                track("multilang", title = "Original Song на разных языках"),
+                track("remix", title = "Original Song (Remix)"),
+                track("cover", title = "Original Song (Cover)"),
+                track("live", title = "Original Song (Live)"),
+                track("instrumental", title = "Original Song (Instrumental)"),
+                track("karaoke", title = "Original Song (Karaoke)"),
+                track("weird", title = "🎵🎵🎵"),
+                track("good-2", title = "Другая песня"),
             ),
         )
         coEvery {
-            youtubeRepository.search("Artist B best songs", 12)
+            youtubeRepository.search("Band official audio", 24)
+        } returns Result.success(emptyList())
+        coEvery {
+            youtubeRepository.search("popular songs official audio", 24)
+        } returns Result.success(emptyList())
+
+        val state = createViewModel().uiState.value
+
+        assertEquals(listOf("good-1", "good-2"), state.recommendations.map { it.id })
+        coVerify(exactly = 1) { youtubeRepository.search("popular songs official audio", 24) }
+    }
+
+    @Test
+    fun `tops up short personalized selection with popular tracks`() {
+        likedFlow.value = listOf(track("l1", artist = "Band", genre = "Rock"))
+        coEvery {
+            youtubeRepository.search("Rock official audio", 24)
         } returns Result.success(
             listOf(
-                track("rec-2", durationMs = 200_000L),
-                track("rec-1", durationMs = 180_000L),
+                track("genre-1", title = "Genre One"),
+                track("genre-2", title = "Genre Two"),
             ),
+        )
+        coEvery {
+            youtubeRepository.search("Band official audio", 24)
+        } returns Result.success(
+            listOf(
+                track("artist-1", title = "Artist One"),
+                track("artist-2", title = "Artist Two"),
+                track("artist-3", title = "Artist Three"),
+            ),
+        )
+        coEvery {
+            youtubeRepository.search("popular songs official audio", 24)
+        } returns Result.success(
+            (1..10).map { index ->
+                track("popular-$index", title = "Popular Song $index")
+            },
         )
 
         val state = createViewModel().uiState.value
 
-        assertEquals(listOf("rec-1", "rec-2"), state.recommendations.map { it.id })
-        assertFalse(state.isRecommendationsLoading)
-        assertNull(state.recommendationsError)
-        coVerify(exactly = 1) { youtubeRepository.search("Rock music mix", 12) }
-        coVerify(exactly = 1) { youtubeRepository.search("Artist B best songs", 12) }
-        coVerify(exactly = 0) { youtubeRepository.search("popular music 2026", 12) }
+        assertEquals(15, state.recommendations.size)
+        assertEquals(
+            listOf("genre-1", "genre-2", "artist-1", "artist-2", "artist-3"),
+            state.recommendations.take(5).map { it.id },
+        )
+        assertEquals("popular-10", state.recommendations.last().id)
+        coVerify(exactly = 1) { youtubeRepository.search("popular songs official audio", 24) }
     }
 
     @Test
     fun `falls back to popular music when there are no likes or history`() {
         coEvery {
-            youtubeRepository.search("popular music 2026", 12)
-        } returns Result.success(listOf(track("popular-1")))
+            youtubeRepository.search("popular songs official audio", 24)
+        } returns Result.success(
+            (1..12).map { index ->
+                track("popular-$index", title = "Popular Song $index")
+            },
+        )
 
         val state = createViewModel().uiState.value
 
-        assertEquals(listOf("popular-1"), state.recommendations.map { it.id })
+        assertEquals(12, state.recommendations.size)
+        assertEquals("popular-1", state.recommendations.first().id)
         assertFalse(state.isRecommendationsLoading)
         assertNull(state.recommendationsError)
-        coVerify(exactly = 1) { youtubeRepository.search("popular music 2026", 12) }
+        coVerify(exactly = 1) { youtubeRepository.search("popular songs official audio", 24) }
     }
 
     @Test
-    fun `falls back to popular music when personalized search finds nothing`() {
-        likedFlow.value = listOf(
-            track("l1", artist = "Artist B", genre = "Rock"),
-        )
+    fun `keeps recommendation in feed after it appears in history`() {
         coEvery {
-            youtubeRepository.search("Rock music mix", 12)
-        } returns Result.success(listOf(track("too-long", durationMs = 1_200_000L)))
-        coEvery {
-            youtubeRepository.search("Artist B best songs", 12)
-        } returns Result.success(listOf(track("l1")))
-        coEvery {
-            youtubeRepository.search("popular music 2026", 12)
-        } returns Result.success(listOf(track("popular-1")))
+            youtubeRepository.search("popular songs official audio", 24)
+        } returns Result.success(listOf(track("rec-1", title = "Recommended Song")))
 
-        val state = createViewModel().uiState.value
+        val viewModel = createViewModel()
+        assertEquals(listOf("rec-1"), viewModel.uiState.value.recommendations.map { it.id })
 
-        assertEquals(listOf("popular-1"), state.recommendations.map { it.id })
+        historyFlow.value = listOf(track("rec-1", title = "Recommended Song"))
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("rec-1"), state.recommendations.map { it.id })
+        assertEquals(listOf("rec-1"), state.recentTracks.map { it.id })
+        coVerify(exactly = 1) { youtubeRepository.search("popular songs official audio", 24) }
+    }
+
+    @Test
+    fun `refresh reloads recommendations`() {
+        coEvery {
+            youtubeRepository.search("popular songs official audio", 24)
+        } returns Result.success(listOf(track("rec-1", title = "First Song")))
+
+        val viewModel = createViewModel()
+        assertEquals(listOf("rec-1"), viewModel.uiState.value.recommendations.map { it.id })
+
+        coEvery {
+            youtubeRepository.search("popular songs official audio", 24)
+        } returns Result.success(listOf(track("rec-2", title = "Second Song")))
+
+        viewModel.refresh()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("rec-2"), state.recommendations.map { it.id })
+        assertFalse(state.isRefreshing)
         assertFalse(state.isRecommendationsLoading)
-        assertNull(state.recommendationsError)
-        coVerify(exactly = 1) { youtubeRepository.search("popular music 2026", 12) }
+        coVerify(exactly = 2) { youtubeRepository.search("popular songs official audio", 24) }
     }
 
     @Test
     fun `failed refresh keeps previous recommendations and exposes error`() {
         coEvery {
-            youtubeRepository.search("popular music 2026", 12)
-        } returns Result.success(listOf(track("popular-1")))
+            youtubeRepository.search("popular songs official audio", 24)
+        } returns Result.success(listOf(track("rec-1", title = "Recommended Song")))
 
         val viewModel = createViewModel()
         coEvery { youtubeRepository.search(any(), any()) } returns
@@ -126,7 +209,7 @@ class HomeViewModelRecommendationsTest {
         viewModel.refresh()
 
         val state = viewModel.uiState.value
-        assertEquals(listOf("popular-1"), state.recommendations.map { it.id })
+        assertEquals(listOf("rec-1"), state.recommendations.map { it.id })
         assertEquals("network", state.recommendationsError)
         assertTrue(state.recommendations.isNotEmpty())
         assertFalse(state.isRefreshing)
@@ -138,13 +221,14 @@ class HomeViewModelRecommendationsTest {
 
     private fun track(
         id: String,
-        durationMs: Long = 120_000L,
+        title: String = "Title $id",
+        durationMs: Long = 180_000L,
         artist: String = "Artist",
         genre: String? = "Pop",
     ) = Track(
         id = id,
         source = Source.YOUTUBE,
-        title = "Title $id",
+        title = title,
         artist = artist,
         artworkUrl = null,
         streamUrl = null,

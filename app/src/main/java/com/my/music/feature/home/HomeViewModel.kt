@@ -61,7 +61,7 @@ class HomeViewModel @Inject constructor(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var recommendationsJob: Job? = null
-    private var recommendationsKey: String? = null
+    private var recommendationsLoaded = false
     private var recommendationsRequestId = 0
 
     init {
@@ -109,30 +109,19 @@ class HomeViewModel @Inject constructor(
 
     /**
      * Персональные рекомендации: жанр и артист из последних лайков и истории.
-     * Если данных нет — загружаем популярные треки.
+     * Повторная загрузка — только по Pull-to-refresh, чтобы лента не менялась
+     * после каждого прослушивания.
      */
     private fun updateRecommendations(
         liked: List<Track>,
         recent: List<Track>,
         forceRefresh: Boolean = false,
     ) {
-        val excludedIds = (liked + recent).mapTo(mutableSetOf()) { it.id }
-        val current = _uiState.value.recommendations
-        val remaining = current.filterNot { it.id in excludedIds }
-        val lostAllRecommendations = current.isNotEmpty() && remaining.isEmpty()
+        if (!forceRefresh && recommendationsLoaded) return
 
-        if (remaining.size != current.size) {
-            _uiState.update { it.copy(recommendations = remaining) }
-        }
-
-        val queries = buildRecommendationQueries(liked, recent)
-        val key = queries.joinToString(separator = "|")
-        if (!forceRefresh && key == recommendationsKey && !lostAllRecommendations) return
-
-        recommendationsKey = key
+        recommendationsLoaded = true
         loadRecommendations(
-            queries = queries,
-            excludedIds = excludedIds,
+            queries = buildRecommendationQueries(liked, recent),
             forceRefresh = forceRefresh,
         )
     }
@@ -151,14 +140,13 @@ class HomeViewModel @Inject constructor(
         }
 
         return buildList {
-            genre?.let { add("$it music mix") }
-            artist?.let { add("$it best songs") }
+            genre?.let { add("$it official audio") }
+            artist?.let { add("$it official audio") }
         }.distinct().ifEmpty { listOf(POPULAR_QUERY) }
     }
 
     private fun loadRecommendations(
         queries: List<String>,
-        excludedIds: Set<String>,
         forceRefresh: Boolean,
     ) {
         val requestId = ++recommendationsRequestId
@@ -178,7 +166,7 @@ class HomeViewModel @Inject constructor(
             }
 
             try {
-                val result = loadRecommendationTracks(queries, excludedIds)
+                val result = loadRecommendationTracks(queries)
                 if (requestId != recommendationsRequestId) return@launch
 
                 result.fold(
@@ -227,7 +215,6 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun loadRecommendationTracks(
         queries: List<String>,
-        excludedIds: Set<String>,
     ): Result<List<Track>> = coroutineScope {
         val primaryResults = queries
             .map { query ->
@@ -237,17 +224,13 @@ class HomeViewModel @Inject constructor(
 
         val primaryTracks = primaryResults
             .flatMap { it.getOrElse { emptyList() } }
-            .asRecommendations(excludedIds)
-
-        if (primaryTracks.isNotEmpty()) {
-            return@coroutineScope Result.success(primaryTracks)
-        }
+            .asRecommendations()
 
         val hasPersonalQuery = queries.any { it != POPULAR_QUERY }
         if (!hasPersonalQuery) {
             val firstError = primaryResults.firstNotNullOfOrNull { it.exceptionOrNull() }
             return@coroutineScope if (primaryResults.any { it.isSuccess }) {
-                Result.success(emptyList())
+                Result.success(primaryTracks)
             } else {
                 Result.failure(
                     firstError ?: IllegalStateException("Не удалось загрузить рекомендации"),
@@ -255,26 +238,53 @@ class HomeViewModel @Inject constructor(
             }
         }
 
+        if (primaryTracks.size >= MIN_RECOMMENDATION_TRACKS) {
+            return@coroutineScope Result.success(primaryTracks)
+        }
+
         val fallbackResult = youtubeRepository.search(
             POPULAR_QUERY,
             RECOMMENDATION_SEARCH_LIMIT,
         )
-        fallbackResult.fold(
-            onSuccess = { Result.success(it.asRecommendations(excludedIds)) },
-            onFailure = { fallbackError ->
-                val primaryError = primaryResults.firstNotNullOfOrNull { it.exceptionOrNull() }
-                Result.failure(primaryError ?: fallbackError)
-            },
-        )
+        val fallbackTracks = fallbackResult.getOrElse { emptyList() }.asRecommendations()
+        val merged = (primaryTracks + fallbackTracks)
+            .distinctBy { it.id }
+            .take(RECOMMENDATION_TRACKS_LIMIT)
+
+        if (merged.isNotEmpty()) {
+            return@coroutineScope Result.success(merged)
+        }
+
+        val primaryError = primaryResults.firstNotNullOfOrNull { it.exceptionOrNull() }
+        if (primaryResults.any { it.isSuccess } || fallbackResult.isSuccess) {
+            Result.success(emptyList())
+        } else {
+            Result.failure(
+                primaryError
+                    ?: fallbackResult.exceptionOrNull()
+                    ?: IllegalStateException("Не удалось загрузить рекомендации"),
+            )
+        }
     }
 
-    private fun List<Track>.asRecommendations(excludedIds: Set<String>): List<Track> =
+    private fun List<Track>.asRecommendations(): List<Track> =
         asSequence()
             .filter { it.durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS }
-            .filterNot { it.id in excludedIds }
+            .filter { it.isStudioOriginal() }
             .distinctBy { it.id }
             .take(RECOMMENDATION_TRACKS_LIMIT)
             .toList()
+
+    /**
+     * Отсекаем переводы, каверы, ремиксы, live-версии и прочие нестудийные записи.
+     */
+    private fun Track.isStudioOriginal(): Boolean {
+        if (title.isBlank() || title.none { it.isLetter() }) return false
+
+        val text = "$title $artist"
+        if (NON_STUDIO_PHRASES.any { text.contains(it, ignoreCase = true) }) return false
+        return !NON_STUDIO_WORDS.containsMatchIn(text)
+    }
 
     /** Принудительное обновление для Pull-to-refresh. */
     fun refresh() {
@@ -287,11 +297,65 @@ class HomeViewModel @Inject constructor(
     }
 
     private companion object {
-        const val POPULAR_QUERY = "popular music 2026"
-        const val RECOMMENDATION_SEARCH_LIMIT = 12
-        const val RECOMMENDATION_TRACKS_LIMIT = 10
+        const val POPULAR_QUERY = "popular songs official audio"
+        const val RECOMMENDATION_SEARCH_LIMIT = 24
+        const val RECOMMENDATION_TRACKS_LIMIT = 15
+        const val MIN_RECOMMENDATION_TRACKS = 10
         const val PERSONALIZATION_WINDOW = 20
         const val MUSIC_MIN_DURATION_MS = 45_000L
         const val MUSIC_MAX_DURATION_MS = 900_000L
+
+        val NON_STUDIO_PHRASES = listOf(
+            "перевод",
+            "перевед",
+            "на русском",
+            "русская версия",
+            "русский перевод",
+            "на английском",
+            "english version",
+            "russian version",
+            "на разных языках",
+            "разных языках",
+            "многоязыч",
+            "мультиязыч",
+            "all languages",
+            "multiple languages",
+            "different languages",
+            "many languages",
+            "кавер",
+            "ремикс",
+            "мэшап",
+            "мешап",
+            "караоке",
+            "минус",
+            "инструментал",
+            "акустик",
+            "концерт",
+            "выступление",
+            "оркестр",
+            "пианино",
+            "пародия",
+            "реакция",
+            "нейросет",
+            "ии кавер",
+            "колыбельная",
+            "трибьют",
+            "разбор",
+            "аккорды",
+            "урок",
+            "fan made",
+            "fanmade",
+        )
+
+        val NON_STUDIO_WORDS = Regex(
+            pattern = "\\b(" +
+                "cover|remix|remake|rework|bootleg|mashup|megamix|mix|" +
+                "karaoke|instrumental|live|concert|performance|acoustic|piano|" +
+                "synthesia|orchestra|parody|reaction|tutorial|chords|slowed|" +
+                "reverb|nightcore|8d|lullaby|tribute|translation|translated|" +
+                "multilingual|sped up|speed up|bass boosted|a cappella|acapella" +
+                ")\\b",
+            option = RegexOption.IGNORE_CASE,
+        )
     }
 }

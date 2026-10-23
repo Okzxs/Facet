@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -41,7 +44,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,14 +61,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.core.ui.components.formatDuration
 import com.my.music.core.ui.theme.PillShape
 import com.my.music.core.ui.theme.SquircleShape
 import com.my.music.core.util.SeasonProvider
@@ -76,6 +87,7 @@ import java.util.Locale
 
 private val ScreenPadding = 20.dp
 private val BlockGap = 26.dp
+private const val MEMORY_PREVIEW_LIMIT = 5
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +99,8 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val recentTracks = uiState.recentTracks
     val heroTrack = recentTracks.firstOrNull()
+    val homeListState = rememberLazyListState()
+    val recommendationsListState = rememberLazyListState()
 
     PullToRefreshBox(
         isRefreshing = uiState.isRefreshing,
@@ -94,6 +108,7 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(
+            state = homeListState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = ScreenPadding,
@@ -127,6 +142,7 @@ fun HomeScreen(
                         tracks = uiState.recommendations,
                         isLoading = uiState.isRecommendationsLoading,
                         error = uiState.recommendationsError,
+                        listState = recommendationsListState,
                         onTrackClick = onTrackClick,
                         onRetry = viewModel::refresh,
                     )
@@ -176,9 +192,12 @@ private fun RevealBlock(
     index: Int,
     content: @Composable () -> Unit,
 ) {
-    val progress = remember { Animatable(0f) }
+    var revealed by rememberSaveable { mutableStateOf(false) }
+    val progress = remember { Animatable(if (revealed) 1f else 0f) }
 
     LaunchedEffect(Unit) {
+        if (revealed) return@LaunchedEffect
+
         delay(index * 35L)
         progress.animateTo(
             targetValue = 1f,
@@ -187,6 +206,7 @@ private fun RevealBlock(
                 stiffness = Spring.StiffnessMediumLow,
             ),
         )
+        revealed = true
     }
 
     Box(
@@ -342,6 +362,7 @@ private fun RecommendationsBlock(
     tracks: List<Track>,
     isLoading: Boolean,
     error: String?,
+    listState: LazyListState,
     onTrackClick: (Track, List<Track>) -> Unit,
     onRetry: () -> Unit,
 ) {
@@ -356,6 +377,7 @@ private fun RecommendationsBlock(
         when {
             tracks.isNotEmpty() -> RecommendationsRow(
                 tracks = tracks,
+                listState = listState,
                 onTrackClick = onTrackClick,
             )
             isLoading -> RecommendationsSkeleton()
@@ -378,9 +400,11 @@ private fun RecommendationsBlock(
 @Composable
 private fun RecommendationsRow(
     tracks: List<Track>,
+    listState: LazyListState,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     LazyRow(
+        state = listState,
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -640,82 +664,146 @@ private fun MemoryCard(
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     val memoryTracks = remember(memories) { memories.map { it.track } }
+    val preview = remember(memories) { memories.take(MEMORY_PREVIEW_LIMIT) }
     val firstTrack = memoryTracks.firstOrNull() ?: return
     val containerColor = MaterialTheme.colorScheme.tertiaryContainer
     val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.95f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "memoryScale",
-    )
 
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                role = Role.Button,
-                onClick = { onTrackClick(firstTrack, memoryTracks) },
-            ),
-        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
         color = containerColor,
         contentColor = contentColor,
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Воспоминания",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = contentColor.copy(alpha = 0.7f),
-                    maxLines = 1,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = seasonDisplayName(season),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = contentColor,
-                    maxLines = 1,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "За этот сезон",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = contentColor.copy(alpha = 0.68f),
-                    maxLines = 1,
+        Column {
+            Row(
+                modifier = Modifier.padding(
+                    start = 16.dp,
+                    top = 14.dp,
+                    end = 14.dp,
+                    bottom = 12.dp,
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Воспоминания",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = contentColor.copy(alpha = 0.7f),
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = seasonDisplayName(season),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = contentColor,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "За этот сезон",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = contentColor.copy(alpha = 0.68f),
+                        maxLines = 1,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = memories.size.toString(),
+                        style = MaterialTheme.typography.displaySmall,
+                        color = contentColor,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = tracksWord(memories.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.65f),
+                        maxLines = 1,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                PlayBadge(
+                    containerColor = contentColor,
+                    contentColor = containerColor,
+                    onClick = { onTrackClick(firstTrack, memoryTracks) },
+                    contentDescription = "Слушать воспоминания",
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = memories.size.toString(),
-                    style = MaterialTheme.typography.displaySmall,
-                    color = contentColor,
-                    maxLines = 1,
-                )
-                Text(
-                    text = tracksWord(memories.size),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.65f),
-                    maxLines = 1,
-                )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = contentColor.copy(alpha = 0.16f),
+            )
+
+            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                preview.forEach { memory ->
+                    MemoryTrackRow(
+                        track = memory.track,
+                        contentColor = contentColor,
+                        onClick = { onTrackClick(memory.track, memoryTracks) },
+                    )
+                }
+                if (memories.size > preview.size) {
+                    Text(
+                        text = "…",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = contentColor.copy(alpha = 0.55f),
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
-            Spacer(Modifier.width(10.dp))
-            PlayBadge(
-                containerColor = contentColor,
-                contentColor = containerColor,
+        }
+    }
+}
+
+@Composable
+private fun MemoryTrackRow(
+    track: Track,
+    contentColor: Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Artwork(
+            url = track.artworkUrl,
+            contentDescription = null,
+            modifier = Modifier.size(40.dp),
+            shape = RoundedCornerShape(10.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = buildAnnotatedString {
+                append(track.title)
+                if (track.artist.isNotBlank()) {
+                    append(" — ")
+                    withStyle(SpanStyle(color = contentColor.copy(alpha = 0.68f))) {
+                        append(track.artist)
+                    }
+                }
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = contentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(10.dp))
+        if (track.durationMs > 0) {
+            Text(
+                text = formatDuration(track.durationMs),
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor.copy(alpha = 0.68f),
+                maxLines = 1,
             )
         }
     }
@@ -793,12 +881,25 @@ private fun LikedCard(
 private fun PlayBadge(
     containerColor: Color,
     contentColor: Color,
+    onClick: (() -> Unit)? = null,
+    contentDescription: String = "Воспроизвести",
 ) {
+    val baseModifier = Modifier
+        .size(44.dp)
+        .clip(PillShape)
+        .background(containerColor)
+    val modifier = if (onClick == null) {
+        baseModifier
+    } else {
+        baseModifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics {
+                this.contentDescription = contentDescription
+            }
+    }
+
     Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(PillShape)
-            .background(containerColor),
+        modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
         Icon(

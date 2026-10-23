@@ -1748,3 +1748,34 @@ MEMORY.md
 - `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 81 JVM-тест, 0 failures, 0 errors.
 - `lintDebug`: новых замечаний в Home нет; остаётся существующая ошибка Media3 `UnstableApi` в `PlayerController` (плеер не трогали).
 - APK: `app/build/outputs/apk/debug/app-debug.apk`.
+
+---
+
+## ✅ Сессия 8 — Полировка рекомендаций и «Воспоминаний» (23.10.2026)
+
+### Что сделано
+- «Для вас»: запросы переведены на `"<жанр> official audio"` и `"<артист> official audio"`, fallback — `"popular songs official audio"`.
+- Добавлен фильтр нестудийных записей: переводы, ремиксы, каверы, live, караоке, инструменталы, акустика, slowed/nightcore, многоязычные версии и треки без букв в названии.
+- Рекомендации больше не исключают прослушанные или лайкнутые треки. Лента загружается один раз за жизнь `HomeViewModel`, повторно — только через Pull-to-refresh.
+- Если персональных результатов меньше 10, они добираются популярными треками до 15. Максимум карусели — 15 карточек.
+- Позиция основного списка и карусели рекомендаций сохраняется через `rememberLazyListState()`; `RevealBlock` не повторяет анимацию при возврате с плеера.
+- «Воспоминания» переделаны в единую карточку без выступа: шапка с сезоном, количеством треков и кнопкой Play, разделитель и список до 5 треков.
+- В списке «Воспоминаний» квадратные обложки 40dp, название, артист и длительность. Play запускает очередь с первого трека, тап по треку — с выбранного.
+- Плеер и поиск не изменялись.
+
+### Файлы
+```
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
+PROGRESS.md
+MEMORY.md
+```
+
+### Проверка
+- `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 84 JVM-теста, 0 failures, 0 errors.
+- `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Следующий шаг
+- Импорт плейлистов YouTube или экран «Скачанное».
