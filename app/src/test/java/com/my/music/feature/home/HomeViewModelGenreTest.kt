@@ -6,6 +6,7 @@ import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.RecentlyShownRepository
+import com.my.music.data.repository.SoundCloudRepository
 import com.my.music.data.repository.YouTubeRepository
 import com.my.music.testutil.MainDispatcherRule
 import io.mockk.Runs
@@ -39,6 +40,7 @@ class HomeViewModelGenreTest {
     @Before
     fun setUp() {
         val youtubeRepository = mockk<YouTubeRepository>()
+        val soundCloudRepository = mockk<SoundCloudRepository>()
         val likedTracksRepository = mockk<LikedTracksRepository>()
         val playHistoryRepository = mockk<PlayHistoryRepository>()
         val recentlyShownRepository = mockk<RecentlyShownRepository>()
@@ -47,6 +49,8 @@ class HomeViewModelGenreTest {
         }
 
         coEvery { youtubeRepository.search(any(), any()) } returns Result.success(emptyList())
+        coEvery { youtubeRepository.getRelated(any(), any()) } returns Result.success(emptyList())
+        coEvery { soundCloudRepository.getRelated(any(), any()) } returns Result.success(emptyList())
         every { likedTracksRepository.getLikedTracks() } returns likedFlow
         every { likedTracksRepository.getSeasonMemories(any()) } returns memoriesFlow
         every { playHistoryRepository.getPlayHistory() } returns historyFlow
@@ -59,6 +63,7 @@ class HomeViewModelGenreTest {
 
         viewModel = HomeViewModel(
             youtubeRepository = youtubeRepository,
+            soundCloudRepository = soundCloudRepository,
             likedTracksRepository = likedTracksRepository,
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,

@@ -20,6 +20,18 @@ interface YouTubeRepository {
     suspend fun search(query: String, limit: Int = 20): Result<List<Track>>
 
     /**
+     * Получить треки, похожие на видео [trackUrl].
+     *
+     * NewPipe отдаёт алгоритмические related-видео самого YouTube. Это
+     * основной источник персональных рекомендаций: он находит исполнителей,
+     * которых нет в лайках и истории пользователя.
+     *
+     * @param trackUrl URL страницы видео
+     * @param limit максимальное количество related-треков
+     */
+    suspend fun getRelated(trackUrl: String, limit: Int = 30): Result<List<Track>>
+
+    /**
      * Получить прямой progressive-аудиопоток по URL видео.
      * Возвращает [AudioStreamResult] с `isHls = false` либо ошибку,
      * если progressive-аудио недоступно.

@@ -12,6 +12,17 @@ interface SoundCloudRepository {
     suspend fun search(query: String, limit: Int = 20): Result<List<Track>>
 
     /**
+     * Получить треки, похожие на трек [trackUrl].
+     *
+     * Related-выдача SoundCloud даёт исполнителей того же жанра и аудитории,
+     * включая нишевые проекты, которых нет в персональной истории.
+     *
+     * @param trackUrl URL страницы трека
+     * @param limit максимальное количество related-треков
+     */
+    suspend fun getRelated(trackUrl: String, limit: Int = 30): Result<List<Track>>
+
+    /**
      * Получить аудио-поток для трека.
      * Возвращает [AudioStreamResult] с URL и признаком HLS.
      *

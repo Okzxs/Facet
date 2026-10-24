@@ -1,6 +1,12 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 24.10.2026
+## Последнее обновление: 24.10.2026 (сессия 10)
+
+## 📌 Актуальный срез
+- 100 JVM-тестов, 0 failures; `assembleDebug` — `BUILD SUCCESSFUL`, APK ≈ 27,2 МБ.
+- Room v8, схемы `4.json`–`8.json`; ONNX/YAMNet и `core/audio` удалены revert-коммитом `9e74fb6`.
+- «Для вас»: related-треки YouTube/SoundCloud через NewPipe, 4–6 треков-сидов, кап 2/3, fallback только при <10 и только по строгому артисту; глобальный популярный запрос — только на пустой истории.
+- Плеер и поиск не менялись; лента стабильна до Pull-to-refresh, позиции скролла сохранены.
 
 ---
 
@@ -1826,3 +1832,60 @@ MEMORY.md
 
 ### Следующий шаг
 - Импорт плейлистов YouTube или экран «Скачанное».
+
+---
+
+## ✅ Сессия 10 — Откат ONNX/YAMNet и related-рекомендации (24.10.2026)
+
+### Причина
+- Локальный ONNX/YAMNet (коммит `4ea6975`) раздувал APK до ~73 МБ и требовал тяжёлого аудио-анализа на слабом устройстве. Для рекомендаций достаточно алгоритмической related-выдачи NewPipe.
+- Прямые related-треки дают реальных новых исполнителей вместо текстовых поисковых запросов и уменьшают количество мусора.
+
+### Что сделано
+1. **Откат Phase 1**:
+   - Создан revert-коммит `9e74fb6`; Room снова v8, удалены `onnxruntime-android`, `yamnet.onnx`, `core/audio`, `AudioFeatureWorker`, `9.json`.
+   - Схемы БД: только `4.json`–`8.json`; опубликованная история не переписывалась.
+2. **Related через NewPipe**:
+   - В `YouTubeRepository` и `SoundCloudRepository` добавлен `getRelated(trackUrl, limit = 30)`.
+   - Реализации вызывают `StreamInfo.getInfo(service, trackUrl)`, берут `relatedItems`, при пустоте — `relatedStreams`, фильтруют `StreamInfoItem`, дедуплицируют по URL и маппят существующим `toDomain()`.
+3. **Сиды**:
+   - Последние 20 лайков и 20 прослушиваний; лайк весит `4.0`, прослушивание `1.0`, свежесть убывает с индексом; дубликат из истории не учитывается, если трек уже лайкнут.
+   - На refresh случайно выбираются 4–6 треков из топ-20, при возможности — разных артистов.
+4. **Сборка ленты**:
+   - Для каждого сида параллельно запрашивается до 30 related-треков; исключаются все выбранные сиды и `recently_shown` (TTL 24 ч).
+   - Сохранены фильтры мусора по названию и длительности 45 с–10 мин. Треки других артистов из related не отбрасываются.
+   - Финал перемешивается; не больше 2 треков на артиста, не больше 3 — для артиста, доминирующего в персональной выборке (≥3 трека и ≥25%).
+   - Лимит ленты — 15 треков; при related <10 добираем fallback-кандидатами.
+5. **Fallback**:
+   - Точечный поиск по 4–6 топ-артистам, строгая проверка только поля `track.artist`; имя сида в чужом title не проходит.
+   - Глобальный `POPULAR_QUERY` используется только при полностью пустых лайках и истории (холодный старт).
+   - Если персональные данные есть, а related/fallback ничего не дали, возвращается пустая успешная лента или ошибка сети — без популярного запроса.
+6. **Стабильность UI**:
+   - `HomeViewModel` снимает снимок лайков/истории на старте загрузки; изменения во время прослушивания не перезагружают уже показанную ленту.
+   - Обновление — только Pull-to-refresh; позиции `LazyColumn` и карусели сохраняются.
+   - Плеер и поиск не изменялись.
+
+### Проверка
+- `.\gradlew testDebugUnitTest` — `BUILD SUCCESSFUL`, 100 JVM-тестов, 0 failures, 0 errors.
+- `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 218 807 байт (~27,2 МБ); `onnx`/`yamnet` внутри отсутствуют.
+- Живая проверка через временный JVM-тест: YouTube и SoundCloud вернули по 10 related-элементов; временный тест удалён.
+- `HomeViewModelRecommendationsTest` — 12 тестов, `RecommendationPlannerTest` — 9 тестов; обновлён `HomeViewModelGenreTest`.
+
+### Файлы
+```
+app/src/main/java/com/my/music/data/repository/YouTubeRepository.kt
+app/src/main/java/com/my/music/data/repository/SoundCloudRepository.kt
+app/src/main/java/com/my/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/my/music/feature/home/RecommendationPlanner.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
+app/src/test/java/com/my/music/feature/home/RecommendationPlannerTest.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
+PROGRESS.md
+MEMORY.md
+```
+
+### Следующий шаг
+- Проверить related-ленту на реальном устройстве, затем импорт плейлистов YouTube или экран «Скачанное».

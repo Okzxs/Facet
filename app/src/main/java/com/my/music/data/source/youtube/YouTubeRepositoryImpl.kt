@@ -49,6 +49,26 @@ class YouTubeRepositoryImpl @Inject constructor() : YouTubeRepository {
             }.rethrowCancellation()
         }
 
+    @Suppress("DEPRECATION")
+    override suspend fun getRelated(trackUrl: String, limit: Int): Result<List<Track>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val service = NewPipe.getService(ServiceList.YouTube.serviceId)
+                val streamInfo = StreamInfo.getInfo(service, trackUrl)
+                val related = streamInfo.relatedItems
+                    .ifEmpty { streamInfo.relatedStreams }
+
+                Log.d(tag, "Related для $trackUrl: ${related.size} элементов")
+
+                related
+                    .filterIsInstance<StreamInfoItem>()
+                    .filter { it.url.isNotBlank() }
+                    .distinctBy { it.url }
+                    .take(limit)
+                    .map { it.toDomain() }
+            }.rethrowCancellation()
+        }
+
     /**
      * Ищет progressive-аудио: сначала M4A (AAC), затем WEBM_OPUS.
      * HLS/DASH не используем: из сегментов нельзя собрать один аудиофайл.

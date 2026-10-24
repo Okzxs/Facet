@@ -1,19 +1,20 @@
 package com.my.music.feature.home
 
+import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import java.util.Locale
 import javax.inject.Inject
 import kotlin.random.Random
 
 /**
- * Параметры одной поисковой выдачи.
+ * Параметры одного поискового запроса для fallback.
  *
- * [allowedArtists] — нормализованные артисты-сиды, которым должен соответствовать
- * трек. `null` означает общий популярный запрос без привязки к сидам.
+ * [allowedArtists] — нормализованные имена артистов-сидов. Трек обязан
+ * совпасть с полем `artist`, а не с названием. Пустой набор не допускается.
  */
 internal data class RecommendationQuery(
     val text: String,
-    val allowedArtists: Set<String>?,
+    val allowedArtists: Set<String>,
 )
 
 /**
@@ -27,8 +28,25 @@ internal data class ArtistSeed(
 )
 
 /**
- * Собирает персональные рекомендации: сиды, поисковые запросы, проверку
- * артиста и диверсификацию финальной ленты.
+ * Конкретный трек-сид для запроса related-выдачи.
+ *
+ * [url] — страница трека в YouTube или SoundCloud, по которой NewPipe
+ * строит список похожих видео/треков.
+ */
+internal data class TrackSeed(
+    val track: Track,
+    val weight: Double,
+    val artistKey: String,
+) {
+    val url: String
+        get() = track.transcodingUrl?.takeIf { it.isNotBlank() }
+            ?: track.id.takeIf { it.startsWith("http") }
+            ?: ""
+}
+
+/**
+ * Собирает персональные рекомендации: треки-сиды, related-кандидатов,
+ * строгий artist-fallback и диверсификацию финальной ленты.
  */
 class RecommendationPlanner @Inject constructor() {
 
@@ -38,8 +56,9 @@ class RecommendationPlanner @Inject constructor() {
     internal var random: Random = Random.Default
 
     /**
-     * Строит до восьми артистов-сидов. Лайки весят больше прослушиваний,
-     * свежие записи — больше старых. Один и тот же трек не учитывается дважды.
+     * Строит до восьми артистов-сидов для точечного fallback. Лайки весят
+     * больше прослушиваний, свежие записи — больше старых. Один и тот же
+     * трек не учитывается дважды.
      */
     internal fun buildArtistSeeds(
         liked: List<Track>,
@@ -83,7 +102,7 @@ class RecommendationPlanner @Inject constructor() {
     }
 
     /**
-     * Случайно выбирает 4–5 артистов из топ-8. Если артистов меньше, берём всех.
+     * Случайно выбирает 4–6 артистов из топ-8. Если артистов меньше, берём всех.
      */
     internal fun selectSeeds(seeds: List<ArtistSeed>): List<ArtistSeed> {
         val pool = seeds.take(MAX_SEED_ARTISTS)
@@ -95,30 +114,132 @@ class RecommendationPlanner @Inject constructor() {
     }
 
     /**
-     * Генерирует запросы для текущего refresh. На каждого выбранного артиста —
-     * 1–2 случайных варианта, плюс 1–2 общих жанровых запроса из истории.
+     * Строит треки-сиды из последних лайков и прослушиваний.
+     *
+     * Учитываются только треки, для которых можно запросить related-выдачу
+     * (YouTube/SoundCloud и URL страницы). Лайк весит в четыре раза больше
+     * прослушивания; внутри каждой группы свежие записи получают больший вес.
      */
-    internal fun buildQueries(
+    internal fun buildTrackSeeds(
+        liked: List<Track>,
+        history: List<Track>,
+    ): List<TrackSeed> {
+        val likedTracks = liked.take(PERSONALIZATION_WINDOW)
+        val likedIds = likedTracks.mapTo(HashSet()) { it.id }
+        val historyTracks = history
+            .asSequence()
+            .filterNot { it.id in likedIds }
+            .take(PERSONALIZATION_WINDOW)
+            .toList()
+
+        val seeds = LinkedHashMap<String, TrackSeed>()
+        likedTracks.forEachIndexed { index, track ->
+            if (track.relatedUrlOrNull() == null) return@forEachIndexed
+            seeds[track.id] = TrackSeed(
+                track = track,
+                weight = LIKE_WEIGHT * recency(index, likedTracks.size),
+                artistKey = artistKey(track),
+            )
+        }
+        historyTracks.forEachIndexed { index, track ->
+            if (track.relatedUrlOrNull() == null) return@forEachIndexed
+            seeds.putIfAbsent(
+                track.id,
+                TrackSeed(
+                    track = track,
+                    weight = PLAY_WEIGHT * recency(index, historyTracks.size),
+                    artistKey = artistKey(track),
+                ),
+            )
+        }
+
+        return seeds.values.sortedByDescending { it.weight }
+    }
+
+    /**
+     * Выбирает 4–6 треков-сидов. Сначала старается взять разных артистов,
+     * затем добивает подвыборку остальными треками. Финальный порядок случайный,
+     * но приоритет лайков и свежих записей сохраняется за счёт пула топ-20.
+     */
+    internal fun selectTrackSeeds(seeds: List<TrackSeed>): List<TrackSeed> {
+        val pool = seeds.take(TRACK_SEED_POOL)
+        if (pool.isEmpty()) return emptyList()
+
+        val target = if (pool.size <= MIN_TRACK_SEEDS) {
+            pool.size
+        } else {
+            random.nextInt(MIN_TRACK_SEEDS, MAX_TRACK_SEEDS + 1)
+                .coerceAtMost(pool.size)
+        }
+
+        val selected = ArrayList<TrackSeed>(target)
+        val selectedIds = HashSet<String>()
+        val selectedArtists = HashSet<String>()
+
+        for (seed in pool.shuffled(random)) {
+            if (selected.size >= target) break
+            if (!selectedArtists.add(seed.artistKey)) continue
+            if (!selectedIds.add(seed.track.id)) continue
+            selected += seed
+        }
+        for (seed in pool.shuffled(random)) {
+            if (selected.size >= target) break
+            if (selectedIds.add(seed.track.id)) selected += seed
+        }
+
+        return selected.shuffled(random)
+    }
+
+    /**
+     * Артисты, которые заметно доминируют в персональной выборке. Для них
+     * допускается один дополнительный трек в финальной ленте.
+     */
+    internal fun findDominantArtists(
+        liked: List<Track>,
+        history: List<Track>,
+    ): Set<String> {
+        val personal = (liked.take(PERSONALIZATION_WINDOW) + history.take(PERSONALIZATION_WINDOW))
+            .distinctBy { it.id }
+        val counts = personal
+            .mapNotNull { track ->
+                normalizeArtist(track.artist)
+                    .takeIf { it.isNotBlank() && it != UNKNOWN_ARTIST }
+            }
+            .groupingBy { it }
+            .eachCount()
+        val total = counts.values.sum()
+        if (total == 0) return emptySet()
+
+        return counts
+            .filterValues { count ->
+                count >= DOMINANT_ARTIST_MIN_TRACKS &&
+                    count.toDouble() / total >= DOMINANT_ARTIST_MIN_SHARE
+            }
+            .keys
+    }
+
+    /**
+     * Строит точечные fallback-запросы только по топ-артистам из лайков и
+     * истории. Глобальный популярный запрос здесь не добавляется.
+     */
+    internal fun buildArtistFallbackQueries(
         liked: List<Track>,
         history: List<Track>,
     ): List<RecommendationQuery> {
         val seeds = buildArtistSeeds(liked, history)
-        if (seeds.isEmpty()) {
-            return listOf(RecommendationQuery(POPULAR_QUERY, allowedArtists = null))
-        }
+        if (seeds.isEmpty()) return emptyList()
 
-        val selectedSeeds = selectSeeds(seeds)
-        val allSeedNames = seeds.mapTo(HashSet()) { it.normalizedName }
         val queries = mutableListOf<RecommendationQuery>()
         val seenQueries = HashSet<String>()
 
-        selectedSeeds.forEach { seed ->
+        selectSeeds(seeds).forEach { seed ->
             val variants = buildList {
                 add("${seed.name} official audio")
                 seed.genre?.let { genre -> add("${seed.name} $genre") }
                 add("${seed.name} official")
             }.distinct()
             val queryCount = if (variants.size == 1) 1 else random.nextInt(1, 3)
+
             variants.shuffled(random).take(queryCount).forEach { text ->
                 if (seenQueries.add(text.lowercase(Locale.ROOT))) {
                     queries += RecommendationQuery(
@@ -129,46 +250,36 @@ class RecommendationPlanner @Inject constructor() {
             }
         }
 
-        buildGenreQueries(liked, history, allSeedNames).forEach { query ->
-            if (seenQueries.add(query.text.lowercase(Locale.ROOT))) {
-                queries += query
-            }
-        }
-
-        return queries.ifEmpty {
-            listOf(RecommendationQuery(POPULAR_QUERY, allowedArtists = null))
-        }
+        return queries
     }
 
     /**
-     * Проверяет, что трек принадлежит одному из сид-артистов.
-     *
-     * Если NewPipe не отдал артиста (в том числе подставил `Unknown`),
-     * допускаем совпадение только по началу названия — не по подстроке.
+     * Строгая проверка для fallback: сравниваем только поле `artist`.
+     * Название трека не является доказательством принадлежности артисту.
      */
-    internal fun matchesSeedArtist(
+    internal fun matchesExactArtist(
         track: Track,
         allowedArtists: Set<String>,
     ): Boolean {
         if (allowedArtists.isEmpty()) return false
 
         val trackArtist = normalizeArtist(track.artist)
-        if (trackArtist.isNotBlank() && trackArtist != UNKNOWN_ARTIST) {
-            return trackArtist in allowedArtists
-        }
-
-        val title = normalizeForMatch(track.title)
-        return allowedArtists.any { seed -> title.startsWith(seed) }
+        return trackArtist.isNotBlank() &&
+            trackArtist != UNKNOWN_ARTIST &&
+            trackArtist in allowedArtists
     }
 
     /**
-     * Перемешивает кандидатов и набирает не больше [limit] треков,
-     * оставляя максимум [maxPerArtist] записей на одного артиста.
+     * Перемешивает кандидатов и набирает не больше [limit] треков.
+     * Обычный кап — [maxPerArtist], для доминирующих артистов —
+     * [maxPerDominantArtist].
      */
     internal fun selectTracks(
         candidates: List<Track>,
         limit: Int = RECOMMENDATION_TRACKS_LIMIT,
         maxPerArtist: Int = MAX_TRACKS_PER_ARTIST,
+        dominantArtists: Set<String> = emptySet(),
+        maxPerDominantArtist: Int = MAX_TRACKS_PER_DOMINANT_ARTIST,
     ): List<Track> {
         val selected = ArrayList<Track>(limit)
         val selectedIds = HashSet<String>()
@@ -180,7 +291,13 @@ class RecommendationPlanner @Inject constructor() {
 
             val artistKey = artistKey(track)
             val count = artistCounts[artistKey] ?: 0
-            if (count >= maxPerArtist) continue
+            val allowed = perArtistLimit(
+                track = track,
+                maxPerArtist = maxPerArtist,
+                maxPerDominantArtist = maxPerDominantArtist,
+                dominantArtists = dominantArtists,
+            )
+            if (count >= allowed) continue
 
             selected += track
             selectedIds += track.id
@@ -191,13 +308,16 @@ class RecommendationPlanner @Inject constructor() {
     }
 
     /**
-     * Добивает готовую ленту популярными треками с теми же ограничениями.
+     * Добивает готовую ленту fallback-кандидатами с теми же ограничениями
+     * и перемешивает итог.
      */
     internal fun appendTracks(
         selected: List<Track>,
         candidates: List<Track>,
         limit: Int = RECOMMENDATION_TRACKS_LIMIT,
         maxPerArtist: Int = MAX_TRACKS_PER_ARTIST,
+        dominantArtists: Set<String> = emptySet(),
+        maxPerDominantArtist: Int = MAX_TRACKS_PER_DOMINANT_ARTIST,
     ): List<Track> {
         val result = selected.toMutableList()
         val selectedIds = result.mapTo(HashSet()) { it.id }
@@ -212,41 +332,34 @@ class RecommendationPlanner @Inject constructor() {
 
             val artistKey = artistKey(track)
             val count = artistCounts[artistKey] ?: 0
-            if (count >= maxPerArtist) continue
+            val allowed = perArtistLimit(
+                track = track,
+                maxPerArtist = maxPerArtist,
+                maxPerDominantArtist = maxPerDominantArtist,
+                dominantArtists = dominantArtists,
+            )
+            if (count >= allowed) continue
 
             result += track
             selectedIds += track.id
             artistCounts[artistKey] = count + 1
         }
 
-        return result
+        return result.shuffled(random)
     }
 
-    private fun buildGenreQueries(
-        liked: List<Track>,
-        history: List<Track>,
-        allowedArtists: Set<String>,
-    ): List<RecommendationQuery> {
-        val historyGenres = history
-            .take(PERSONALIZATION_WINDOW)
-            .mapNotNull { track -> track.genre?.trim()?.takeIf { it.isNotEmpty() } }
-        val likedGenres = liked
-            .take(PERSONALIZATION_WINDOW)
-            .mapNotNull { track -> track.genre?.trim()?.takeIf { it.isNotEmpty() } }
-        val genres = (historyGenres.ifEmpty { likedGenres })
-            .distinctBy { it.lowercase(Locale.ROOT) }
-
-        if (genres.isEmpty()) return emptyList()
-
-        val queryCount = if (genres.size == 1) 1 else random.nextInt(1, 3)
-        return genres.shuffled(random)
-            .take(queryCount)
-            .map { genre ->
-                RecommendationQuery(
-                    text = "$genre official audio",
-                    allowedArtists = allowedArtists,
-                )
-            }
+    private fun perArtistLimit(
+        track: Track,
+        maxPerArtist: Int,
+        maxPerDominantArtist: Int,
+        dominantArtists: Set<String>,
+    ): Int {
+        val normalized = normalizeArtist(track.artist)
+        return if (normalized in dominantArtists) {
+            maxPerDominantArtist
+        } else {
+            maxPerArtist
+        }
     }
 
     private fun accumulate(
@@ -287,6 +400,12 @@ class RecommendationPlanner @Inject constructor() {
         }
     }
 
+    private fun Track.relatedUrlOrNull(): String? {
+        if (source != Source.YOUTUBE && source != Source.SOUNDCLOUD) return null
+        return transcodingUrl?.takeIf { it.isNotBlank() }
+            ?: id.takeIf { it.startsWith("http") }
+    }
+
     private data class SeedAccumulator(
         val name: String,
         val normalizedName: String,
@@ -297,13 +416,19 @@ class RecommendationPlanner @Inject constructor() {
     private companion object {
         const val MAX_SEED_ARTISTS = 8
         const val MIN_SEED_SUBSET = 4
-        const val MAX_SEED_SUBSET = 5
+        const val MAX_SEED_SUBSET = 6
         const val PERSONALIZATION_WINDOW = 20
         const val LIKE_WEIGHT = 4.0
         const val PLAY_WEIGHT = 1.0
         const val RECENCY_DECAY = 0.12
+        const val TRACK_SEED_POOL = 20
+        const val MIN_TRACK_SEEDS = 4
+        const val MAX_TRACK_SEEDS = 6
         const val RECOMMENDATION_TRACKS_LIMIT = 15
-        const val MAX_TRACKS_PER_ARTIST = 3
+        const val MAX_TRACKS_PER_ARTIST = 2
+        const val MAX_TRACKS_PER_DOMINANT_ARTIST = 3
+        const val DOMINANT_ARTIST_MIN_TRACKS = 3
+        const val DOMINANT_ARTIST_MIN_SHARE = 0.25
         const val UNKNOWN_ARTIST = "unknown"
     }
 }
@@ -326,11 +451,6 @@ internal fun normalizeArtist(raw: String): String {
 
 private fun stripArtistCredits(raw: String): String =
     raw.replace(ARTIST_CREDITS_PATTERN, "")
-
-private fun normalizeForMatch(raw: String): String =
-    raw.replace(WHITESPACE_PATTERN, " ")
-        .trim()
-        .lowercase(Locale.ROOT)
 
 private val ARTIST_CREDITS_PATTERN = Regex(
     pattern = """(?:^|[\s(\[]+)(?:feat|ft|featuring|prod|produced)\b\.?\s*(?:by\s+)?.*$""",

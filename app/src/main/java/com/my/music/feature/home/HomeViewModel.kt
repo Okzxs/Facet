@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.my.music.core.util.SeasonProvider
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.SeasonMemory
+import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.RecentlyShownRepository
+import com.my.music.data.repository.SoundCloudRepository
 import com.my.music.data.repository.YouTubeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -49,9 +51,16 @@ private data class LocalSignals(
     val genres: List<GenreSection>,
 )
 
+private data class CandidateLoadResult(
+    val candidates: List<Track>,
+    val anySuccess: Boolean,
+    val firstError: Throwable?,
+)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val youtubeRepository: YouTubeRepository,
+    private val soundCloudRepository: SoundCloudRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
     private val recentlyShownRepository: RecentlyShownRepository,
@@ -141,12 +150,16 @@ class HomeViewModel @Inject constructor(
             }
 
             try {
+                // Снимок персональных данных на момент запуска: лента не должна
+                // меняться, пока пользователь слушает или лайкает треки.
+                val liked = _uiState.value.likedTracks
+                val history = _uiState.value.recentTracks
                 val recentlyShownIds = loadRecentlyShownIds()
-                val queries = recommendationPlanner.buildQueries(
-                    liked = _uiState.value.likedTracks,
-                    history = _uiState.value.recentTracks,
+                val result = loadRecommendationTracks(
+                    liked = liked,
+                    history = history,
+                    recentlyShownIds = recentlyShownIds,
                 )
-                val result = loadRecommendationTracks(queries, recentlyShownIds)
                 if (requestId != recommendationsRequestId) return@launch
 
                 result.fold(
@@ -195,78 +208,205 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun loadRecommendationTracks(
-        queries: List<RecommendationQuery>,
+        liked: List<Track>,
+        history: List<Track>,
         recentlyShownIds: Set<String>,
     ): Result<List<Track>> = coroutineScope {
-        val primaryResults = queries
-            .map { query ->
+        val hasPersonalData = liked.isNotEmpty() || history.isNotEmpty()
+        val trackSeeds = recommendationPlanner.selectTrackSeeds(
+            recommendationPlanner.buildTrackSeeds(liked, history),
+        )
+        val related = loadRelatedCandidates(trackSeeds, recentlyShownIds)
+        val dominantArtists = recommendationPlanner.findDominantArtists(liked, history)
+
+        val relatedSelection = recommendationPlanner.selectTracks(
+            candidates = related.candidates,
+            maxPerArtist = MAX_TRACKS_PER_ARTIST,
+            dominantArtists = dominantArtists,
+            maxPerDominantArtist = MAX_TRACKS_PER_DOMINANT_ARTIST,
+        )
+
+        if (relatedSelection.size >= MIN_RECOMMENDATION_TRACKS) {
+            return@coroutineScope Result.success(relatedSelection)
+        }
+
+        // Холодный старт: лайков и истории нет, related-сидов тоже.
+        // Глобальный популярный запрос разрешён только в этом случае.
+        if (!hasPersonalData) {
+            return@coroutineScope loadPopularRecommendations(recentlyShownIds)
+        }
+
+        val fallbackQueries = recommendationPlanner.buildArtistFallbackQueries(
+            liked = liked,
+            history = history,
+        )
+        val fallback = loadFallbackCandidates(fallbackQueries, recentlyShownIds)
+        val selected = recommendationPlanner.appendTracks(
+            selected = relatedSelection,
+            candidates = fallback.candidates,
+            maxPerArtist = MAX_TRACKS_PER_ARTIST,
+            dominantArtists = dominantArtists,
+            maxPerDominantArtist = MAX_TRACKS_PER_DOMINANT_ARTIST,
+        )
+
+        when {
+            selected.isNotEmpty() -> Result.success(selected)
+            related.anySuccess || fallback.anySuccess -> Result.success(emptyList())
+            else -> Result.failure(
+                related.firstError
+                    ?: fallback.firstError
+                    ?: IllegalStateException("Не удалось загрузить рекомендации"),
+            )
+        }
+    }
+
+    /**
+     * Запрашивает related-выдачу для 4–6 сид-треков. Ошибка одного источника
+     * не ломает всю ленту: остальные сиды и fallback продолжают работать.
+     */
+    private suspend fun loadRelatedCandidates(
+        seeds: List<TrackSeed>,
+        recentlyShownIds: Set<String>,
+    ): CandidateLoadResult = coroutineScope {
+        if (seeds.isEmpty()) {
+            return@coroutineScope CandidateLoadResult(
+                candidates = emptyList(),
+                anySuccess = false,
+                firstError = null,
+            )
+        }
+
+        val seedIds = seeds.mapTo(HashSet()) { it.track.id }
+        val results = seeds
+            .map { seed ->
                 async {
-                    query to youtubeRepository.search(query.text, RECOMMENDATION_SEARCH_LIMIT)
+                    val result: Result<List<Track>> = when (seed.track.source) {
+                        Source.YOUTUBE -> youtubeRepository.getRelated(
+                            trackUrl = seed.url,
+                            limit = RELATED_ITEMS_LIMIT,
+                        )
+
+                        Source.SOUNDCLOUD -> soundCloudRepository.getRelated(
+                            trackUrl = seed.url,
+                            limit = RELATED_ITEMS_LIMIT,
+                        )
+
+                        else -> Result.success(emptyList())
+                    }
+                    result
                 }
             }
             .awaitAll()
 
-        val primaryCandidates = primaryResults
+        val candidates = results
+            .flatMap { result -> result.getOrElse { emptyList() } }
+            .asSequence()
+            // Не рекомендуем сам сид и то, что уже показывали за последние 24 часа.
+            // Артиста здесь не проверяем: related-выдача специально приводит новых.
+            .filter { track -> track.id !in seedIds && track.isEligible(recentlyShownIds) }
+            .distinctBy { it.id }
+            .toList()
+
+        val failures = results.count { it.isFailure }
+        Log.d(
+            tag,
+            "Related: сидов=${seeds.size}, кандидатов=${candidates.size}, ошибок=$failures",
+        )
+        results.forEach { result ->
+            result.exceptionOrNull()?.let { error ->
+                Log.w(tag, "Related-запрос не удался: ${error.message}", error)
+            }
+        }
+
+        CandidateLoadResult(
+            candidates = candidates,
+            anySuccess = results.any { it.isSuccess },
+            firstError = results.firstNotNullOfOrNull { it.exceptionOrNull() },
+        )
+    }
+
+    /**
+     * Точечный fallback по топ-артистам. Принимаем только треки, у которых
+     * поле `artist` строго совпало с сид-артистом.
+     */
+    private suspend fun loadFallbackCandidates(
+        queries: List<RecommendationQuery>,
+        recentlyShownIds: Set<String>,
+    ): CandidateLoadResult = coroutineScope {
+        if (queries.isEmpty()) {
+            return@coroutineScope CandidateLoadResult(
+                candidates = emptyList(),
+                anySuccess = false,
+                firstError = null,
+            )
+        }
+
+        val results = queries
+            .map { query ->
+                async {
+                    query to youtubeRepository.search(
+                        query = query.text,
+                        limit = RECOMMENDATION_SEARCH_LIMIT,
+                    )
+                }
+            }
+            .awaitAll()
+
+        val candidates = results
             .flatMap { (query, result) ->
                 result.getOrElse { emptyList() }
                     .asSequence()
                     .filter { track ->
-                        val allowedArtists = query.allowedArtists
-                        val matchesArtist = allowedArtists == null ||
-                            recommendationPlanner.matchesSeedArtist(track, allowedArtists)
-                        track.isEligible(recentlyShownIds) && matchesArtist
+                        recommendationPlanner.matchesExactArtist(
+                            track = track,
+                            allowedArtists = query.allowedArtists,
+                        ) && track.isEligible(recentlyShownIds)
                     }
                     .toList()
             }
             .distinctBy { it.id }
 
-        val hasPersonalQuery = queries.any { it.allowedArtists != null }
-        val primarySelection = recommendationPlanner.selectTracks(primaryCandidates)
-        val primaryHasSuccess = primaryResults.any { it.second.isSuccess }
-        val primaryError = primaryResults.firstNotNullOfOrNull { it.second.exceptionOrNull() }
-
-        if (!hasPersonalQuery) {
-            return@coroutineScope if (primaryHasSuccess) {
-                Result.success(primarySelection)
-            } else {
-                Result.failure(
-                    primaryError ?: IllegalStateException("Не удалось загрузить рекомендации"),
-                )
-            }
-        }
-
-        if (primarySelection.size >= MIN_RECOMMENDATION_TRACKS) {
-            return@coroutineScope Result.success(primarySelection)
-        }
-
-        val fallbackResult = youtubeRepository.search(
-            POPULAR_QUERY,
-            RECOMMENDATION_SEARCH_LIMIT,
+        Log.d(
+            tag,
+            "Fallback: запросов=${queries.size}, кандидатов=${candidates.size}",
         )
-        val fallbackCandidates = fallbackResult
-            .getOrElse { emptyList() }
+
+        CandidateLoadResult(
+            candidates = candidates,
+            anySuccess = results.any { it.second.isSuccess },
+            firstError = results.firstNotNullOfOrNull { it.second.exceptionOrNull() },
+        )
+    }
+
+    /**
+     * Единственный сценарий с глобальным популярным запросом — первый запуск,
+     * когда у пользователя ещё нет ни лайков, ни истории.
+     */
+    private suspend fun loadPopularRecommendations(
+        recentlyShownIds: Set<String>,
+    ): Result<List<Track>> {
+        val popularResult = youtubeRepository.search(
+            query = POPULAR_QUERY,
+            limit = RECOMMENDATION_SEARCH_LIMIT,
+        )
+        if (popularResult.isFailure) {
+            return Result.failure(
+                popularResult.exceptionOrNull()
+                    ?: IllegalStateException("Не удалось загрузить рекомендации"),
+            )
+        }
+
+        val candidates = popularResult
+            .getOrDefault(emptyList())
             .asSequence()
             .filter { it.isEligible(recentlyShownIds) }
             .distinctBy { it.id }
             .toList()
-        val merged = recommendationPlanner.appendTracks(
-            selected = primarySelection,
-            candidates = fallbackCandidates,
+        val selected = recommendationPlanner.selectTracks(
+            candidates = candidates,
+            maxPerArtist = MAX_TRACKS_PER_ARTIST,
         )
-
-        if (merged.isNotEmpty()) {
-            return@coroutineScope Result.success(merged)
-        }
-
-        if (primaryHasSuccess || fallbackResult.isSuccess) {
-            Result.success(emptyList())
-        } else {
-            Result.failure(
-                primaryError
-                    ?: fallbackResult.exceptionOrNull()
-                    ?: IllegalStateException("Не удалось загрузить рекомендации"),
-            )
-        }
+        return Result.success(selected)
     }
 
     private fun Track.isEligible(recentlyShownIds: Set<String>): Boolean =
@@ -321,7 +461,10 @@ class HomeViewModel @Inject constructor(
 
     private companion object {
         const val RECOMMENDATION_SEARCH_LIMIT = 24
+        const val RELATED_ITEMS_LIMIT = 30
         const val MIN_RECOMMENDATION_TRACKS = 10
+        const val MAX_TRACKS_PER_ARTIST = 2
+        const val MAX_TRACKS_PER_DOMINANT_ARTIST = 3
         const val RECENTLY_SHOWN_TTL_MS = 24 * 60 * 60 * 1000L
         const val MUSIC_MIN_DURATION_MS = 45_000L
         const val MUSIC_MAX_DURATION_MS = 900_000L
