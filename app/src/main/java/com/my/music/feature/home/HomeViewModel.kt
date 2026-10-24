@@ -4,10 +4,12 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.my.music.core.util.SeasonProvider
+import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
+import com.my.music.data.repository.RecentlyShownRepository
 import com.my.music.data.repository.YouTubeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -52,6 +54,8 @@ class HomeViewModel @Inject constructor(
     private val youtubeRepository: YouTubeRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
+    private val recentlyShownRepository: RecentlyShownRepository,
+    private val recommendationPlanner: RecommendationPlanner,
 ) : ViewModel() {
 
     private val tag = "HomeViewModel"
@@ -102,53 +106,24 @@ class HomeViewModel @Inject constructor(
                             genreSections = signals.genres,
                         )
                     }
-                    updateRecommendations(signals.liked, signals.recent)
+                    updateRecommendations()
                 }
         }
     }
 
     /**
-     * Персональные рекомендации: жанр и артист из последних лайков и истории.
+     * Персональные рекомендации: артисты из лайков и истории.
      * Повторная загрузка — только по Pull-to-refresh, чтобы лента не менялась
      * после каждого прослушивания.
      */
-    private fun updateRecommendations(
-        liked: List<Track>,
-        recent: List<Track>,
-        forceRefresh: Boolean = false,
-    ) {
+    private fun updateRecommendations(forceRefresh: Boolean = false) {
         if (!forceRefresh && recommendationsLoaded) return
 
         recommendationsLoaded = true
-        loadRecommendations(
-            queries = buildRecommendationQueries(liked, recent),
-            forceRefresh = forceRefresh,
-        )
+        loadRecommendations(forceRefresh = forceRefresh)
     }
 
-    private fun buildRecommendationQueries(
-        liked: List<Track>,
-        recent: List<Track>,
-    ): List<String> {
-        val signals = (liked.take(PERSONALIZATION_WINDOW) + recent.take(PERSONALIZATION_WINDOW))
-            .distinctBy { it.id }
-        val genre = signals.firstNotNullOfOrNull { track ->
-            track.genre?.trim()?.takeIf { it.isNotEmpty() }
-        }
-        val artist = signals.firstNotNullOfOrNull { track ->
-            track.artist.trim().takeIf { it.isNotEmpty() }
-        }
-
-        return buildList {
-            genre?.let { add("$it official audio") }
-            artist?.let { add("$it official audio") }
-        }.distinct().ifEmpty { listOf(POPULAR_QUERY) }
-    }
-
-    private fun loadRecommendations(
-        queries: List<String>,
-        forceRefresh: Boolean,
-    ) {
+    private fun loadRecommendations(forceRefresh: Boolean) {
         val requestId = ++recommendationsRequestId
         recommendationsJob?.cancel()
         recommendationsJob = viewModelScope.launch {
@@ -166,7 +141,12 @@ class HomeViewModel @Inject constructor(
             }
 
             try {
-                val result = loadRecommendationTracks(queries)
+                val recentlyShownIds = loadRecentlyShownIds()
+                val queries = recommendationPlanner.buildQueries(
+                    liked = _uiState.value.likedTracks,
+                    history = _uiState.value.recentTracks,
+                )
+                val result = loadRecommendationTracks(queries, recentlyShownIds)
                 if (requestId != recommendationsRequestId) return@launch
 
                 result.fold(
@@ -177,6 +157,7 @@ class HomeViewModel @Inject constructor(
                                 recommendationsError = null,
                             )
                         }
+                        markRecentlyShown(tracks)
                     },
                     onFailure = { error ->
                         Log.e(tag, "Ошибка загрузки рекомендаций: ${error.message}", error)
@@ -214,49 +195,70 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun loadRecommendationTracks(
-        queries: List<String>,
+        queries: List<RecommendationQuery>,
+        recentlyShownIds: Set<String>,
     ): Result<List<Track>> = coroutineScope {
         val primaryResults = queries
             .map { query ->
-                async { youtubeRepository.search(query, RECOMMENDATION_SEARCH_LIMIT) }
+                async {
+                    query to youtubeRepository.search(query.text, RECOMMENDATION_SEARCH_LIMIT)
+                }
             }
             .awaitAll()
 
-        val primaryTracks = primaryResults
-            .flatMap { it.getOrElse { emptyList() } }
-            .asRecommendations()
+        val primaryCandidates = primaryResults
+            .flatMap { (query, result) ->
+                result.getOrElse { emptyList() }
+                    .asSequence()
+                    .filter { track ->
+                        val allowedArtists = query.allowedArtists
+                        val matchesArtist = allowedArtists == null ||
+                            recommendationPlanner.matchesSeedArtist(track, allowedArtists)
+                        track.isEligible(recentlyShownIds) && matchesArtist
+                    }
+                    .toList()
+            }
+            .distinctBy { it.id }
 
-        val hasPersonalQuery = queries.any { it != POPULAR_QUERY }
+        val hasPersonalQuery = queries.any { it.allowedArtists != null }
+        val primarySelection = recommendationPlanner.selectTracks(primaryCandidates)
+        val primaryHasSuccess = primaryResults.any { it.second.isSuccess }
+        val primaryError = primaryResults.firstNotNullOfOrNull { it.second.exceptionOrNull() }
+
         if (!hasPersonalQuery) {
-            val firstError = primaryResults.firstNotNullOfOrNull { it.exceptionOrNull() }
-            return@coroutineScope if (primaryResults.any { it.isSuccess }) {
-                Result.success(primaryTracks)
+            return@coroutineScope if (primaryHasSuccess) {
+                Result.success(primarySelection)
             } else {
                 Result.failure(
-                    firstError ?: IllegalStateException("Не удалось загрузить рекомендации"),
+                    primaryError ?: IllegalStateException("Не удалось загрузить рекомендации"),
                 )
             }
         }
 
-        if (primaryTracks.size >= MIN_RECOMMENDATION_TRACKS) {
-            return@coroutineScope Result.success(primaryTracks)
+        if (primarySelection.size >= MIN_RECOMMENDATION_TRACKS) {
+            return@coroutineScope Result.success(primarySelection)
         }
 
         val fallbackResult = youtubeRepository.search(
             POPULAR_QUERY,
             RECOMMENDATION_SEARCH_LIMIT,
         )
-        val fallbackTracks = fallbackResult.getOrElse { emptyList() }.asRecommendations()
-        val merged = (primaryTracks + fallbackTracks)
+        val fallbackCandidates = fallbackResult
+            .getOrElse { emptyList() }
+            .asSequence()
+            .filter { it.isEligible(recentlyShownIds) }
             .distinctBy { it.id }
-            .take(RECOMMENDATION_TRACKS_LIMIT)
+            .toList()
+        val merged = recommendationPlanner.appendTracks(
+            selected = primarySelection,
+            candidates = fallbackCandidates,
+        )
 
         if (merged.isNotEmpty()) {
             return@coroutineScope Result.success(merged)
         }
 
-        val primaryError = primaryResults.firstNotNullOfOrNull { it.exceptionOrNull() }
-        if (primaryResults.any { it.isSuccess } || fallbackResult.isSuccess) {
+        if (primaryHasSuccess || fallbackResult.isSuccess) {
             Result.success(emptyList())
         } else {
             Result.failure(
@@ -267,13 +269,10 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun List<Track>.asRecommendations(): List<Track> =
-        asSequence()
-            .filter { it.durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS }
-            .filter { it.isStudioOriginal() }
-            .distinctBy { it.id }
-            .take(RECOMMENDATION_TRACKS_LIMIT)
-            .toList()
+    private fun Track.isEligible(recentlyShownIds: Set<String>): Boolean =
+        id !in recentlyShownIds &&
+            durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS &&
+            isStudioOriginal()
 
     /**
      * Отсекаем переводы, каверы, ремиксы, live-версии и прочие нестудийные записи.
@@ -286,22 +285,44 @@ class HomeViewModel @Inject constructor(
         return !NON_STUDIO_WORDS.containsMatchIn(text)
     }
 
+    private suspend fun loadRecentlyShownIds(): Set<String> =
+        runCatching {
+            recentlyShownRepository.getRecentlyShownIds(
+                now = System.currentTimeMillis(),
+                ttlMs = RECENTLY_SHOWN_TTL_MS,
+            )
+        }
+            .rethrowCancellation()
+            .onFailure { error ->
+                Log.e(tag, "Не удалось прочитать recently_shown: ${error.message}", error)
+            }
+            .getOrDefault(emptySet())
+
+    private suspend fun markRecentlyShown(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+
+        runCatching {
+            recentlyShownRepository.markShown(
+                trackIds = tracks.map { it.id },
+                now = System.currentTimeMillis(),
+                ttlMs = RECENTLY_SHOWN_TTL_MS,
+            )
+        }
+            .rethrowCancellation()
+            .onFailure { error ->
+                Log.e(tag, "Не удалось сохранить recently_shown: ${error.message}", error)
+            }
+    }
+
     /** Принудительное обновление для Pull-to-refresh. */
     fun refresh() {
-        val state = _uiState.value
-        updateRecommendations(
-            liked = state.likedTracks,
-            recent = state.recentTracks,
-            forceRefresh = true,
-        )
+        updateRecommendations(forceRefresh = true)
     }
 
     private companion object {
-        const val POPULAR_QUERY = "popular songs official audio"
         const val RECOMMENDATION_SEARCH_LIMIT = 24
-        const val RECOMMENDATION_TRACKS_LIMIT = 15
         const val MIN_RECOMMENDATION_TRACKS = 10
-        const val PERSONALIZATION_WINDOW = 20
+        const val RECENTLY_SHOWN_TTL_MS = 24 * 60 * 60 * 1000L
         const val MUSIC_MIN_DURATION_MS = 45_000L
         const val MUSIC_MAX_DURATION_MS = 900_000L
 

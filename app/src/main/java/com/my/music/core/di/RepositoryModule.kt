@@ -48,6 +48,12 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
+    abstract fun bindRecentlyShownRepository(
+        impl: com.my.music.data.local.RecentlyShownRepositoryImpl,
+    ): com.my.music.data.repository.RecentlyShownRepository
+
+    @Binds
+    @Singleton
     abstract fun bindSoundCloudChartsRepository(
         impl: com.my.music.data.source.soundcloud.SoundCloudChartsRepositoryImpl,
     ): com.my.music.data.repository.SoundCloudChartsRepository

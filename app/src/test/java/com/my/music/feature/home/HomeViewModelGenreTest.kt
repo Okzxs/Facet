@@ -5,10 +5,13 @@ import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
+import com.my.music.data.repository.RecentlyShownRepository
 import com.my.music.data.repository.YouTubeRepository
 import com.my.music.testutil.MainDispatcherRule
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
@@ -16,6 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import kotlin.random.Random
 
 /**
  * Группировка «Твои жанры» живёт в HomeViewModel
@@ -37,13 +41,29 @@ class HomeViewModelGenreTest {
         val youtubeRepository = mockk<YouTubeRepository>()
         val likedTracksRepository = mockk<LikedTracksRepository>()
         val playHistoryRepository = mockk<PlayHistoryRepository>()
+        val recentlyShownRepository = mockk<RecentlyShownRepository>()
+        val recommendationPlanner = RecommendationPlanner().apply {
+            random = Random(0)
+        }
 
         coEvery { youtubeRepository.search(any(), any()) } returns Result.success(emptyList())
         every { likedTracksRepository.getLikedTracks() } returns likedFlow
         every { likedTracksRepository.getSeasonMemories(any()) } returns memoriesFlow
         every { playHistoryRepository.getPlayHistory() } returns historyFlow
+        coEvery {
+            recentlyShownRepository.getRecentlyShownIds(any(), any())
+        } returns emptySet()
+        coEvery {
+            recentlyShownRepository.markShown(any(), any(), any())
+        } just Runs
 
-        viewModel = HomeViewModel(youtubeRepository, likedTracksRepository, playHistoryRepository)
+        viewModel = HomeViewModel(
+            youtubeRepository = youtubeRepository,
+            likedTracksRepository = likedTracksRepository,
+            playHistoryRepository = playHistoryRepository,
+            recentlyShownRepository = recentlyShownRepository,
+            recommendationPlanner = recommendationPlanner,
+        )
     }
 
     @Test

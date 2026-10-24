@@ -1,6 +1,6 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 23.10.2026
+## Последнее обновление: 24.10.2026
 
 ---
 
@@ -1775,6 +1775,53 @@ MEMORY.md
 ### Проверка
 - `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 84 JVM-теста, 0 failures, 0 errors.
 - `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Следующий шаг
+- Импорт плейлистов YouTube или экран «Скачанное».
+
+---
+
+## ✅ Сессия 9 — Рекомендации v2: сиды, валидация и recently_shown (24.10.2026)
+
+### Что сделано
+- «Для вас» переведены с одного жанра/артиста на топ-8 артистов-сидов из лайков и истории. Лайк весит больше прослушивания, свежие записи — больше старых; повтор одного и того же трека не удваивает вес.
+- Имя артиста нормализуется: нижний регистр, удаление `feat.`/`ft.`/`prod.`/`produced by`, схлопывание пробелов.
+- На каждый refresh выбираются случайные 4–5 артистов из топ-8. Для каждого генерируются 1–2 запроса из `"<artist> official audio"`, `"<artist> <жанр>"`, `"<artist> official"`, плюс 1–2 общих запроса `"<жанр> official audio"`.
+- Добавлена строгая валидация: трек принимается только при совпадении нормализованного `track.artist` с сид-артистом. Если артист пустой или `Unknown`, сравнивается начало названия (`startsWith`), а не подстрока. Кейс «имя сида в title чужого трека» больше не проходит.
+- Фильтр переводов, ремиксов, каверов, live, караоке, инструментала, акустики, slowed/nightcore и многоязычных версий сохранён.
+- Room поднят до v8: таблица `recently_shown` (`trackId`, `shownAt`) с TTL 24 часа. Показанные треки исключаются из следующей пачки, старые записи вычищаются при записи новой.
+- Пул кандидатов перемешивается перед обрезкой. В финальной ленте не больше 3 треков одного артиста; при нехватке 10 уникальных лента добивается популярными с тем же капом и исключением `recently_shown`.
+- Pull-to-refresh делает force-загрузку, заменяет ленту новой пачкой и не накладывает её поверх старой.
+- Прослушанные и лайкнутые треки не исчезают из уже показанной ленты; возврат с плеера не перезагружает Home, позиции и reveal-анимация сохраняются.
+- Плеер и поиск не изменялись.
+
+### Файлы
+```
+app/src/main/java/com/my/music/feature/home/RecommendationPlanner.kt (новый)
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/my/music/data/local/entity/RecentlyShownEntity.kt (новый)
+app/src/main/java/com/my/music/data/local/dao/RecentlyShownDao.kt (новый)
+app/src/main/java/com/my/music/data/repository/RecentlyShownRepository.kt (новый)
+app/src/main/java/com/my/music/data/local/RecentlyShownRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/data/local/AppDatabase.kt
+app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/my/music/data/local/DatabaseModule.kt
+app/src/main/java/com/my/music/core/di/RepositoryModule.kt
+app/schemas/com.my.music.data.local.AppDatabase/8.json (новый)
+app/src/test/java/com/my/music/feature/home/RecommendationPlannerTest.kt (новый)
+app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
+app/src/test/java/com/my/music/data/local/RecentlyShownRepositoryTest.kt (новый)
+app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
+PROGRESS.md
+MEMORY.md
+```
+
+### Проверка
+- `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 92 JVM-теста, 0 failures, 0 errors.
+- `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
+- Room-схема v8 экспортирована, миграция 1→8 проверена Robolectric-тестом.
 - APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Следующий шаг

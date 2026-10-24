@@ -12,6 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v4 → v5: веса жанров/артистов и предпочтения волны.
  * v5 → v6: таблица скачанных треков для офлайн-режима.
  * v6 → v7: офлайн-кэш Media3: вместо пути к файлу — URL потока и MIME-тип.
+ * v7 → v8: память о треках, уже показанных в рекомендациях.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -142,6 +143,24 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `recently_shown` (
+                `trackId` TEXT NOT NULL,
+                `shownAt` INTEGER NOT NULL,
+                PRIMARY KEY(`trackId`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_recently_shown_shownAt` " +
+                "ON `recently_shown` (`shownAt`)",
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -149,4 +168,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_4_5,
     MIGRATION_5_6,
     MIGRATION_6_7,
+    MIGRATION_7_8,
 )

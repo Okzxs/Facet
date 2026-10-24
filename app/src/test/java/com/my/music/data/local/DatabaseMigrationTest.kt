@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.my.music.data.local.entity.ChartCacheEntity
 import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.GenreWeightEntity
+import com.my.music.data.local.entity.RecentlyShownEntity
 import com.my.music.data.local.entity.UserPreferenceEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -42,7 +43,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 7 preserves likes and creates wave and download tables`() = runBlocking {
+    fun `migration from version 1 to 8 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -79,7 +80,7 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(7, database.openHelper.writableDatabase.version)
+            assertEquals(8, database.openHelper.writableDatabase.version)
 
             // Таблица офлайн-режима создана миграцией 5 → 6 и обновлена в 6 → 7
             database.downloadedTracksDao().insert(
@@ -114,6 +115,17 @@ class DatabaseMigrationTest {
             )
             assertEquals("false", database.tasteDao().getPreference("pref_ru_language"))
             assertNull(database.tasteDao().getPreference("missing"))
+
+            // Таблица памяти рекомендаций создана миграцией 7 → 8
+            database.recentlyShownDao().upsertAll(
+                listOf(
+                    RecentlyShownEntity(trackId = "shown-1", shownAt = 5_000L),
+                ),
+            )
+            assertEquals(
+                listOf("shown-1"),
+                database.recentlyShownDao().getTrackIdsSince(1_000L),
+            )
         } finally {
             database.close()
         }

@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.my.music.data.local.dao.DownloadedTracksDao
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
+import com.my.music.data.local.dao.RecentlyShownDao
 import com.my.music.data.local.dao.TasteDao
 import dagger.Module
 import dagger.Provides
@@ -59,5 +60,11 @@ object DatabaseModule {
     @Singleton
     fun provideDownloadedTracksDao(database: AppDatabase): DownloadedTracksDao {
         return database.downloadedTracksDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideRecentlyShownDao(database: AppDatabase): RecentlyShownDao {
+        return database.recentlyShownDao()
     }
 }
