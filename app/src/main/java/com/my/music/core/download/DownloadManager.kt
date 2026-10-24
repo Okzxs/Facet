@@ -10,6 +10,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.my.music.core.audio.AudioFeatureWorker
 import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -79,15 +80,26 @@ class DownloadManager @Inject constructor(
             .addTag(attemptTag)
             .build()
 
+        // Второй шаг цепочки читает уже сохранённый файл из DownloadRepository,
+        // поэтому в input передаём только trackId. Цепочка не запустит анализ,
+        // если скачивание завершилось ошибкой.
+        val featureRequest = OneTimeWorkRequestBuilder<AudioFeatureWorker>()
+            .setInputData(
+                workDataOf(AudioFeatureWorker.KEY_TRACK_ID to track.id),
+            )
+            .addTag(AudioFeatureWorker.TAG_AUDIO_FEATURE)
+            .build()
+
         Log.d(
             TAG,
-            "download(): trackId=${track.id}, workId=${request.id}, policy=REPLACE",
+            "download(): trackId=${track.id}, workId=${request.id}, " +
+                "audioWorkId=${featureRequest.id}, policy=REPLACE",
         )
-        workManager.enqueueUniqueWork(
+        workManager.beginUniqueWork(
             uniqueWorkName(track.id),
             ExistingWorkPolicy.REPLACE,
             request,
-        )
+        ).then(featureRequest).enqueue()
     }
 
     /**

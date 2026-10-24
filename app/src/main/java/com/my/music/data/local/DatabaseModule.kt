@@ -3,6 +3,7 @@ package com.my.music.data.local
 import android.content.Context
 import androidx.room.Room
 import com.my.music.data.local.dao.DownloadedTracksDao
+import com.my.music.data.local.dao.EmbeddingDao
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
 import com.my.music.data.local.dao.RecentlyShownDao
@@ -66,5 +67,11 @@ object DatabaseModule {
     @Singleton
     fun provideRecentlyShownDao(database: AppDatabase): RecentlyShownDao {
         return database.recentlyShownDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideEmbeddingDao(database: AppDatabase): EmbeddingDao {
+        return database.embeddingDao()
     }
 }

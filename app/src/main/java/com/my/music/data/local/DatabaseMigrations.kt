@@ -161,6 +161,28 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+/**
+ * v9: локальные аудио-эмбеддинги YAMNet.
+ *
+ * BLOB — little-endian Float32. Таблица не связана внешним ключом:
+ * эмбеддинг переживает очистку истории и удаляется вместе со скачанным
+ * треком только по явному запросу.
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `audio_embeddings` (
+                `trackId` TEXT NOT NULL,
+                `vector` BLOB NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                PRIMARY KEY(`trackId`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -169,4 +191,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_5_6,
     MIGRATION_6_7,
     MIGRATION_7_8,
+    MIGRATION_8_9,
 )

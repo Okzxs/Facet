@@ -31,6 +31,13 @@ android {
         versionCode = 1
         versionName = "0.1"
 
+        // ONNX Runtime тащит нативные библиотеки для x86/x86_64, которые
+        // на реальном телефоне не нужны и добавляют ~40 МБ к APK.
+        // Эмулятор в проекте не используется.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+
         val escapedLastFmKey = lastFmApiKey
             .replace("\\", "\\\\")
             .replace("\"", "\\\"")
@@ -125,6 +132,9 @@ dependencies {
 
     // WorkManager (фоновое скачивание треков)
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // ONNX Runtime для локальных аудио-эмбеддингов (YAMNet)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     // NewPipe Extractor (SoundCloud и другие сервисы без официального API)
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")

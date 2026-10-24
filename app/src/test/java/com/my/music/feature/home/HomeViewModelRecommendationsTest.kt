@@ -3,6 +3,7 @@ package com.my.music.feature.home
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
+import com.my.music.data.repository.EmbeddingRepository
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.RecentlyShownRepository
@@ -31,6 +32,7 @@ class HomeViewModelRecommendationsTest {
     private val likedTracksRepository = mockk<LikedTracksRepository>()
     private val playHistoryRepository = mockk<PlayHistoryRepository>()
     private val recentlyShownRepository = mockk<RecentlyShownRepository>()
+    private val embeddingRepository = mockk<EmbeddingRepository>()
     private val recommendationPlanner = RecommendationPlanner()
 
     private val historyFlow = MutableStateFlow<List<Track>>(emptyList())
@@ -52,6 +54,7 @@ class HomeViewModelRecommendationsTest {
         } answers {
             recentlyShownIds = firstArg<Collection<String>>().toSet()
         }
+        coEvery { embeddingRepository.getEmbeddings(any()) } returns emptyMap()
     }
 
     @Test
@@ -263,6 +266,7 @@ class HomeViewModelRecommendationsTest {
             likedTracksRepository = likedTracksRepository,
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,
+            embeddingRepository = embeddingRepository,
             recommendationPlanner = recommendationPlanner,
         )
 
