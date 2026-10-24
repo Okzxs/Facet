@@ -4,12 +4,10 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.my.music.data.local.dao.ChartCacheDao
 import com.my.music.data.local.dao.DownloadedTracksDao
-import com.my.music.data.local.dao.EmbeddingDao
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
 import com.my.music.data.local.dao.RecentlyShownDao
 import com.my.music.data.local.dao.TasteDao
-import com.my.music.data.local.entity.AudioEmbeddingEntity
 import com.my.music.data.local.entity.ChartCacheEntity
 import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.LikedTrackEntity
@@ -32,9 +30,8 @@ import com.my.music.data.local.entity.UserPreferenceEntity
         UserPreferenceEntity::class,
         DownloadedTrackEntity::class,
         RecentlyShownEntity::class,
-        AudioEmbeddingEntity::class,
     ],
-    version = 9,
+    version = 8,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -44,5 +41,4 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tasteDao(): TasteDao
     abstract fun downloadedTracksDao(): DownloadedTracksDao
     abstract fun recentlyShownDao(): RecentlyShownDao
-    abstract fun embeddingDao(): EmbeddingDao
 }

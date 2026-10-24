@@ -3,12 +3,10 @@ package com.my.music.feature.home
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.my.music.core.audio.cosineSimilarity
 import com.my.music.core.util.SeasonProvider
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Track
-import com.my.music.data.repository.EmbeddingRepository
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.RecentlyShownRepository
@@ -57,7 +55,6 @@ class HomeViewModel @Inject constructor(
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
     private val recentlyShownRepository: RecentlyShownRepository,
-    private val embeddingRepository: EmbeddingRepository,
     private val recommendationPlanner: RecommendationPlanner,
 ) : ViewModel() {
 
@@ -124,11 +121,6 @@ class HomeViewModel @Inject constructor(
 
         recommendationsLoaded = true
         loadRecommendations(forceRefresh = forceRefresh)
-
-        // Пока это только диагностика: сама выдача рекомендаций по-прежнему
-        // строится на артистах и жанрах. Лог покажет, что YAMNet-векторы
-        // реально считаются и сохраняются в Room.
-        logEmbeddingSimilaritySample()
     }
 
     private fun loadRecommendations(forceRefresh: Boolean) {
@@ -291,41 +283,6 @@ class HomeViewModel @Inject constructor(
         val text = "$title $artist"
         if (NON_STUDIO_PHRASES.any { text.contains(it, ignoreCase = true) }) return false
         return !NON_STUDIO_WORDS.containsMatchIn(text)
-    }
-
-    /**
-     * Диагностический сэмпл: два случайных трека из истории/лайков, для которых
-     * уже есть эмбеддинг. Ничего не меняет в UI и не влияет на рекомендации.
-     */
-    private fun logEmbeddingSimilaritySample() {
-        viewModelScope.launch {
-            val candidates = (_uiState.value.recentTracks + _uiState.value.likedTracks)
-                .distinctBy { it.id }
-            if (candidates.size < 2) return@launch
-
-            val embeddings = runCatching {
-                embeddingRepository.getEmbeddings(candidates.map { it.id })
-            }
-                .rethrowCancellation()
-                .onFailure { error ->
-                    Log.e(tag, "Не удалось прочитать аудио-эмбеддинги: ${error.message}", error)
-                }
-                .getOrDefault(emptyMap())
-
-            val withEmbeddings = candidates.mapNotNull { track ->
-                embeddings[track.id]?.let { vector -> track to vector }
-            }
-            if (withEmbeddings.size < 2) return@launch
-
-            val pair = withEmbeddings.shuffled().take(2)
-            val similarity = cosineSimilarity(pair[0].second, pair[1].second)
-            Log.d(
-                tag,
-                "Косинусное сходство эмбеддингов: " +
-                    "'${pair[0].first.title}' (${pair[0].first.id}) и " +
-                    "'${pair[1].first.title}' (${pair[1].first.id}) = $similarity",
-            )
-        }
     }
 
     private suspend fun loadRecentlyShownIds(): Set<String> =

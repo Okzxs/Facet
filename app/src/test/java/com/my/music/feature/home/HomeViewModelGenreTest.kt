@@ -3,7 +3,6 @@ package com.my.music.feature.home
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
-import com.my.music.data.repository.EmbeddingRepository
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.RecentlyShownRepository
@@ -43,13 +42,11 @@ class HomeViewModelGenreTest {
         val likedTracksRepository = mockk<LikedTracksRepository>()
         val playHistoryRepository = mockk<PlayHistoryRepository>()
         val recentlyShownRepository = mockk<RecentlyShownRepository>()
-        val embeddingRepository = mockk<EmbeddingRepository>()
         val recommendationPlanner = RecommendationPlanner().apply {
             random = Random(0)
         }
 
         coEvery { youtubeRepository.search(any(), any()) } returns Result.success(emptyList())
-        coEvery { embeddingRepository.getEmbeddings(any()) } returns emptyMap()
         every { likedTracksRepository.getLikedTracks() } returns likedFlow
         every { likedTracksRepository.getSeasonMemories(any()) } returns memoriesFlow
         every { playHistoryRepository.getPlayHistory() } returns historyFlow
@@ -65,7 +62,6 @@ class HomeViewModelGenreTest {
             likedTracksRepository = likedTracksRepository,
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,
-            embeddingRepository = embeddingRepository,
             recommendationPlanner = recommendationPlanner,
         )
     }
