@@ -6,7 +6,7 @@
 - 109 JVM-тестов, 0 failures; `assembleDebug` — `BUILD SUCCESSFUL`, APK ≈ 27,4 МБ.
 - Room v8, схемы `4.json`–`8.json`; ONNX/YAMNet и `core/audio` удалены revert-коммитом `9e74fb6`.
 - «Для вас»: related-треки YouTube/SoundCloud через NewPipe, 4–6 треков-сидов, кап 2/3, fallback только при <10 и только по строгому артисту; глобальный популярный запрос — только на пустой истории.
-- Скачивание: единый `DownloadSourceResolver` выбирает только progressive-источник (SoundCloud — HLS_ONLY, поэтому SC-треки качаются через YouTube), строгий матч артиста и названия, TTL 30 мин для неудачных источников; кнопка скачивания есть на главной, в медиатеке и плеере.
+- Скачивание: единый `DownloadSourceResolver` выбирает только progressive-источник (SoundCloud — HLS_ONLY, поэтому SC-треки качаются через YouTube), строгий матч артиста и названия, TTL 30 мин для неудачных источников; кнопка скачивания есть в медиатеке и полноэкранном плеере. На главной кнопки убраны — лента не даёт полного контекста для резолвера.
 - Плеер и поиск не менялись; лента стабильна до Pull-to-refresh, позиции скролла сохранены.
 
 ---
@@ -1958,3 +1958,36 @@ MEMORY.md
 
 ### Следующий шаг
 - Phase A: редизайн экрана синхронизированного текста (описать текущее состояние и дождаться команды «Продолжай Phase A»).
+
+---
+
+## ✅ Сессия 11.1 — Чистка кнопок скачивания на главной (25.10.2026)
+
+### Причина
+- В карточках главной кнопка скачивания всегда падала с ошибкой «Не удалось найти источник»: лента не передаёт полный контекст трека, нужный резолверу.
+- Скачивание остаётся в плеере и медиатеке, где контекст полный.
+
+### Что сделано
+- Из `HomeScreen` полностью убраны `TrackDownloadButton`, состояния скачивания и Snackbar ошибки: hero-карточка, «Для вас», «Недавнее», «Воспоминания».
+- Удалён лишний `Box`-обёртка и `SnackbarHost`; `PullToRefreshBox` снова корневой контейнер экрана.
+- Из `HomeViewModel` удалены `DownloadManager`, `downloadStates`, `downloadError`, `downloadTrack()` и `consumeDownloadError()`.
+- Отступы сохранены: в hero остался `Spacer(8.dp)` перед `PlayBadge`, в остальных карточках кнопки были оверлеями и не влияли на лейаут.
+- Тесты `HomeViewModelGenreTest` и `HomeViewModelRecommendationsTest` очищены от моков `DownloadManager`.
+
+### Проверка
+- `.\gradlew testDebugUnitTest assembleDebug` — `BUILD SUCCESSFUL`, 109 JVM-тестов, 0 failures, 0 errors.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 406 949 байт (~27,4 МБ).
+- `DownloadSourceResolver`, `DownloadManager`, `DownloadTrackWorker`, плеер и медиатека не менялись.
+
+### Файлы
+```
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
+PROGRESS.md
+MEMORY.md
+```
+
+### Следующий шаг
+- Phase A: аудит текущего экрана текста и редизайн после команды «Продолжай Phase A».
