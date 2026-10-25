@@ -1,13 +1,8 @@
 package com.my.music.core.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -16,7 +11,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -87,21 +81,9 @@ fun ExpressivePlayerSlider(
         label = "waveAmplitude",
     )
 
-    // Бегущая фаза синусоиды: живёт только во время воспроизведения.
-    // Значение читается в фазе отрисовки — без рекомпозиций каждый кадр
-    val wavePhase: State<Float>? = if (isPlaying) {
-        rememberInfiniteTransition(label = "wavePhase").animateFloat(
-            initialValue = 0f,
-            targetValue = TWO_PI.toFloat(),
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1600, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-            label = "wavePhaseValue",
-        )
-    } else {
-        null
-    }
+    // Бегущая фаза синусоиды: идёт только во время воспроизведения и замирает
+    // на паузе. Значение читается в фазе отрисовки — без рекомпозиций каждый кадр
+    val wavePhase = rememberPlaybackPhase(active = isPlaying, periodMs = 1600)
 
     val displayFraction = (if (isDragging) dragValue else value).coerceIn(0f, 1f)
     val bufferFraction = bufferedFraction.coerceIn(0f, 1f)
@@ -168,7 +150,7 @@ fun ExpressivePlayerSlider(
         val centerY = size.height / 2f
         val progressX = pad + span * displayFraction
         val amp = 9.dp.toPx() * amplitude
-        val phase = (wavePhase?.value ?: 0f).toDouble()
+        val phase = wavePhase.value.toDouble()
         val wavelength = 44.dp.toPx().toDouble()
         val stroke = 3.dp.toPx()
 

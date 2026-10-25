@@ -2045,3 +2045,53 @@ MEMORY.md
 
 ### Следующий шаг
 - Phase B — только после команды «Продолжай Phase B». До неё изменения не начинать.
+
+---
+
+## ✅ Сессия 13 — Phase A fix + Phase B: фон текста, стабильный таймлайн, синусоида-пульс (26.10.2026)
+
+### Причина
+- В режиме «Текст» размытая обложка масштабировалась до 0.58 и висела по центру — на светлой обложке были видны прямоугольные края «серого кирпича».
+- Морф `LinearProgressIndicator` ↔ `Slider` срывался на паузе, а фаза волны слайдера при остановке `rememberInfiniteTransition` скачком возвращалась в 0 — ползунок дёргался.
+- Запрошена мягкая пульсация синусоиды над слайдером от реального баса.
+
+### Что сделано
+1. **Фон текста** (`PlayerScreen`):
+   - Полноэкранный размытый слой: `matchParentSize()` + `graphicsLayer { scale 1.25 }` + `blur(44.dp, Unbounded)`; прямоугольные края уходят за экран.
+   - Hero-обложка в текстах гаснет полностью (`alpha = lerp(1f, 0f, recede)`), scrim `surface` alpha `0.65 * lyricsBackdrop` перенесён из hero-зоны в корень экрана.
+   - Верхняя/нижняя маски списка заменены на `DstIn`-затухание контента (`CompositingStrategy.Offscreen`): маска режет прозрачность строк, а не заливает фон цветом surface — на светлой обложке больше нет тёмного прямоугольника.
+2. **Таймлайн**:
+   - `ExpressivePlayerSlider` переведён на `rememberPlaybackPhase(active = isPlaying, periodMs = 1600)` (`withFrameNanos`): на паузе фаза замирает, а не сбрасывается; амплитуда плавно уходит в линию за 500 мс.
+   - Морф прогресса защёлкнут через `hasStarted` на `trackId`: `LinearProgressIndicator` показывается только на старте трека и не возвращается на паузе/буферизации.
+3. **Синусоида-пульс** (`SinePulseBar`):
+   - Полоса 16dp над слайдером, stroke 1.5dp, `primary` alpha 0.5, края сходятся к линии; hitbox слайдера не изменён.
+   - `BassSampler`: `Visualizer` на аудиосессии ExoPlayer, FFT-бины 1–11, средняя амплитуда /96, асимметричный lerp (атака 0.35, спад 0.10).
+   - `PlaybackAudioSession` публикует `audioSessionId` из `MusicService` в UI того же процесса.
+   - В манифест добавлен `RECORD_AUDIO`; разрешение спрашивается один раз за процесс, при отказе — ambient `0.42 + 0.26*sin(1.15t) + 0.10*sin(0.53t+1.2)`.
+   - На паузе амплитуда плавно гаснет в линию (220 мс), на смене трека — gate fade out/in (120 мс + 360 мс).
+
+### Проверка
+- `.\gradlew testDebugUnitTest assembleDebug` — `BUILD SUCCESSFUL`, 109 JVM-тестов, 0 failures, 0 skipped.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 417 678 байт.
+- Live-тест на SM-A266B:
+  - Moby — Porcelain (тёмная бирюзовая обложка) и ONDA ANDAR — type london (светлая бежевая): фон текстов — мягкое полноэкранное пятно без прямоугольных границ; верхние/нижние строки растворяются через DstIn.
+  - Пауза: ползунок не прыгает по X, волна слайдера плавно выпрямляется, синусоида гаснет в линию; резюм возвращает волну с той же фазы.
+  - Синусоида: амплитуда 11–16 px при FFT-энергии, на паузе 0.
+  - Источник энергии: **Visualizer** (logcat `SinePulse: Visualizer активен, сессия 19153`); ambient-ветка проверена отзывом `RECORD_AUDIO` — logcat `Нет RECORD_AUDIO — ambient-фолбэк`.
+- Напоминание: после `adb install` обязателен `am force-stop`.
+
+### Файлы
+```
+app/src/main/AndroidManifest.xml
+app/src/main/java/com/my/music/core/player/MusicService.kt
+app/src/main/java/com/my/music/core/player/PlaybackAudioSession.kt
+app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/my/music/core/ui/components/PlaybackPhase.kt
+app/src/main/java/com/my/music/core/ui/components/SinePulseBar.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+PROGRESS.md
+MEMORY.md
+```
+
+### Следующий шаг
+- Ожидает следующей команды: экран «Скачанное» или импорт плейлистов YouTube.

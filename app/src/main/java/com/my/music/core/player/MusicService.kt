@@ -99,6 +99,9 @@ class MusicService : MediaSessionService() {
             }
         }
 
+        // Публикуем номер аудиосессии для декоративного визуализатора в плеере
+        PlaybackAudioSession.attach(player)
+
         exoPlayer = player
         return MediaSession.Builder(this, forwardingPlayer)
             .setSessionActivity(sessionActivity)

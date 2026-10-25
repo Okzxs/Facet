@@ -1,5 +1,7 @@
 package com.my.music.feature.player
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -49,9 +51,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -70,6 +75,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -81,6 +87,7 @@ import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
+import com.my.music.core.ui.components.SinePulseBar
 import com.my.music.core.ui.theme.PlayerDynamicColors
 import com.my.music.core.ui.theme.rememberPlayerDynamicColors
 import com.my.music.data.model.LyricsResult
@@ -191,6 +198,28 @@ fun PlayerScreen(
         }
     }
 
+    // ─── Разрешение на микрофон для визуализатора ────────────────────────
+    // Visualizer на аудиосессии требует RECORD_AUDIO. Спрашиваем один раз за
+    // процесс; без разрешения синусоида уходит в ambient-фолбэк.
+    var audioPermissionGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted -> audioPermissionGranted = granted }
+
+    LaunchedEffect(Unit) {
+        if (!audioPermissionGranted && !AudioPermissionGate.asked) {
+            AudioPermissionGate.asked = true
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
     // Текущий трек берём из PlayerController (он всегда актуален после play())
     val track = playerState.currentTrack ?: uiState.track
 
@@ -274,6 +303,14 @@ fun PlayerScreen(
         )
     }
 
+    // Фон режима текста: та же обложка, но размытая на весь экран.
+    // Отдельная анимация нужна, потому что слой живёт в корне экрана, а не в hero-зоне.
+    val lyricsBackdrop by animateFloatAsState(
+        targetValue = if (isLyricsMode) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+        label = "lyricsBackdrop",
+    )
+
     val surfaceColor = playerColors.surfaceContainerHigh
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
@@ -334,10 +371,47 @@ fun PlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(backgroundBrush)
-                .padding(padding),
+                .background(backgroundBrush),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            // ─── Фон режима текста: обложка во весь экран, без видимых краёв ───
+            // Слой увеличен (scale 1.25) и размыт с Unbounded-краем: прямоугольная
+            // граница карточки уходит за пределы экрана, остаётся только мягкое пятно.
+            if (lyricsBackdrop > 0.01f && !track?.artworkUrl.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            alpha = lyricsBackdrop
+                            scaleX = 1.25f
+                            scaleY = 1.25f
+                        }
+                        .blur(
+                            radius = 44.dp,
+                            edgeTreatment = BlurredEdgeTreatment.Unbounded,
+                        ),
+                ) {
+                    ArtworkImage(
+                        artworkUrl = track?.artworkUrl,
+                        shape = RoundedCornerShape(0.dp),
+                        notePainter = notePainter,
+                        placeholderPainter = placeholderPainter,
+                    )
+                }
+            }
+
+            // Спокойный scrim поверх фона: держит контраст текста на любой обложке
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = 0.65f * lyricsBackdrop }
+                    .background(MaterialTheme.colorScheme.surface),
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+            ) {
                 // ─── Hero-зона: обложка-задник + передний план (обложка/тексты) ──
                 ExpressiveHeroZone(
                     variant = PLAYER_LAYOUT_VARIANT,
@@ -424,6 +498,7 @@ fun PlayerScreen(
                         isBuffering = isBuffering,
                         isResolving = uiState.isResolving,
                         trackId = track?.id,
+                        canVisualize = audioPermissionGranted,
                         durationMs = track?.durationMs ?: 0L,
                         primaryColor = playerColors.primary,
                         currentFraction = { viewModel.currentFraction() },
@@ -561,7 +636,9 @@ private fun ExpressiveHeroZone(
                     rotationZ = lerp(style.rotationZ, style.rotationZ * 2.4f, recede)
                     scaleX = lerp(1f, 0.58f, recede)
                     scaleY = lerp(1f, 0.58f, recede)
-                    alpha = lerp(1f, 0.30f, recede)
+                    // В режиме текста карточка полностью уступает место полноэкранному
+                    // размытому фону — иначе её прямоугольные края видны как «кирпич».
+                    alpha = lerp(1f, 0f, recede)
                     translationY = heroScroll.value * 0.32f
                 }
                 .blur(
@@ -634,14 +711,6 @@ private fun ExpressiveHeroZone(
                 }
             }
         }
-
-        // ─── Спокойный фон текстов: фиксированный тёмный scrim поверх обложки ───
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .graphicsLayer { alpha = 0.65f * recede }
-                .background(MaterialTheme.colorScheme.surface),
-        )
 
         // ─── Передний план ───
         AnimatedContent(
@@ -1010,7 +1079,6 @@ private fun LyricsForeground(
     onRetry: () -> Unit,
 ) {
     val miniShape = RoundedCornerShape(13.dp)
-    val fadeColor = MaterialTheme.colorScheme.surface
     val onSurface = MaterialTheme.colorScheme.onSurface
 
     Column(
@@ -1058,7 +1126,9 @@ private fun LyricsForeground(
 
         Spacer(Modifier.height(6.dp))
 
-        // Строки скользят под мягкими градиентными масками, не упираясь в контролы
+        // Строки скользят под мягкими градиентными масками, не упираясь в контролы.
+        // Маски — это DstIn-затухание самого контента, а не серая плёнка surface:
+        // на светлой обложке цветная подложка давала видимый прямоугольник.
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1072,38 +1142,6 @@ private fun LyricsForeground(
                 currentPositionMs = currentPositionMs,
                 onSeekToLine = onSeekToLine,
                 onRetry = onRetry,
-            )
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                fadeColor.copy(alpha = 0.92f),
-                                fadeColor.copy(alpha = 0.45f),
-                                Color.Transparent,
-                            ),
-                        ),
-                    ),
-            )
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(124.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                fadeColor.copy(alpha = 0.55f),
-                                fadeColor.copy(alpha = 0.96f),
-                            ),
-                        ),
-                    ),
             )
         }
 
@@ -1223,7 +1261,23 @@ private fun LyricsListView(
     }
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            // Мягкое растворение строк у верхнего и нижнего краёв: маска режет
+            // прозрачность самого контента, поэтому фон под ним остаётся чистым.
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.07f to Color.Black,
+                        0.87f to Color.Black,
+                        1f to Color.Transparent,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
         when {
@@ -1433,6 +1487,7 @@ private fun PlayerProgressSection(
     isBuffering: Boolean = false,
     isResolving: Boolean = false,
     trackId: String? = null,
+    canVisualize: Boolean = false,
     durationMs: Long,
     primaryColor: Color,
     currentFraction: () -> Float,
@@ -1474,13 +1529,26 @@ private fun PlayerProgressSection(
     }
 
     val remainingMs = (durationMs - displayedMs).coerceAtLeast(0L)
-    // Пока идёт резолв потока/буферизация и позиция == 0 — показываем индикатор загрузки,
-    // при старте воспроизведения Crossfade (500 мс) плавно заменяет его на слайдер.
+    // Индикатор загрузки живёт только на старте трека и не возвращается назад:
+    // пауза, перемотка в начало и повторная буферизация не перезапускают морф.
     val isInitialBuffering = (isBuffering || isResolving) && displayedMs == 0L
+    var hasStarted by remember(trackId) { mutableStateOf(false) }
+    LaunchedEffect(trackId, isInitialBuffering) {
+        if (!isInitialBuffering) hasStarted = true
+    }
+    val showLoading = isInitialBuffering && !hasStarted
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        // Тонкая синусоида-пульс над слайдером: декоративная, касания не перехватывает
+        SinePulseBar(
+            isPlaying = isPlaying,
+            trackId = trackId,
+            canVisualize = canVisualize,
+            color = primaryColor,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Crossfade(
-            targetState = isInitialBuffering,
+            targetState = showLoading,
             animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
             label = "progressCrossfade",
         ) { loading ->
@@ -1577,4 +1645,9 @@ private fun formatMs(ms: Long): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "$min:${sec.toString().padStart(2, '0')}"
+}
+
+/** Запрос RECORD_AUDIO нужен только визуализатору: спрашиваем один раз за процесс. */
+private object AudioPermissionGate {
+    var asked = false
 }
