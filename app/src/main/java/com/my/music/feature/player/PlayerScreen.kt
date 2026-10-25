@@ -53,7 +53,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
@@ -569,13 +569,15 @@ private fun ExpressiveHeroZone(
                     edgeTreatment = BlurredEdgeTreatment.Unbounded,
                 ),
         ) {
-            // Свечение: размытое цветное облако палитры под обложкой
+            // Свечение: размытое цветное облако палитры под обложкой.
+            // В режиме текста оно гаснет вместе с обложкой, чтобы фон не «радужил».
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer {
                         scaleX = 1.22f
                         scaleY = 1.22f
+                        alpha = 1f - recede
                     }
                     .background(
                         brush = Brush.radialGradient(
@@ -632,6 +634,14 @@ private fun ExpressiveHeroZone(
                 }
             }
         }
+
+        // ─── Спокойный фон текстов: фиксированный тёмный scrim поверх обложки ───
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer { alpha = 0.65f * recede }
+                .background(MaterialTheme.colorScheme.surface),
+        )
 
         // ─── Передний план ───
         AnimatedContent(
@@ -1068,7 +1078,7 @@ private fun LyricsForeground(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .height(60.dp)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
@@ -1169,6 +1179,9 @@ private fun LyricsListView(
     val density = LocalDensity.current
     var viewportHeightPx by remember { mutableIntStateOf(0) }
     val halfLinePx = with(density) { 22.dp.roundToPx() }
+    // Активная строка стоит чуть выше геометрического центра: так перенесённая
+    // строка не попадает под нижнюю градиентную маску у контролов.
+    val centerLiftPx = with(density) { 24.dp.roundToPx() }
 
     // Опрос позиции: индекс активной строки и прогресс внутри неё
     LaunchedEffect(lyricsResult) {
@@ -1199,7 +1212,7 @@ private fun LyricsListView(
     // Скролл — реакция только на смену индекса; строка встаёт по центру видимой области
     LaunchedEffect(activeIndex, viewportHeightPx) {
         if (activeIndex < 0 || viewportHeightPx <= 0) return@LaunchedEffect
-        val centerOffset = (viewportHeightPx / 2 - halfLinePx).coerceAtLeast(0)
+        val centerOffset = (viewportHeightPx / 2 - halfLinePx - centerLiftPx).coerceAtLeast(0)
         if (!hasCentered) {
             // Первое позиционирование — мгновенно, без «пролёта» через весь текст
             listState.scrollToItem(index = activeIndex, scrollOffset = -centerOffset)
@@ -1313,6 +1326,7 @@ private fun LyricLineItem(
     onClick: (() -> Unit)?,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
 
     // Прогресс читает только активная строка — остальные не подписаны на опрос плеера
     val fillTarget = if (isActive && isSynced) lineProgress().coerceIn(0f, 1f) else 0f
@@ -1322,32 +1336,56 @@ private fun LyricLineItem(
         label = "lyricFill",
     )
 
-    // Активная строка мягко увеличивается, не меняя физический размер и высоту строки
-    val activeScale by animateFloatAsState(
-        targetValue = if (isActive) 1.08f else 1f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
-        label = "lyricScale",
-    )
+    // Иерархия строк: активная крупнее, соседние — средние, дальние — компактные.
+    // Размер задаётся напрямую, без graphicsLayer-масштаба, чтобы текст не вылезал за край.
+    val targetFontSize = when {
+        !isSynced -> 24.sp
+        isActive -> 24.sp
+        indexDistance == 1 -> 18.sp
+        else -> 16.sp
+    }
+    val targetLineHeight = when {
+        !isSynced || isActive -> 34.sp
+        indexDistance == 1 -> 26.sp
+        else -> 23.sp
+    }
 
     val lineAlpha by animateFloatAsState(
         targetValue = when {
             !isSynced -> 0.82f
             isActive -> 1f
-            else -> 0.36f
+            indexDistance == 1 -> 0.55f
+            else -> 0.35f
         },
-        animationSpec = tween(durationMillis = 320),
+        animationSpec = tween(durationMillis = 260),
         label = "lyricAlpha",
     )
 
-    // Дальние строки растворяются: мягкий blur только на API 31+, иначе остаётся прозрачность
-    val blurRadius = when {
-        !isSynced || indexDistance <= 2 -> 0.dp
-        indexDistance == 3 -> 1.5.dp
-        indexDistance == 4 -> 2.5.dp
-        else -> 3.5.dp
-    }
+    // Неактивные строки — приглушённый onSurfaceVariant; несинхронизированный текст — onSurface.
+    val lineColor = if (isSynced) onSurfaceVariant else onSurface
 
-    // Кисть обновляется вместе с анимацией заливки; span — по границам самой строки
+    // Базовый стиль строки: размер, вес и мягкое свечение активной строки.
+    val lineStyle = MaterialTheme.typography.bodyLarge.copy(
+        fontSize = targetFontSize,
+        lineHeight = targetLineHeight,
+        letterSpacing = if (isActive) (-0.2).sp else 0.sp,
+        fontWeight = when {
+            isActive -> FontWeight.Bold
+            !isSynced -> FontWeight.Normal
+            indexDistance == 1 -> FontWeight.Medium
+            else -> FontWeight.Normal
+        },
+        shadow = if (isActive && isSynced) {
+            Shadow(
+                color = highlightColor.copy(alpha = 0.38f),
+                blurRadius = 18f,
+            )
+        } else {
+            null
+        },
+    )
+
+    // Кисть обновляется вместе с анимацией заливки: слева — пропето, справа — ещё нет.
     val lyricsBrush = remember(fill, highlightColor, onSurface) {
         buildLyricsBrush(
             fillFraction = fill,
@@ -1369,38 +1407,16 @@ private fun LyricLineItem(
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 24.sp,
-                lineHeight = 34.sp,
-                letterSpacing = (-0.2).sp,
-                fontWeight = when {
-                    isActive -> FontWeight.Bold
-                    isSynced -> FontWeight.Medium
-                    else -> FontWeight.Normal
-                },
+            style = lineStyle.copy(
                 brush = if (isActive && isSynced) lyricsBrush else null,
-                shadow = if (isActive && isSynced) {
-                    Shadow(
-                        color = highlightColor.copy(alpha = 0.55f),
-                        blurRadius = 18f,
-                    )
-                } else {
-                    null
-                },
             ),
-            color = if (isActive && isSynced) Color.Unspecified else onSurface,
+            color = if (isActive && isSynced) Color.Unspecified else lineColor,
             // Без жёстких ограничений: длинные строки свободно переносятся
             softWrap = true,
             maxLines = Int.MAX_VALUE,
             modifier = Modifier
                 .fillMaxWidth()
-                .graphicsLayer {
-                    alpha = lineAlpha
-                    scaleX = activeScale
-                    scaleY = activeScale
-                    transformOrigin = TransformOrigin(0f, 0.5f)
-                }
-                .blur(blurRadius),
+                .graphicsLayer { alpha = lineAlpha },
         )
     }
 }
@@ -1534,10 +1550,10 @@ private fun buildLyricsBrush(
 ): Brush {
     val fill = fillFraction.coerceIn(0f, 1f)
     if (fill <= 0f) {
-        return Brush.linearGradient(colors = listOf(unsungColor, unsungColor))
+        return SolidColor(unsungColor)
     }
     if (fill >= 1f) {
-        return Brush.linearGradient(colors = listOf(sungColor, sungColor))
+        return SolidColor(sungColor)
     }
 
     // Полуширина мягкой кромки в долях ширины строки
@@ -1551,7 +1567,8 @@ private fun buildLyricsBrush(
         add(edgeEnd to unsungColor)
         if (edgeEnd < 1f) add(1f to unsungColor)
     }
-    return Brush.linearGradient(colorStops = stops.toTypedArray())
+    // Горизонтальная заливка: перенесённая строка не становится серой справа.
+    return Brush.horizontalGradient(colorStops = stops.toTypedArray())
 }
 
 private fun formatMs(ms: Long): String {
