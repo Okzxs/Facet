@@ -36,6 +36,9 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -73,6 +76,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.core.download.DownloadState
+import com.my.music.core.ui.components.TrackDownloadButton
 import com.my.music.core.ui.components.formatDuration
 import com.my.music.core.ui.theme.PillShape
 import com.my.music.core.ui.theme.SquircleShape
@@ -97,11 +102,24 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val downloadStates by viewModel.downloadStates.collectAsState()
+    val downloadError by viewModel.downloadError.collectAsState()
     val recentTracks = uiState.recentTracks
     val heroTrack = recentTracks.firstOrNull()
     val homeListState = rememberLazyListState()
     val recommendationsListState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
+    LaunchedEffect(downloadError) {
+        val message = downloadError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = message,
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.consumeDownloadError()
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
     PullToRefreshBox(
         isRefreshing = uiState.isRefreshing,
         onRefresh = viewModel::refresh,
@@ -130,6 +148,9 @@ fun HomeScreen(
                         ContinueListeningCard(
                             track = heroTrack,
                             queue = recentTracks,
+                            downloadState = downloadStates[heroTrack.id]
+                                ?: DownloadState.NotDownloaded,
+                            onDownloadClick = { viewModel.downloadTrack(heroTrack) },
                             onTrackClick = onTrackClick,
                         )
                     }
@@ -143,6 +164,8 @@ fun HomeScreen(
                         isLoading = uiState.isRecommendationsLoading,
                         error = uiState.recommendationsError,
                         listState = recommendationsListState,
+                        downloadStates = downloadStates,
+                        onDownloadClick = viewModel::downloadTrack,
                         onTrackClick = onTrackClick,
                         onRetry = viewModel::refresh,
                     )
@@ -154,6 +177,8 @@ fun HomeScreen(
                     RevealBlock(index = 3) {
                         RecentBlock(
                             tracks = recentTracks,
+                            downloadStates = downloadStates,
+                            onDownloadClick = viewModel::downloadTrack,
                             onTrackClick = onTrackClick,
                         )
                     }
@@ -166,6 +191,8 @@ fun HomeScreen(
                         MemoryCard(
                             memories = uiState.memories,
                             season = uiState.memorySeason,
+                            downloadStates = downloadStates,
+                            onDownloadClick = viewModel::downloadTrack,
                             onTrackClick = onTrackClick,
                         )
                     }
@@ -181,6 +208,13 @@ fun HomeScreen(
                 }
             }
         }
+    }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        )
     }
 }
 
@@ -281,6 +315,8 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
 private fun ContinueListeningCard(
     track: Track,
     queue: List<Track>,
+    downloadState: DownloadState,
+    onDownloadClick: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -348,7 +384,14 @@ private fun ContinueListeningCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(6.dp))
+            TrackDownloadButton(
+                state = downloadState,
+                onClick = onDownloadClick,
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(8.dp))
             PlayBadge(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -363,6 +406,8 @@ private fun RecommendationsBlock(
     isLoading: Boolean,
     error: String?,
     listState: LazyListState,
+    downloadStates: Map<String, DownloadState>,
+    onDownloadClick: (Track) -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
     onRetry: () -> Unit,
 ) {
@@ -378,6 +423,8 @@ private fun RecommendationsBlock(
             tracks.isNotEmpty() -> RecommendationsRow(
                 tracks = tracks,
                 listState = listState,
+                downloadStates = downloadStates,
+                onDownloadClick = onDownloadClick,
                 onTrackClick = onTrackClick,
             )
             isLoading -> RecommendationsSkeleton()
@@ -401,6 +448,8 @@ private fun RecommendationsBlock(
 private fun RecommendationsRow(
     tracks: List<Track>,
     listState: LazyListState,
+    downloadStates: Map<String, DownloadState>,
+    onDownloadClick: (Track) -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     LazyRow(
@@ -414,6 +463,8 @@ private fun RecommendationsRow(
         ) { track ->
             RecommendationCard(
                 track = track,
+                downloadState = downloadStates[track.id] ?: DownloadState.NotDownloaded,
+                onDownloadClick = { onDownloadClick(track) },
                 onClick = { onTrackClick(track, tracks) },
             )
         }
@@ -423,6 +474,8 @@ private fun RecommendationsRow(
 @Composable
 private fun RecommendationCard(
     track: Track,
+    downloadState: DownloadState,
+    onDownloadClick: () -> Unit,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -460,6 +513,16 @@ private fun RecommendationCard(
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 shape = SquircleShape,
+            )
+            TrackDownloadButton(
+                state = downloadState,
+                onClick = onDownloadClick,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp),
+                size = 36.dp,
+                containerColor = Color.Black.copy(alpha = 0.46f),
+                contentColor = Color.White,
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -558,6 +621,8 @@ private fun RecommendationsMessage(
 @Composable
 private fun RecentBlock(
     tracks: List<Track>,
+    downloadStates: Map<String, DownloadState>,
+    onDownloadClick: (Track) -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     Column {
@@ -578,6 +643,8 @@ private fun RecentBlock(
             ) { track ->
                 RecentCover(
                     track = track,
+                    downloadState = downloadStates[track.id] ?: DownloadState.NotDownloaded,
+                    onDownloadClick = { onDownloadClick(track) },
                     onClick = { onTrackClick(track, tracks) },
                 )
             }
@@ -588,6 +655,8 @@ private fun RecentBlock(
 @Composable
 private fun RecentCover(
     track: Track,
+    downloadState: DownloadState,
+    onDownloadClick: () -> Unit,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -627,6 +696,16 @@ private fun RecentCover(
             modifier = Modifier.fillMaxSize(),
             shape = coverShape,
         )
+        TrackDownloadButton(
+            state = downloadState,
+            onClick = onDownloadClick,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp),
+            size = 34.dp,
+            containerColor = Color.Black.copy(alpha = 0.46f),
+            contentColor = Color.White,
+        )
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -661,6 +740,8 @@ private fun RecentCover(
 private fun MemoryCard(
     memories: List<SeasonMemory>,
     season: String,
+    downloadStates: Map<String, DownloadState>,
+    onDownloadClick: (Track) -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     val memoryTracks = remember(memories) { memories.map { it.track } }
@@ -741,6 +822,9 @@ private fun MemoryCard(
                     MemoryTrackRow(
                         track = memory.track,
                         contentColor = contentColor,
+                        downloadState = downloadStates[memory.track.id]
+                            ?: DownloadState.NotDownloaded,
+                        onDownloadClick = { onDownloadClick(memory.track) },
                         onClick = { onTrackClick(memory.track, memoryTracks) },
                     )
                 }
@@ -764,6 +848,8 @@ private fun MemoryCard(
 private fun MemoryTrackRow(
     track: Track,
     contentColor: Color,
+    downloadState: DownloadState,
+    onDownloadClick: () -> Unit,
     onClick: () -> Unit,
 ) {
     Row(
@@ -806,6 +892,12 @@ private fun MemoryTrackRow(
                 maxLines = 1,
             )
         }
+        TrackDownloadButton(
+            state = downloadState,
+            onClick = onDownloadClick,
+            size = 32.dp,
+            contentColor = contentColor.copy(alpha = 0.8f),
+        )
     }
 }
 

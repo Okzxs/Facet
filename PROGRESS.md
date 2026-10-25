@@ -1,11 +1,12 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 24.10.2026 (сессия 10)
+## Последнее обновление: 25.10.2026 (сессия 11)
 
 ## 📌 Актуальный срез
-- 100 JVM-тестов, 0 failures; `assembleDebug` — `BUILD SUCCESSFUL`, APK ≈ 27,2 МБ.
+- 109 JVM-тестов, 0 failures; `assembleDebug` — `BUILD SUCCESSFUL`, APK ≈ 27,4 МБ.
 - Room v8, схемы `4.json`–`8.json`; ONNX/YAMNet и `core/audio` удалены revert-коммитом `9e74fb6`.
 - «Для вас»: related-треки YouTube/SoundCloud через NewPipe, 4–6 треков-сидов, кап 2/3, fallback только при <10 и только по строгому артисту; глобальный популярный запрос — только на пустой истории.
+- Скачивание: единый `DownloadSourceResolver` выбирает только progressive-источник (SoundCloud — HLS_ONLY, поэтому SC-треки качаются через YouTube), строгий матч артиста и названия, TTL 30 мин для неудачных источников; кнопка скачивания есть на главной, в медиатеке и плеере.
 - Плеер и поиск не менялись; лента стабильна до Pull-to-refresh, позиции скролла сохранены.
 
 ---
@@ -1889,3 +1890,71 @@ MEMORY.md
 
 ### Следующий шаг
 - Проверить related-ленту на реальном устройстве, затем импорт плейлистов YouTube или экран «Скачанное».
+
+---
+
+## ✅ Сессия 11 — Phase C: единый резолвер источника скачивания (25.10.2026)
+
+### Причина
+- SoundCloud отдаёт только HLS, из которого нельзя собрать один офлайн-файл. Раньше такие треки либо не качались, либо требовали ручного поиска на YouTube.
+- Кнопка скачивания была только в плеере; на главной и в медиатеке её не было.
+
+### Что сделано
+1. **Контракт источников**:
+   - `DownloadCapability` — `PROGRESSIVE`, `HLS_ONLY`, `NONE`; каждый репозиторий отдаёт `downloadCapability`.
+   - `DownloadSource` — общий интерфейс `source` / `capability` / `search()` / `resolve()`.
+   - `YouTubeDownloadSource` (`PROGRESSIVE`) и `SoundCloudDownloadSource` (`HLS_ONLY`) собраны через Hilt `@IntoSet` в `DownloadSourceModule`.
+2. **`DownloadSourceResolver`**:
+   - Сначала пробует текущий источник, если он progressive и у трека есть ссылка; затем остальные progressive-источники.
+   - Строгий матч: нормализованный артист должен совпасть целиком, название — точно, с допуском только на `feat.`, `remaster`, `official audio/video`, `lyrics`, `visualizer`, `explicit`, `clean` и точный префикс `Артист — Название` (YouTube-формат). Подстроки запрещены.
+   - `RecentlyFailedSources` — TTL 30 минут на пару «трек + источник»; `Mutex` на `trackId` не даёт запускать параллельный поиск при быстрых повторных тапах.
+   - Возвращает `ResolvedDownload`: исходные метаданные трека + фактический progressive-URL, MIME и источник.
+3. **`DownloadManager`**:
+   - `download()` стал `suspend`: резолвер вызывается до постановки `DownloadTrackWorker`; в задачу передаются `KEY_DIRECT_STREAM_URL`, `KEY_DIRECT_MIME_TYPE`, `KEY_RESOLVED_SOURCE`.
+   - Ошибка резолва возвращается в UI без создания воркера; активный резолв отменяется вместе с задачей.
+   - `observeStates(ids)` отдаёт состояния сразу для списка карточек одним запросом WorkManager по тегу `download-track:<id>`.
+4. **Worker**:
+   - Скачивает готовый прямой progressive-URL; старый путь `resolveStream` оставлен для задач, поставленных до обновления и для повторного запуска.
+   - В Room сохраняются исходные `Track.id`/`source`, а файл и MIME берутся с фактического источника.
+5. **UI**:
+   - Общий `TrackDownloadButton` добавлен в hero-карточку, «Для вас», «Недавнее», «Воспоминания» и медиатеку; в плеере кнопка уже была.
+   - При успехе — бейдж прогресса/галочка, при неудаче — Snackbar «Не удалось найти источник» (Player, Home, Library). Диалогов выбора источника нет.
+
+### Проверка
+- `.\gradlew testDebugUnitTest assembleDebug` — `BUILD SUCCESSFUL`, 109 JVM-тестов, 0 failures, 0 errors.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 406 949 байт (~27,4 МБ).
+- `DownloadSourceResolverTest` — 10 тестов: SC отсеивается как HLS, YT выбирается, ложное название отсеивается, `recently_failed` блокирует повтор, отсутствие источников даёт ошибку, YouTube-префикс артиста допускается.
+- Живая проверка матча на реальной выдаче YouTube: для `Midnight City — M83` совпал только официальный ролик канала M83 (`match=true`), остальные кандидаты отсеяны. Прямой `resolveStreamUrl` с этой машины вернул `LOGIN_REQUIRED: Please sign in` — bot-защита YouTube, не ошибка резолвера; на мобильном IP путь остаётся рабочим. Временный live-тест удалён.
+
+### Файлы
+```
+app/src/main/java/com/my/music/core/download/DownloadCapability.kt
+app/src/main/java/com/my/music/core/download/DownloadSource.kt
+app/src/main/java/com/my/music/core/download/DownloadSourceResolver.kt
+app/src/main/java/com/my/music/core/download/RecentlyFailedSources.kt
+app/src/main/java/com/my/music/core/download/YouTubeDownloadSource.kt
+app/src/main/java/com/my/music/core/download/SoundCloudDownloadSource.kt
+app/src/main/java/com/my/music/core/download/DownloadMessages.kt
+app/src/main/java/com/my/music/core/download/DownloadManager.kt
+app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/my/music/core/di/DownloadSourceModule.kt
+app/src/main/java/com/my/music/core/ui/components/TrackDownloadButton.kt
+app/src/main/java/com/my/music/data/repository/SoundCloudRepository.kt
+app/src/main/java/com/my/music/data/repository/YouTubeRepository.kt
+app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/my/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/my/music/feature/library/LibraryScreen.kt
+app/src/main/java/com/my/music/feature/library/LibraryViewModel.kt
+app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
+app/src/test/java/com/my/music/core/download/DownloadSourceResolverTest.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
+app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
+PROGRESS.md
+MEMORY.md
+```
+
+### Следующий шаг
+- Phase A: редизайн экрана синхронизированного текста (описать текущее состояние и дождаться команды «Продолжай Phase A»).

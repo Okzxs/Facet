@@ -2,6 +2,7 @@ package com.my.music.data.source.youtube
 
 import android.util.Log
 import androidx.media3.common.MimeTypes
+import com.my.music.core.download.DownloadCapability
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
@@ -29,6 +30,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class YouTubeRepositoryImpl @Inject constructor() : YouTubeRepository {
+
+    override val downloadCapability: DownloadCapability = DownloadCapability.PROGRESSIVE
 
     private val tag = "YouTubeRepo"
 

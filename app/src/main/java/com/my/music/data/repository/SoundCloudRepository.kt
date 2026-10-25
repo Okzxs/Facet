@@ -1,9 +1,14 @@
 package com.my.music.data.repository
 
+import com.my.music.core.download.DownloadCapability
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Track
 
 interface SoundCloudRepository {
+
+    /** Способность источника отдать цельный файл для скачивания. */
+    val downloadCapability: DownloadCapability
+
     /**
      * Поиск треков по запросу.
      * @param query строка поиска

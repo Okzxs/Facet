@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.my.music.core.download.DownloadManager
+import com.my.music.core.download.DownloadMessages
 import com.my.music.core.download.DownloadState
 import com.my.music.core.location.LocationProvider
 import com.my.music.core.navigation.NavigationEvents
@@ -156,6 +157,7 @@ class PlayerViewModel @Inject constructor(
                                 isLyricsLoading = true,
                                 lyricsError = null,
                                 error = null,
+                                downloadError = null,
                             )
                         }
                         loadLyrics(track)
@@ -217,8 +219,19 @@ class PlayerViewModel @Inject constructor(
         when (downloadState.value) {
             is DownloadState.Downloaded -> Unit
             is DownloadState.InProgress -> downloadManager.cancel(track.id)
-            is DownloadState.Error, DownloadState.NotDownloaded -> downloadManager.download(track)
+            is DownloadState.Error, DownloadState.NotDownloaded -> viewModelScope.launch {
+                downloadManager.download(track).onFailure {
+                    _uiState.update {
+                        it.copy(downloadError = DownloadMessages.SOURCE_NOT_FOUND)
+                    }
+                }
+            }
         }
+    }
+
+    /** Snackbar показан — сбрасываем сообщение, чтобы оно не повторялось. */
+    fun consumeDownloadError() {
+        _uiState.update { it.copy(downloadError = null) }
     }
 
     /**
@@ -454,4 +467,5 @@ data class PlayerUiState(
     val lyrics: LyricsResult? = null,
     val isLyricsLoading: Boolean = false,
     val lyricsError: String? = null,
+    val downloadError: String? = null,
 )

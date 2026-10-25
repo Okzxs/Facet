@@ -11,15 +11,19 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.my.music.core.download.DownloadState
 import com.my.music.core.ui.components.TrackCard
+import com.my.music.core.ui.components.TrackDownloadButton
 import com.my.music.data.model.Track
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,8 +34,21 @@ fun LibraryScreen(
 ) {
     val likedTracks by viewModel.likedTracks.collectAsState()
     val downloadedIds by viewModel.downloadedIds.collectAsState()
+    val downloadStates by viewModel.downloadStates.collectAsState()
+    val downloadError by viewModel.downloadError.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(downloadError) {
+        val message = downloadError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = message,
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.consumeDownloadError()
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -146,12 +163,19 @@ fun LibraryScreen(
                         isDownloaded = track.id in downloadedIds,
                         onClick = { onTrackClick(track, likedTracks) },
                         trailingContent = {
-                            IconButton(onClick = { viewModel.removeLike(track) }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Favorite,
-                                    contentDescription = "Удалить из любимых",
-                                    tint = MaterialTheme.colorScheme.primary,
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TrackDownloadButton(
+                                    state = downloadStates[track.id]
+                                        ?: DownloadState.NotDownloaded,
+                                    onClick = { viewModel.downloadTrack(track) },
                                 )
+                                IconButton(onClick = { viewModel.removeLike(track) }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Favorite,
+                                        contentDescription = "Удалить из любимых",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
                             }
                         },
                     )

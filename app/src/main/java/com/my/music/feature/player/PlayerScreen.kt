@@ -219,6 +219,16 @@ fun PlayerScreen(
         }
     }
 
+    // Резолвер не нашёл progressive-источник: воркер даже не создавался.
+    LaunchedEffect(uiState.downloadError) {
+        val message = uiState.downloadError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = message,
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.consumeDownloadError()
+    }
+
     // Гарантируем запрос текста при открытии экрана или смене трека
     LaunchedEffect(track?.id) {
         if (track != null && uiState.lyrics == null && !uiState.isLyricsLoading) {

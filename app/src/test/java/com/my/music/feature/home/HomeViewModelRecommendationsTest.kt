@@ -1,5 +1,6 @@
 package com.my.music.feature.home
 
+import com.my.music.core.download.DownloadManager
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
@@ -14,6 +15,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -34,6 +36,7 @@ class HomeViewModelRecommendationsTest {
     private val playHistoryRepository = mockk<PlayHistoryRepository>()
     private val recentlyShownRepository = mockk<RecentlyShownRepository>()
     private val recommendationPlanner = RecommendationPlanner()
+    private val downloadManager = mockk<DownloadManager>(relaxed = true)
 
     private val historyFlow = MutableStateFlow<List<Track>>(emptyList())
     private val likedFlow = MutableStateFlow<List<Track>>(emptyList())
@@ -49,6 +52,7 @@ class HomeViewModelRecommendationsTest {
         coEvery { youtubeRepository.search(any(), any()) } returns Result.success(emptyList())
         coEvery { youtubeRepository.getRelated(any(), any()) } returns Result.success(emptyList())
         coEvery { soundCloudRepository.getRelated(any(), any()) } returns Result.success(emptyList())
+        every { downloadManager.observeStates(any()) } returns flowOf(emptyMap())
         coEvery {
             recentlyShownRepository.getRecentlyShownIds(any(), any())
         } answers { recentlyShownIds }
@@ -393,6 +397,7 @@ class HomeViewModelRecommendationsTest {
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,
             recommendationPlanner = recommendationPlanner,
+            downloadManager = downloadManager,
         )
 
     private fun track(

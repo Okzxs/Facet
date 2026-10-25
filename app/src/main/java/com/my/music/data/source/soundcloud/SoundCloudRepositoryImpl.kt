@@ -2,6 +2,7 @@ package com.my.music.data.source.soundcloud
 
 import android.util.Log
 import androidx.media3.common.MimeTypes
+import com.my.music.core.download.DownloadCapability
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
@@ -21,6 +22,10 @@ import javax.inject.Singleton
 
 @Singleton
 class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
+
+    // SoundCloud часто отдаёт только HLS-сегменты, поэтому для скачивания
+    // источник не используется — резолвер ищет progressive-версию на YouTube.
+    override val downloadCapability: DownloadCapability = DownloadCapability.HLS_ONLY
 
     private val tag = "SoundCloudRepo"
 

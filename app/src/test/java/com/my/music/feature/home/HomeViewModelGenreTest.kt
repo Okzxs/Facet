@@ -1,5 +1,6 @@
 package com.my.music.feature.home
 
+import com.my.music.core.download.DownloadManager
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
@@ -15,6 +16,7 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -47,6 +49,8 @@ class HomeViewModelGenreTest {
         val recommendationPlanner = RecommendationPlanner().apply {
             random = Random(0)
         }
+        val downloadManager = mockk<DownloadManager>(relaxed = true)
+        every { downloadManager.observeStates(any()) } returns flowOf(emptyMap())
 
         coEvery { youtubeRepository.search(any(), any()) } returns Result.success(emptyList())
         coEvery { youtubeRepository.getRelated(any(), any()) } returns Result.success(emptyList())
@@ -68,6 +72,7 @@ class HomeViewModelGenreTest {
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,
             recommendationPlanner = recommendationPlanner,
+            downloadManager = downloadManager,
         )
     }
 

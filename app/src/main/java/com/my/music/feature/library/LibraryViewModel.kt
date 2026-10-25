@@ -2,12 +2,21 @@ package com.my.music.feature.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.my.music.core.download.DownloadManager
+import com.my.music.core.download.DownloadMessages
+import com.my.music.core.download.DownloadState
 import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.LikedTracksRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -16,6 +25,7 @@ import javax.inject.Inject
 class LibraryViewModel @Inject constructor(
     private val likedTracksRepository: LikedTracksRepository,
     downloadRepository: DownloadRepository,
+    private val downloadManager: DownloadManager,
 ) : ViewModel() {
 
     val likedTracks: StateFlow<List<Track>> = likedTracksRepository.getLikedTracks()
@@ -33,9 +43,36 @@ class LibraryViewModel @Inject constructor(
             initialValue = emptySet(),
         )
 
+    /** Состояния кнопок скачивания в списке лайков. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val downloadStates: StateFlow<Map<String, DownloadState>> = likedTracks
+        .map { tracks -> tracks.map { it.id } }
+        .distinctUntilChanged()
+        .flatMapLatest { ids -> downloadManager.observeStates(ids) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyMap(),
+        )
+
+    private val _downloadError = MutableStateFlow<String?>(null)
+    val downloadError: StateFlow<String?> = _downloadError.asStateFlow()
+
     fun removeLike(track: Track) {
         viewModelScope.launch {
             likedTracksRepository.toggleLike(track)
         }
+    }
+
+    fun downloadTrack(track: Track) {
+        viewModelScope.launch {
+            downloadManager.download(track).onFailure {
+                _downloadError.value = DownloadMessages.SOURCE_NOT_FOUND
+            }
+        }
+    }
+
+    fun consumeDownloadError() {
+        _downloadError.value = null
     }
 }

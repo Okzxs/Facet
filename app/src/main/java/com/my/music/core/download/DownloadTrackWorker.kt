@@ -61,18 +61,23 @@ class DownloadTrackWorker(
             val entryPoint = DownloadWorkerEntryPoint.from(applicationContext)
             setProgress(progressData(0f))
 
-            val streamResult = resolveStream(track, entryPoint).getOrElse { error ->
-                Log.e(
-                    TAG,
-                    "Не удалось получить progressive-поток для '${track.title}': ${error.message}",
-                    error,
-                )
-                return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to (error.message ?: "resolve_failed")),
-                )
-            }
+            // Резолвер уже выбрал источник и отдал прямой progressive-URL.
+            // Старый путь resolveStream оставлен для задач, поставленных
+            // до появления резолвера, и для повторного запуска WorkManager.
+            val resolvedSource = readResolvedSource(track)
+            val streamResult = directStreamResult()
+                ?: resolveStream(track, entryPoint).getOrElse { error ->
+                    Log.e(
+                        TAG,
+                        "Не удалось получить progressive-поток для '${track.title}': ${error.message}",
+                        error,
+                    )
+                    return@withContext Result.failure(
+                        workDataOf(KEY_ERROR to (error.message ?: "resolve_failed")),
+                    )
+                }
 
-            val mimeType = mimeTypeFor(track.source, streamResult)
+            val mimeType = mimeTypeFor(resolvedSource, streamResult)
             // Страховка: HLS нельзя сохранить одним файлом.
             if (streamResult.isHls || mimeType == MimeTypes.APPLICATION_M3U8) {
                 Log.w(TAG, "Трек доступен только по HLS, скачивание невозможно: ${track.title}")
@@ -162,6 +167,27 @@ class DownloadTrackWorker(
             Result.success()
         }
     }
+
+    /** Прямой URL, который резолвер положил в задачу. */
+    private fun directStreamResult(): AudioStreamResult? {
+        val url = inputData.getString(KEY_DIRECT_STREAM_URL) ?: return null
+        if (!url.startsWith("http://", ignoreCase = true) &&
+            !url.startsWith("https://", ignoreCase = true)
+        ) {
+            return null
+        }
+        return AudioStreamResult(
+            url = url,
+            isHls = false,
+            mimeType = inputData.getString(KEY_DIRECT_MIME_TYPE),
+        )
+    }
+
+    /** Источник, с которого реально качается файл (может отличаться от трека). */
+    private fun readResolvedSource(fallback: Track): Source =
+        inputData.getString(KEY_RESOLVED_SOURCE)
+            ?.let { name -> runCatching { Source.valueOf(name) }.getOrNull() }
+            ?: fallback.source
 
     /** Восстанавливает трек из входных данных WorkManager. */
     private fun readTrack(): Track? {
@@ -294,6 +320,9 @@ class DownloadTrackWorker(
         const val KEY_SOURCE = "source"
         const val KEY_STREAM_URL = "stream_url"
         const val KEY_TRANSCODING_URL = "transcoding_url"
+        const val KEY_DIRECT_STREAM_URL = "direct_stream_url"
+        const val KEY_DIRECT_MIME_TYPE = "direct_mime_type"
+        const val KEY_RESOLVED_SOURCE = "resolved_source"
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
 

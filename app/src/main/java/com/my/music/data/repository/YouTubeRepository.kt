@@ -1,5 +1,6 @@
 package com.my.music.data.repository
 
+import com.my.music.core.download.DownloadCapability
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Track
 
@@ -11,6 +12,9 @@ import com.my.music.data.model.Track
  * потому что из них нельзя собрать один файл.
  */
 interface YouTubeRepository {
+
+    /** Способность источника отдать цельный файл для скачивания. */
+    val downloadCapability: DownloadCapability
 
     /**
      * Поиск видео на YouTube.
