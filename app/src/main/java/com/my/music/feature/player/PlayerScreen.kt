@@ -503,6 +503,7 @@ fun PlayerScreen(
                         isResolving = uiState.isResolving,
                         trackId = track?.id,
                         canVisualize = audioPermissionGranted,
+                        visualizerDelayMs = appSettings.visualizerDelayMs,
                         durationMs = track?.durationMs ?: 0L,
                         primaryColor = playerColors.primary,
                         currentFraction = { viewModel.currentFraction() },
@@ -1492,6 +1493,7 @@ private fun PlayerProgressSection(
     isResolving: Boolean = false,
     trackId: String? = null,
     canVisualize: Boolean = false,
+    visualizerDelayMs: Int = 0,
     durationMs: Long,
     primaryColor: Color,
     currentFraction: () -> Float,
@@ -1510,7 +1512,7 @@ private fun PlayerProgressSection(
     val latestPosition by rememberUpdatedState(currentPositionMs)
     val latestBuffer by rememberUpdatedState(bufferedFraction)
     val latestSeek by rememberUpdatedState(onSeek)
-    val audioEnergy = rememberAudioEnergy(isPlaying, trackId, canVisualize)
+    val audioEnergy = rememberAudioEnergy(isPlaying, trackId, canVisualize, visualizerDelayMs)
 
     LaunchedEffect(trackId) {
         while (true) {

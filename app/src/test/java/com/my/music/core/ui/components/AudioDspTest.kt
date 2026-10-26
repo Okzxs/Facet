@@ -176,4 +176,65 @@ class AudioDspTest {
     @Test fun bandEnergySaturates() {
         assertArrayEquals(floatArrayOf(1f, 1f, 1f), bandEnergies(ByteArray(1024) { 127 }, 44_100_000), 0f)
     }
+
+    @Test fun delayBufferReturnsValueFromPast() {
+        val buffer = EnergyDelayBuffer()
+        buffer.push(0.1f, 0)
+        buffer.push(0.2f, 50_000_000)
+        buffer.push(0.3f, 100_000_000)
+        buffer.push(0.4f, 150_000_000)
+        // 100 мс назад от 150 мс — это кадр в 50 мс
+        assertEquals(0.2f, buffer.valueAt(150_000_000, 100), 0f)
+        // Без задержки — самый свежий кадр
+        assertEquals(0.4f, buffer.valueAt(150_000_000, 0), 0f)
+        // 50 мс назад — кадр в 100 мс
+        assertEquals(0.3f, buffer.valueAt(150_000_000, 50), 0f)
+    }
+
+    @Test fun delayBufferEvictsOldData() {
+        val buffer = EnergyDelayBuffer()
+        buffer.push(0.9f, 0)
+        buffer.push(0.5f, 600_000_000)
+        // Кадр в 0 мс старше окна 500 мс и уже вытеснен
+        assertEquals(0f, buffer.valueAt(600_000_000, 500), 0f)
+        // Свежий кадр остаётся доступен
+        assertEquals(0.5f, buffer.valueAt(600_000_000, 0), 0f)
+    }
+
+    @Test fun delayBufferKeepsSamplesInsideWindow() {
+        val buffer = EnergyDelayBuffer()
+        for (step in 0..6) {
+            buffer.push(step / 10f, step * 100_000_000L)
+        }
+        // Окно 500 мс: кадр в 100 мс ещё хранится, в 0 мс — уже нет
+        assertEquals(0.1f, buffer.valueAt(600_000_000, 500), 0f)
+        assertEquals(0f, buffer.valueAt(600_000_000, 600), 0f)
+    }
+
+    @Test fun emptyAndResetBufferReturnZero() {
+        val buffer = EnergyDelayBuffer()
+        assertEquals(0f, buffer.valueAt(0, 100), 0f)
+        buffer.push(0.7f, 10_000_000)
+        assertEquals(0.7f, buffer.valueAt(10_000_000, 0), 0f)
+        buffer.reset()
+        assertEquals(0f, buffer.valueAt(10_000_000, 0), 0f)
+    }
+
+    @Test fun negativeDelayReadsLatestFrame() {
+        val buffer = EnergyDelayBuffer()
+        buffer.push(0.3f, 0)
+        buffer.push(0.6f, 50_000_000)
+        // Из будущего читать нельзя — показываем самый свежий кадр
+        assertEquals(0.6f, buffer.valueAt(50_000_000, -200), 0f)
+    }
+
+    @Test fun delayBufferSanitizesValuesAndTimestamps() {
+        val buffer = EnergyDelayBuffer()
+        buffer.push(Float.NaN, 0)
+        buffer.push(1.4f, 50_000_000)
+        assertEquals(1f, buffer.valueAt(50_000_000, 0), 0f)
+        // Поздний по времени кадр не ломает порядок
+        buffer.push(0.2f, 10_000_000)
+        assertEquals(1f, buffer.valueAt(50_000_000, 0), 0f)
+    }
 }

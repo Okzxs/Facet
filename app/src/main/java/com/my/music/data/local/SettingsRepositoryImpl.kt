@@ -31,6 +31,10 @@ class SettingsRepositoryImpl @Inject constructor(
         // По умолчанию — фиолетовая тема, динамика обложки выключена
         dynamicCoverColors = prefs.getBoolean(KEY_DYNAMIC_COVER_COLORS, false),
         accentColorArgb = prefs.getInt(KEY_ACCENT_COLOR, AppSettings.DEFAULT_ACCENT_ARGB),
+        visualizerDelayMs = prefs.getInt(KEY_VISUALIZER_DELAY_MS, 0).coerceIn(
+            AppSettings.VISUALIZER_DELAY_MIN_MS,
+            AppSettings.VISUALIZER_DELAY_MAX_MS,
+        ),
     )
 
     override suspend fun setDynamicCoverColors(enabled: Boolean) {
@@ -47,9 +51,21 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { it.copy(accentColorArgb = argb) }
     }
 
+    override suspend fun setVisualizerDelayMs(delayMs: Int) {
+        val clamped = delayMs.coerceIn(
+            AppSettings.VISUALIZER_DELAY_MIN_MS,
+            AppSettings.VISUALIZER_DELAY_MAX_MS,
+        )
+        withContext(Dispatchers.IO) {
+            prefs.edit().putInt(KEY_VISUALIZER_DELAY_MS, clamped).apply()
+        }
+        _settings.update { it.copy(visualizerDelayMs = clamped) }
+    }
+
     private companion object {
         const val PREFS_NAME = "mymusic_settings"
         const val KEY_DYNAMIC_COVER_COLORS = "dynamic_cover_colors"
         const val KEY_ACCENT_COLOR = "accent_color"
+        const val KEY_VISUALIZER_DELAY_MS = "visualizer_delay_ms"
     }
 }

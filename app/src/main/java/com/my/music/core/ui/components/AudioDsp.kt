@@ -159,10 +159,83 @@ internal class AudioEnvelope {
     }
 }
 
+/** Окно истории энергии для калибровки задержки. */
+private const val DELAY_CAPACITY_MS = 500L
+
+/** Запас слотов: при 20 Гц окно 500 мс занимает ~10 записей. */
+private const val DELAY_CAPACITY = 64
+
+/**
+ * Кольцевой буфер энергии на последние [capacityMs].
+ *
+ * FFT приходит с аппаратной задержкой, поэтому при отрисовке берётся значение,
+ * которое было [delayMs] назад. Времена монотонные (SystemClock); записи старше
+ * окна вытесняются. Отрицательная задержка означала бы чтение из будущего —
+ * в этом случае возвращается самый свежий кадр. Пустой буфер отдаёт 0.
+ */
+internal class EnergyDelayBuffer(private val capacityMs: Long = DELAY_CAPACITY_MS) {
+    private val values = FloatArray(DELAY_CAPACITY)
+    private val timestamps = LongArray(DELAY_CAPACITY)
+
+    /** Индекс самой старой записи. */
+    private var head = 0
+    private var size = 0
+
+    @Synchronized
+    fun push(value: Float, nowNanos: Long) {
+        val safe = if (value.isFinite()) value.coerceIn(0f, 1f) else 0f
+        if (size > 0) {
+            val last = timestamps[(head + size - 1) % DELAY_CAPACITY]
+            // Порядок по времени обязателен для поиска: поздний кадр отбрасываем,
+            // совпадающий по времени — заменяем.
+            if (nowNanos < last) return
+            if (nowNanos == last) {
+                values[(head + size - 1) % DELAY_CAPACITY] = safe
+                return
+            }
+        }
+        if (size == DELAY_CAPACITY) {
+            head = (head + 1) % DELAY_CAPACITY
+            size--
+        }
+        val slot = (head + size) % DELAY_CAPACITY
+        values[slot] = safe
+        timestamps[slot] = nowNanos
+        size++
+        val oldestAllowed = nowNanos - capacityMs * 1_000_000L
+        while (size > 0 && timestamps[head] < oldestAllowed) {
+            head = (head + 1) % DELAY_CAPACITY
+            size--
+        }
+    }
+
+    @Synchronized
+    fun valueAt(nowNanos: Long, delayMs: Int): Float {
+        if (size == 0) return 0f
+        val target = nowNanos - delayMs.coerceAtLeast(0) * 1_000_000L
+        for (index in size - 1 downTo 0) {
+            val slot = (head + index) % DELAY_CAPACITY
+            if (timestamps[slot] <= target) return values[slot]
+        }
+        return 0f
+    }
+
+    @Synchronized
+    fun reset() {
+        size = 0
+        head = 0
+    }
+}
+
 internal data class AudioSample(val value: Float = 0f, val capturedNanos: Long = Long.MIN_VALUE) {
     /** Значение живёт 120 мс: при 20 Гц FFT-кадров это запас на два пропущенных кадра. */
     fun freshValue(nowNanos: Long): Float =
         if (capturedNanos != Long.MIN_VALUE && nowNanos >= capturedNanos &&
-            nowNanos - capturedNanos <= 120_000_000L
+            nowNanos - capturedNanos <= FRESH_NANOS
         ) value else 0f
+
+    companion object {
+        /** Сколько живёт FFT-кадр, прежде чем волна считается заглохшей. */
+        const val FRESH_NANOS: Long = 120_000_000L
+    }
 }

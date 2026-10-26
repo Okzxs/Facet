@@ -59,4 +59,11 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.setAccentColorArgb(color.toArgb())
         }
     }
+
+    /** Калибровка задержки волны плеера в миллисекундах. */
+    fun setVisualizerDelayMs(delayMs: Int) {
+        viewModelScope.launch {
+            settingsRepository.setVisualizerDelayMs(delayMs)
+        }
+    }
 }
