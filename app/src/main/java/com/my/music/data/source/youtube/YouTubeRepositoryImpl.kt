@@ -3,6 +3,7 @@ package com.my.music.data.source.youtube
 import android.util.Log
 import androidx.media3.common.MimeTypes
 import com.my.music.core.download.DownloadCapability
+import com.my.music.core.network.NewPipeDownloader
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
@@ -29,7 +30,9 @@ import javax.inject.Singleton
  * поэтому его можно скачать одним запросом и играть без HLS.
  */
 @Singleton
-class YouTubeRepositoryImpl @Inject constructor() : YouTubeRepository {
+class YouTubeRepositoryImpl @Inject constructor(
+    private val newPipeDownloader: NewPipeDownloader,
+) : YouTubeRepository {
 
     override val downloadCapability: DownloadCapability = DownloadCapability.PROGRESSIVE
 
@@ -42,7 +45,9 @@ class YouTubeRepositoryImpl @Inject constructor() : YouTubeRepository {
                 val queryHandler = service.searchQHFactory
                     .fromQuery(query, listOf("videos"), "")
 
-                val searchInfo = SearchInfo.getInfo(service, queryHandler)
+                val searchInfo = newPipeDownloader.withCancellation {
+                    SearchInfo.getInfo(service, queryHandler)
+                }
                 Log.d(tag, "Поиск '$query': ${searchInfo.relatedItems.size} результатов")
 
                 searchInfo.relatedItems
@@ -57,7 +62,9 @@ class YouTubeRepositoryImpl @Inject constructor() : YouTubeRepository {
         withContext(Dispatchers.IO) {
             runCatching {
                 val service = NewPipe.getService(ServiceList.YouTube.serviceId)
-                val streamInfo = StreamInfo.getInfo(service, trackUrl)
+                val streamInfo = newPipeDownloader.withCancellation {
+                    StreamInfo.getInfo(service, trackUrl)
+                }
                 val related = streamInfo.relatedItems
                     .ifEmpty { streamInfo.relatedStreams }
 
@@ -80,7 +87,9 @@ class YouTubeRepositoryImpl @Inject constructor() : YouTubeRepository {
         withContext(Dispatchers.IO) {
             runCatching {
                 val service = NewPipe.getService(ServiceList.YouTube.serviceId)
-                val streamInfo = StreamInfo.getInfo(service, videoUrl)
+                val streamInfo = newPipeDownloader.withCancellation {
+                    StreamInfo.getInfo(service, videoUrl)
+                }
 
                 Log.d(tag, "=== Аудиопотоки для $videoUrl ===")
                 streamInfo.audioStreams.forEachIndexed { index, stream ->

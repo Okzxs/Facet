@@ -14,32 +14,27 @@ import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Обёртка над WorkManager для UI: выбирает источник, ставит задачу скачивания
- * и объединяет состояние Room и WorkInfo.
+ * Обёртка над WorkManager для UI: ставит задачу скачивания и объединяет
+ * состояние Room и WorkInfo.
  *
- * Резолвер вызывается до воркера: воркер получает уже готовый прямой
- * progressive-URL. Так пользователю не нужно выбирать источник вручную,
- * а HLS-треки SoundCloud автоматически скачиваются с YouTube.
+ * Источник и свежий URL выбирает сам [DownloadTrackWorker]: подписанные
+ * ссылки стриминговых сервисов быстро протухают, поэтому резолв перед
+ * постановкой задачи бессмысленен. В WorkData кладём только идентичность
+ * трека, а ошибки источника приходят через WorkInfo.
  */
 @Singleton
 class DownloadManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val downloadRepository: DownloadRepository,
-    private val sourceResolver: DownloadSourceResolver,
 ) {
 
     private val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
@@ -47,18 +42,12 @@ class DownloadManager @Inject constructor(
     /** Время последнего клика по кнопке скачивания для защиты от двойного тапа. */
     private val lastTapAt = mutableMapOf<String, Long>()
 
-    /** Треки, для которых сейчас идёт выбор источника (до появления WorkInfo). */
-    private val resolvingIds = MutableStateFlow<Set<String>>(emptySet())
-
-    /** Активные корутины резолва — отмена кнопкой должна прервать и поиск. */
-    private val resolveJobs = ConcurrentHashMap<String, Job>()
-
     /**
      * Ставит трек в очередь на скачивание.
      *
-     * Сначала [DownloadSourceResolver] находит источник, который отдаёт
-     * progressive-файл. Если источника нет, возвращается ошибка — воркер
-     * не создаётся, а UI показывает Snackbar.
+     * Резолв источника выполняется в воркере, поэтому здесь нет сетевых
+     * запросов: пользователь сразу видит прогресс, а ошибка появляется
+     * в виде FAILED WorkInfo.
      */
     suspend fun download(track: Track): Result<Unit> {
         val now = SystemClock.elapsedRealtime()
@@ -69,47 +58,26 @@ class DownloadManager @Inject constructor(
         }
         lastTapAt[track.id] = now
 
-        val job = currentCoroutineContext()[Job]
-        if (job != null) resolveJobs[track.id] = job
-        resolvingIds.update { it + track.id }
-
         return try {
-            sourceResolver.resolve(track).fold(
-                onSuccess = { resolved ->
-                    enqueue(track, resolved)
-                    Log.d(
-                        TAG,
-                        "download(): ${track.id} → ${resolved.source}, url=${resolved.streamUrl.take(80)}",
-                    )
-                    Result.success(Unit)
-                },
-                onFailure = { error ->
-                    Log.w(TAG, "download(): источник не найден для ${track.id}: ${error.message}")
-                    Result.failure(error)
-                },
-            )
+            enqueue(track)
+            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "download(): ошибка выбора источника для ${track.id}", e)
+            Log.e(TAG, "download(): не удалось поставить задачу для ${track.id}", e)
             Result.failure(e)
-        } finally {
-            resolvingIds.update { it - track.id }
-            if (job != null && resolveJobs[track.id] === job) {
-                resolveJobs.remove(track.id)
-            }
         }
     }
 
     /**
-     * Отменяет активное скачивание и выбор источника.
+     * Отменяет активное скачивание.
      *
-     * Недокачанный `.part`-файл удаляет сам воркер при CancellationException.
-     * Готовый файл и запись в Room не трогаем.
+     * Отмена WorkManager прерывает корутину воркера, а вместе с ней —
+     * резолв и активный HTTP-запрос. Недокачанный `.part` удаляет
+     * [DownloadEngine]. Готовый файл и запись в Room не трогаем.
      */
     fun cancel(trackId: String) {
         Log.d(TAG, "cancel(): отменяем задачу скачивания $trackId")
-        resolveJobs.remove(trackId)?.cancel()
         workManager.cancelUniqueWork(uniqueWorkName(trackId))
     }
 
@@ -133,8 +101,7 @@ class DownloadManager @Inject constructor(
         return combine(
             downloadRepository.observeDownloadedIds(),
             workManager.getWorkInfosByTagFlow(TAG_DOWNLOAD),
-            resolvingIds,
-        ) { downloaded, workInfos, resolving ->
+        ) { downloaded, workInfos ->
             val latestByTrack = workInfos
                 .mapNotNull { info ->
                     trackIdOf(info)?.let { trackId -> trackId to info }
@@ -143,25 +110,21 @@ class DownloadManager @Inject constructor(
                 .mapValues { (_, infos) -> latestWorkInfo(infos) }
 
             ids.associateWith { trackId ->
-                if (trackId in resolving) {
-                    DownloadState.InProgress(0f)
-                } else {
-                    val workInfo = latestByTrack[trackId]
-                    val progress = workInfo
-                        ?.progress
-                        ?.getFloat(DownloadTrackWorker.KEY_PROGRESS, 0f)
-                        ?: 0f
-                    resolveDownloadState(
-                        isDownloaded = trackId in downloaded,
-                        workState = workInfo?.state,
-                        workProgress = progress,
-                    )
-                }
+                val workInfo = latestByTrack[trackId]
+                val progress = workInfo
+                    ?.progress
+                    ?.getFloat(DownloadTrackWorker.KEY_PROGRESS, 0f)
+                    ?: 0f
+                resolveDownloadState(
+                    isDownloaded = trackId in downloaded,
+                    workState = workInfo?.state,
+                    workProgress = progress,
+                )
             }
         }.distinctUntilChanged()
     }
 
-    private fun enqueue(track: Track, resolved: ResolvedDownload) {
+    private fun enqueue(track: Track) {
         // Тег попытки позволяет выбрать самую свежую задачу из цепочки unique work.
         val attemptTag = ATTEMPT_TAG_PREFIX + System.currentTimeMillis()
         val request = OneTimeWorkRequestBuilder<DownloadTrackWorker>()
@@ -175,9 +138,6 @@ class DownloadManager @Inject constructor(
                     DownloadTrackWorker.KEY_SOURCE to track.source.name,
                     DownloadTrackWorker.KEY_STREAM_URL to track.streamUrl,
                     DownloadTrackWorker.KEY_TRANSCODING_URL to track.transcodingUrl,
-                    DownloadTrackWorker.KEY_DIRECT_STREAM_URL to resolved.streamUrl,
-                    DownloadTrackWorker.KEY_DIRECT_MIME_TYPE to resolved.mimeType,
-                    DownloadTrackWorker.KEY_RESOLVED_SOURCE to resolved.source.name,
                 ),
             )
             .setConstraints(

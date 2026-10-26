@@ -25,6 +25,9 @@ interface DownloadWorkerEntryPoint {
 
     fun downloadRepository(): DownloadRepository
 
+    /** Свежий progressive-URL резолвится внутри воркера перед скачиванием. */
+    fun downloadSourceResolver(): DownloadSourceResolver
+
     companion object {
         fun from(context: Context): DownloadWorkerEntryPoint =
             EntryPointAccessors.fromApplication(

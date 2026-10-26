@@ -12,14 +12,9 @@ import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -31,10 +26,10 @@ import java.util.concurrent.TimeUnit
  * Если progressive-потока нет, задача завершается ошибкой, и UI показывает
  * крестик со Snackbar «доступен только онлайн».
  *
- * Порядок работы:
- * 1. получает прямой progressive-URL через репозиторий нужного источника;
- * 2. качает файл в filesDir/downloads/<безопасное имя>.<mp3|m4a|webm> через OkHttp;
- * 3. сохраняет запись и её MIME в Room, чтобы плеер мог играть трек офлайн.
+ * Воркер получает из WorkData только идентичность трека и сам вызывает
+ * [DownloadSourceResolver] перед скачиванием. Так протухшая подписанная
+ * ссылка не превращается в вечную ошибку: при 403/410 источник резолвится
+ * ещё раз. Вся работа с файлами и повторами живёт в [DownloadEngine].
  */
 class DownloadTrackWorker(
     appContext: Context,
@@ -47,147 +42,55 @@ class DownloadTrackWorker(
             TAG,
             "doWork(): старт, workId=$id, trackId=${inputData.getString(KEY_TRACK_ID)}",
         )
-        return withContext(Dispatchers.IO) {
-            val track = readTrack()
-            if (track == null) {
-                Log.e(TAG, "Нет входных данных трека")
-                return@withContext Result.failure()
-            }
-            if (track.source == Source.LOCAL) {
-                Log.w(TAG, "Локальный трек не нужно скачивать: ${track.id}")
-                return@withContext Result.failure()
-            }
+        val track = readTrack()
+        if (track == null) {
+            Log.e(TAG, "Нет входных данных трека")
+            return Result.failure()
+        }
+        if (track.source == Source.LOCAL) {
+            Log.w(TAG, "Локальный трек не нужно скачивать: ${track.id}")
+            return Result.failure()
+        }
 
-            val entryPoint = DownloadWorkerEntryPoint.from(applicationContext)
-            setProgress(progressData(0f))
+        val entryPoint = DownloadWorkerEntryPoint.from(applicationContext)
 
-            // Резолвер уже выбрал источник и отдал прямой progressive-URL.
-            // Старый путь resolveStream оставлен для задач, поставленных
-            // до появления резолвера, и для повторного запуска WorkManager.
-            val resolvedSource = readResolvedSource(track)
-            val streamResult = directStreamResult()
-                ?: resolveStream(track, entryPoint).getOrElse { error ->
-                    Log.e(
-                        TAG,
-                        "Не удалось получить progressive-поток для '${track.title}': ${error.message}",
-                        error,
-                    )
-                    return@withContext Result.failure(
-                        workDataOf(KEY_ERROR to (error.message ?: "resolve_failed")),
-                    )
-                }
+        return try {
+            withContext(Dispatchers.IO) {
+                setProgress(progressData(0f))
+                val engine = DownloadEngine(
+                    downloadsDir = File(applicationContext.filesDir, DOWNLOADS_DIR),
+                    client = DOWNLOAD_CLIENT,
+                    resolve = entryPoint.downloadSourceResolver()::resolve,
+                    save = { downloaded, mediaUrl, mimeType ->
+                        entryPoint.downloadRepository().save(downloaded, mediaUrl, mimeType)
+                    },
+                    mediaUrl = { file -> Uri.fromFile(file).toString() },
+                    workId = id.toString(),
+                    onProgress = { progress -> setProgress(progressData(progress)) },
+                )
 
-            val mimeType = mimeTypeFor(resolvedSource, streamResult)
-            // Страховка: HLS нельзя сохранить одним файлом.
-            if (streamResult.isHls || mimeType == MimeTypes.APPLICATION_M3U8) {
-                Log.w(TAG, "Трек доступен только по HLS, скачивание невозможно: ${track.title}")
-                return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to ERROR_ONLINE_ONLY),
+                engine.download(track).fold(
+                    onSuccess = {
+                        Log.d(TAG, "Трек скачан: '${track.title}'")
+                        Result.success()
+                    },
+                    onFailure = { error ->
+                        Log.e(
+                            TAG,
+                            "Не удалось скачать '${track.title}': ${error.message}",
+                            error,
+                        )
+                        Result.failure(
+                            workDataOf(KEY_ERROR to (error.message ?: "download_failed")),
+                        )
+                    },
                 )
             }
-
-            val downloadsDir = File(applicationContext.filesDir, DOWNLOADS_DIR)
-            if (!downloadsDir.exists() && !downloadsDir.mkdirs()) {
-                Log.e(TAG, "Не удалось создать каталог ${downloadsDir.absolutePath}")
-                return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to "downloads_dir_unavailable"),
-                )
-            }
-
-            val extension = extensionFor(mimeType, track.source)
-            val targetFile = File(downloadsDir, downloadFileName(track.id, extension))
-            // Уникальный .part на попытку: при REPLACE старый воркер не должен
-            // удалить недокачанный файл новой задачи.
-            val tempFile = File(downloadsDir, "${targetFile.name}.$id.part")
-
-            try {
-                downloadToFile(streamResult.url, tempFile)
-            } catch (e: CancellationException) {
-                // Пользователь отменил задачу: недокачанный файл не нужен.
-                tempFile.delete()
-                Log.d(TAG, "doWork(): отменён, trackId=${track.id}")
-                throw e
-            } catch (e: Exception) {
-                tempFile.delete()
-                Log.e(TAG, "Ошибка скачивания '${track.title}'", e)
-                return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to (e.message ?: "download_failed")),
-                )
-            }
-
-            if (!tempFile.exists() || tempFile.length() == 0L) {
-                tempFile.delete()
-                Log.e(TAG, "Получен пустой файл для '${track.title}'")
-                return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to "empty_file"),
-                )
-            }
-
-            // Атомарно подменяем готовый файл (старый мог остаться от прошлой попытки).
-            try {
-                currentCoroutineContext().ensureActive()
-                if (targetFile.exists()) targetFile.delete()
-                if (!tempFile.renameTo(targetFile)) {
-                    tempFile.copyTo(targetFile, overwrite = true)
-                    tempFile.delete()
-                }
-            } catch (e: CancellationException) {
-                tempFile.delete()
-                throw e
-            } catch (e: Exception) {
-                tempFile.delete()
-                Log.e(TAG, "Не удалось сохранить файл трека '${track.title}'", e)
-                return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to (e.message ?: "move_failed")),
-                )
-            }
-
-            // Перед записью в Room ещё раз проверяем отмену: после rename
-            // файл уже готов, но запись не должна появиться у отменённой задачи.
-            try {
-                currentCoroutineContext().ensureActive()
-                entryPoint.downloadRepository().save(
-                    track = track,
-                    mediaUrl = Uri.fromFile(targetFile).toString(),
-                    mimeType = mimeType,
-                )
-            } catch (e: CancellationException) {
-                // Файл не удаляем: его могла уже перезаписать новая попытка.
-                throw e
-            } catch (e: Exception) {
-                targetFile.delete()
-                Log.e(TAG, "Не удалось сохранить запись о скачанном треке '${track.title}'", e)
-                return@withContext Result.failure(
-                    workDataOf(KEY_ERROR to (e.message ?: "save_failed")),
-                )
-            }
-
-            setProgress(progressData(1f))
-            Log.d(TAG, "Трек скачан: '${track.title}' → ${targetFile.absolutePath}")
-            Result.success()
+        } catch (e: CancellationException) {
+            Log.d(TAG, "doWork(): отменён, trackId=${track.id}")
+            throw e
         }
     }
-
-    /** Прямой URL, который резолвер положил в задачу. */
-    private fun directStreamResult(): AudioStreamResult? {
-        val url = inputData.getString(KEY_DIRECT_STREAM_URL) ?: return null
-        if (!url.startsWith("http://", ignoreCase = true) &&
-            !url.startsWith("https://", ignoreCase = true)
-        ) {
-            return null
-        }
-        return AudioStreamResult(
-            url = url,
-            isHls = false,
-            mimeType = inputData.getString(KEY_DIRECT_MIME_TYPE),
-        )
-    }
-
-    /** Источник, с которого реально качается файл (может отличаться от трека). */
-    private fun readResolvedSource(fallback: Track): Source =
-        inputData.getString(KEY_RESOLVED_SOURCE)
-            ?.let { name -> runCatching { Source.valueOf(name) }.getOrNull() }
-            ?: fallback.source
 
     /** Восстанавливает трек из входных данных WorkManager. */
     private fun readTrack(): Track? {
@@ -208,103 +111,8 @@ class DownloadTrackWorker(
         )
     }
 
-    /**
-     * Разрешает поток через репозиторий источника.
-     * HLS-фолбэк для скачивания запрещён: вернётся ошибка «только онлайн».
-     */
-    private suspend fun resolveStream(
-        track: Track,
-        entryPoint: DownloadWorkerEntryPoint,
-    ): kotlin.Result<AudioStreamResult> = when (track.source) {
-        Source.YOUTUBE -> {
-            // У YouTube в transcodingUrl лежит страница видео, а не аудиофайл
-            val videoUrl = track.transcodingUrl ?: track.streamUrl
-            if (videoUrl.isNullOrBlank()) {
-                kotlin.Result.failure(
-                    IllegalStateException("Нет YouTube-ссылки для трека: ${track.id}"),
-                )
-            } else {
-                entryPoint.youTubeRepository().resolveStreamUrl(videoUrl)
-            }
-        }
-        Source.SOUNDCLOUD -> {
-            val transcodingUrl = track.transcodingUrl
-            if (!transcodingUrl.isNullOrBlank()) {
-                entryPoint.soundCloudRepository()
-                    .resolveStreamUrl(transcodingUrl, requireProgressive = true)
-            } else {
-                directStream(track)
-            }
-        }
-        Source.LOCAL -> kotlin.Result.failure(
-            IllegalStateException("Локальный трек не нужно скачивать: ${track.id}"),
-        )
-        // Для будущих источников используем уже готовый прямой URL
-        else -> directStream(track)
-    }
-
-    private fun directStream(track: Track): kotlin.Result<AudioStreamResult> {
-        val directUrl = track.streamUrl
-        return if (!directUrl.isNullOrBlank() && !directUrl.startsWith("file:")) {
-            kotlin.Result.success(
-                AudioStreamResult(
-                    url = directUrl,
-                    isHls = false,
-                    mimeType = defaultMimeType(track.source),
-                ),
-            )
-        } else {
-            kotlin.Result.failure(
-                IllegalStateException("Нет ссылки на поток для трека: ${track.id}"),
-            )
-        }
-    }
-
-    /**
-     * Скачивает поток в [targetFile], регулярно публикуя прогресс.
-     * Таймауты отличаются от API-клиента: файл может качаться дольше 15 секунд.
-     */
-    private suspend fun downloadToFile(url: String, targetFile: File) {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
-            .build()
-
-        DOWNLOAD_CLIENT.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IOException("HTTP ${response.code} при скачивании $url")
-            }
-            val body = response.body ?: throw IOException("Пустой ответ для $url")
-            val totalBytes = body.contentLength()
-
-            body.byteStream().use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    var downloaded = 0L
-                    var lastPercent = -1
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        downloaded += read
-
-                        if (totalBytes > 0L) {
-                            val percent = (downloaded * 100 / totalBytes).toInt()
-                            if (percent >= lastPercent + 5 || percent == 100) {
-                                lastPercent = percent
-                                setProgress(progressData(percent / 100f))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     companion object {
         private const val TAG = "DownloadWorker"
-        private const val USER_AGENT = "MyMusicApp/1.0"
 
         /** Единый текст ошибки, когда progressive-файл недоступен. */
         const val ERROR_ONLINE_ONLY = "Трек доступен только для онлайн-прослушивания"
@@ -320,9 +128,6 @@ class DownloadTrackWorker(
         const val KEY_SOURCE = "source"
         const val KEY_STREAM_URL = "stream_url"
         const val KEY_TRANSCODING_URL = "transcoding_url"
-        const val KEY_DIRECT_STREAM_URL = "direct_stream_url"
-        const val KEY_DIRECT_MIME_TYPE = "direct_mime_type"
-        const val KEY_RESOLVED_SOURCE = "resolved_source"
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
 

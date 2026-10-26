@@ -1,6 +1,7 @@
 package com.my.music.data.source.soundcloud
 
 import android.util.Log
+import com.my.music.core.network.NewPipeDownloader
 import com.my.music.data.local.dao.ChartCacheDao
 import com.my.music.data.local.entity.toChartEntity
 import com.my.music.data.local.entity.toTrack
@@ -22,6 +23,7 @@ import javax.inject.Singleton
 @Singleton
 class SoundCloudChartsRepositoryImpl @Inject constructor(
     private val chartCacheDao: ChartCacheDao,
+    private val newPipeDownloader: NewPipeDownloader,
 ) : SoundCloudChartsRepository {
 
     private val tag = "SCChartsRepo"
@@ -82,7 +84,9 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
         // 2. Иначе загружаем из NewPipe
         runCatching {
             val service = NewPipe.getService(ServiceList.SoundCloud.serviceId)
-            val kioskInfo = KioskInfo.getInfo(service, url)
+            val kioskInfo = newPipeDownloader.withCancellation {
+                KioskInfo.getInfo(service, url)
+            }
             Log.d(tag, "[$chartType] Загружено из сети NewPipe: ${kioskInfo.relatedItems.size} элементов")
 
             val tracks = filterJunk(

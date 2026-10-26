@@ -3,11 +3,13 @@ package com.my.music.data.source.soundcloud
 import android.util.Log
 import androidx.media3.common.MimeTypes
 import com.my.music.core.download.DownloadCapability
+import com.my.music.core.network.NewPipeDownloader
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import com.my.music.data.repository.SoundCloudRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
@@ -21,7 +23,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
+class SoundCloudRepositoryImpl @Inject constructor(
+    private val newPipeDownloader: NewPipeDownloader,
+) : SoundCloudRepository {
 
     // SoundCloud часто отдаёт только HLS-сегменты, поэтому для скачивания
     // источник не используется — резолвер ищет progressive-версию на YouTube.
@@ -39,7 +43,9 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
                 val queryHandler = service.searchQHFactory
                     .fromQuery(query, listOf("tracks"), "")
 
-                val searchInfo = SearchInfo.getInfo(service, queryHandler)
+                val searchInfo = newPipeDownloader.withCancellation {
+                    SearchInfo.getInfo(service, queryHandler)
+                }
                 Log.d(tag, "Поиск '$query': ${searchInfo.relatedItems.size} результатов")
 
                 searchInfo.relatedItems
@@ -54,7 +60,9 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
         withContext(Dispatchers.IO) {
             runCatching {
                 val service = NewPipe.getService(ServiceList.SoundCloud.serviceId)
-                val streamInfo = StreamInfo.getInfo(service, trackUrl)
+                val streamInfo = newPipeDownloader.withCancellation {
+                    StreamInfo.getInfo(service, trackUrl)
+                }
                 val related = streamInfo.relatedItems
                     .ifEmpty { streamInfo.relatedStreams }
 
@@ -91,8 +99,12 @@ class SoundCloudRepositoryImpl @Inject constructor() : SoundCloudRepository {
             runCatching {
                 val service = NewPipe.getService(ServiceList.SoundCloud.serviceId)
                 val streamInfo = try {
-                    StreamInfo.getInfo(service, transcodingUrl)
+                    newPipeDownloader.withCancellation {
+                        StreamInfo.getInfo(service, transcodingUrl)
+                    }
                 } catch (e: Throwable) {
+                    // Отмена — не сетевая ошибка: не засоряем лог и пробрасываем дальше.
+                    if (e is CancellationException) throw e
                     Log.e("NP_ERROR", "Ошибка при вызове StreamInfo.getInfo(): ${e.message}", e)
                     if (e.cause != null) {
                         Log.e("NP_ERROR", "Причина (cause): ${e.cause?.message}", e.cause)

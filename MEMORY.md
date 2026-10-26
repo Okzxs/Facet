@@ -3,11 +3,12 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Полный откат DSP/визуализатора (26.10.2026): волна Phase B с постоянной амплитудой, RECORD_AUDIO и настройка задержки удалены; 117 JVM-тестов, APK 27 406 945 байт | Ожидает проверки на телефоне |
+| MyMusic | активен  | Фиксы скачивания (26.10.2026): свежий резолв в воркере, повтор при 403/410, атомарная запись `.part` → rename, отмена OkHttp/NewPipe `Call`, HTTP-логи только в debug; 121 JVM-тест, APK 27 503 796 байт | Ожидает проверки на телефоне |
 
 ### Подтверждённая проверка финального фикса
 - JDK 17 из `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`; системный JAVA_HOME указывает на Java 11, поэтому задавать его только для команды. Gradle: один worker, heap 2048m.
-- `testDebugUnitTest assembleDebug` подтверждены; XML 117 executed, 0 failures/errors/skipped (18 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 406 945 байт. `lintDebug` в этой сессии не запускался.
+- `testDebugUnitTest assembleDebug` подтверждены; XML 121 executed, 0 failures/errors/skipped (19 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 503 796 байт. `lintDebug` в этой сессии не запускался.
+- Скачивание в сессии 22: `DownloadManager` не резолвит URL; `DownloadTrackWorker` получает `DownloadSourceResolver` через EntryPoint и делегирует работу в `DownloadEngine`. При 403/410 — ровно один повторный резолв и одна повторная загрузка. `.part` → проверка размера → `Files.move(ATOMIC_MOVE, REPLACE_EXISTING)`; Room только после rename; при сбое удаляется только `.part`. Отмена корутины вызывает `Call.cancel()` в OkHttp и NewPipe.
 - DSP/Visualizer удалены в сессии 21: `AudioDsp`, `AudioEnergy`, `AudioDspTest`, `PlaybackAudioSession`; `RECORD_AUDIO` из манифеста убран. Волна таймлайна — чистая математическая синусоида с постоянной амплитудой.
 - Compose UI-тестовой зависимости/androidTest нет; на устройстве проверить Cancel, release после смены трека, RTL/TalkBack/keyboard/disabled, соседние кнопки, pause/background/resume. `.kotlin/` — локальные файлы компилятора, не публиковать; `.opencode/`, `.postman/`, `postman/` не затронуты.
 
@@ -63,6 +64,11 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
+- [Сессия 22] `DownloadManager` не резолвит источник: WorkData хранит идентичность трека и ссылки для резолва, `DownloadTrackWorker` получает `DownloadSourceResolver` через EntryPoint и резолвит свежий URL перед каждой попыткой
+- [Сессия 22] При HTTP 403/410 — ровно один повторный резолв и одна повторная загрузка; дальше `HttpStatusException` с кодом, в WorkData пишется понятное сообщение
+- [Сессия 22] Запись через `.part` с уникальным workId → проверка `Content-Length`/ненулевого размера → `Files.move(ATOMIC_MOVE, REPLACE_EXISTING)`; Room обновляется только после rename, при сбое удаляется только `.part`
+- [Сессия 22] Отмена: `DownloadEngine.downloadToFile` вешает `Job.invokeOnCompletion` → `Call.cancel()`; NewPipe-вызовы обёрнуты в `NewPipeDownloader.withCancellation` (ThreadLocal + отмена активных `Call`)
+- [Сессия 22] `HttpLoggingInterceptor` (BASIC) подключается только при `BuildConfig.DEBUG`; в release подписанные URL и токены не логируются
 - [Сессия 21] Полный откат DSP/Visualizer: удалены `AudioDsp`, `AudioEnergy`, `AudioDspTest`, `PlaybackAudioSession`, настройка задержки и `RECORD_AUDIO`; таймлайн снова рисует математическую волну Phase B с постоянной амплитудой и паузным выпрямлением
 - [Сессия 15] Визуал таймлайна откатан к Phase B: ровная линия, сплошная заливка `primary`, серый остаток, круглый thumb 11dp; волновой Canvas и вертикальный handle Material3 отклонены (позже заменено волной Phase B в сессии 16)
 - [Сессия 15] Material3 `Slider` остаётся обёрткой (жесты, drag-cancel, semantics, RTL), кастомная отрисовка — только в слоте `track`; собственный thumb с пружиной и ореолом
