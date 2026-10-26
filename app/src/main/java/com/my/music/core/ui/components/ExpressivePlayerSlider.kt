@@ -65,8 +65,9 @@ private object SliderFinishInteraction : Interaction
  *
  * Визуал — волна Phase B: плавная синусоида с длиной 44dp и сужением к краям.
  * Непропетанная часть — серая волна, буфер чуть плотнее, пропетанная — волна
- * в акценте. Круглый бегунок едет по гребню этой же волны. Общая энергия
- * спектра мягко увеличивает амплитуду, форма синусоиды не меняется.
+ * в акценте. Круглый бегунок едет по гребню этой же волны. Ударная энергия
+ * (spectral flux по трём полосам) резко поднимает амплитуду и быстро отпускает
+ * её, форма синусоиды не меняется.
  * На паузе волна за 500 мс выпрямляется, фаза замирает на текущем значении.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,10 +154,10 @@ fun ExpressivePlayerSlider(
                 val progressX = trackX(fraction, span, rtl)
                 val bufferX = trackX(buffer, span, rtl)
 
-                // Средний RMS широкой полосы ниже узкополосного басового: корневая
-                // кривая возвращает волне заметное дыхание на общей энергии спектра.
+                // Транзиентный spectral flux: корневая кривая поднимает тихие хэты,
+                // а быстрый спад энергии даёт пульсацию под удар.
                 val breath = sqrt(live)
-                val amp = 9.dp.toPx() * waveHeight * (0.65f + 1.20f * breath).coerceIn(0f, 1.65f)
+                val amp = 9.dp.toPx() * waveHeight * (0.55f + 1.30f * breath).coerceIn(0f, 1.65f)
                 val phase = wavePhase.value.toDouble()
                 val wavelength = 44.dp.toPx().toDouble()
                 val stroke = 3.dp.toPx()

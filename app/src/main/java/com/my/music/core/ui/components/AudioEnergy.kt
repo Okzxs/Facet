@@ -30,7 +30,7 @@ import kotlin.math.sin
 private const val TAG = "AudioEnergy"
 
 /**
- * Полная энергия звукового поля для декора таймлайна: амплитуда волны.
+ * Ударная энергия для декора таймлайна: амплитуда волны.
  * Значение читается только в фазе отрисовки; ambient декоративный, без beat sync.
  */
 @Composable
@@ -97,11 +97,13 @@ private class AudioSampler {
     @Volatile var sample = AudioSample()
         private set
     @Volatile private var generation = 0L
+    private val detector = TransientDetector()
     private var visualizer: Visualizer? = null
     val isActive: Boolean get() = visualizer != null
 
     fun start(sessionId: Int) {
         val token = ++generation
+        detector.reset()
         var created: Visualizer? = null
         try {
             val instance = Visualizer(sessionId)
@@ -111,23 +113,32 @@ private class AudioSampler {
                 override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
                 override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
                     if (fft == null) return
-                    val captured = AudioSample(audioRms(fft, samplingRate), SystemClock.elapsedRealtimeNanos())
                     synchronized(this@AudioSampler) {
-                        if (generation == token) sample = captured
+                        if (generation != token) return
+                        val value = detector.process(fft, samplingRate)
+                        sample = AudioSample(value, SystemClock.elapsedRealtimeNanos())
                     }
                 }
             }, Visualizer.getMaxCaptureRate().coerceAtMost(20_000), false, true) == Visualizer.SUCCESS)
             instance.enabled = true
             visualizer = instance
         } catch (_: RuntimeException) {
-            synchronized(this) { generation++; sample = AudioSample() }
+            synchronized(this) {
+                generation++
+                sample = AudioSample()
+                detector.reset()
+            }
             runCatching { created?.enabled = false }
             runCatching { created?.release() }
         }
     }
 
     fun release() {
-        synchronized(this) { generation++; sample = AudioSample() }
+        synchronized(this) {
+            generation++
+            sample = AudioSample()
+            detector.reset()
+        }
         val old = visualizer
         visualizer = null
         runCatching { old?.enabled = false }
