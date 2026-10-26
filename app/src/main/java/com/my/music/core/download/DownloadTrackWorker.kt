@@ -22,9 +22,10 @@ import java.util.concurrent.TimeUnit
  *
  * Скачиваем только progressive-файлы: HLS — это набор сегментов, из которого
  * нельзя собрать один файл. Источник выбирается по [Track.source]:
- * SoundCloud отдаёт MP3, YouTube — M4A (реже WEBM/Opus).
- * Если progressive-потока нет, задача завершается ошибкой, и UI показывает
- * крестик со Snackbar «доступен только онлайн».
+ * SoundCloud отдаёт MP3, YouTube — M4A (реже WEBM/Opus). Если у
+ * SoundCloud-трека есть только HLS, резолвер ищет версию на YouTube.
+ * Когда progressive-потока нет нигде, задача завершается ошибкой, и UI
+ * показывает крестик со Snackbar с понятным текстом.
  *
  * Воркер получает из WorkData только идентичность трека и сам вызывает
  * [DownloadSourceResolver] перед скачиванием. Так протухшая подписанная

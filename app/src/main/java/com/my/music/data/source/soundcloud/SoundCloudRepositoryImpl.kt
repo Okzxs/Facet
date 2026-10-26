@@ -27,9 +27,10 @@ class SoundCloudRepositoryImpl @Inject constructor(
     private val newPipeDownloader: NewPipeDownloader,
 ) : SoundCloudRepository {
 
-    // SoundCloud часто отдаёт только HLS-сегменты, поэтому для скачивания
-    // источник не используется — резолвер ищет progressive-версию на YouTube.
-    override val downloadCapability: DownloadCapability = DownloadCapability.HLS_ONLY
+    // Большинство треков SoundCloud отдаёт progressive MP3, поэтому пробуем
+    // качать напрямую. Если у трека есть только HLS, resolveStreamUrl с
+    // requireProgressive = true вернёт ошибку, и резолвер переключится на YouTube.
+    override val downloadCapability: DownloadCapability = DownloadCapability.PROGRESSIVE
 
     private val tag = "SoundCloudRepo"
 

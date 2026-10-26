@@ -79,6 +79,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.core.download.DownloadMessages
 import com.my.music.core.download.DownloadState
 import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.components.ExpressivePlayerSlider
@@ -106,10 +107,6 @@ private const val PLAYER_LAYOUT_VARIANT = 1
 
 /** Ошибка скачивания без альтернативы (например, YouTube). */
 private const val DOWNLOAD_FAILED_MESSAGE = "Не удалось скачать трек (доступен только онлайн)"
-
-/** SoundCloud-трек не скачался — предлагаем найти его на YouTube. */
-private const val SOUNDCLOUD_DOWNLOAD_FAILED_MESSAGE =
-    "Не удалось скачать (только онлайн). Найти на YouTube?"
 
 private const val FIND_ON_YOUTUBE_ACTION = "Найти"
 
@@ -213,7 +210,7 @@ fun PlayerScreen(
         snackbarScope.launch {
             val result = snackbarHostState.showSnackbar(
                 message = if (isSoundCloud) {
-                    SOUNDCLOUD_DOWNLOAD_FAILED_MESSAGE
+                    DownloadMessages.SOURCE_NOT_FOUND
                 } else {
                     DOWNLOAD_FAILED_MESSAGE
                 },

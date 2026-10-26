@@ -3,11 +3,12 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Фиксы скачивания (26.10.2026): свежий резолв в воркере, повтор при 403/410, атомарная запись `.part` → rename, отмена OkHttp/NewPipe `Call`, HTTP-логи только в debug; 121 JVM-тест, APK 27 503 796 байт | Ожидает проверки на телефоне |
+| MyMusic | активен  | Скачивание SC progressive + fallback YouTube (26.10.2026): SC PROGRESSIVE, HLS-only уходит на YouTube, нестрогий матч по длительности ±15 с и артисту, понятный текст ошибки; 129 JVM-тестов, APK 27 508 441 байт | Ожидает проверки на телефоне |
 
 ### Подтверждённая проверка финального фикса
 - JDK 17 из `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`; системный JAVA_HOME указывает на Java 11, поэтому задавать его только для команды. Gradle: один worker, heap 2048m.
-- `testDebugUnitTest assembleDebug` подтверждены; XML 121 executed, 0 failures/errors/skipped (19 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 503 796 байт. `lintDebug` в этой сессии не запускался.
+- `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 508 441 байт. `lintDebug` в этой сессии не запускался.
+- Скачивание в сессии 23: `SoundCloudRepositoryImpl.downloadCapability = PROGRESSIVE`; `SoundCloudDownloadSource.resolve` вызывает `resolveStreamUrl(requireProgressive = true)`, поэтому SC-трек с MP3 качается напрямую, а HLS-only уходит на YouTube. Нестрогий fallback YouTube: очищенный запрос, топ-10, `|Δduration| ≤ 15 с`, артист в названии/канале; `markFailed` только после обеих неудач.
 - Скачивание в сессии 22: `DownloadManager` не резолвит URL; `DownloadTrackWorker` получает `DownloadSourceResolver` через EntryPoint и делегирует работу в `DownloadEngine`. При 403/410 — ровно один повторный резолв и одна повторная загрузка. `.part` → проверка размера → `Files.move(ATOMIC_MOVE, REPLACE_EXISTING)`; Room только после rename; при сбое удаляется только `.part`. Отмена корутины вызывает `Call.cancel()` в OkHttp и NewPipe.
 - DSP/Visualizer удалены в сессии 21: `AudioDsp`, `AudioEnergy`, `AudioDspTest`, `PlaybackAudioSession`; `RECORD_AUDIO` из манифеста убран. Волна таймлайна — чистая математическая синусоида с постоянной амплитудой.
 - Compose UI-тестовой зависимости/androidTest нет; на устройстве проверить Cancel, release после смены трека, RTL/TalkBack/keyboard/disabled, соседние кнопки, pause/background/resume. `.kotlin/` — локальные файлы компилятора, не публиковать; `.opencode/`, `.postman/`, `postman/` не затронуты.
@@ -64,6 +65,9 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
+- [Сессия 23] SoundCloud переведён в PROGRESSIVE: `SoundCloudRepositoryImpl.downloadCapability = PROGRESSIVE`, `resolveStreamUrl(requireProgressive = true)` отдаёт MP3; HLS-only трек возвращает ошибку, и резолвер идёт на YouTube
+- [Сессия 23] Нестрогий fallback YouTube: после строгого матча — запрос `Артист Название` без `official audio`/remaster/feat., топ-10, `|Δduration| ≤ 15 с`, артист в названии или канале; при совпадении очищенного и строгого запроса повторный поиск не выполняется
+- [Сессия 23] `RecentlyFailedSources.markFailed` только после строгой и нестрогой неудачи; текст ошибки — `DownloadMessages.SOURCE_NOT_FOUND`, действие «Найти» оставлено для ручного поиска
 - [Сессия 22] `DownloadManager` не резолвит источник: WorkData хранит идентичность трека и ссылки для резолва, `DownloadTrackWorker` получает `DownloadSourceResolver` через EntryPoint и резолвит свежий URL перед каждой попыткой
 - [Сессия 22] При HTTP 403/410 — ровно один повторный резолв и одна повторная загрузка; дальше `HttpStatusException` с кодом, в WorkData пишется понятное сообщение
 - [Сессия 22] Запись через `.part` с уникальным workId → проверка `Content-Length`/ненулевого размера → `Files.move(ATOMIC_MOVE, REPLACE_EXISTING)`; Room обновляется только после rename, при сбое удаляется только `.part`
@@ -87,7 +91,7 @@
 - [Phase A 26.10] Караоке — `Brush.horizontalGradient` по всей строке (крайние случаи `SolidColor`); диагональный `linearGradient` давал серую правую часть
 - [Phase A 26.10] «Серая» вторая визуальная строка оказалась следствием нижней градиентной маски 124dp, а не кисти; лечится подъёмом активной строки на 24dp (`centerLiftPx`), маска сохранена
 - [Phase A 26.10] Несинхронизированный текст — 24sp Normal alpha 0.82 без караоке и свечения; инструментал, пустой текст и ошибка не менялись
-- [Phase C 25.10] `DownloadSourceResolver` выбирает только `PROGRESSIVE`: сначала текущий источник (если у трека есть URL), затем остальные; SoundCloud помечен `HLS_ONLY`, поэтому SC-треки качаются через YouTube
+- [Phase C 25.10, заменено в сессии 23] `DownloadSourceResolver` выбирает только `PROGRESSIVE`: сначала текущий источник (если у трека есть URL), затем остальные; SoundCloud был помечен `HLS_ONLY`, поэтому SC-треки качались через YouTube
 - [Phase C 25.10] Строгий матч: `normalizeArtist(seed) == normalizeArtist(candidate)` и точное нормализованное название; допускаются только служебные пометки (`feat./remaster/official/audio/lyrics/visualizer/explicit/clean`) и точный префикс `Артист — Название`; подстроки запрещены
 - [Phase C 25.10] `RecentlyFailedSources` хранит пару «трек + источник» 30 минут; `Mutex` на `trackId` сериализует повторные тапы, `DownloadManager` отменяет резолв вместе с задачей
 - [Phase C 25.10] Резолвер вызывается до `DownloadTrackWorker` и передаёт прямой URL/MIME/источник через `KEY_DIRECT_STREAM_URL`/`KEY_DIRECT_MIME_TYPE`/`KEY_RESOLVED_SOURCE`; старый путь `resolveStream` оставлен для старых задач
@@ -109,7 +113,7 @@
 - [Шаг 4 22.10] `AudioStreamResult.mimeType` протянут из репозиториев в плеер и загрузчик: SC — `AUDIO_MPEG`/`APPLICATION_M3U8`, YouTube — `AUDIO_MP4`/`AUDIO_WEBM`; офлайн-MIME читается из Room
 - [Шаг 4 22.10] `PlayerController.resolveAndPlay()` source-aware: YouTube резолвится через `YouTubeRepository`, SoundCloud — через `SoundCloudRepository`; `isHls=false` для progressive M4A
 - [Шаг 4 22.10] `DownloadTrackWorker` выбирает репозиторий по `Track.source`, пишет `.mp3`/`.m4a`/`.webm` и тот же MIME в Room; ошибка любого этапа → `Result.failure` → WorkInfo `FAILED`
-- [Шаг 4 22.10] Для упавшего SC-скачивания Snackbar «Не удалось скачать (только онлайн). Найти на YouTube?» с action «Найти»; для YouTube — нейтральное сообщение без редиректа
+- [Шаг 4 22.10, текст обновлён в сессии 23] Для упавшего SC-скачивания Snackbar с action «Найти»; для YouTube — нейтральное сообщение без редиректа
 - [Шаг 4 22.10] `NavigationEvents` (Singleton, `SharedFlow` replay=1) передаёт в `SearchViewModel` запрос `"Артист - Название"` + `YOUTUBE`; поиск выполняется сразу, replay-кэш сбрасывается после обработки
 - [Скачивание 22.10] Офлайн переведён на progressive-файлы + OkHttp: `filesDir/downloads/<safe>_<hash>.<ext>`, в Room — `file://` + MIME; HLS-сегменты больше не скачиваются
 - [Скачивание 22.10] Для загрузки вызывается `resolveStreamUrl(requireProgressive = true)`: при отсутствии progressive — ошибка «Трек доступен только для онлайн-прослушивания»; для онлайн-плеера HLS-фолбэк сохранён, иначе HLS-only треки перестали бы играть

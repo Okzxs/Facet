@@ -10,9 +10,9 @@ import javax.inject.Singleton
 /**
  * SoundCloud как источник скачивания.
  *
- * Часть треков отдаётся только через HLS, поэтому источник помечен
- * HLS_ONLY: резолвер не использует его для загрузки и ищет
- * progressive-версию на YouTube.
+ * Большинство треков отдаётся progressive MP3, поэтому источник помечен
+ * PROGRESSIVE. Для HLS-only треков [resolve] вернёт ошибку, и резолвер
+ * переключится на поиск версии на YouTube.
  */
 @Singleton
 class SoundCloudDownloadSource @Inject constructor(

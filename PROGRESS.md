@@ -1,6 +1,14 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 26.10.2026 (сессия 22)
+## Последнее обновление: 26.10.2026 (сессия 23)
+
+## SoundCloud progressive + умный fallback YouTube — сессия 23
+- `SoundCloudRepositoryImpl.downloadCapability` переведён с `HLS_ONLY` на `PROGRESSIVE`. `SoundCloudDownloadSource` уже вызывает `resolveStreamUrl(requireProgressive = true)`, поэтому SC-трек с progressive MP3 качается напрямую, без обращения к YouTube. Если у трека только HLS, resolve возвращает ошибку, и резолвер переключается на YouTube.
+- `DownloadSourceResolver`: после строгого матча для YouTube выполняется нестрогий поиск. Запрос `Артист Название` очищается от `official audio`, `remaster`, `feat.` и других служебных пометок; берутся топ-10 результатов; кандидат принимается, если `abs(durationMs - seed.durationMs) <= 15_000` (при неизвестной длительности seed фильтр не применяется, кандидат без длительности отбрасывается) и имя артиста встречается в названии видео или имени канала без учёта регистра. Резолвится первый подходящий кандидат.
+- Если очищенный запрос совпадает со строгим, второй сетевой запрос не делается — используется уже полученная выдача. `RecentlyFailedSources.markFailed` вызывается только после неудачи и строгого, и нестрогого матчей.
+- Единый текст ошибки: `DownloadMessages.SOURCE_NOT_FOUND` = «Не удалось найти этот трек на YouTube для скачивания. Возможно, он удален или доступен только в SoundCloud». Он же используется как дефолт `DownloadSourceUnavailableException` и в Snackbar SoundCloud в `PlayerScreen`; действие «Найти» сохранено для ручного поиска.
+- Тесты: `DownloadSourceResolverTest` — 16 кейсов (SC progressive без YouTube, SC HLS-only → YouTube, строгие матчи, нестрогий матч с разницей 5 с, отказ при разнице >15 с, артист в названии/канале, HLS-результат, TTL, точный текст ошибки); новый `SoundCloudRepositoryCapabilityTest` — 1 кейс. Всего 20 suites / 129 тестов, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 508 441 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
 ## Фиксы скачивания: свежий резолв, атомарная запись, отмена — сессия 22
 - `DownloadManager` больше не резолвит источник до постановки задачи: в WorkData передаются только идентичность трека и ссылки для резолва; ключи `KEY_DIRECT_STREAM_URL`, `KEY_DIRECT_MIME_TYPE`, `KEY_RESOLVED_SOURCE` удалены. Ошибки источника теперь приходят через FAILED WorkInfo.
@@ -90,10 +98,10 @@
 - Ветка `main`; без commit/push. Пользовательские `.opencode/`, `.postman/`, `postman/` не затронуты; появившаяся в status `.kotlin/` содержит локальные служебные файлы компилятора и не включается в публикацию.
 
 ## 📌 Актуальный срез
-- 121 реально выполненный JVM-тест (19 suites), 0 failures/errors/skipped; `assembleDebug` подтверждён, APK 27 503 796 байт. Lint в этой сессии не запускался.
+- 129 реально выполненных JVM-тестов (20 suites), 0 failures/errors/skipped; `assembleDebug` подтверждён, APK 27 508 441 байт. Lint в этой сессии не запускался.
 - Room v8, схемы `4.json`–`8.json`; ONNX/YAMNet и `core/audio` удалены revert-коммитом `9e74fb6`.
 - «Для вас»: related-треки YouTube/SoundCloud через NewPipe, 4–6 треков-сидов, кап 2/3, fallback только при <10 и только по строгому артисту; глобальный популярный запрос — только на пустой истории.
-- Скачивание: `DownloadSourceResolver` выбирает только progressive-источник (SoundCloud — HLS_ONLY, поэтому SC-треки качаются через YouTube), строгий матч артиста и названия, TTL 30 мин для неудачных источников. Резолв свежего URL выполняется в `DownloadTrackWorker` перед каждой попыткой; при 403/410 — один повторный резолв. Запись `.part` → атомарный rename, Room после rename; отмена отменяет OkHttp/NewPipe `Call`; HTTP BASIC-логи только в debug. Кнопка скачивания есть в медиатеке и полноэкранном плеере.
+- Скачивание: `DownloadSourceResolver` выбирает только progressive-источник; SoundCloud — PROGRESSIVE (HLS-only трек падает и уходит на YouTube), YouTube — PROGRESSIVE. Сначала строгий матч артиста и названия; для YouTube — нестрогий fallback: запрос без служебных пометок, топ-10, разница длительности ≤15 с, артист в названии или канале. TTL 30 мин для неудачных источников. Резолв свежего URL выполняется в `DownloadTrackWorker` перед каждой попыткой; при 403/410 — один повторный резолв. Запись `.part` → атомарный rename, Room после rename; отмена отменяет OkHttp/NewPipe `Call`; HTTP BASIC-логи только в debug. Кнопка скачивания есть в медиатеке и полноэкранном плеере.
 - Плеер: режим текста отполирован в Phase A — спокойный фон (scrim `surface` 0.65 поверх размытой обложки), иерархия строк 24/18/16sp, горизонтальная караоке-заливка, подъём активной строки на 24dp. Таймлайн — волна Phase B на Material3 Slider: серая синусоида с длиной 44dp и сужением к краям, пропетанная часть в `primary`, круглый бегунок на гребне; амплитуда постоянная 9dp, на паузе волна плавно выпрямляется. DSP/Visualizer удалены в сессии 21, `RECORD_AUDIO` в манифесте нет.
 
 ---

@@ -5,19 +5,95 @@ import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Резолвер должен отсекать HLS-источники, выбирать YouTube для
- * SoundCloud-трека и не принимать частичные совпадения названий.
+ * Резолвер должен качать SoundCloud progressive напрямую, отсекать HLS,
+ * искать запасной вариант на YouTube и не принимать мусорные совпадения.
  */
 class DownloadSourceResolverTest {
 
     private val recentlyFailed = RecentlyFailedSources()
 
     @Test
-    fun `soundcloud seed is filtered and youtube progressive is selected`() = runTest {
+    fun `progressive soundcloud is downloaded without youtube`() = runTest {
+        var youtubeSearchCalls = 0
+        var youtubeResolveCalls = 0
+        val soundCloud = source(
+            source = Source.SOUNDCLOUD,
+            capability = DownloadCapability.PROGRESSIVE,
+            resolve = {
+                Result.success(
+                    AudioStreamResult(
+                        url = "https://soundcloud.example/audio.mp3",
+                        isHls = false,
+                        mimeType = "audio/mpeg",
+                    ),
+                )
+            },
+        )
+        val youtube = source(
+            source = Source.YOUTUBE,
+            capability = DownloadCapability.PROGRESSIVE,
+            search = { _, _ ->
+                youtubeSearchCalls += 1
+                Result.failure(IllegalStateException("YouTube не должен искать"))
+            },
+            resolve = {
+                youtubeResolveCalls += 1
+                Result.failure(IllegalStateException("YouTube не должен резолвить"))
+            },
+        )
+
+        val result = resolver(soundCloud, youtube)
+            .resolve(track("sc-1", Source.SOUNDCLOUD, "Seed Song", "Seed Artist"))
+
+        assertTrue(result.isSuccess)
+        val resolved = result.getOrThrow()
+        assertEquals(Source.SOUNDCLOUD, resolved.source)
+        assertEquals("https://soundcloud.example/audio.mp3", resolved.streamUrl)
+        assertEquals(0, youtubeSearchCalls)
+        assertEquals(0, youtubeResolveCalls)
+    }
+
+    @Test
+    fun `soundcloud without progressive stream falls back to youtube`() = runTest {
+        var soundCloudResolveCalls = 0
+        val soundCloud = source(
+            source = Source.SOUNDCLOUD,
+            capability = DownloadCapability.PROGRESSIVE,
+            resolve = {
+                soundCloudResolveCalls += 1
+                Result.failure(IllegalStateException("У трека только HLS"))
+            },
+        )
+        val youtube = source(
+            source = Source.YOUTUBE,
+            capability = DownloadCapability.PROGRESSIVE,
+            search = { _, _ ->
+                Result.success(
+                    listOf(track("yt-1", Source.YOUTUBE, "Seed Song", "Seed Artist")),
+                )
+            },
+            resolve = {
+                Result.success(
+                    AudioStreamResult("https://youtube.example/audio.m4a", isHls = false),
+                )
+            },
+        )
+
+        val result = resolver(soundCloud, youtube)
+            .resolve(track("sc-1", Source.SOUNDCLOUD, "Seed Song", "Seed Artist"))
+
+        assertTrue(result.isSuccess)
+        assertEquals(Source.YOUTUBE, result.getOrThrow().source)
+        assertEquals(1, soundCloudResolveCalls)
+    }
+
+    @Test
+    fun `hls-only soundcloud source is skipped and youtube is used`() = runTest {
         var soundCloudSearchCalls = 0
         val soundCloud = source(
             source = Source.SOUNDCLOUD,
@@ -50,9 +126,8 @@ class DownloadSourceResolverTest {
             .resolve(track("sc-1", Source.SOUNDCLOUD, "Seed Song", "Seed Artist"))
 
         assertTrue(result.isSuccess)
-        val resolved = result.getOrThrow()
-        assertEquals(Source.YOUTUBE, resolved.source)
-        assertEquals("https://youtube.example/audio.m4a", resolved.streamUrl)
+        assertEquals(Source.YOUTUBE, result.getOrThrow().source)
+        assertEquals("https://youtube.example/audio.m4a", result.getOrThrow().streamUrl)
         assertEquals(0, soundCloudSearchCalls)
     }
 
@@ -81,32 +156,19 @@ class DownloadSourceResolverTest {
     }
 
     @Test
-    fun `title substring is not a match`() = runTest {
-        var resolveCalls = 0
-        val youtube = source(
-            source = Source.YOUTUBE,
-            capability = DownloadCapability.PROGRESSIVE,
-            search = { _, _ ->
-                Result.success(
-                    listOf(
-                        track("yt-wrong", Source.YOUTUBE, "Midnight City Lights", "M83"),
-                        track("yt-live", Source.YOUTUBE, "Midnight City (Live)", "M83"),
-                    ),
-                )
-            },
-            resolve = {
-                resolveCalls += 1
-                Result.success(
-                    AudioStreamResult("https://youtube.example/audio.m4a", isHls = false),
-                )
-            },
-        )
+    fun `strict match rejects title substring`() {
+        val seed = track("sc-1", Source.SOUNDCLOUD, "Midnight City", "M83")
+        val candidate = track("yt-1", Source.YOUTUBE, "Midnight City Lights", "M83")
 
-        val result = resolver(youtube)
-            .resolve(track("sc-1", Source.SOUNDCLOUD, "Midnight City", "M83"))
+        assertFalse(DownloadSourceResolver.matchesTrack(seed, candidate))
+    }
 
-        assertTrue(result.isFailure)
-        assertEquals(0, resolveCalls)
+    @Test
+    fun `strict match requires exact artist`() {
+        val seed = track("sc-1", Source.SOUNDCLOUD, "Midnight City", "M83")
+        val candidate = track("yt-1", Source.YOUTUBE, "Midnight City", "M83 Tribute Band")
+
+        assertFalse(DownloadSourceResolver.matchesTrack(seed, candidate))
     }
 
     @Test
@@ -171,14 +233,23 @@ class DownloadSourceResolverTest {
     }
 
     @Test
-    fun `artist must match exactly`() = runTest {
+    fun `relaxed youtube match allows five second duration difference`() = runTest {
+        val queries = mutableListOf<String>()
         val youtube = source(
             source = Source.YOUTUBE,
             capability = DownloadCapability.PROGRESSIVE,
-            search = { _, _ ->
+            search = { query, limit ->
+                queries += query
+                assertEquals(10, limit)
                 Result.success(
                     listOf(
-                        track("yt-1", Source.YOUTUBE, "Midnight City", "M83 Tribute Band"),
+                        track(
+                            id = "yt-1",
+                            source = Source.YOUTUBE,
+                            title = "M83 - Midnight City (Live)",
+                            artist = "M83",
+                            durationMs = 185_000L,
+                        ),
                     ),
                 )
             },
@@ -189,10 +260,135 @@ class DownloadSourceResolverTest {
             },
         )
 
+        val result = resolver(youtube).resolve(
+            track(
+                id = "sc-1",
+                source = Source.SOUNDCLOUD,
+                title = "Midnight City (Official Audio)",
+                artist = "M83",
+                durationMs = 180_000L,
+            ),
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals(Source.YOUTUBE, result.getOrThrow().source)
+        assertEquals(2, queries.size)
+        assertEquals("M83 Midnight City (Official Audio)", queries[0])
+        assertEquals("M83 Midnight City", queries[1])
+        assertFalse(queries[1].contains("official", ignoreCase = true))
+    }
+
+    @Test
+    fun `relaxed youtube match rejects duration difference over fifteen seconds`() = runTest {
+        var resolveCalls = 0
+        val youtube = source(
+            source = Source.YOUTUBE,
+            capability = DownloadCapability.PROGRESSIVE,
+            search = { _, _ ->
+                Result.success(
+                    listOf(
+                        track(
+                            id = "yt-1",
+                            source = Source.YOUTUBE,
+                            title = "M83 - Midnight City (Live)",
+                            artist = "M83",
+                            durationMs = 200_000L,
+                        ),
+                    ),
+                )
+            },
+            resolve = {
+                resolveCalls += 1
+                Result.success(
+                    AudioStreamResult("https://youtube.example/audio.m4a", isHls = false),
+                )
+            },
+        )
+
+        val result = resolver(youtube).resolve(
+            track(
+                id = "sc-1",
+                source = Source.SOUNDCLOUD,
+                title = "Midnight City",
+                artist = "M83",
+                durationMs = 180_000L,
+            ),
+        )
+
+        assertTrue(result.isFailure)
+        assertEquals(0, resolveCalls)
+    }
+
+    @Test
+    fun `relaxed youtube match requires artist in title or channel`() = runTest {
+        var resolveCalls = 0
+        val youtube = source(
+            source = Source.YOUTUBE,
+            capability = DownloadCapability.PROGRESSIVE,
+            search = { _, _ ->
+                Result.success(
+                    listOf(
+                        track(
+                            id = "yt-1",
+                            source = Source.YOUTUBE,
+                            title = "Midnight City (Live)",
+                            artist = "Tribute Band",
+                        ),
+                    ),
+                )
+            },
+            resolve = {
+                resolveCalls += 1
+                Result.success(
+                    AudioStreamResult("https://youtube.example/audio.m4a", isHls = false),
+                )
+            },
+        )
+
         val result = resolver(youtube)
             .resolve(track("sc-1", Source.SOUNDCLOUD, "Midnight City", "M83"))
 
         assertTrue(result.isFailure)
+        assertEquals(0, resolveCalls)
+    }
+
+    @Test
+    fun `relaxed youtube match accepts artist in channel name`() = runTest {
+        val youtube = source(
+            source = Source.YOUTUBE,
+            capability = DownloadCapability.PROGRESSIVE,
+            search = { _, _ ->
+                Result.success(
+                    listOf(
+                        track(
+                            id = "yt-1",
+                            source = Source.YOUTUBE,
+                            title = "Midnight City (Live)",
+                            artist = "M83 - Topic",
+                            durationMs = 185_000L,
+                        ),
+                    ),
+                )
+            },
+            resolve = {
+                Result.success(
+                    AudioStreamResult("https://youtube.example/audio.m4a", isHls = false),
+                )
+            },
+        )
+
+        val result = resolver(youtube).resolve(
+            track(
+                id = "sc-1",
+                source = Source.SOUNDCLOUD,
+                title = "Midnight City",
+                artist = "M83",
+                durationMs = 180_000L,
+            ),
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals(Source.YOUTUBE, result.getOrThrow().source)
     }
 
     @Test
@@ -256,6 +452,15 @@ class DownloadSourceResolverTest {
         assertTrue(result.exceptionOrNull() is DownloadSourceUnavailableException)
     }
 
+    @Test
+    fun `source unavailable exception uses user-facing message`() {
+        assertEquals(
+            "Не удалось найти этот трек на YouTube для скачивания. " +
+                "Возможно, он удален или доступен только в SoundCloud",
+            DownloadSourceUnavailableException().message,
+        )
+    }
+
     private fun resolver(vararg sources: DownloadSource): DownloadSourceResolver =
         DownloadSourceResolver(sources.toSet(), recentlyFailed)
 
@@ -290,6 +495,7 @@ class DownloadSourceResolverTest {
         source: Source,
         title: String,
         artist: String,
+        durationMs: Long = 180_000L,
     ) = Track(
         id = id,
         source = source,
@@ -297,7 +503,7 @@ class DownloadSourceResolverTest {
         artist = artist,
         artworkUrl = null,
         streamUrl = null,
-        durationMs = 180_000L,
+        durationMs = durationMs,
         genre = null,
         transcodingUrl = "https://example.com/$id",
     )
