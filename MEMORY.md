@@ -3,7 +3,13 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Phase B: стабильный таймлайн и синусоида-пульс (26.10.2026) | Ожидает следующей команды |
+| MyMusic | активен  | Финальный фикс таймлайна/FFT (26.10.2026): Material3 Slider, Cancel, signed RMS, lifecycle Visualizer; 133 JVM-теста, APK 27 502 042 байт | Проверки на телефоне; commit/push только отдельным этапом |
+
+### Подтверждённая проверка финального фикса
+- JDK 17 из `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`; системный JAVA_HOME указывает на Java 11, поэтому задавать его только для команды. Gradle: один worker, heap 2048m.
+- `testDebugUnitTest assembleDebug` подтверждены; XML 133 executed, 0 failures/errors/skipped (24 новых DSP/state-теста), APK `app/build/outputs/apk/debug/app-debug.apk`. `lintDebug` реально запущен и завершился exit 1: 2 UnsafeOptInUsageError в неизменённых PlaybackAudioSession.kt:30 и PlayerController.kt:153, 25 warnings. Не подавлять и не менять движок без отдельного разрешения.
+- Provider не отдаёт session Flow/callback и не обнуляет id; UI опрашивает опубликованный id каждые 250 мс и ключует Visualizer по нему. Не гарантировать неопубликованную смену session. Ambient и фаза декоративные, не beat sync.
+- Compose UI-тестовой зависимости/androidTest нет; на устройстве проверить Cancel, release после смены трека, RTL/TalkBack/keyboard/disabled, соседние кнопки, pause/background/resume/permission и FFT. `.kotlin/` — локальные файлы компилятора, не публиковать; `.opencode/`, `.postman/`, `postman/` не затронуты.
 
 ## Ожидающие задачи
 ### Высокий приоритет

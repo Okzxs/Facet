@@ -1,9 +1,21 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 26.10.2026 (сессия 12)
+## Последнее обновление: 26.10.2026 (сессия 14)
+
+## Финальный фикс таймлайна и FFT — сессия 14
+- Вместо самописных жестов используется Material3 1.3.1 `Slider`: Canvas только в `track`, штатные thumb, semantics, клавиатура, RTL, disabled и минимальная зона 48dp. Отдельная полоса над слайдером удалена, активная волна сходится к центру thumb; буфер и неактивная дорожка используют те же координаты.
+- Общая модель `PlayerSliderState` для preview и таймкода. Start/Stop/Cancel и finish проходят через один interactionSource в порядке FIFO; Cancel возвращает текущий playback без seek. `key(trackId)` пересоздаёт жест, проверка актуального trackId не позволяет старому release перемотать новый трек. Accessibility change не включает drag.
+- `BassDsp.kt`: signed complex RMS только бинов 1..N/2-1 в 40–180 Гц, fs из callback samplingRate/1000, N=fft.size. Нормализация на 128 — относительный масштаб signed-byte, не измерение громкости. Единственная временная envelope: attack 15 мс, release 140 мс, alpha=1-exp(-dt/tau), монотонный elapsedRealtimeNanos; tween энергии удалён. FFT без callbacks более 250 мс затухает к нулю.
+- Visualizer освобождается при pause, уходе из RESUMED, смене опубликованного sessionId/трека, потере разрешения и disposal. Частично созданный экземпляр очищается при исключении; поздние FFT отсекает generation. Разрешение проверяется на resume и каждые 250 мс в foreground; без RECORD_AUDIO — плавный декоративный ambient. Энергия читается в draw, callback не пишет Compose-state; beat sync не заявляется.
+- Ограничение: неизменённый `PlaybackAudioSession` не публикует Flow, не слушает audio-session callback и не сбрасывает id в 0. UI опрашивает только опубликованный фактический id и использует его как ключ ресурса; смену сессии, которую provider не опубликовал, гарантировать нельзя. Движок, service/provider, поиск, скачивание и зависимости не менялись.
+- Проверка: JDK 17 `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`, `gradlew.bat :app:tasks --all` — exit 0. Все запуски с `--console=plain --max-workers=1 -Dorg.gradle.jvmargs="-Xmx2048m -Dfile.encoding=UTF-8"`.
+- `gradlew.bat testDebugUnitTest assembleDebug lintDebug`: JVM-тесты и APK реально выполнены; общий exit 1 только из-за lint. XML: 133 testcase / 133 executed, 0 failures, 0 errors, 0 skipped (24 новых DSP/state/RTL-теста). `lintDebug`: 2 UnsafeOptInUsageError в неизменённых `PlaybackAudioSession.kt:30` и `PlayerController.kt:153`, 25 warnings; правила не ослаблялись, запрещённый движок не правился. Отдельное подтверждение `gradlew.bat testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, exit 0, 5 секунд, 53 up-to-date (не повторное исполнение тестов).
+- APK проверен: `D:\MyMusic\app\build\outputs\apk\debug\app-debug.apk`, 27 502 042 байт, создан 26.10.2026 18:28:28 +03:00. `git diff --check` без ошибок. Первая попытка tasks использовала системную Java 11 и упала; исправлено только окружение. Одна промежуточная сборка упала на ещё не объявленном SliderFinishInteraction; после завершения правки компиляция прошла. Лимит повторных одинаковых ошибок не достигнут.
+- Compose UI-тесты не добавлялись: в проекте нет androidTest и compose-ui-test зависимости; новые зависимости запрещены. На телефоне остаются Cancel/перехват жеста, смена трека до release, TalkBack/клавиатура, RTL/disabled, соседние кнопки, pause/background/resume, отзыв разрешения, реальные FFT/ROM и смена session. Успешные JVM-тесты не заменяют эти проверки.
+- Ветка `main`; без commit/push. Пользовательские `.opencode/`, `.postman/`, `postman/` не затронуты; появившаяся в status `.kotlin/` содержит локальные служебные файлы компилятора и не включается в публикацию.
 
 ## 📌 Актуальный срез
-- 109 JVM-тестов, 0 failures; `assembleDebug` — `BUILD SUCCESSFUL`, APK ≈ 27,4 МБ.
+- 133 реально выполненных JVM-теста, 0 failures/0 skipped; `assembleDebug` подтверждён, APK 27 502 042 байт. Lint не проходит по двум opt-in ошибкам в неизменённом движке.
 - Room v8, схемы `4.json`–`8.json`; ONNX/YAMNet и `core/audio` удалены revert-коммитом `9e74fb6`.
 - «Для вас»: related-треки YouTube/SoundCloud через NewPipe, 4–6 треков-сидов, кап 2/3, fallback только при <10 и только по строгому артисту; глобальный популярный запрос — только на пустой истории.
 - Скачивание: единый `DownloadSourceResolver` выбирает только progressive-источник (SoundCloud — HLS_ONLY, поэтому SC-треки качаются через YouTube), строгий матч артиста и названия, TTL 30 мин для неудачных источников; кнопка скачивания есть в медиатеке и полноэкранном плеере. На главной кнопки убраны — лента не даёт полного контекста для резолвера.

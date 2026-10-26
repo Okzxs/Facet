@@ -87,7 +87,11 @@ import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
-import com.my.music.core.ui.components.SinePulseBar
+import com.my.music.core.ui.components.rememberBassEnergy
+import com.my.music.core.ui.components.PlayerSliderState
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberUpdatedState
 import com.my.music.core.ui.theme.PlayerDynamicColors
 import com.my.music.core.ui.theme.rememberPlayerDynamicColors
 import com.my.music.data.model.LyricsResult
@@ -1495,38 +1499,29 @@ private fun PlayerProgressSection(
     bufferedFraction: () -> Float = { 0f },
     onSeek: (Float) -> Unit,
 ) {
-    var isDragging by remember { mutableStateOf(false) }
-    var dragPosition by remember { mutableFloatStateOf(0f) }
-    var playbackFraction by remember { mutableFloatStateOf(0f) }
-    var playbackPositionMs by remember { mutableLongStateOf(0L) }
-    var bufferFrac by remember { mutableFloatStateOf(0f) }
+    var sliderState by remember(trackId) { mutableStateOf(PlayerSliderState()) }
+    var playbackFraction by remember(trackId) { mutableFloatStateOf(currentFraction()) }
+    var playbackPositionMs by remember(trackId) { mutableLongStateOf(currentPositionMs()) }
+    var bufferFrac by remember(trackId) { mutableFloatStateOf(bufferedFraction()) }
+    val latestTrackId by rememberUpdatedState(trackId)
+    val latestFraction by rememberUpdatedState(currentFraction)
+    val latestPosition by rememberUpdatedState(currentPositionMs)
+    val latestBuffer by rememberUpdatedState(bufferedFraction)
+    val latestSeek by rememberUpdatedState(onSeek)
+    val energy = rememberBassEnergy(isPlaying, trackId, canVisualize)
 
-    // Сброс таймкода и слайдера при смене трека
     LaunchedEffect(trackId) {
-        playbackFraction = 0f
-        playbackPositionMs = 0L
-        dragPosition = 0f
-        isDragging = false
-        bufferFrac = 0f
-    }
-
-    LaunchedEffect(isPlaying, trackId) {
         while (true) {
-            if (!isDragging) {
-                playbackFraction = currentFraction()
-                playbackPositionMs = currentPositionMs()
-            }
-            bufferFrac = bufferedFraction()
-            delay(150) // ~6-7 обновлений в секунду
+            // Playback продолжает обновляться даже во время preview, чтобы Cancel был актуальным.
+            playbackFraction = latestFraction()
+            playbackPositionMs = latestPosition()
+            bufferFrac = latestBuffer()
+            delay(150)
         }
     }
 
-    val displayPosition = if (isDragging) dragPosition else playbackFraction
-    val displayedMs = if (isDragging) {
-        (dragPosition * durationMs).toLong()
-    } else {
-        playbackPositionMs
-    }
+    val displayPosition = sliderState.display(playbackFraction)
+    val displayedMs = sliderState.preview?.let { (it * durationMs).toLong() } ?: playbackPositionMs
 
     val remainingMs = (durationMs - displayedMs).coerceAtLeast(0L)
     // Индикатор загрузки живёт только на старте трека и не возвращается назад:
@@ -1539,14 +1534,6 @@ private fun PlayerProgressSection(
     val showLoading = isInitialBuffering && !hasStarted
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Тонкая синусоида-пульс над слайдером: декоративная, касания не перехватывает
-        SinePulseBar(
-            isPlaying = isPlaying,
-            trackId = trackId,
-            canVisualize = canVisualize,
-            color = primaryColor,
-            modifier = Modifier.fillMaxWidth(),
-        )
         Crossfade(
             targetState = showLoading,
             animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
@@ -1557,7 +1544,7 @@ private fun PlayerProgressSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         // Высота совпадает со слайдером — лейаут не прыгает при Crossfade
-                        .height(38.dp),
+                        .height(48.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     LinearProgressIndicator(
@@ -1570,22 +1557,45 @@ private fun PlayerProgressSection(
                     )
                 }
             } else {
-                ExpressivePlayerSlider(
-                    value = displayPosition.coerceIn(0f, 1f),
-                    onValueChange = { value ->
-                        isDragging = true
-                        dragPosition = value
-                    },
-                    onValueChangeFinished = { value ->
-                        onSeek(value)
-                        isDragging = false
-                    },
-                    activeColor = primaryColor,
-                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
-                    thumbColor = MaterialTheme.colorScheme.onSurface,
-                    bufferedFraction = bufferFrac,
-                    isPlaying = isPlaying,
-                )
+                key(trackId) {
+                    val gestureTrack = trackId
+                    ExpressivePlayerSlider(
+                        value = displayPosition.coerceIn(0f, 1f),
+                        onValueChange = { value ->
+                            if (latestTrackId == gestureTrack) sliderState = sliderState.change(value)
+                        },
+                        onDragInteraction = { interaction ->
+                            if (latestTrackId == gestureTrack) {
+                                sliderState = when (interaction) {
+                                    is DragInteraction.Start -> sliderState.start()
+                                    is DragInteraction.Stop -> sliderState.stop()
+                                    is DragInteraction.Cancel -> {
+                                        playbackFraction = latestFraction()
+                                        playbackPositionMs = latestPosition()
+                                        sliderState.cancel()
+                                    }
+                                    else -> sliderState
+                                }
+                            }
+                        },
+                        onValueChangeFinished = {
+                            // Cancel уже обработан тем же interactionSource и убрал preview.
+                            if (latestTrackId == gestureTrack) {
+                                sliderState.preview?.let { latestSeek(it) }
+                                sliderState = sliderState.cancel()
+                                playbackFraction = latestFraction()
+                                playbackPositionMs = latestPosition()
+                            }
+                        },
+                        activeColor = primaryColor,
+                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                        thumbColor = MaterialTheme.colorScheme.onSurface,
+                        energy = energy,
+                        bufferedFraction = bufferFrac,
+                        enabled = durationMs > 0,
+                        isPlaying = isPlaying,
+                    )
+                }
             }
         }
         Row(
