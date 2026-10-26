@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -26,39 +27,46 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sin
+
+/** Полный оборот фазы волны (радианы). */
+private const val TWO_PI = 6.283185307179586
 
 /**
- * Высота холста дорожки. Линия 2.5–3dp плюс мягкое свечение от баса
- * укладываются в 24dp, остальное — запас Material3 под касание.
+ * Высота холста дорожки. Волна с амплитудой 9dp и обводкой 3dp занимает ~21dp,
+ * плюс запас под круглый бегунок, который едет по гребню.
  */
-private val TRACK_HEIGHT = 24.dp
+private val TRACK_HEIGHT = 38.dp
 
 /**
- * Круглый бегунок. Ширина задаёт отступ дорожки от краёв: Material3
- * сдвигает `track` на половину thumb и центрирует оба элемента.
+ * Ширина прозрачного thumb-слота Material3: задаёт отступ дорожки от краёв
+ * и минимальную зону касания. Видимый бегунок рисуется в слоте `track`.
  */
 private val THUMB_SIZE = 20.dp
-
-/** Базовая толщина линии и добавка от баса: 2.5dp → 3dp. */
-private val TRACK_STROKE = 2.5.dp
-private val TRACK_STROKE_BOOST = 0.5.dp
 
 /** Finish идёт через тот же FIFO, что Stop/Cancel: без гонки отдельных coroutine. */
 private object SliderFinishInteraction : Interaction
 
 /**
  * Таймлайн плеера: штатный Material3 [Slider] отвечает за жесты, drag-cancel,
- * клавиатуру, semantics и RTL, а вся отрисовка живёт в слоте `track`.
+ * клавиатуру, semantics и RTL, а отрисовка живёт в слоте `track`.
  *
- * Визуал — спокойная линия Phase B: пропетанная часть сплошная `primary`,
- * непропетанная — серая, буфер чуть плотнее. Басовый импульс не меняет форму
- * линии: он слегка утолщает заливку (2.5→3dp) и добавляет мягкое свечение.
- * На паузе линия за 500 мс успокаивается до базовой толщины.
+ * Визуал — волна Phase B: плавная синусоида с длиной 44dp и сужением к краям.
+ * Непропетанная часть — серая волна, буфер чуть плотнее, пропетанная — волна
+ * в акценте. Круглый бегунок едет по гребню этой же волны. Басовый импульс
+ * мягко увеличивает амплитуду, форма синусоиды не меняется.
+ * На паузе волна за 500 мс выпрямляется, фаза замирает на текущем значении.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,11 +97,22 @@ fun ExpressivePlayerSlider(
         }
     }
 
-    // Пауза: бас перестаёт подмешиваться, и линия плавно возвращается к покою.
-    val calm by animateFloatAsState(
+    // Пауза: волна плавно выпрямляется, как в Phase B
+    val amplitude by animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0f,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "sliderCalm",
+        label = "waveAmplitude",
+    )
+
+    // Бегущая фаза синусоиды: на паузе замирает на текущем значении
+    val wavePhase = rememberPlaybackPhase(active = isPlaying, periodMs = 1600)
+
+    // Пружина бегунка при захвате
+    val dragged by interactionSource.collectIsDraggedAsState()
+    val bounce by animateFloatAsState(
+        targetValue = if (dragged) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessLow),
+        label = "sliderThumbBounce",
     )
 
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -111,90 +130,97 @@ fun ExpressivePlayerSlider(
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         colors = colors,
-        thumb = { SliderThumb(interactionSource, thumbColor, activeColor) },
+        // Бегунок невидимый: он держит ширину дорожки и зону касания,
+        // а рисуется поверх волны в её же координатах.
+        thumb = { Spacer(Modifier.size(THUMB_SIZE)) },
         track = { state ->
             Canvas(
                 Modifier
                     .fillMaxWidth()
                     .height(TRACK_HEIGHT),
             ) {
-                // Энергия и «спокойствие» читаются в фазе отрисовки — без рекомпозиций.
-                val live = energy.value.coerceIn(0f, 1f) * calm.coerceIn(0f, 1f)
+                // Энергия и амплитуда читаются в фазе отрисовки — без рекомпозиций.
                 val fraction = state.value.coerceIn(0f, 1f)
                 val buffer = bufferedFraction.coerceIn(0f, 1f)
+                val live = energy.value.coerceIn(0f, 1f)
+                val waveHeight = amplitude.coerceIn(0f, 1f)
+
+                val span = size.width
+                val spanD = span.toDouble()
                 val centerY = size.height / 2f
-                val start = Offset(trackX(0f, size.width, rtl), centerY)
-                val end = Offset(trackX(1f, size.width, rtl), centerY)
-                val progress = Offset(trackX(fraction, size.width, rtl), centerY)
+                val startX = trackX(0f, span, rtl)
+                val progressX = trackX(fraction, span, rtl)
+                val bufferX = trackX(buffer, span, rtl)
+
+                // Басовый импульс слегка раздувает волну, но не ломает её форму
+                val amp = 9.dp.toPx() * waveHeight * (0.72f + 0.88f * live)
+                val phase = wavePhase.value.toDouble()
+                val wavelength = 44.dp.toPx().toDouble()
+                val stroke = 3.dp.toPx()
 
                 val inactive = if (enabled) trackColor else trackColor.copy(alpha = 0.12f)
                 val active = if (enabled) activeColor else activeColor.copy(alpha = 0.38f)
-                val inactiveStroke = TRACK_STROKE.toPx()
-                val activeStroke = (TRACK_STROKE + TRACK_STROKE_BOOST * live).toPx()
 
-                // Непропетанная часть — ровная серая линия
-                drawLine(inactive, start, end, inactiveStroke, StrokeCap.Round)
+                // Синусоида с сужением к краям — волна живёт в центре дорожки
+                val wave = Path()
+                wave.moveTo(startX, centerY)
+                val steps = 96
+                for (i in 1..steps) {
+                    val u = i / steps.toDouble()
+                    val x = trackX(u.toFloat(), span, rtl)
+                    val taper = sin(PI * u)
+                    val angle = TWO_PI * (spanD * u / wavelength) + phase
+                    wave.lineTo(x, centerY - (amp * taper * sin(angle)).toFloat())
+                }
 
-                // Буфер — та же линия, чуть плотнее
+                // Бегунок едет по гребню волны: та же формула в его X-координате
+                val thumbU = fraction.toDouble()
+                val thumbAngle = TWO_PI * (spanD * thumbU / wavelength) + phase
+                val thumbY = centerY - (amp * sin(PI * thumbU) * sin(thumbAngle)).toFloat()
+
+                // Тусклая волна — вся длительность трека
+                drawPath(wave, inactive, style = Stroke(width = stroke, cap = StrokeCap.Round))
+
+                // Зона буферизации — та же волна, чуть плотнее
                 if (buffer > 0.01f) {
-                    drawLine(
-                        color = inactive.copy(alpha = (inactive.alpha * 1.8f).coerceAtMost(1f)),
-                        start = start,
-                        end = Offset(trackX(buffer, size.width, rtl), centerY),
-                        strokeWidth = inactiveStroke,
-                        cap = StrokeCap.Round,
+                    clipRect(
+                        left = min(startX, bufferX),
+                        right = max(startX, bufferX),
+                    ) {
+                        drawPath(
+                            wave,
+                            inactive.copy(alpha = (inactive.alpha * 1.8f).coerceAtMost(1f)),
+                            style = Stroke(width = stroke, cap = StrokeCap.Round),
+                        )
+                    }
+                }
+
+                // Пропетанная часть — волна в акценте
+                if (fraction > 0f) {
+                    clipRect(
+                        left = min(startX, progressX),
+                        right = max(startX, progressX),
+                    ) {
+                        drawPath(wave, active, style = Stroke(width = stroke, cap = StrokeCap.Round))
+                    }
+                }
+
+                // Ореол под бегунком — раскрывается вместе с пружиной
+                if (bounce > 0.02f) {
+                    drawCircle(
+                        color = active.copy(alpha = (0.22f * bounce).coerceIn(0f, 1f)),
+                        radius = (10f + 16f * bounce).dp.toPx(),
+                        center = Offset(progressX, thumbY),
                     )
                 }
 
-                if (fraction > 0f) {
-                    // Свечение от баса: два слоя поверх линии, форма не меняется
-                    if (live > 0.01f) {
-                        drawLine(
-                            color = active.copy(alpha = 0.10f * live),
-                            start = start,
-                            end = progress,
-                            strokeWidth = activeStroke + 7.dp.toPx() * live,
-                            cap = StrokeCap.Round,
-                        )
-                        drawLine(
-                            color = active.copy(alpha = 0.14f * live),
-                            start = start,
-                            end = progress,
-                            strokeWidth = activeStroke + 3.dp.toPx() * live,
-                            cap = StrokeCap.Round,
-                        )
-                    }
-                    // Пропетанная часть — сплошная заливка акцентом
-                    drawLine(active, start, progress, activeStroke, StrokeCap.Round)
-                }
+                // Круглый бегунок на гребне волны
+                drawCircle(
+                    color = thumbColor,
+                    radius = 5.dp.toPx() * (1f + 0.4f * bounce.coerceIn(-0.3f, 1.4f)),
+                    center = Offset(progressX, thumbY),
+                )
             }
         },
     )
-}
-
-/** Круглый бегунок: пружинный рост и ореол при захвате, как в Phase B. */
-@Composable
-private fun SliderThumb(
-    interactionSource: MutableInteractionSource,
-    thumbColor: Color,
-    haloColor: Color,
-) {
-    val dragged by interactionSource.collectIsDraggedAsState()
-    val bounce by animateFloatAsState(
-        targetValue = if (dragged) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessLow),
-        label = "sliderThumbBounce",
-    )
-    Canvas(Modifier.size(THUMB_SIZE)) {
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = 5.5.dp.toPx() * (1f + 0.30f * bounce)
-        if (bounce > 0.02f) {
-            drawCircle(
-                color = haloColor.copy(alpha = (0.20f * bounce).coerceIn(0f, 1f)),
-                radius = radius * 1.8f,
-                center = center,
-            )
-        }
-        drawCircle(thumbColor, radius = radius, center = center)
-    }
 }
