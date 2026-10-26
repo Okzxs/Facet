@@ -87,7 +87,7 @@ import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
-import com.my.music.core.ui.components.rememberBassEnergy
+import com.my.music.core.ui.components.rememberAudioEnergy
 import com.my.music.core.ui.components.PlayerSliderState
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.runtime.key
@@ -1510,7 +1510,7 @@ private fun PlayerProgressSection(
     val latestPosition by rememberUpdatedState(currentPositionMs)
     val latestBuffer by rememberUpdatedState(bufferedFraction)
     val latestSeek by rememberUpdatedState(onSeek)
-    val energy = rememberBassEnergy(isPlaying, trackId, canVisualize)
+    val audioEnergy = rememberAudioEnergy(isPlaying, trackId, canVisualize)
 
     LaunchedEffect(trackId) {
         while (true) {
@@ -1592,7 +1592,7 @@ private fun PlayerProgressSection(
                         activeColor = primaryColor,
                         trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
                         thumbColor = MaterialTheme.colorScheme.onSurface,
-                        energy = energy,
+                        audioEnergy = audioEnergy,
                         bufferedFraction = bufferFrac,
                         enabled = durationMs > 0,
                         isPlaying = isPlaying,

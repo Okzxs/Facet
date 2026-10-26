@@ -27,18 +27,18 @@ import kotlinx.coroutines.isActive
 import kotlin.math.sin
 
 /** Тег для проверки на устройстве: сработал Visualizer или ambient-фолбэк. */
-private const val TAG = "BassEnergy"
+private const val TAG = "AudioEnergy"
 
 /**
- * Базовая энергия для декора таймлайна: толщина и свечение линии.
+ * Полная энергия звукового поля для декора таймлайна: амплитуда волны.
  * Значение читается только в фазе отрисовки; ambient декоративный, без beat sync.
  */
 @Composable
-internal fun rememberBassEnergy(isPlaying: Boolean, trackId: String?, canVisualize: Boolean): State<Float> {
+internal fun rememberAudioEnergy(isPlaying: Boolean, trackId: String?, canVisualize: Boolean): State<Float> {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val sampler = remember { BassSampler() }
-    val envelope = remember { BassEnvelope() }
+    val sampler = remember { AudioSampler() }
+    val envelope = remember { AudioEnvelope() }
     val energy = remember { mutableFloatStateOf(0f) }
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     fun hasPermission() = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -93,8 +93,8 @@ internal fun rememberBassEnergy(isPlaying: Boolean, trackId: String?, canVisuali
 }
 
 /** Callback не пишет Compose-state; поколение исключает поздние FFT после release. */
-private class BassSampler {
-    @Volatile var sample = BassSample()
+private class AudioSampler {
+    @Volatile var sample = AudioSample()
         private set
     @Volatile private var generation = 0L
     private var visualizer: Visualizer? = null
@@ -111,8 +111,8 @@ private class BassSampler {
                 override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) = Unit
                 override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) {
                     if (fft == null) return
-                    val captured = BassSample(bassRms(fft, samplingRate), SystemClock.elapsedRealtimeNanos())
-                    synchronized(this@BassSampler) {
+                    val captured = AudioSample(audioRms(fft, samplingRate), SystemClock.elapsedRealtimeNanos())
+                    synchronized(this@AudioSampler) {
                         if (generation == token) sample = captured
                     }
                 }
@@ -120,14 +120,14 @@ private class BassSampler {
             instance.enabled = true
             visualizer = instance
         } catch (_: RuntimeException) {
-            synchronized(this) { generation++; sample = BassSample() }
+            synchronized(this) { generation++; sample = AudioSample() }
             runCatching { created?.enabled = false }
             runCatching { created?.release() }
         }
     }
 
     fun release() {
-        synchronized(this) { generation++; sample = BassSample() }
+        synchronized(this) { generation++; sample = AudioSample() }
         val old = visualizer
         visualizer = null
         runCatching { old?.enabled = false }

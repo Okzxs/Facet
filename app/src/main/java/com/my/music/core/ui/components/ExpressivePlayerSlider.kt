@@ -39,6 +39,7 @@ import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** Полный оборот фазы волны (радианы). */
 private const val TWO_PI = 6.283185307179586
@@ -64,8 +65,8 @@ private object SliderFinishInteraction : Interaction
  *
  * Визуал — волна Phase B: плавная синусоида с длиной 44dp и сужением к краям.
  * Непропетанная часть — серая волна, буфер чуть плотнее, пропетанная — волна
- * в акценте. Круглый бегунок едет по гребню этой же волны. Басовый импульс
- * мягко увеличивает амплитуду, форма синусоиды не меняется.
+ * в акценте. Круглый бегунок едет по гребню этой же волны. Общая энергия
+ * спектра мягко увеличивает амплитуду, форма синусоиды не меняется.
  * На паузе волна за 500 мс выпрямляется, фаза замирает на текущем значении.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,7 +79,7 @@ fun ExpressivePlayerSlider(
     activeColor: Color,
     trackColor: Color,
     thumbColor: Color,
-    energy: State<Float>,
+    audioEnergy: State<Float>,
     modifier: Modifier = Modifier,
     bufferedFraction: Float = 0f,
     enabled: Boolean = true,
@@ -142,7 +143,7 @@ fun ExpressivePlayerSlider(
                 // Энергия и амплитуда читаются в фазе отрисовки — без рекомпозиций.
                 val fraction = state.value.coerceIn(0f, 1f)
                 val buffer = bufferedFraction.coerceIn(0f, 1f)
-                val live = energy.value.coerceIn(0f, 1f)
+                val live = audioEnergy.value.coerceIn(0f, 1f)
                 val waveHeight = amplitude.coerceIn(0f, 1f)
 
                 val span = size.width
@@ -152,8 +153,10 @@ fun ExpressivePlayerSlider(
                 val progressX = trackX(fraction, span, rtl)
                 val bufferX = trackX(buffer, span, rtl)
 
-                // Басовый импульс слегка раздувает волну, но не ломает её форму
-                val amp = 9.dp.toPx() * waveHeight * (0.72f + 0.88f * live)
+                // Средний RMS широкой полосы ниже узкополосного басового: корневая
+                // кривая возвращает волне заметное дыхание на общей энергии спектра.
+                val breath = sqrt(live)
+                val amp = 9.dp.toPx() * waveHeight * (0.65f + 1.20f * breath).coerceIn(0f, 1.65f)
                 val phase = wavePhase.value.toDouble()
                 val wavelength = 44.dp.toPx().toDouble()
                 val stroke = 3.dp.toPx()
