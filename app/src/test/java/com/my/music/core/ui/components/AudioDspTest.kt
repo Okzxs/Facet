@@ -10,78 +10,106 @@ class AudioDspTest {
     }
 
     @Test fun bandEnergiesSplitSpectrum() {
-        val low = bandEnergies(fft(1024, 2 to (64 to 0)), 44_100_000)
-        assertTrue(low[0] > 0f)
-        assertEquals(0f, low[1], 0f)
-        assertEquals(0f, low[2], 0f)
+        val kick = bandEnergies(fft(1024, 1 to (64 to 0)), 44_100_000)
+        assertTrue(kick[0] > 0f)
+        assertEquals(0f, kick[1], 0f)
+        assertEquals(0f, kick[2], 0f)
 
-        val mid = bandEnergies(fft(1024, 4 to (64 to 0)), 44_100_000)
-        assertEquals(0f, mid[0], 0f)
-        assertTrue(mid[1] > 0f)
-        assertEquals(0f, mid[2], 0f)
+        val snare = bandEnergies(fft(1024, 4 to (64 to 0)), 44_100_000)
+        assertEquals(0f, snare[0], 0f)
+        assertTrue(snare[1] > 0f)
+        assertEquals(0f, snare[2], 0f)
 
-        val high = bandEnergies(fft(1024, 70 to (64 to 0)), 44_100_000)
-        assertEquals(0f, high[0], 0f)
-        assertEquals(0f, high[1], 0f)
-        assertTrue(high[2] > 0f)
+        val presence = bandEnergies(fft(1024, 35 to (64 to 0)), 44_100_000)
+        assertEquals(0f, presence[0], 0f)
+        assertEquals(0f, presence[1], 0f)
+        assertTrue(presence[2] > 0f)
     }
     @Test fun bandsIgnoreGapsAndOutOfRange() {
-        // 30 Гц, ~1507 Гц, ~2153 Гц и ~10034 Гц не попадают ни в одну полосу
-        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 3 to (64 to 0)), 10_240_000), 0f)
-        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 35 to (64 to 0)), 44_100_000), 0f)
-        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 50 to (64 to 0)), 44_100_000), 0f)
-        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 233 to (64 to 0)), 44_100_000), 0f)
+        // 20 Гц, ~129 Гц, ~861 Гц и ~6029 Гц не попадают ни в одну полосу
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 2 to (64 to 0)), 10_240_000), 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 3 to (64 to 0)), 44_100_000), 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 20 to (64 to 0)), 44_100_000), 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 140 to (64 to 0)), 44_100_000), 0f)
     }
     @Test fun bandBoundariesAreInclusive() {
-        // 40 Гц входит в Low, 30 Гц — нет
-        assertTrue(bandEnergies(fft(1024, 4 to (64 to 0)), 10_240_000)[0] > 0f)
-        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 3 to (64 to 0)), 10_240_000), 0f)
-        // 150 Гц относится к Low, 160 Гц — уже Mid
-        val lowEdge = bandEnergies(fft(1024, 15 to (64 to 0)), 10_240_000)
-        assertTrue(lowEdge[0] > 0f)
-        assertEquals(0f, lowEdge[1], 0f)
-        val midEdge = bandEnergies(fft(1024, 16 to (64 to 0)), 10_240_000)
-        assertEquals(0f, midEdge[0], 0f)
-        assertTrue(midEdge[1] > 0f)
-        // 1000 Гц — Mid, 1010 Гц — вне полос
-        assertTrue(bandEnergies(fft(1024, 100 to (64 to 0)), 10_240_000)[1] > 0f)
-        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 101 to (64 to 0)), 10_240_000), 0f)
-        // ~3015 Гц — High, ~2972 Гц — вне полос
-        assertTrue(bandEnergies(fft(1024, 70 to (64 to 0)), 44_100_000)[2] > 0f)
-        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 69 to (64 to 0)), 44_100_000), 0f)
-        // ~9991 Гц — High, ~10034 Гц — вне полос
-        assertTrue(bandEnergies(fft(1024, 232 to (64 to 0)), 44_100_000)[2] > 0f)
-        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 233 to (64 to 0)), 44_100_000), 0f)
+        // Kick: 30 и 120 Гц входят, 20 и 130 Гц — нет
+        assertTrue(bandEnergies(fft(1024, 3 to (64 to 0)), 10_240_000)[0] > 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 2 to (64 to 0)), 10_240_000), 0f)
+        assertTrue(bandEnergies(fft(1024, 12 to (64 to 0)), 10_240_000)[0] > 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 13 to (64 to 0)), 10_240_000), 0f)
+        // Snare_Vocal: 150 и 600 Гц входят, 140 и 610 Гц — нет
+        assertTrue(bandEnergies(fft(1024, 15 to (64 to 0)), 10_240_000)[1] > 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 14 to (64 to 0)), 10_240_000), 0f)
+        assertTrue(bandEnergies(fft(1024, 60 to (64 to 0)), 10_240_000)[1] > 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 61 to (64 to 0)), 10_240_000), 0f)
+        // Presence: ~1507 и ~5986 Гц входят, ~1464 и ~6029 Гц — нет
+        assertTrue(bandEnergies(fft(1024, 35 to (64 to 0)), 44_100_000)[2] > 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 34 to (64 to 0)), 44_100_000), 0f)
+        assertTrue(bandEnergies(fft(1024, 139 to (64 to 0)), 44_100_000)[2] > 0f)
+        assertArrayEquals(FloatArray(3), bandEnergies(fft(1024, 140 to (64 to 0)), 44_100_000), 0f)
     }
     @Test fun bandEnergyUsesMeanPower() {
-        // Три низких бина по 64: средний RMS = 64, после нормировки 0.5
-        val low = bandEnergies(fft(1024, 1 to (64 to 0), 2 to (64 to 0), 3 to (64 to 0)), 44_100_000)
-        assertEquals(0.5f, low[0], 0.00001f)
+        // Два бина Kick по 64: средний RMS = 64, после нормировки 0.5
+        val kick = bandEnergies(fft(1024, 1 to (64 to 0), 2 to (64 to 0)), 44_100_000)
+        assertEquals(0.5f, kick[0], 0.00001f)
     }
     @Test fun spectralFluxCountsOnlyRises() {
         val previous = floatArrayOf(0.2f, 0.4f, 0.3f)
         val current = floatArrayOf(0.5f, 0.1f, 0.3f)
-        assertEquals(0.3f, spectralFlux(current, previous), 0.00001f)
+        assertEquals(0.36f, spectralFlux(current, previous, floatArrayOf(0f, 0f, 0f)), 0.00001f)
     }
     @Test fun spectralFluxSumsWeightedBands() {
         val previous = floatArrayOf(0f, 0f, 0f)
         val current = floatArrayOf(0.2f, 0.1f, 0.05f)
-        // 0.2 * 1.0 + 0.1 * 1.3 + 0.05 * 2.0
-        assertEquals(0.43f, spectralFlux(current, previous), 0.00001f)
-        assertEquals(1f, spectralFlux(floatArrayOf(1f, 1f, 1f), previous), 0f)
+        // 0.2 * 1.2 + 0.1 * 1.5 + 0.05 * 1.0
+        assertEquals(0.44f, spectralFlux(current, previous, floatArrayOf(0f, 0f, 0f)), 0.00001f)
+        assertEquals(1f, spectralFlux(floatArrayOf(1f, 1f, 1f), previous, floatArrayOf(0f, 0f, 0f)), 0f)
+    }
+    @Test fun spectralFluxIgnoresBelowThreshold() {
+        val previous = floatArrayOf(0f, 0f, 0f)
+        assertEquals(
+            0f,
+            spectralFlux(floatArrayOf(0.1f, 0.1f, 0.1f), previous, floatArrayOf(0.12f, 0.12f, 0.12f)),
+            0f,
+        )
+        assertEquals(
+            0.24f,
+            spectralFlux(floatArrayOf(0.2f, 0.1f, 0.1f), previous, floatArrayOf(0.15f, 0.12f, 0.12f)),
+            0.00001f,
+        )
     }
     @Test fun detectorFirstFrameIsBaseline() {
         val detector = TransientDetector()
-        val kick = fft(1024, 1 to (64 to 0), 2 to (64 to 0), 3 to (64 to 0))
+        val kick = fft(1024, 1 to (64 to 0), 2 to (64 to 0))
         assertEquals(0f, detector.process(kick, 44_100_000), 0f)
         assertEquals(0f, detector.process(kick, 44_100_000), 0.00001f)
         detector.reset()
         assertEquals(0f, detector.process(kick, 44_100_000), 0f)
     }
+    @Test fun detectorIgnoresWeakNoise() {
+        val detector = TransientDetector()
+        val quiet = fft(1024, 1 to (3 to 0), 2 to (3 to 0))
+        val slightlyLouder = fft(1024, 1 to (4 to 0), 2 to (4 to 0))
+        detector.process(quiet, 44_100_000)
+        repeat(3) { assertEquals(0f, detector.process(slightlyLouder, 44_100_000), 0.00001f) }
+        // Сильный удар всё равно проходит порог
+        assertTrue(detector.process(fft(1024, 1 to (64 to 0), 2 to (64 to 0)), 44_100_000) > 0.4f)
+    }
+    @Test fun detectorAdaptiveThresholdRejectsWeakRise() {
+        val detector = TransientDetector()
+        val base = fft(1024, 1 to (13 to 0), 2 to (13 to 0))
+        val weakRise = fft(1024, 1 to (17 to 0), 2 to (17 to 0))
+        detector.process(base, 44_100_000)
+        // 0.133 ниже 1.5 * 0.102 — это ещё не удар
+        assertEquals(0f, detector.process(weakRise, 44_100_000), 0.00001f)
+        // 0.5 уверенно превышает адаптивный порог
+        assertTrue(detector.process(fft(1024, 1 to (64 to 0), 2 to (64 to 0)), 44_100_000) > 0.4f)
+    }
     @Test fun detectorHitThenSilence() {
         val detector = TransientDetector()
         val quiet = ByteArray(1024)
-        val kick = fft(1024, 1 to (64 to 0), 2 to (64 to 0), 3 to (64 to 0))
+        val kick = fft(1024, 1 to (64 to 0), 2 to (64 to 0))
         detector.process(quiet, 44_100_000)
         val hit = detector.process(kick, 44_100_000)
         assertTrue(hit > 0.4f)
@@ -91,7 +119,7 @@ class AudioDspTest {
     @Test fun transientSpikeThenFastDecay() {
         val detector = TransientDetector()
         val quiet = ByteArray(1024)
-        val kick = fft(1024, 1 to (64 to 0), 2 to (64 to 0), 3 to (64 to 0))
+        val kick = fft(1024, 1 to (64 to 0), 2 to (64 to 0))
         detector.process(quiet, 44_100_000)
         val hit = detector.process(kick, 44_100_000)
         assertTrue(hit > 0.4f)
@@ -100,7 +128,7 @@ class AudioDspTest {
         envelope.update(0f, 0)
         val peak = envelope.update(hit, 8_000_000)
         assertTrue(peak > hit * 0.6f)
-        val decayed = envelope.update(0f, 108_000_000)
+        val decayed = envelope.update(0f, 208_000_000)
         assertTrue(decayed < peak * 0.4f)
         assertTrue(decayed > 0f)
     }
@@ -110,7 +138,7 @@ class AudioDspTest {
     }
     @Test fun releaseUsesTimeConstant() {
         val envelope = AudioEnvelope(); envelope.update(1f, 0); val peak = envelope.update(1f, 150_000_000)
-        assertEquals(peak * exp(-1.0).toFloat(), envelope.update(0f, 250_000_000), 0.00001f)
+        assertEquals(peak * exp(-1.0).toFloat(), envelope.update(0f, 350_000_000), 0.00001f)
     }
     @Test fun updateCadenceDoesNotChangeEnvelope() {
         val once = AudioEnvelope(); once.update(1f, 0)
@@ -128,7 +156,7 @@ class AudioDspTest {
         val sample = AudioSample(1f, 0)
         assertTrue(envelope.update(sample.freshValue(100_000_000), 100_000_000) > 0.9f)
         assertEquals(0f, sample.freshValue(120_000_001), 0f)
-        assertTrue(envelope.update(sample.freshValue(2_000_000_000), 2_000_000_000) < 0.00001f)
+        assertTrue(envelope.update(sample.freshValue(3_000_000_000), 3_000_000_000) < 0.00001f)
     }
     @Test fun missingCallbacksAndFutureTimestampAreZero() {
         assertEquals(0f, AudioSample().freshValue(0), 0f)
