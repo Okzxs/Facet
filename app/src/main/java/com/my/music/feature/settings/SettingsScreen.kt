@@ -34,7 +34,6 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -42,7 +41,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,11 +61,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.theme.AccentOption
 import com.my.music.core.ui.theme.AccentOptions
-import com.my.music.data.repository.AppSettings
-import kotlin.math.roundToInt
 
 /**
- * Экран настроек: геопозиция, оформление, калибровка волны плеера.
+ * Экран настроек: секция «Оформление» —
+ * переключатель динамических цветов обложки и ручная палитра акцентов.
  */
 @Composable
 fun SettingsScreen(
@@ -77,11 +74,6 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsState()
     val russianPriority by viewModel.russianPriority.collectAsState()
     val supportsDynamicColors = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-
-    // Пока тянем ползунок — локальное значение; в настройки пишем по отпусканию.
-    var delayDraft by remember(settings.visualizerDelayMs) {
-        mutableFloatStateOf(settings.visualizerDelayMs.toFloat())
-    }
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -289,94 +281,6 @@ fun SettingsScreen(
         Spacer(Modifier.height(24.dp))
 
         Text(
-            text = "ВИЗУАЛИЗАЦИЯ",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            ),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 16.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Задержка визуализации",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                            ),
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = "Сдвигает волну плеера относительно звука. Крутите на слух, " +
-                                "пока удар не совпадёт с тактом.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = formatDelay(delayDraft.roundToInt()),
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-
-                Slider(
-                    value = delayDraft,
-                    onValueChange = { delayDraft = it },
-                    onValueChangeFinished = {
-                        viewModel.setVisualizerDelayMs(delayDraft.roundToInt())
-                    },
-                    valueRange = AppSettings.VISUALIZER_DELAY_MIN_MS.toFloat()..
-                        AppSettings.VISUALIZER_DELAY_MAX_MS.toFloat(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = "${AppSettings.VISUALIZER_DELAY_MIN_MS} мс",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "0",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "+${AppSettings.VISUALIZER_DELAY_MAX_MS} мс",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        Text(
             text = "МОЯ ВОЛНА",
             style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.Bold,
@@ -432,13 +336,6 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(24.dp))
     }
-}
-
-/** Подпись задержки: «+120 мс», «0 мс», «-80 мс». */
-private fun formatDelay(delayMs: Int): String = when {
-    delayMs > 0 -> "+$delayMs мс"
-    delayMs < 0 -> "$delayMs мс"
-    else -> "0 мс"
 }
 
 @Composable

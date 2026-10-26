@@ -1,7 +1,5 @@
 package com.my.music.feature.player
 
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -75,7 +73,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -87,7 +84,6 @@ import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
-import com.my.music.core.ui.components.rememberAudioEnergy
 import com.my.music.core.ui.components.PlayerSliderState
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.runtime.key
@@ -199,28 +195,6 @@ fun PlayerScreen(
             LocationPermissions.openAppSettings(context)
         } else {
             locationPermissionLauncher.launch(LocationPermissions.permissions)
-        }
-    }
-
-    // ─── Разрешение на микрофон для визуализатора ────────────────────────
-    // Visualizer на аудиосессии требует RECORD_AUDIO. Спрашиваем один раз за
-    // процесс; без разрешения синусоида уходит в ambient-фолбэк.
-    var audioPermissionGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.RECORD_AUDIO,
-            ) == PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted -> audioPermissionGranted = granted }
-
-    LaunchedEffect(Unit) {
-        if (!audioPermissionGranted && !AudioPermissionGate.asked) {
-            AudioPermissionGate.asked = true
-            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -502,8 +476,6 @@ fun PlayerScreen(
                         isBuffering = isBuffering,
                         isResolving = uiState.isResolving,
                         trackId = track?.id,
-                        canVisualize = audioPermissionGranted,
-                        visualizerDelayMs = appSettings.visualizerDelayMs,
                         durationMs = track?.durationMs ?: 0L,
                         primaryColor = playerColors.primary,
                         currentFraction = { viewModel.currentFraction() },
@@ -1492,8 +1464,6 @@ private fun PlayerProgressSection(
     isBuffering: Boolean = false,
     isResolving: Boolean = false,
     trackId: String? = null,
-    canVisualize: Boolean = false,
-    visualizerDelayMs: Int = 0,
     durationMs: Long,
     primaryColor: Color,
     currentFraction: () -> Float,
@@ -1512,7 +1482,6 @@ private fun PlayerProgressSection(
     val latestPosition by rememberUpdatedState(currentPositionMs)
     val latestBuffer by rememberUpdatedState(bufferedFraction)
     val latestSeek by rememberUpdatedState(onSeek)
-    val audioEnergy = rememberAudioEnergy(isPlaying, trackId, canVisualize, visualizerDelayMs)
 
     LaunchedEffect(trackId) {
         while (true) {
@@ -1594,7 +1563,6 @@ private fun PlayerProgressSection(
                         activeColor = primaryColor,
                         trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
                         thumbColor = MaterialTheme.colorScheme.onSurface,
-                        audioEnergy = audioEnergy,
                         bufferedFraction = bufferFrac,
                         enabled = durationMs > 0,
                         isPlaying = isPlaying,
@@ -1659,9 +1627,4 @@ private fun formatMs(ms: Long): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "$min:${sec.toString().padStart(2, '0')}"
-}
-
-/** Запрос RECORD_AUDIO нужен только визуализатору: спрашиваем один раз за процесс. */
-private object AudioPermissionGate {
-    var asked = false
 }

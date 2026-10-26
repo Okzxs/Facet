@@ -3,13 +3,13 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Калибровка задержки волны (26.10.2026): EnergyDelayBuffer 500 мс, слайдер -200..+200 мс, чтение энергии с задержкой; 144 JVM-теста, APK 27 406 941 байт | Ожидает проверки на телефоне |
+| MyMusic | активен  | Полный откат DSP/визуализатора (26.10.2026): волна Phase B с постоянной амплитудой, RECORD_AUDIO и настройка задержки удалены; 117 JVM-тестов, APK 27 406 945 байт | Ожидает проверки на телефоне |
 
 ### Подтверждённая проверка финального фикса
 - JDK 17 из `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`; системный JAVA_HOME указывает на Java 11, поэтому задавать его только для команды. Gradle: один worker, heap 2048m.
-- `testDebugUnitTest assembleDebug` подтверждены; XML 133 executed, 0 failures/errors/skipped (24 новых DSP/state-теста), APK `app/build/outputs/apk/debug/app-debug.apk`. `lintDebug` реально запущен и завершился exit 1: 2 UnsafeOptInUsageError в неизменённых PlaybackAudioSession.kt:30 и PlayerController.kt:153, 25 warnings. Не подавлять и не менять движок без отдельного разрешения.
-- Provider не отдаёт session Flow/callback и не обнуляет id; UI опрашивает опубликованный id каждые 250 мс и ключует Visualizer по нему. Не гарантировать неопубликованную смену session. Ambient и фаза декоративные, не beat sync.
-- Compose UI-тестовой зависимости/androidTest нет; на устройстве проверить Cancel, release после смены трека, RTL/TalkBack/keyboard/disabled, соседние кнопки, pause/background/resume/permission и FFT. `.kotlin/` — локальные файлы компилятора, не публиковать; `.opencode/`, `.postman/`, `postman/` не затронуты.
+- `testDebugUnitTest assembleDebug` подтверждены; XML 117 executed, 0 failures/errors/skipped (18 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 406 945 байт. `lintDebug` в этой сессии не запускался.
+- DSP/Visualizer удалены в сессии 21: `AudioDsp`, `AudioEnergy`, `AudioDspTest`, `PlaybackAudioSession`; `RECORD_AUDIO` из манифеста убран. Волна таймлайна — чистая математическая синусоида с постоянной амплитудой.
+- Compose UI-тестовой зависимости/androidTest нет; на устройстве проверить Cancel, release после смены трека, RTL/TalkBack/keyboard/disabled, соседние кнопки, pause/background/resume. `.kotlin/` — локальные файлы компилятора, не публиковать; `.opencode/`, `.postman/`, `postman/` не затронуты.
 
 ## Ожидающие задачи
 ### Высокий приоритет
@@ -63,17 +63,18 @@
 - [ ] v2: Подключение Spotify, Яндекс Музыки, ВК Музыки
 
 ## Недавние решения
-- [Сессия 15] Визуал таймлайна откатан к Phase B: ровная линия, сплошная заливка `primary`, серый остаток, круглый thumb 11dp; волновой Canvas и вертикальный handle Material3 отклонены
+- [Сессия 21] Полный откат DSP/Visualizer: удалены `AudioDsp`, `AudioEnergy`, `AudioDspTest`, `PlaybackAudioSession`, настройка задержки и `RECORD_AUDIO`; таймлайн снова рисует математическую волну Phase B с постоянной амплитудой и паузным выпрямлением
+- [Сессия 15] Визуал таймлайна откатан к Phase B: ровная линия, сплошная заливка `primary`, серый остаток, круглый thumb 11dp; волновой Canvas и вертикальный handle Material3 отклонены (позже заменено волной Phase B в сессии 16)
 - [Сессия 15] Material3 `Slider` остаётся обёрткой (жесты, drag-cancel, semantics, RTL), кастомная отрисовка — только в слоте `track`; собственный thumb с пружиной и ореолом
-- [Сессия 15] Басовый импульс `BassDsp` влияет только на толщину 2.5→3dp и мягкое свечение (alpha 0.10/0.14), форму линии не меняет; на паузе `calm` 500 мс + спад envelope
+- [Сессия 15] Басовый импульс `BassDsp` влияет только на толщину 2.5→3dp и мягкое свечение (alpha 0.10/0.14), форму линии не меняет; на паузе `calm` 500 мс + спад envelope (откатано в сессии 21)
 - [Сессия 15] Морф `LinearProgressIndicator` ↔ `Slider`: позиция и буфер сбрасываются в 0 на смену `trackId`, иначе старая позиция переезжала в новый трек и `hasStarted` защёлкивался сразу
-- [Сессия 15] `SinePulseBar.kt` переименован в `BassEnergy.kt`; логи `BassEnergy` показывают, сработал Visualizer или ambient
+- [Сессия 15] `SinePulseBar.kt` переименован в `BassEnergy.kt`; логи `BassEnergy` показывают, сработал Visualizer или ambient (откатано в сессии 21)
 - [Phase B 26.10] Фон текстов — полноэкранная размытая обложка (`matchParentSize`, scale 1.25, blur 44dp Unbounded), hero-карточка гаснет полностью (`alpha → 0`), scrim `surface` 0.65 перенесён в корень экрана
 - [Phase B 26.10] Верхняя/нижняя маски списка текстов заменены на `DstIn`-затухание контента с `CompositingStrategy.Offscreen`; цветная плёнка surface на светлой обложке давала видимый прямоугольник
 - [Phase B 26.10] Фаза волны слайдера живёт в `rememberPlaybackPhase` на `withFrameNanos` и замирает на паузе; `rememberInfiniteTransition` сбрасывал фазу в 0 и дёргал ползунок
 - [Phase B 26.10] Морф `LinearProgressIndicator` ↔ `Slider` защёлкнут через `hasStarted` на `trackId`: индикатор только на старте трека, пауза/перемотка/повторная буферизация его не возвращают
-- [Phase B 26.10] Синусоида-пульс — `SinePulseBar` 16dp над слайдером, stroke 1.5dp, `primary` alpha 0.5; энергия из `Visualizer` (FFT-бины 1–11, /96, атака 0.35 / спад 0.10), ambient `0.42 + 0.26*sin(1.15t) + 0.10*sin(0.53t+1.2)` при отсутствии разрешения или Visualizer
-- [Phase B 26.10] `PlaybackAudioSession` публикует `audioSessionId` аудиосессии ExoPlayer из `MusicService`; в манифест добавлен `RECORD_AUDIO`, запрос один раз за процесс; на SM-A266B сработал Visualizer
+- [Phase B 26.10] Синусоида-пульс — `SinePulseBar` 16dp над слайдером, stroke 1.5dp, `primary` alpha 0.5; энергия из `Visualizer` (FFT-бины 1–11, /96, атака 0.35 / спад 0.10), ambient `0.42 + 0.26*sin(1.15t) + 0.10*sin(0.53t+1.2)` при отсутствии разрешения или Visualizer (откатано в сессии 21)
+- [Phase B 26.10] `PlaybackAudioSession` публикует `audioSessionId` аудиосессии ExoPlayer из `MusicService`; в манифест добавлен `RECORD_AUDIO`, запрос один раз за процесс; на SM-A266B сработал Visualizer (откатано в сессии 21: файл и разрешение удалены)
 - [Phase A 26.10] Режим текста остаётся inline в `PlayerScreen`; пилюля «Текст» — переключатель, отдельного route/BottomSheet и кнопки закрытия нет
 - [Phase A 26.10] Фон текстов: размытая обложка + фиксированный scrim `surface` alpha `0.65 * recede`; радиальное свечение палитры гаснет вместе с обложкой, чтобы не «радужить» строки
 - [Phase A 26.10] Иерархия строк: активная 24sp Bold + свечение `Shadow(alpha = 0.38f, blur 18f)`, N±1 — 18sp Medium `onSurfaceVariant` alpha 0.55, дальние — 16sp Normal alpha 0.35; `blur` и `graphicsLayer`-масштаб убраны

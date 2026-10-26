@@ -1,6 +1,15 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 26.10.2026 (сессия 20)
+## Последнее обновление: 26.10.2026 (сессия 21)
+
+## Полный откат DSP и визуализатора — сессия 21
+- Удалены `AudioDsp.kt`, `AudioEnergy.kt`, `AudioDspTest.kt` и `PlaybackAudioSession.kt`; из `MusicService` убрана публикация аудиосессии.
+- `ExpressivePlayerSlider`: волна Phase B с постоянной амплитудой 9dp, длина 44dp, сужение к краям, круглый бегунок на гребне. Амплитуда больше не зависит от звука; на паузе волна плавно выпрямляется за 500 мс, фаза замирает. Обёртка Material3 Slider с drag-cancel, тапами и свайпами сохранена.
+- `PlayerScreen`: удалены запрос RECORD_AUDIO, `AudioPermissionGate`, `rememberAudioEnergy` и параметры `canVisualize`/`visualizerDelayMs`.
+- `SettingsRepository`/`AppSettings`, `SettingsRepositoryImpl`, `SettingsViewModel`, `SettingsScreen`: удалена настройка задержки визуализации и секция «Визуализация».
+- `AndroidManifest.xml`: удалено разрешение RECORD_AUDIO.
+- Тесты: `AudioDspTest` удалён; 18 suites / 117 тестов, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 406 945 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
 ## Калибровка задержки волны — сессия 20
 - `AppSettings.visualizerDelayMs` (по умолчанию 0, диапазон -200..+200) хранится в SharedPreferences `mymusic_settings` под ключом `visualizer_delay_ms`; при загрузке значение ограничивается диапазоном, `SettingsRepository.setVisualizerDelayMs` пишет его в IO-диспетчере.

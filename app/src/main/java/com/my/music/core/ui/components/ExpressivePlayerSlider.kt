@@ -19,7 +19,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,7 +38,6 @@ import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 /** Полный оборот фазы волны (радианы). */
 private const val TWO_PI = 6.283185307179586
@@ -65,10 +63,10 @@ private object SliderFinishInteraction : Interaction
  *
  * Визуал — волна Phase B: плавная синусоида с длиной 44dp и сужением к краям.
  * Непропетанная часть — серая волна, буфер чуть плотнее, пропетанная — волна
- * в акценте. Круглый бегунок едет по гребню этой же волны. Ударная энергия
- * (spectral flux по трём полосам) резко поднимает амплитуду и быстро отпускает
- * её, форма синусоиды не меняется.
- * На паузе волна за 500 мс выпрямляется, фаза замирает на текущем значении.
+ * в акценте. Круглый бегунок едет по гребню этой же волны. Амплитуда постоянна
+ * и не зависит от звука: волна «дышит» только математической синусоидой от
+ * времени. На паузе волна за 500 мс выпрямляется, фаза замирает на текущем
+ * значении.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,7 +78,6 @@ fun ExpressivePlayerSlider(
     activeColor: Color,
     trackColor: Color,
     thumbColor: Color,
-    audioEnergy: State<Float>,
     modifier: Modifier = Modifier,
     bufferedFraction: Float = 0f,
     enabled: Boolean = true,
@@ -141,10 +138,9 @@ fun ExpressivePlayerSlider(
                     .fillMaxWidth()
                     .height(TRACK_HEIGHT),
             ) {
-                // Энергия и амплитуда читаются в фазе отрисовки — без рекомпозиций.
+                // Позиция, буфер и амплитуда читаются в фазе отрисовки — без рекомпозиций.
                 val fraction = state.value.coerceIn(0f, 1f)
                 val buffer = bufferedFraction.coerceIn(0f, 1f)
-                val live = audioEnergy.value.coerceIn(0f, 1f)
                 val waveHeight = amplitude.coerceIn(0f, 1f)
 
                 val span = size.width
@@ -154,10 +150,8 @@ fun ExpressivePlayerSlider(
                 val progressX = trackX(fraction, span, rtl)
                 val bufferX = trackX(buffer, span, rtl)
 
-                // Транзиентный spectral flux: корневая кривая поднимает тихие хэты,
-                // а быстрый спад энергии даёт пульсацию под удар.
-                val breath = sqrt(live)
-                val amp = 9.dp.toPx() * waveHeight * (0.55f + 1.30f * breath).coerceIn(0f, 1.65f)
+                // Постоянная амплитуда: волна живёт только за счёт фазы синусоиды.
+                val amp = 9.dp.toPx() * waveHeight
                 val phase = wavePhase.value.toDouble()
                 val wavelength = 44.dp.toPx().toDouble()
                 val stroke = 3.dp.toPx()
