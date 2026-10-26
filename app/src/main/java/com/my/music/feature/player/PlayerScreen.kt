@@ -1481,7 +1481,7 @@ private fun LyricLineItem(
 
 /**
  * Изолированная секция прогресса для «острова»:
- * волновой ExpressivePlayerSlider + таймкоды.
+ * таймлайн Material3 Slider + таймкоды.
  * Оставшееся время справа отображается с минусом ("-m:ss").
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1500,9 +1500,11 @@ private fun PlayerProgressSection(
     onSeek: (Float) -> Unit,
 ) {
     var sliderState by remember(trackId) { mutableStateOf(PlayerSliderState()) }
-    var playbackFraction by remember(trackId) { mutableFloatStateOf(currentFraction()) }
-    var playbackPositionMs by remember(trackId) { mutableLongStateOf(currentPositionMs()) }
-    var bufferFrac by remember(trackId) { mutableFloatStateOf(bufferedFraction()) }
+    // Новый трек стартует с нуля: старые позиция и буфер не должны переезжать
+    // в следующий трек — иначе не срабатывает морф индикатора загрузки.
+    var playbackFraction by remember(trackId) { mutableFloatStateOf(0f) }
+    var playbackPositionMs by remember(trackId) { mutableLongStateOf(0L) }
+    var bufferFrac by remember(trackId) { mutableFloatStateOf(0f) }
     val latestTrackId by rememberUpdatedState(trackId)
     val latestFraction by rememberUpdatedState(currentFraction)
     val latestPosition by rememberUpdatedState(currentPositionMs)

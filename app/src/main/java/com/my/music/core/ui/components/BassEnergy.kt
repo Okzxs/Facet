@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.media.audiofx.Visualizer
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -25,7 +26,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.sin
 
-/** Энергия читается только в draw. Фаза и ambient декоративные, без beat sync. */
+/** Тег для проверки на устройстве: сработал Visualizer или ambient-фолбэк. */
+private const val TAG = "BassEnergy"
+
+/**
+ * Базовая энергия для декора таймлайна: толщина и свечение линии.
+ * Значение читается только в фазе отрисовки; ambient декоративный, без beat sync.
+ */
 @Composable
 internal fun rememberBassEnergy(isPlaying: Boolean, trackId: String?, canVisualize: Boolean): State<Float> {
     val context = LocalContext.current
@@ -60,7 +67,12 @@ internal fun rememberBassEnergy(isPlaying: Boolean, trackId: String?, canVisuali
     }
     DisposableEffect(isPlaying, resumed, permission, sessionId, trackId) {
         sampler.release()
-        if (isPlaying && resumed && permission && sessionId > 0) sampler.start(sessionId)
+        if (isPlaying && resumed && permission && sessionId > 0) {
+            sampler.start(sessionId)
+            Log.d(TAG, if (sampler.isActive) "Visualizer: сессия $sessionId" else "Visualizer недоступен — ambient")
+        } else if (isPlaying && resumed) {
+            Log.d(TAG, "Нет RECORD_AUDIO или аудиосессии — ambient")
+        }
         onDispose { sampler.release() }
     }
     LaunchedEffect(isPlaying, resumed) {
