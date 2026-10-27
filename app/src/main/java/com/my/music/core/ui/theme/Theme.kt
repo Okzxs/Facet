@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.ColorUtils
+import com.my.music.data.repository.ThemeMode
 
 private val LightColorScheme = lightColorScheme(
     primary = Primary,
@@ -91,8 +92,9 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 /**
- * Схема из пользовательского акцента для Android ниже 12:
- * primary-группа генерируется из seed, поверхности остаются тёплыми.
+ * Схема из пользовательского акцента: primary/secondary/tertiary-группы генерируются
+ * из seed, поверхности остаются тёплыми. Используется для собственного акцента
+ * (все версии Android) и для ручной палитры (Android ниже 12).
  */
 private fun accentColorScheme(accent: Color, darkTheme: Boolean): ColorScheme {
     val hsl = FloatArray(3)
@@ -139,18 +141,31 @@ private fun accentColorScheme(accent: Color, darkTheme: Boolean): ColorScheme {
 
 /**
  * Главная тема приложения.
- * Приоритет: Dynamic Color системы (Android 12+) → ручной акцент (Android ниже 12) → fallback-палитра.
+ * Приоритет: собственный акцент пользователя (все версии Android) → Dynamic Color
+ * системы (Android 12+) → ручной акцент из палитры (Android ниже 12) → fallback-палитра.
  * Цвета главного экрана не зависят от обложки альбома.
+ *
+ * @param themeMode режим темы: светлая/тёмная/системная;
+ * @param customAccentColor собственный акцентный цвет из RGB-пикера — переопределяет
+ * primary/secondary/tertiary на всех версиях Android, в том числе поверх Dynamic Color.
  */
 @Composable
 fun MyMusicTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
     accentColor: Color? = null,
+    customAccentColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
+    // isSystemInDarkTheme вызывается до remember: результат кладётся в обычное значение
+    val darkTheme = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
     val colorScheme = when {
+        customAccentColor != null -> accentColorScheme(customAccentColor, darkTheme)
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }

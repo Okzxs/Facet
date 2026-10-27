@@ -78,6 +78,16 @@ com.my.music
 
 ---
 
+## Настройки оформления
+
+- `ThemeMode` (LIGHT/DARK/SYSTEM, по умолчанию SYSTEM) и `customAccentColor` (ARGB или null) живут в `AppSettings` (SharedPreferences `mymusic_settings`, ключи `theme_mode` и `custom_accent_color`).
+- Приоритет цвета в `MyMusicTheme`: собственный акцент (работает на **всех** версиях Android, перекрывает Dynamic Color) → Dynamic Color (Android 12+) → ручная палитра кружочков (только ниже 12) → fallback-палитра.
+- `MainActivity` читает `SettingsRepository.settings` и передаёт в `MyMusicTheme` параметры `themeMode`, `accentColor`, `customAccentColor`.
+- Палитра плеера при заданном `customAccentColor` смешивается с ним на 40% (`blendPaletteWithAccent` в PlayerScreen), чтобы цвета обложки не конфликтовали с темой.
+- Экраны-вкладки сами ставят себе фон (`Modifier.background(MaterialTheme.colorScheme.background)`) и инсеты: корневого Scaffold в `AppNavGraph` больше нет (док — оверлей, высота через `LocalBottomDockHeight`).
+
+---
+
 ## Жёсткие правила
 
 ### Версии

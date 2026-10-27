@@ -110,8 +110,10 @@ fun HomeScreen(
         isRefreshing = uiState.isRefreshing,
         onRefresh = viewModel::refresh,
         // Статус-бар раньше обеспечивал корневой Scaffold; теперь отступ ставит сам экран.
+        // Фон — тоже: без него экран прозрачный и просвечивает окно приложения.
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding(),
     ) {
         LazyColumn(

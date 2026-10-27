@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.SettingsRepository
 import com.my.music.data.repository.TasteRepository
+import com.my.music.data.repository.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -57,6 +58,19 @@ class SettingsViewModel @Inject constructor(
     fun setAccentColor(color: Color) {
         viewModelScope.launch {
             settingsRepository.setAccentColorArgb(color.toArgb())
+        }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch {
+            settingsRepository.setThemeMode(mode)
+        }
+    }
+
+    /** Применить собственный цвет; null сбрасывает собственный акцент. */
+    fun setCustomAccentColor(color: Color?) {
+        viewModelScope.launch {
+            settingsRepository.setCustomAccentColor(color?.toArgb())
         }
     }
 }

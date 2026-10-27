@@ -1,5 +1,6 @@
 package com.my.music.feature.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -49,6 +50,10 @@ fun LibraryScreen(
     }
 
     Scaffold(
+        // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         // Статус-бар обеспечивает сам экран (корневого Scaffold больше нет);
         // низ — через contentPadding списка с запасом под плавающий док.
         contentWindowInsets = WindowInsets.statusBars,

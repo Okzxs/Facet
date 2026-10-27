@@ -118,6 +118,10 @@ fun SearchScreen(
     }
 
     Scaffold(
+        // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         containerColor = MaterialTheme.colorScheme.surface,
         // Статус-бар обеспечиваем сами (корневого Scaffold больше нет); низ —
         // через contentPadding списков с запасом под плавающий док.

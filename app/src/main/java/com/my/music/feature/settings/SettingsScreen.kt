@@ -30,18 +30,27 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,6 +71,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.theme.AccentOption
 import com.my.music.core.ui.theme.AccentOptions
+import com.my.music.data.repository.ThemeMode
+import kotlin.math.roundToInt
 
 /**
  * Экран настроек: секция «Оформление» —
@@ -81,6 +92,7 @@ fun SettingsScreen(
     var hasLocationPermission by remember {
         mutableStateOf(LocationPermissions.hasPermission(context))
     }
+    var showCustomColorDialog by remember { mutableStateOf(false) }
 
     // Статус мог измениться в системных настройках — перечитываем при возврате
     DisposableEffect(lifecycleOwner) {
@@ -96,6 +108,8 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .systemBarsPadding(),
     ) {
@@ -210,6 +224,53 @@ fun SettingsScreen(
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Column {
+                // ─── Тема приложения ───
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                ) {
+                    Text(
+                        text = "Тема приложения",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = "Светлая, тёмная или как в системе",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        ThemeMode.entries.forEachIndexed { index, mode ->
+                            SegmentedButton(
+                                selected = settings.themeMode == mode,
+                                onClick = { viewModel.setThemeMode(mode) },
+                                shape = SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = ThemeMode.entries.size,
+                                ),
+                            ) {
+                                Text(
+                                    text = when (mode) {
+                                        ThemeMode.LIGHT -> "Светлая"
+                                        ThemeMode.DARK -> "Тёмная"
+                                        ThemeMode.SYSTEM -> "Система"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                )
+
                 // ─── Динамические цвета обложки ───
                 Row(
                     modifier = Modifier
@@ -258,7 +319,8 @@ fun SettingsScreen(
                     Spacer(Modifier.height(3.dp))
                     Text(
                         text = if (supportsDynamicColors) {
-                            "На Android 12+ тема следует системным цветам. Ручной акцент доступен только на старых версиях."
+                            "Палитра доступна на старых версиях Android, а «Свой цвет» " +
+                                "работает всегда и перекрывает системные цвета"
                         } else {
                             "Тема приложения построена на выбранном цвете"
                         },
@@ -275,6 +337,11 @@ fun SettingsScreen(
                                 onClick = { viewModel.setAccentColor(option.color) },
                             )
                         }
+                        CustomAccentDot(
+                            color = settings.customAccentColor?.let { Color(it) },
+                            selected = settings.customAccentColor != null,
+                            onClick = { showCustomColorDialog = true },
+                        )
                     }
                 }
             }
@@ -338,6 +405,21 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(24.dp))
     }
+
+    if (showCustomColorDialog) {
+        CustomColorDialog(
+            initial = settings.customAccentColor?.let { Color(it) },
+            onDismiss = { showCustomColorDialog = false },
+            onApply = { color ->
+                viewModel.setCustomAccentColor(color)
+                showCustomColorDialog = false
+            },
+            onReset = {
+                viewModel.setCustomAccentColor(null)
+                showCustomColorDialog = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -377,6 +459,199 @@ private fun SettingsHeader(onBack: () -> Unit) {
             )
         }
     }
+}
+
+/**
+ * Кружок «Свой цвет»: открывает RGB-диалог. Показывает текущий собственный цвет
+ * или значок палитры, если цвет ещё не выбран. Работает на всех версиях Android.
+ */
+@Composable
+private fun CustomAccentDot(
+    color: Color?,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val dotSize by animateDpAsState(
+        targetValue = if (selected) 40.dp else 34.dp,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
+        label = "customDotSize",
+    )
+
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(dotSize)
+                .clip(CircleShape)
+                .background(
+                    color ?: MaterialTheme.colorScheme.surfaceContainerHighest,
+                )
+                .border(
+                    width = 2.dp,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                    },
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = "Свой цвет выбран",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            } else if (color == null) {
+                Icon(
+                    imageVector = Icons.Rounded.Palette,
+                    contentDescription = "Свой цвет",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Диалог выбора произвольного цвета: три RGB-слайдера + живой превью.
+ * «Сбросить» убирает собственный цвет и возвращает тему к системной логике.
+ */
+@Composable
+private fun CustomColorDialog(
+    initial: Color?,
+    onDismiss: () -> Unit,
+    onApply: (Color) -> Unit,
+    onReset: () -> Unit,
+) {
+    var red by remember { mutableFloatStateOf(initial?.red ?: 0.65f) }
+    var green by remember { mutableFloatStateOf(initial?.green ?: 0.36f) }
+    var blue by remember { mutableFloatStateOf(initial?.blue ?: 0.55f) }
+    val preview = Color(red, green, blue)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Свой цвет") },
+        text = {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(preview)
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(16.dp),
+                            ),
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        text = formatHexColor(preview),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+                RgbSlider(
+                    label = "Красный",
+                    value = red,
+                    accent = Color(0xFFE5484D),
+                    onValueChange = { red = it },
+                )
+                RgbSlider(
+                    label = "Зелёный",
+                    value = green,
+                    accent = Color(0xFF43A047),
+                    onValueChange = { green = it },
+                )
+                RgbSlider(
+                    label = "Синий",
+                    value = blue,
+                    accent = Color(0xFF3F6BD8),
+                    onValueChange = { blue = it },
+                )
+                if (initial != null) {
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(
+                        onClick = onReset,
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text("Сбросить")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onApply(preview) }) {
+                Text("Применить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        },
+    )
+}
+
+/** Один RGB-слайдер с подписью канала и текущим значением 0–255. */
+@Composable
+private fun RgbSlider(
+    label: String,
+    value: Float,
+    accent: Color,
+    onValueChange: (Float) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = (value * 255f).roundToInt().toString(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = 0f..1f,
+            colors = SliderDefaults.colors(
+                thumbColor = accent,
+                activeTrackColor = accent,
+                inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+            ),
+        )
+    }
+}
+
+/** ARGB-превью в HEX-виде, например #A85CD9. */
+private fun formatHexColor(color: Color): String {
+    val r = (color.red * 255f).roundToInt()
+    val g = (color.green * 255f).roundToInt()
+    val b = (color.blue * 255f).roundToInt()
+    return "#%02X%02X%02X".format(r, g, b)
 }
 
 /**

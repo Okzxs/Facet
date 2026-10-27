@@ -106,6 +106,10 @@ fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
 
     AnimatedVisibility(
         visible = visible,
+        // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         enter = fadeIn(tween(420)) + slideInVertically(
             initialOffsetY = { it / 14 },
             animationSpec = spring(

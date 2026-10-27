@@ -26,15 +26,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
-            // Android 12+ всегда использует Dynamic Color системы.
-            // Ручной акцент из настроек применяется только на старых версиях.
+            // Android 12+ использует Dynamic Color системы, пока пользователь
+            // не задал собственный акцент в настройках (он работает на всех версиях).
+            // Ручная палитра из настроек применяется только на старых версиях.
             val accentOverride = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                 Color(settings.accentColorArgb)
             } else {
                 null
             }
+            val customAccentOverride = settings.customAccentColor?.let { Color(it) }
 
-            MyMusicTheme(accentColor = accentOverride) {
+            MyMusicTheme(
+                themeMode = settings.themeMode,
+                accentColor = accentOverride,
+                customAccentColor = customAccentOverride,
+            ) {
                 AppNavGraph()
             }
         }

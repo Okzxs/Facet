@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -247,7 +248,7 @@ fun PlayerScreen(
     val defaultOnPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
 
     // Динамические цвета включены — палитра от обложки; выключены — акцент из темы
-    val playerColors = rememberPlayerDynamicColors(
+    val rawPlayerColors = rememberPlayerDynamicColors(
         artworkUrl = if (appSettings.dynamicCoverColors) track?.artworkUrl else null,
         defaultSurface = defaultSurface,
         defaultPrimary = defaultPrimary,
@@ -255,6 +256,17 @@ fun PlayerScreen(
         defaultPrimaryContainer = defaultPrimaryContainer,
         defaultOnPrimaryContainer = defaultOnPrimaryContainer,
     )
+
+    // Собственный акцент пользователя (RGB-пикер) подмешивается в палитру обложки,
+    // чтобы градиенты и подсветки плеера не конфликтовали с выбранной темой.
+    val customAccent = appSettings.customAccentColor?.let { Color(it) }
+    val playerColors = remember(rawPlayerColors, customAccent) {
+        if (customAccent == null) {
+            rawPlayerColors
+        } else {
+            blendPaletteWithAccent(rawPlayerColors, customAccent)
+        }
+    }
 
     val animatedBgTop by animateColorAsState(
         targetValue = playerColors.backgroundTop,
@@ -404,9 +416,19 @@ fun PlayerScreen(
                     onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
                     onToggleLike = { toggleLikeWithPermission() },
                     onDownloadClick = { viewModel.toggleDownload() },
+                    // В режиме обложки hero-зона занимает ровно высоту своего контента —
+                    // иначе между карточкой трека и островом управления образуется
+                    // пустая «дыра». В режиме текстов список требует ограниченной
+                    // высоты, поэтому там сохраняем weight(1f).
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .then(
+                            if (isLyricsMode) {
+                                Modifier.weight(1f)
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
 
                 // ─── Подсказка про геопозицию для «Воспоминаний» ─────────────
@@ -479,7 +501,9 @@ fun PlayerScreen(
                     )
                 }
 
-                Spacer(Modifier.height(18.dp))
+                // Остаток высоты уходит под остров: в режиме обложки контент идёт
+                // плотно (карточка → остров), без пустой «дыры» между ними.
+                Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -674,6 +698,9 @@ private fun ExpressiveHeroZone(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.displaySmall,
+                        // Явный цвет: полупрозрачный container карточки давал чёрный
+                        // contentColor на тёмном фоне, и название было нечитаемым.
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
@@ -683,9 +710,12 @@ private fun ExpressiveHeroZone(
         }
 
         // ─── Передний план ───
+        // В режиме текстов контент заполняет всю hero-зону (список с weight(1f)),
+        // в режиме обложки — оборачивает свой контент, чтобы hero-зона не тянулась
+        // на весь свободный экран и не оставляла «дыру» над островом управления.
         AnimatedContent(
             targetState = isLyricsMode,
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (isLyricsMode) Modifier.fillMaxSize() else Modifier,
             transitionSpec = {
                 if (targetState) {
                     // Обложка → Текст: тексты въезжают снизу, обложка уходит вверх
@@ -761,7 +791,6 @@ private fun CoverForeground(
 ) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
             .verticalScroll(heroScroll)
             .padding(horizontal = 24.dp),
         horizontalAlignment = if (style.alignment == Alignment.TopEnd) Alignment.End else Alignment.Start,
@@ -860,6 +889,9 @@ private fun TrackGlassCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.displaySmall,
+                // Явный цвет: contentColorFor полупрозрачной «стеклянной» карточки
+                // давал чёрный текст на тёмном фоне при светлых обложках.
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1620,4 +1652,28 @@ private fun formatMs(ms: Long): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "$min:${sec.toString().padStart(2, '0')}"
+}
+
+/**
+ * Смешивает палитру обложки с собственным акцентом пользователя (40% акцента):
+ * цвета плеера остаются «живыми» от обложки, но не конфликтуют с выбранной темой.
+ * Прозрачные роли сохраняют свою альфу — смещается только оттенок.
+ */
+private fun blendPaletteWithAccent(
+    palette: PlayerDynamicColors,
+    accent: Color,
+): PlayerDynamicColors {
+    fun tinted(color: Color): Color =
+        lerpColor(color, accent.copy(alpha = color.alpha), 0.4f)
+
+    return palette.copy(
+        dominant = lerpColor(palette.dominant, accent, 0.4f),
+        backgroundTop = tinted(palette.backgroundTop),
+        backgroundBottom = tinted(palette.backgroundBottom),
+        primary = lerpColor(palette.primary, accent, 0.4f),
+        primaryContainer = tinted(palette.primaryContainer),
+        onPrimaryContainer = lerpColor(palette.onPrimaryContainer, accent, 0.4f),
+        secondaryContainer = tinted(palette.secondaryContainer),
+        onSecondaryContainer = lerpColor(palette.onSecondaryContainer, accent, 0.4f),
+    )
 }

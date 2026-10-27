@@ -3,6 +3,7 @@ package com.my.music.data.local
 import android.content.Context
 import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.SettingsRepository
+import com.my.music.data.repository.ThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +32,14 @@ class SettingsRepositoryImpl @Inject constructor(
         // По умолчанию — фиолетовая тема, динамика обложки выключена
         dynamicCoverColors = prefs.getBoolean(KEY_DYNAMIC_COVER_COLORS, false),
         accentColorArgb = prefs.getInt(KEY_ACCENT_COLOR, AppSettings.DEFAULT_ACCENT_ARGB),
+        themeMode = prefs.getString(KEY_THEME_MODE, null)
+            ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
+            ?: ThemeMode.SYSTEM,
+        customAccentColor = if (prefs.contains(KEY_CUSTOM_ACCENT)) {
+            prefs.getInt(KEY_CUSTOM_ACCENT, 0)
+        } else {
+            null
+        },
     )
 
     override suspend fun setDynamicCoverColors(enabled: Boolean) {
@@ -47,9 +56,29 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { it.copy(accentColorArgb = argb) }
     }
 
+    override suspend fun setThemeMode(mode: ThemeMode) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
+        }
+        _settings.update { it.copy(themeMode = mode) }
+    }
+
+    override suspend fun setCustomAccentColor(argb: Int?) {
+        withContext(Dispatchers.IO) {
+            if (argb == null) {
+                prefs.edit().remove(KEY_CUSTOM_ACCENT).apply()
+            } else {
+                prefs.edit().putInt(KEY_CUSTOM_ACCENT, argb).apply()
+            }
+        }
+        _settings.update { it.copy(customAccentColor = argb) }
+    }
+
     private companion object {
         const val PREFS_NAME = "mymusic_settings"
         const val KEY_DYNAMIC_COVER_COLORS = "dynamic_cover_colors"
         const val KEY_ACCENT_COLOR = "accent_color"
+        const val KEY_THEME_MODE = "theme_mode"
+        const val KEY_CUSTOM_ACCENT = "custom_accent_color"
     }
 }
