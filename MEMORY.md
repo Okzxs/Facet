@@ -3,9 +3,10 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Сессия 26 (27.10.2026): плавные переходы вкладок (слайд по индексу + fade, 300 мс), clip дока для полоски прогресса, ExitTransition.None при сворачивании плеера; 129 JVM-тестов, APK 27 621 184 байт | Ожидает проверки на телефоне |
+| MyMusic | активен  | Сессия 27 (27.10.2026): атомарный выход из плеера — при полноэкранном маршруте tabEnter/tabExit отдают None (нет fade-окна под мгновенно появляющимся доком); launchSingleTop у openPlayer; 129 JVM-тестов, APK 27 621 184 байт | Ожидает проверки на телефоне |
 
 ### Подтверждённая проверка финального фикса
+- Сессия 27: `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 621 184 байт. Полноэкранные маршруты в `tabEnterTransition`/`tabExitTransition` дают None (поп из плеера атомарный), `openPlayer` — `launchSingleTop`, шторка очереди — snap через удаление из композиции. Живой тест на устройстве не выполнялся по просьбе пользователя.
 - Сессия 26: `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 621 184 байт. Плавные переходы вкладок через `tabEnterTransition`/`tabExitTransition` (слайд по индексу + fade, 300 мс), `ExitTransition.None` на выходе из PlayerScreen, контент дока в `clip(shape)`. Живой тест на устройстве не выполнялся по просьбе пользователя.
 - JDK 17 из `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`; системный JAVA_HOME указывает на Java 11, поэтому задавать его только для команды. Gradle: один worker, heap 2048m.
 - `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 515 714 байт. `lintDebug` в этой сессии не запускался.
