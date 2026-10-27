@@ -3,9 +3,10 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Полировка анимаций дока (27.10.2026): навигация закреплена, фон растёт отдельно, мини-плеер через AnimatedVisibility, NoBouncy-пружины, индикатор в graphicsLayer, derivedStateOf; live 1.5% janky; 129 JVM-тестов, APK 27 515 714 байт | Ожидает проверки на телефоне |
+| MyMusic | активен  | Сессия 26 (27.10.2026): плавные переходы вкладок (слайд по индексу + fade, 300 мс), clip дока для полоски прогресса, ExitTransition.None при сворачивании плеера; 129 JVM-тестов, APK 27 621 184 байт | Ожидает проверки на телефоне |
 
 ### Подтверждённая проверка финального фикса
+- Сессия 26: `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 621 184 байт. Плавные переходы вкладок через `tabEnterTransition`/`tabExitTransition` (слайд по индексу + fade, 300 мс), `ExitTransition.None` на выходе из PlayerScreen, контент дока в `clip(shape)`. Живой тест на устройстве не выполнялся по просьбе пользователя.
 - JDK 17 из `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`; системный JAVA_HOME указывает на Java 11, поэтому задавать его только для команды. Gradle: один worker, heap 2048m.
 - `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 515 714 байт. `lintDebug` в этой сессии не запускался.
 - Полировка в сессии 25: `ExpressiveBottomDock` держит навигацию у нижней кромки, фон `DockBackground` растёт отдельно 64→120dp, мини-плеер раскрывается через `AnimatedVisibility` (expandVertically + fadeIn / shrinkVertically + fadeOut). Индикатор — `DampingRatioNoBouncy`/`StiffnessMediumLow`, смещение и масштаб иконки читаются в `graphicsLayer`, альфа подписи тоже; `selectedRoute` и `showBottomBar` — через `derivedStateOf`. Тень — `Surface(shadowElevation = 8.dp)`. Live SM-A266B: появление мини-плеера 1.5% janky (95-й 14 мс), вкладки 3–6%, быстрые тапы 3.4%; крашей нет.

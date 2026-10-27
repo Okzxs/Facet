@@ -1,13 +1,17 @@
 package com.my.music.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -17,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -102,28 +107,10 @@ fun AppNavGraph() {
             navController = navController,
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(innerPadding),
-            enterTransition = {
-                fadeIn(animationSpec = tween(220)) +
-                    scaleIn(
-                        initialScale = 0.97f,
-                        animationSpec = spring(
-                            dampingRatio = 0.86f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                    )
-            },
-            exitTransition = { fadeOut(animationSpec = tween(160)) },
-            popEnterTransition = {
-                fadeIn(animationSpec = tween(220)) +
-                    scaleIn(
-                        initialScale = 0.97f,
-                        animationSpec = spring(
-                            dampingRatio = 0.86f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                    )
-            },
-            popExitTransition = { fadeOut(animationSpec = tween(160)) },
+            enterTransition = { tabEnterTransition() },
+            exitTransition = { tabExitTransition() },
+            popEnterTransition = { tabEnterTransition() },
+            popExitTransition = { tabExitTransition() },
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
@@ -154,15 +141,9 @@ fun AppNavGraph() {
                         ),
                     ) + fadeIn(animationSpec = tween(240))
                 },
-                exitTransition = {
-                    slideOutVertically(
-                        targetOffsetY = { it },
-                        animationSpec = spring(
-                            dampingRatio = 0.9f,
-                            stiffness = Spring.StiffnessMedium,
-                        ),
-                    ) + fadeOut(animationSpec = tween(180))
-                },
+                // Выход из тяжёлого плеера не анимируем: blur и большая обложка
+                // при слайде дают просадку кадров, экран должен исчезать сразу.
+                exitTransition = { ExitTransition.None },
                 popEnterTransition = {
                     slideInVertically(
                         initialOffsetY = { it },
@@ -172,15 +153,7 @@ fun AppNavGraph() {
                         ),
                     ) + fadeIn(animationSpec = tween(240))
                 },
-                popExitTransition = {
-                    slideOutVertically(
-                        targetOffsetY = { it },
-                        animationSpec = spring(
-                            dampingRatio = 0.9f,
-                            stiffness = Spring.StiffnessMedium,
-                        ),
-                    ) + fadeOut(animationSpec = tween(180))
-                },
+                popExitTransition = { ExitTransition.None },
             ) {
                 PlayerScreen(
                     onBack = { navController.popBackStack() },
@@ -200,4 +173,70 @@ fun AppNavGraph() {
             }
         }
     }
+}
+
+private const val TabTransitionMillis = 300
+
+/**
+ * Индекс вкладки в нижнем доке или -1 для полноэкранных маршрутов.
+ */
+private fun NavBackStackEntry.tabIndex(): Int =
+    bottomNavItems.indexOfFirst { item ->
+        destination.hierarchy.any { it.route == item.screen.route }
+    }
+
+/**
+ * Направление перехода между вкладками: +1 — к большим индексам (вправо),
+ * -1 — к меньшим, 0 — переход не между вкладками.
+ */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(): Int {
+    val from = initialState.tabIndex()
+    val to = targetState.tabIndex()
+    if (from < 0 || to < 0 || from == to) return 0
+    return if (to > from) 1 else -1
+}
+
+/**
+ * Вход вкладки: выезжает с той стороны, куда движется пользователь.
+ * Для полноэкранных маршрутов и возврата с них — только мягкое проявление.
+ */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition(): EnterTransition {
+    val direction = tabDirection()
+    if (direction == 0) {
+        return fadeIn(animationSpec = tween(180))
+    }
+    return slideInHorizontally(
+        initialOffsetX = { width -> direction * width / 3 },
+        animationSpec = tween(
+            durationMillis = TabTransitionMillis,
+            easing = FastOutSlowInEasing,
+        ),
+    ) + fadeIn(
+        animationSpec = tween(
+            durationMillis = TabTransitionMillis,
+            easing = FastOutSlowInEasing,
+        ),
+    )
+}
+
+/**
+ * Выход вкладки: уезжает в сторону, противоположную входу новой.
+ */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(): ExitTransition {
+    val direction = tabDirection()
+    if (direction == 0) {
+        return fadeOut(animationSpec = tween(120))
+    }
+    return slideOutHorizontally(
+        targetOffsetX = { width -> -direction * width / 3 },
+        animationSpec = tween(
+            durationMillis = TabTransitionMillis,
+            easing = FastOutSlowInEasing,
+        ),
+    ) + fadeOut(
+        animationSpec = tween(
+            durationMillis = TabTransitionMillis,
+            easing = FastOutSlowInEasing,
+        ),
+    )
 }

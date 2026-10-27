@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -88,43 +89,51 @@ fun ExpressiveBottomDock(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
-        AnimatedVisibility(
-            visible = track != null,
-            enter = expandVertically(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
-                expandFrom = Alignment.Bottom,
-            ) + fadeIn(animationSpec = tween(durationMillis = 160)),
-            exit = shrinkVertically(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
-                shrinkTowards = Alignment.Bottom,
-            ) + fadeOut(animationSpec = tween(durationMillis = 120)),
+        // Контент дока обрезается по его контуру: полоска прогресса
+        // не выходит за скруглённые верхние углы.
+        Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = DockNavHeight),
+                .matchParentSize()
+                .clip(shape),
         ) {
-            if (miniTrack != null) {
-                MiniPlayerRow(
-                    track = miniTrack,
-                    isPlaying = playerState.isPlaying,
-                    onExpandClick = onExpandClick,
-                    onPlayPauseClick = { viewModel.togglePlayPause() },
-                    currentFraction = { viewModel.currentFraction() },
-                )
+            AnimatedVisibility(
+                visible = track != null,
+                enter = expandVertically(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                    expandFrom = Alignment.Bottom,
+                ) + fadeIn(animationSpec = tween(durationMillis = 160)),
+                exit = shrinkVertically(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                    shrinkTowards = Alignment.Bottom,
+                ) + fadeOut(animationSpec = tween(durationMillis = 120)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = DockNavHeight),
+            ) {
+                if (miniTrack != null) {
+                    MiniPlayerRow(
+                        track = miniTrack,
+                        isPlaying = playerState.isPlaying,
+                        onExpandClick = onExpandClick,
+                        onPlayPauseClick = { viewModel.togglePlayPause() },
+                        currentFraction = { viewModel.currentFraction() },
+                    )
+                }
             }
-        }
 
-        ExpressiveNavigationBar(
-            items = items,
-            selectedRoute = selectedRoute,
-            onSelect = onSelect,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+            ExpressiveNavigationBar(
+                items = items,
+                selectedRoute = selectedRoute,
+                onSelect = onSelect,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
     }
 }
 
