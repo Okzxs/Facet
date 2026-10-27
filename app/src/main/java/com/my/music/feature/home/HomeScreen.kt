@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -86,8 +88,8 @@ import java.util.Date
 import java.util.Locale
 
 private val ScreenPadding = 20.dp
-private val BlockGap = 26.dp
-private const val MEMORY_PREVIEW_LIMIT = 5
+private val BlockGap = 32.dp
+private const val MEMORY_PREVIEW_LIMIT = 3
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -163,20 +165,26 @@ fun HomeScreen(
             if (uiState.memories.isNotEmpty()) {
                 item(key = "memory") {
                     RevealBlock(index = 4) {
-                        MemoryCard(
-                            memories = uiState.memories,
-                            season = uiState.memorySeason,
-                            onTrackClick = onTrackClick,
-                        )
+                        Column {
+                            HomeSectionHeader(eyebrow = "АРХИВ", title = "Воспоминания")
+                            MemoryCard(
+                                memories = uiState.memories,
+                                season = uiState.memorySeason,
+                                onTrackClick = onTrackClick,
+                            )
+                        }
                     }
                 }
             } else if (uiState.likedTracks.isNotEmpty()) {
                 item(key = "liked") {
                     RevealBlock(index = 4) {
-                        LikedCard(
-                            tracks = uiState.likedTracks,
-                            onTrackClick = onTrackClick,
-                        )
+                        Column {
+                            HomeSectionHeader(eyebrow = "КОЛЛЕКЦИЯ", title = "Любимое")
+                            LikedCard(
+                                tracks = uiState.likedTracks,
+                                onTrackClick = onTrackClick,
+                            )
+                        }
                     }
                 }
             }
@@ -277,6 +285,35 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
     }
 }
 
+/**
+ * Заголовок секции Home: микро-надзаголовок (eyebrow) + название 22sp Bold.
+ * Даёт три уровня иерархии: eyebrow → секция → карточки.
+ */
+@Composable
+private fun HomeSectionHeader(eyebrow: String, title: String) {
+    Column {
+        Text(
+            text = eyebrow,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp,
+            ),
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(14.dp))
+    }
+}
+
 @Composable
 private fun ContinueListeningCard(
     track: Track,
@@ -286,12 +323,22 @@ private fun ContinueListeningCard(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.95f else 1f,
+        targetValue = if (pressed) 0.97f else 1f,
         animationSpec = spring(
-            dampingRatio = 0.8f,
+            dampingRatio = 0.7f,
             stiffness = Spring.StiffnessMedium,
         ),
         label = "heroScale",
+    )
+
+    val heroShape = RoundedCornerShape(30.dp)
+    // Единственная цветная поверхность Home: мягкий тон primaryContainer,
+    // уходящий в нейтральный surfaceContainerHigh.
+    val heroBrush = Brush.linearGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+            MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
     )
 
     Surface(
@@ -301,6 +348,8 @@ private fun ContinueListeningCard(
                 scaleX = scale
                 scaleY = scale
             }
+            .clip(heroShape)
+            .background(heroBrush)
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -310,8 +359,9 @@ private fun ContinueListeningCard(
             .semantics {
                 contentDescription = "Продолжить слушать ${track.title}"
             },
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = heroShape,
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -320,21 +370,25 @@ private fun ContinueListeningCard(
             Artwork(
                 url = track.artworkUrl,
                 contentDescription = null,
-                modifier = Modifier.size(88.dp),
+                modifier = Modifier.size(96.dp),
                 shape = SquircleShape,
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Продолжить слушать",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "ПРОДОЛЖИТЬ",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                    ),
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
                     text = track.title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -352,6 +406,7 @@ private fun ContinueListeningCard(
             PlayBadge(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
+                size = 48.dp,
             )
         }
     }
@@ -367,13 +422,7 @@ private fun RecommendationsBlock(
     onRetry: () -> Unit,
 ) {
     Column {
-        Text(
-            text = "Для вас",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-        )
-        Spacer(Modifier.height(12.dp))
+        HomeSectionHeader(eyebrow = "РЕКОМЕНДАЦИИ", title = "Для вас")
         when {
             tracks.isNotEmpty() -> RecommendationsRow(
                 tracks = tracks,
@@ -561,13 +610,7 @@ private fun RecentBlock(
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     Column {
-        Text(
-            text = "Недавнее",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-        )
-        Spacer(Modifier.height(12.dp))
+        HomeSectionHeader(eyebrow = "ИСТОРИЯ", title = "Недавнее")
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -601,59 +644,57 @@ private fun RecentCover(
         label = "recentScale",
     )
 
-    val coverShape = RoundedCornerShape(18.dp)
+    val coverShape = RoundedCornerShape(22.dp)
 
-    Box(
-        modifier = Modifier
-            .size(126.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(coverShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .semantics {
-                contentDescription = "Воспроизвести ${track.title}"
-            },
-    ) {
-        Artwork(
-            url = track.artworkUrl,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            shape = coverShape,
-        )
+    Column(modifier = Modifier.width(132.dp)) {
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(52.dp)
-                .background(Color.Black.copy(alpha = 0.56f)),
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 9.dp, vertical = 6.dp),
+                .size(132.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(coverShape)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .semantics {
+                    contentDescription = "Воспроизвести ${track.title}"
+                },
         ) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.labelLarge,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.82f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Artwork(
+                url = track.artworkUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                shape = coverShape,
             )
         }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = track.title,
+            style = MaterialTheme.typography.titleSmall.copy(
+                fontSize = 13.sp,
+                lineHeight = 17.sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = track.artist,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                letterSpacing = 0.2.sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -671,7 +712,7 @@ private fun MemoryCard(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(30.dp),
         color = containerColor,
         contentColor = contentColor,
     ) {
@@ -686,13 +727,6 @@ private fun MemoryCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Воспоминания",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = contentColor.copy(alpha = 0.7f),
-                        maxLines = 1,
-                    )
-                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = seasonDisplayName(season),
                         style = MaterialTheme.typography.headlineSmall,
@@ -840,7 +874,7 @@ private fun LikedCard(
                 role = Role.Button,
                 onClick = { onTrackClick(tracks.first(), tracks) },
             ),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(22.dp),
         color = containerColor,
         contentColor = contentColor,
     ) {
@@ -849,13 +883,6 @@ private fun LikedCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Любимое",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = contentColor.copy(alpha = 0.7f),
-                    maxLines = 1,
-                )
-                Spacer(Modifier.height(2.dp))
                 Text(
                     text = tracks.size.toString(),
                     style = MaterialTheme.typography.displaySmall,
@@ -883,9 +910,10 @@ private fun PlayBadge(
     contentColor: Color,
     onClick: (() -> Unit)? = null,
     contentDescription: String = "Воспроизвести",
+    size: Dp = 44.dp,
 ) {
     val baseModifier = Modifier
-        .size(44.dp)
+        .size(size)
         .clip(PillShape)
         .background(containerColor)
     val modifier = if (onClick == null) {
@@ -906,7 +934,7 @@ private fun PlayBadge(
             imageVector = Icons.Rounded.PlayArrow,
             contentDescription = null,
             tint = contentColor,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(size * 0.5f),
         )
     }
 }

@@ -1,6 +1,17 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 26.10.2026 (сессия 23)
+## Последнее обновление: 27.10.2026 (сессия 24)
+
+## Редизайн Пакет 1 (Home) + Пакет 3 (единый нижний док) — сессия 24
+- Home получил трёхуровневую иерархию: `HomeSectionHeader` с eyebrow 11sp Bold в `primary` (трекинг 1.4) и заголовком 22sp Bold. Тексты: «РЕКОМЕНДАЦИИ / Для вас», «ИСТОРИЯ / Недавнее», «АРХИВ / Воспоминания», «КОЛЛЕКЦИЯ / Любимое». `BlockGap` увеличен с 26 до 32dp.
+- Hero «Продолжить»: радиус 30dp, градиент `primaryContainer` 45% → `surfaceContainerHigh`, обложка 96dp squircle, заголовок `headlineSmall` (26sp) максимум в 2 строки, Play 48dp с иконкой 24dp. Eyebrow сокращён до «ПРОДОЛЖИТЬ», иначе обрезался на узких экранах.
+- «Недавнее»: убрана чёрная плашка с белым текстом; обложка 132dp с радиусом 22dp, подписи под обложкой 13sp SemiBold / 11sp.
+- «Воспоминания»: радиус 30dp, превью 3 трека (`MEMORY_PREVIEW_LIMIT = 3`), сезон 26sp, счётчик `displaySmall` 40sp, вертикальные отступы между блоками 32dp. `LikedCard` приведён к тому же стилю: радиус 22dp, внешний заголовок, внутренняя подпись убрана.
+- Новый `ExpressiveBottomDock.kt`: один объект с отступами 16dp, радиусом 30dp, тенью 8dp, фоном `surfaceContainerHigh` 96% и бордером 1dp `onSurface` 6%. Внутри — mini-player и ряд навигации; появление трека анимируется ростом на 56dp (пружина 0.8 / MediumLow), навигация остаётся на месте.
+- `MiniPlayer.kt` переписан на `internal MiniPlayerRow` высотой 56dp: обложка 44dp (радиус 14dp), название 14sp SemiBold, артист 11sp, Play 40dp с зоной касания 48dp, прогресс 2dp внутри клипа, разделитель 1dp с inset 16dp. Собственной панели и тени больше нет.
+- `ExpressiveNavigationBar.kt` стал рядом 64dp без фона и тени: пружинный индикатор damping 0.58 / `StiffnessMedium`, иконка выбранного 1.18, подпись 11sp с `lineHeight = 16.sp` для точной укладки в 64dp.
+- `AppNavGraph.kt` подключает `ExpressiveBottomDock` вместо пары `MiniPlayer` + `ExpressiveNavigationBar`. `PlayerScreen`, `LibraryScreen`, `SettingsScreen` не тронуты.
+- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped (UI-тестов нет, изменения проверены сборкой). `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 616 075 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
 ## SoundCloud progressive + умный fallback YouTube — сессия 23
 - `SoundCloudRepositoryImpl.downloadCapability` переведён с `HLS_ONLY` на `PROGRESSIVE`. `SoundCloudDownloadSource` уже вызывает `resolveStreamUrl(requireProgressive = true)`, поэтому SC-трек с progressive MP3 качается напрямую, без обращения к YouTube. Если у трека только HLS, resolve возвращает ошибку, и резолвер переключается на YouTube.

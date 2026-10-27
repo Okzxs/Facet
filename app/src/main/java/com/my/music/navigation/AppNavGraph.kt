@@ -21,8 +21,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.my.music.core.ui.components.ExpressiveNavigationBar
-import com.my.music.core.ui.components.MiniPlayer
+import com.my.music.core.ui.components.ExpressiveBottomDock
 import com.my.music.data.model.Track
 import com.my.music.feature.home.HomeScreen
 import com.my.music.feature.library.LibraryScreen
@@ -56,33 +55,27 @@ fun AppNavGraph() {
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             if (showBottomBar) {
-                androidx.compose.foundation.layout.Column {
-                    // MiniPlayer над BottomNavigationBar
-                    MiniPlayer(
-                        onExpandClick = { navController.navigate(Screen.Player.route) },
-                        viewModel = playerViewModel,
-                    )
+                val selectedRoute = bottomNavItems.firstOrNull { item ->
+                    currentDestination?.hierarchy
+                        ?.any { it.route == item.screen.route } == true
+                }?.screen?.route
 
-                    val selectedRoute = bottomNavItems.firstOrNull { item ->
-                        currentDestination?.hierarchy
-                            ?.any { it.route == item.screen.route } == true
-                    }?.screen?.route
-
-                    ExpressiveNavigationBar(
-                        items = bottomNavItems,
-                        selectedRoute = selectedRoute,
-                        onSelect = { item ->
-                            navController.navigate(item.screen.route) {
-                                // Избегаем накопления back stack
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
+                ExpressiveBottomDock(
+                    items = bottomNavItems,
+                    selectedRoute = selectedRoute,
+                    onSelect = { item ->
+                        navController.navigate(item.screen.route) {
+                            // Избегаем накопления back stack
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
                             }
-                        },
-                    )
-                }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onExpandClick = { navController.navigate(Screen.Player.route) },
+                    viewModel = playerViewModel,
+                )
             }
         },
     ) { innerPadding ->

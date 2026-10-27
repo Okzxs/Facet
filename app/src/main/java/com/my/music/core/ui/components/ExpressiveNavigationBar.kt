@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,7 +33,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -47,9 +45,9 @@ import androidx.compose.ui.unit.sp
 import com.my.music.navigation.BottomNavItem
 
 /**
- * Выразительная нижняя навигация Material 3 Expressive.
- * Плавающая пилюля с пружинным индикатором активной вкладки,
- * масштабированием иконок и тактильным откликом.
+ * Ряд нижней навигации внутри общего дока: пружинный индикатор активной вкладки,
+ * масштабирование иконок и тактильный отклик. Собственного фона и тени нет —
+ * форму и поверхность задаёт [ExpressiveBottomDock].
  */
 @Composable
 fun ExpressiveNavigationBar(
@@ -61,24 +59,12 @@ fun ExpressiveNavigationBar(
     if (items.isEmpty()) return
 
     val selectedIndex = items.indexOfFirst { it.screen.route == selectedRoute }.coerceAtLeast(0)
-    val shape = RoundedCornerShape(28.dp)
     val haptics = LocalHapticFeedback.current
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .shadow(elevation = 16.dp, shape = shape, clip = false)
-            .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.surfaceContainerHigh,
-                        MaterialTheme.colorScheme.surfaceContainer,
-                    ),
-                ),
-            ),
+            .height(64.dp),
     ) {
         val itemWidth = maxWidth / items.size
         val indicatorWidth = 60.dp
@@ -89,8 +75,8 @@ fun ExpressiveNavigationBar(
         val indicatorOffset by animateDpAsState(
             targetValue = targetOffset,
             animationSpec = spring(
-                dampingRatio = 0.72f,
-                stiffness = Spring.StiffnessMediumLow,
+                dampingRatio = 0.58f,
+                stiffness = Spring.StiffnessMedium,
             ),
             label = "indicatorOffset",
         )
@@ -114,7 +100,7 @@ fun ExpressiveNavigationBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp),
+                .height(64.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEachIndexed { index, item ->
@@ -152,7 +138,7 @@ private fun ExpressiveNavItem(
         label = "navItemColor",
     )
     val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.12f else 1f,
+        targetValue = if (selected) 1.18f else 1f,
         animationSpec = spring(
             dampingRatio = 0.5f,
             stiffness = Spring.StiffnessMedium,
@@ -174,7 +160,7 @@ private fun ExpressiveNavItem(
                 role = Role.Tab,
                 onClick = onClick,
             )
-            .padding(top = 9.dp, bottom = 7.dp),
+            .padding(top = 9.dp, bottom = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -201,6 +187,7 @@ private fun ExpressiveNavItem(
             text = item.label,
             color = contentColor.copy(alpha = labelAlpha),
             fontSize = 11.sp,
+            lineHeight = 16.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
