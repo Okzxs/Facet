@@ -3,9 +3,10 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| MyMusic | активен  | Сессия 27 (27.10.2026): атомарный выход из плеера — при полноэкранном маршруте tabEnter/tabExit отдают None (нет fade-окна под мгновенно появляющимся доком); launchSingleTop у openPlayer; 129 JVM-тестов, APK 27 621 184 байт | Ожидает проверки на телефоне |
+| MyMusic | активен  | Сессия 28 (27.10.2026): откат None-переходов на fade 150 мс, полностью убран Modifier.blur (фон текстов — градиент primary→surface), корневой фон плеера непрозрачный (compositeOver + градиент на Scaffold); 129 JVM-тестов, APK 27 621 184 байт | Ожидает проверки на телефоне |
 
 ### Подтверждённая проверка финального фикса
+- Сессия 28: `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 621 184 байт. Плеер — fade 150 мс в обе стороны, `Modifier.blur` убран полностью (фон текстов — градиент `primary 45% → primaryContainer 22% → surface` + scrim 0.65), корневой градиент непрозрачный через `compositeOver` и рисуется на самом Scaffold. Живой тест на устройстве не выполнялся по просьбе пользователя.
 - Сессия 27: `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 621 184 байт. Полноэкранные маршруты в `tabEnterTransition`/`tabExitTransition` дают None (поп из плеера атомарный), `openPlayer` — `launchSingleTop`, шторка очереди — snap через удаление из композиции. Живой тест на устройстве не выполнялся по просьбе пользователя.
 - Сессия 26: `testDebugUnitTest assembleDebug` подтверждены; XML 129 executed, 0 failures/errors/skipped (20 suites), APK `app/build/outputs/apk/debug/app-debug.apk` 27 621 184 байт. Плавные переходы вкладок через `tabEnterTransition`/`tabExitTransition` (слайд по индексу + fade, 300 мс), `ExitTransition.None` на выходе из PlayerScreen, контент дока в `clip(shape)`. Живой тест на устройстве не выполнялся по просьбе пользователя.
 - JDK 17 из `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`; системный JAVA_HOME указывает на Java 11, поэтому задавать его только для команды. Gradle: один worker, heap 2048m.

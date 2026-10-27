@@ -4,13 +4,10 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -136,31 +133,13 @@ fun AppNavGraph() {
             }
             composable(
                 route = Screen.Player.route,
-                enterTransition = {
-                    slideInVertically(
-                        initialOffsetY = { it },
-                        animationSpec = spring(
-                            dampingRatio = 0.82f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                    ) + fadeIn(animationSpec = tween(240))
-                },
-                // Выход из тяжёлого плеера не анимируем: blur и большая обложка
-                // при слайде дают просадку кадров, экран должен исчезать сразу.
-                // Вход экрана под плеером тоже мгновенный: tabEnterTransition
-                // при полноэкранном маршруте отдаёт EnterTransition.None,
-                // поэтому pop атомарный — без кадра «полуплеера».
-                exitTransition = { ExitTransition.None },
-                popEnterTransition = {
-                    slideInVertically(
-                        initialOffsetY = { it },
-                        animationSpec = spring(
-                            dampingRatio = 0.82f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                    ) + fadeIn(animationSpec = tween(240))
-                },
-                popExitTransition = { ExitTransition.None },
+                // Быстрый кросс-фейд в обе стороны: плеер с непрозрачным фоном
+                // перекрывает главную, а не слипается с ней; слайд убран —
+                // он давал просадки кадров на тяжёлом экране.
+                enterTransition = { fadeIn(animationSpec = tween(150)) },
+                exitTransition = { fadeOut(animationSpec = tween(150)) },
+                popEnterTransition = { fadeIn(animationSpec = tween(150)) },
+                popExitTransition = { fadeOut(animationSpec = tween(150)) },
             ) {
                 PlayerScreen(
                     onBack = { navController.popBackStack() },
@@ -205,14 +184,13 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(): In
 
 /**
  * Вход вкладки: выезжает с той стороны, куда движется пользователь.
- * С полноэкранными маршрутами переходы мгновенные: кросс-фейд оставлял
- * тяжёлый плеер (blur, большая обложка) на промежуточных кадрах —
- * «полуплеер» с исчезнувшими контролами под мгновенно появившимся доком.
+ * С полноэкранными маршрутами — быстрый кросс-фейд вместо слайда:
+ * тяжёлый плеер не должен проигрывать slide-анимации с просадками кадров.
  */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition(): EnterTransition {
     val direction = tabDirection()
     if (direction == 0) {
-        return EnterTransition.None
+        return fadeIn(animationSpec = tween(150))
     }
     return slideInHorizontally(
         initialOffsetX = { width -> direction * width / 3 },
@@ -230,13 +208,12 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
 
 /**
  * Выход вкладки: уезжает в сторону, противоположную входу новой.
- * Выход полноэкранного маршрута мгновенный — экран исчезает целиком,
- * одним кадром, без промежуточных состояний.
+ * Для полноэкранных маршрутов — быстрый fade, симметричный входу.
  */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(): ExitTransition {
     val direction = tabDirection()
     if (direction == 0) {
-        return ExitTransition.None
+        return fadeOut(animationSpec = tween(150))
     }
     return slideOutHorizontally(
         targetOffsetX = { width -> -direction * width / 3 },

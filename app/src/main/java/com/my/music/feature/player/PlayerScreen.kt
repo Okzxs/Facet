@@ -46,8 +46,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -57,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
@@ -269,16 +268,18 @@ fun PlayerScreen(
     )
 
     val backgroundBrush = remember(animatedBgTop, animatedBgBottom, defaultSurface) {
+        // Тонировка композитится поверх непрозрачного surface: полупрозрачный
+        // верх градиента иначе просвечивал экран под плеером при переходах.
         Brush.verticalGradient(
             colors = listOf(
-                animatedBgTop,
-                animatedBgBottom,
+                animatedBgTop.compositeOver(defaultSurface),
+                animatedBgBottom.compositeOver(defaultSurface),
                 defaultSurface,
             ),
         )
     }
 
-    // Фон режима текста: та же обложка, но размытая на весь экран.
+    // Фон режима текста: градиент акцента палитры, проявляющийся на весь экран.
     // Отдельная анимация нужна, потому что слой живёт в корне экрана, а не в hero-зоне.
     val lyricsBackdrop by animateFloatAsState(
         targetValue = if (isLyricsMode) 1f else 0f,
@@ -291,6 +292,10 @@ fun PlayerScreen(
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
     Scaffold(
+        modifier = Modifier
+            // Непрозрачный градиент на весь экран, включая полосу под прозрачной
+            // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
+            .background(backgroundBrush),
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -344,34 +349,26 @@ fun PlayerScreen(
         },
     ) { padding ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(backgroundBrush),
+            modifier = Modifier.fillMaxSize(),
         ) {
-            // ─── Фон режима текста: обложка во весь экран, без видимых краёв ───
-            // Слой увеличен (scale 1.25) и размыт с Unbounded-краем: прямоугольная
-            // граница карточки уходит за пределы экрана, остаётся только мягкое пятно.
-            if (lyricsBackdrop > 0.01f && !track?.artworkUrl.isNullOrBlank()) {
+            // ─── Фон режима текста: градиент от акцента палитры к surface ───
+            // Blur обложки убран полностью: Modifier.blur давал просадки FPS
+            // при анимациях. Градиент имитирует тонировку фона без размытия.
+            if (lyricsBackdrop > 0.01f) {
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .graphicsLayer {
-                            alpha = lyricsBackdrop
-                            scaleX = 1.25f
-                            scaleY = 1.25f
-                        }
-                        .blur(
-                            radius = 44.dp,
-                            edgeTreatment = BlurredEdgeTreatment.Unbounded,
+                        .graphicsLayer { alpha = lyricsBackdrop }
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    playerColors.primary.copy(alpha = 0.45f),
+                                    playerColors.primaryContainer.copy(alpha = 0.22f),
+                                    defaultSurface,
+                                ),
+                            ),
                         ),
-                ) {
-                    ArtworkImage(
-                        artworkUrl = track?.artworkUrl,
-                        shape = RoundedCornerShape(0.dp),
-                        notePainter = notePainter,
-                        placeholderPainter = placeholderPainter,
-                    )
-                }
+                )
             }
 
             // Спокойный scrim поверх фона: держит контраст текста на любой обложке
@@ -613,15 +610,11 @@ private fun ExpressiveHeroZone(
                     rotationZ = lerp(style.rotationZ, style.rotationZ * 2.4f, recede)
                     scaleX = lerp(1f, 0.58f, recede)
                     scaleY = lerp(1f, 0.58f, recede)
-                    // В режиме текста карточка полностью уступает место полноэкранному
-                    // размытому фону — иначе её прямоугольные края видны как «кирпич».
+                    // В режиме текста карточка полностью уступает место градиентному
+                    // фону — иначе её прямоугольные края видны как «кирпич».
                     alpha = lerp(1f, 0f, recede)
                     translationY = heroScroll.value * 0.32f
-                }
-                .blur(
-                    radius = (26f * recede).dp,
-                    edgeTreatment = BlurredEdgeTreatment.Unbounded,
-                ),
+                },
         ) {
             // Свечение: размытое цветное облако палитры под обложкой.
             // В режиме текста оно гаснет вместе с обложкой, чтобы фон не «радужил».
