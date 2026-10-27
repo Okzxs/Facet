@@ -197,10 +197,12 @@ private fun MiniPlayerProgressBar(
 ) {
     var progress by remember { mutableFloatStateOf(0f) }
 
+    // На паузе не опрашиваем позицию вхолостую — прогресс не меняется.
     LaunchedEffect(isPlaying) {
-        while (true) {
-            progress = currentFraction()
+        progress = currentFraction()
+        while (isPlaying) {
             delay(150) // ~6-7 обновлений в секунду
+            progress = currentFraction()
         }
     }
 

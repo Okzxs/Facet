@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,7 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +49,9 @@ import com.my.music.navigation.BottomNavItem
  * Ряд нижней навигации внутри общего дока: пружинный индикатор активной вкладки,
  * масштабирование иконок и тактильный отклик. Собственного фона и тени нет —
  * форму и поверхность задаёт [ExpressiveBottomDock].
+ *
+ * Индикатор и масштаб иконки живут в фазе отрисовки ([graphicsLayer]),
+ * поэтому анимация не вызывает рекомпозицию ряда и не двигает соседние элементы.
  */
 @Composable
 fun ExpressiveNavigationBar(
@@ -58,8 +62,19 @@ fun ExpressiveNavigationBar(
 ) {
     if (items.isEmpty()) return
 
-    val selectedIndex = items.indexOfFirst { it.screen.route == selectedRoute }.coerceAtLeast(0)
+    // Индекс выбранной вкладки пересчитывается только при смене маршрута.
+    val selectedIndex = remember(items, selectedRoute) {
+        items.indexOfFirst { it.screen.route == selectedRoute }.coerceAtLeast(0)
+    }
     val haptics = LocalHapticFeedback.current
+    val latestSelectedIndex by rememberUpdatedState(selectedIndex)
+    val latestOnSelect by rememberUpdatedState(onSelect)
+
+    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val tertiaryContainer = MaterialTheme.colorScheme.tertiaryContainer
+    val indicatorBrush = remember(primaryContainer, tertiaryContainer) {
+        Brush.linearGradient(listOf(primaryContainer, tertiaryContainer))
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -71,30 +86,27 @@ fun ExpressiveNavigationBar(
         val indicatorHeight = 32.dp
         val indicatorTop = 9.dp
 
-        val targetOffset = itemWidth * selectedIndex + (itemWidth - indicatorWidth) / 2
-        val indicatorOffset by animateDpAsState(
-            targetValue = targetOffset,
+        // Плавное скольжение без отскока: стандартная пружина Compose.
+        val indicatorOffset = animateDpAsState(
+            targetValue = itemWidth * selectedIndex + (itemWidth - indicatorWidth) / 2,
             animationSpec = spring(
-                dampingRatio = 0.58f,
-                stiffness = Spring.StiffnessMedium,
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow,
             ),
             label = "indicatorOffset",
         )
 
+        // Смещение читается в фазе отрисовки: layout ряда не пересчитывается.
         Box(
             modifier = Modifier
-                .offset(x = indicatorOffset, y = indicatorTop)
+                .graphicsLayer {
+                    translationX = indicatorOffset.value.toPx()
+                    translationY = indicatorTop.toPx()
+                }
                 .width(indicatorWidth)
                 .height(indicatorHeight)
                 .clip(RoundedCornerShape(16.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.colorScheme.tertiaryContainer,
-                        ),
-                    ),
-                ),
+                .background(indicatorBrush),
         )
 
         Row(
@@ -104,20 +116,25 @@ fun ExpressiveNavigationBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEachIndexed { index, item ->
-                val selected = index == selectedIndex
-                ExpressiveNavItem(
-                    item = item,
-                    selected = selected,
-                    onClick = {
-                        if (!selected) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSelect(item)
+                key(item.screen.route) {
+                    // Лямбда стабильна: при выборе другой вкладки не пересоздаётся.
+                    val onClick = remember(item) {
+                        {
+                            if (index != latestSelectedIndex) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                latestOnSelect(item)
+                            }
                         }
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                )
+                    }
+                    ExpressiveNavItem(
+                        item = item,
+                        selected = index == selectedIndex,
+                        onClick = onClick,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                    )
+                }
             }
         }
     }
@@ -140,7 +157,7 @@ private fun ExpressiveNavItem(
     val iconScale by animateFloatAsState(
         targetValue = if (selected) 1.18f else 1f,
         animationSpec = spring(
-            dampingRatio = 0.5f,
+            dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMedium,
         ),
         label = "navItemScale",
@@ -185,12 +202,13 @@ private fun ExpressiveNavItem(
 
         Text(
             text = item.label,
-            color = contentColor.copy(alpha = labelAlpha),
+            color = contentColor,
             fontSize = 11.sp,
             lineHeight = 16.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.graphicsLayer { alpha = labelAlpha },
         )
     }
 }

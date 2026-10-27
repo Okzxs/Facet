@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -35,14 +37,45 @@ import com.my.music.feature.wave.WaveScreen
 fun AppNavGraph() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentDestination = navBackStackEntry?.destination
 
-    // Скрываем BottomBar на полноэкранных экранах (плеер, настройки)
-    val showBottomBar = currentDestination?.route != Screen.Player.route &&
-        currentDestination?.route != Screen.Settings.route
+    // Скрываем BottomBar на полноэкранных экранах (плеер, настройки).
+    val showBottomBar by remember {
+        derivedStateOf {
+            val route = navBackStackEntry?.destination?.route
+            route != Screen.Player.route && route != Screen.Settings.route
+        }
+    }
+
+    // Выбранная вкладка пересчитывается только при смене back stack,
+    // а не на каждой рекомпозиции дока.
+    val selectedRoute by remember {
+        derivedStateOf {
+            bottomNavItems.firstOrNull { item ->
+                navBackStackEntry?.destination?.hierarchy
+                    ?.any { it.route == item.screen.route } == true
+            }?.screen?.route
+        }
+    }
 
     // Общий PlayerViewModel для MiniPlayer и PlayerScreen (один и тот же экземпляр через Hilt)
     val playerViewModel: PlayerViewModel = hiltViewModel()
+
+    // Стабильные колбэки: не пересоздаются при рекомпозиции дока.
+    val onTabSelect: (BottomNavItem) -> Unit = remember(navController) {
+        { item ->
+            navController.navigate(item.screen.route) {
+                // Избегаем накопления back stack
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+    val onDockExpand: () -> Unit = remember(navController) {
+        { navController.navigate(Screen.Player.route) }
+    }
 
     // Открыть плеер и загрузить трек с очередью
     fun openPlayer(track: Track, queue: List<Track> = listOf(track)) {
@@ -55,25 +88,11 @@ fun AppNavGraph() {
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             if (showBottomBar) {
-                val selectedRoute = bottomNavItems.firstOrNull { item ->
-                    currentDestination?.hierarchy
-                        ?.any { it.route == item.screen.route } == true
-                }?.screen?.route
-
                 ExpressiveBottomDock(
                     items = bottomNavItems,
                     selectedRoute = selectedRoute,
-                    onSelect = { item ->
-                        navController.navigate(item.screen.route) {
-                            // Избегаем накопления back stack
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onExpandClick = { navController.navigate(Screen.Player.route) },
+                    onSelect = onTabSelect,
+                    onExpandClick = onDockExpand,
                     viewModel = playerViewModel,
                 )
             }
