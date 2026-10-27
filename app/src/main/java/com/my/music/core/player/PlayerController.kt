@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -91,7 +92,13 @@ class PlayerController private constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var resolveJob: Job? = null
     private var mediaController: MediaController? = null
-    private val controllerReady = CompletableDeferred<MediaController>()
+
+    // Контроллер — @Singleton и живёт дольше MusicService, поэтому готовность
+    // пересоздаётся при каждом переподключении: после смерти сессии прежний
+    // MediaController мёртв, а завершённый однажды Deferred уже не оживить.
+    @Volatile
+    private var controllerReady = CompletableDeferred<MediaController>()
+    private var connectAttempts = 0
 
     // Исходная очередь до перемешивания (для восстановления исходного порядка)
     private var originalQueue: List<Track> = emptyList()
@@ -138,6 +145,19 @@ class PlayerController private constructor(
         }
     }
 
+    /**
+     * Реакция на смерть или пересоздание [MusicService]. Без неё синглтон навсегда
+     * оставался с мёртвым MediaController: кнопки в UI нажимались, звук не шёл.
+     * Объявлен до init — иначе connectToService() получил бы неинициализированный null.
+     */
+    private val sessionListener = object : MediaController.Listener {
+        override fun onDisconnected(controller: MediaController) {
+            Log.w(tag, "Сессия отключена — освобождаем контроллер и подключаемся заново")
+            detachController(controller)
+            connectToService()
+        }
+    }
+
     init {
         if (initialController != null) {
             attachController(initialController)
@@ -152,18 +172,42 @@ class PlayerController private constructor(
             context,
             ComponentName(context, MusicService::class.java),
         )
-        val future = MediaController.Builder(context, token).buildAsync()
+        val future = MediaController.Builder(context, token)
+            .setListener(sessionListener)
+            .buildAsync()
         future.addListener(
             {
                 try {
                     attachController(future.get())
+                    connectAttempts = 0
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    scheduleReconnect(e)
                 } catch (e: Exception) {
-                    Log.e(tag, "Не удалось подключиться к MusicService", e)
-                    controllerReady.completeExceptionally(e)
+                    scheduleReconnect(e)
                 }
             },
             ContextCompat.getMainExecutor(context),
         )
+    }
+
+    /**
+     * Повтор подключения с экспоненциальной задержкой. Провал buildAsync() раньше
+     * завершал Deferred исключением навсегда и молча отключал плеер до перезапуска
+     * процесса; теперь даём сервису несколько шансов подняться.
+     */
+    private fun scheduleReconnect(cause: Exception) {
+        if (connectAttempts >= MAX_CONNECT_ATTEMPTS) {
+            Log.e(tag, "Не удалось подключиться к MusicService после $connectAttempts попыток", cause)
+            _state.update { it.copy(error = PLAYER_UNAVAILABLE_MESSAGE) }
+            return
+        }
+        val delayMs = RECONNECT_BASE_DELAY_MS shl connectAttempts++.coerceAtMost(6)
+        Log.w(tag, "Переподключение к MusicService через $delayMs мс", cause)
+        scope.launch {
+            delay(delayMs)
+            connectToService()
+        }
     }
 
     private fun attachController(controller: MediaController) {
@@ -177,10 +221,24 @@ class PlayerController private constructor(
                 isBuffering = isBuffering,
                 playbackState = controller.playbackState,
                 playbackSpeed = controller.playbackParameters.speed,
+                // Подключение восстановлено — убираем сообщение о недоступном плеере.
+                error = if (it.error == PLAYER_UNAVAILABLE_MESSAGE) null else it.error,
             )
         }
         if (!controllerReady.isCompleted) {
             controllerReady.complete(controller)
+        }
+    }
+
+    /** Снимает слушатели и освобождает мёртвый контроллер перед переподключением. */
+    private fun detachController(controller: MediaController) {
+        if (mediaController === controller) {
+            mediaController = null
+            controllerReady = CompletableDeferred()
+        }
+        runCatching {
+            controller.removeListener(playerListener)
+            controller.release()
         }
     }
 
@@ -687,11 +745,23 @@ class PlayerController private constructor(
         return if (duration > 0) (bufferedPositionMs().toFloat() / duration).coerceIn(0f, 1f) else 0f
     }
 
+    /** Освобождает контроллер, снимает слушателей и гасит фоновые задачи синглтона. */
     fun release() {
         resolveJob?.cancel()
-        mediaController?.release()
-        mediaController = null
+        mediaController?.let(::detachController)
+        controllerReady.cancel()
         scope.cancel()
+    }
+
+    private companion object {
+        /** Сколько раз пробуем подключиться к MusicService до сообщения об ошибке. */
+        const val MAX_CONNECT_ATTEMPTS = 5
+
+        /** Базовая задержка переподключения; удваивается с каждой попыткой. */
+        const val RECONNECT_BASE_DELAY_MS = 500L
+
+        /** Текст ошибки, который снимается при успешном переподключении. */
+        const val PLAYER_UNAVAILABLE_MESSAGE = "Не удалось подключиться к плееру"
     }
 }
 

@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -81,9 +82,15 @@ class DownloadTrackWorker(
                             "Не удалось скачать '${track.title}': ${error.message}",
                             error,
                         )
-                        Result.failure(
-                            workDataOf(KEY_ERROR to (error.message ?: "download_failed")),
-                        )
+                        val message = error.message ?: ERROR_UNKNOWN
+                        if (isTransient(error) && runAttemptCount < MAX_ATTEMPTS) {
+                            // Транзиентный сбой: WorkManager повторит задачу
+                            // по экспоненциальному backoff из setBackoffCriteria.
+                            Log.d(TAG, "Повтор #${runAttemptCount + 1} для '${track.title}'")
+                            Result.retry()
+                        } else {
+                            Result.failure(workDataOf(KEY_ERROR to message))
+                        }
                     },
                 )
             }
@@ -91,6 +98,18 @@ class DownloadTrackWorker(
             Log.d(TAG, "doWork(): отменён, trackId=${track.id}")
             throw e
         }
+    }
+
+    /**
+     * Транзиентный сбой, после которого повтор имеет смысл: обрыв сети, таймаут,
+     * 5xx и несовпавший размер файла. [DownloadException] — осознанный отказ
+     * источника («только онлайн», нет каталога), повторять его бесполезно.
+     */
+    private fun isTransient(error: Throwable): Boolean = when (error) {
+        is DownloadException -> false
+        is HttpStatusException -> error.code in RETRYABLE_HTTP_CODES
+        is IOException -> true
+        else -> false
     }
 
     /** Восстанавливает трек из входных данных WorkManager. */
@@ -117,6 +136,15 @@ class DownloadTrackWorker(
 
         /** Единый текст ошибки, когда progressive-файл недоступен. */
         const val ERROR_ONLINE_ONLY = "Трек доступен только для онлайн-прослушивания"
+
+        /** Текст в outputData, когда исключение пришло без сообщения. */
+        const val ERROR_UNKNOWN = "download_failed"
+
+        /** Попыток на одну задачу: дальше транзиентный сбой становится FAILED. */
+        private const val MAX_ATTEMPTS = 3
+
+        /** HTTP-коды, при которых повтор через backoff оправдан. */
+        private val RETRYABLE_HTTP_CODES = setOf(408, 425, 429, 500, 502, 503, 504, 509)
 
         /** Подкаталог во внутреннем хранилище приложения. */
         const val DOWNLOADS_DIR = "downloads"

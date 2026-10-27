@@ -3,12 +3,14 @@ package com.my.music.core.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -178,6 +180,12 @@ fun MyMusicTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
         shapes = AppShapes,
-        content = content,
-    )
+    ) {
+        // MaterialTheme не предоставляет LocalContentColor, а его дефолт — Color.Black.
+        // Раньше его задавал корневой Scaffold; без него любой Text без явного цвета
+        // чернел на тёмном фоне. Возвращаем то же значение, что давал Scaffold.
+        CompositionLocalProvider(LocalContentColor provides colorScheme.onBackground) {
+            content()
+        }
+    }
 }

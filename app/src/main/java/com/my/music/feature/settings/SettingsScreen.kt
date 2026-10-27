@@ -1,6 +1,5 @@
 package com.my.music.feature.settings
 
-import android.os.Build
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -56,7 +55,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -85,7 +83,6 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val russianPriority by viewModel.russianPriority.collectAsState()
-    val supportsDynamicColors = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -161,6 +158,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                             ),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(
@@ -235,6 +233,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                         ),
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
@@ -284,6 +283,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                             ),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(
@@ -315,31 +315,31 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                         ),
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        text = if (supportsDynamicColors) {
-                            "Палитра доступна на старых версиях Android, а «Свой цвет» " +
-                                "работает всегда и перекрывает системные цвета"
-                        } else {
-                            "Тема приложения построена на выбранном цвете"
-                        },
+                        text = "Палитра и «Свой цвет» перекрывают системные цвета " +
+                            "на всех версиях Android. Сброс — в диалоге «Свой цвет».",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(16.dp))
+                    // Готовые кружки и «Свой цвет» пишут в одно поле customAccentColor:
+                    // оно имеет высший приоритет в теме и работает поверх Dynamic Color.
+                    val customArgb = settings.customAccentColor
+                    val isPresetSelected = AccentOptions.any { it.color.toArgb() == customArgb }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         AccentOptions.forEach { option ->
                             AccentDot(
                                 option = option,
-                                selected = option.color.toArgb() == settings.accentColorArgb,
-                                enabled = !supportsDynamicColors,
+                                selected = customArgb == option.color.toArgb(),
                                 onClick = { viewModel.setAccentColor(option.color) },
                             )
                         }
                         CustomAccentDot(
-                            color = settings.customAccentColor?.let { Color(it) },
-                            selected = settings.customAccentColor != null,
+                            color = customArgb?.let { Color(it) },
+                            selected = customArgb != null && !isPresetSelected,
                             onClick = { showCustomColorDialog = true },
                         )
                     }
@@ -387,6 +387,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                         ),
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
@@ -450,6 +451,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = (-0.5).sp,
                 ),
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(2.dp))
             Text(
@@ -656,13 +658,12 @@ private fun formatHexColor(color: Color): String {
 
 /**
  * Кружок акцентного цвета: выбранный раздувается и получает
- * контур с галочкой; при выключенной ручной палитре — приглушён.
+ * контур с галочкой. Доступен на всех версиях Android.
  */
 @Composable
 private fun AccentDot(
     option: AccentOption,
     selected: Boolean,
-    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val dotSize by animateDpAsState(
@@ -674,10 +675,8 @@ private fun AccentDot(
     Box(
         modifier = Modifier
             .size(44.dp)
-            .alpha(if (enabled) 1f else 0.38f)
             .clip(CircleShape)
             .clickable(
-                enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,

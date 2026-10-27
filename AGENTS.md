@@ -81,10 +81,12 @@ com.my.music
 ## Настройки оформления
 
 - `ThemeMode` (LIGHT/DARK/SYSTEM, по умолчанию SYSTEM) и `customAccentColor` (ARGB или null) живут в `AppSettings` (SharedPreferences `mymusic_settings`, ключи `theme_mode` и `custom_accent_color`).
-- Приоритет цвета в `MyMusicTheme`: собственный акцент (работает на **всех** версиях Android, перекрывает Dynamic Color) → Dynamic Color (Android 12+) → ручная палитра кружочков (только ниже 12) → fallback-палитра.
+- Приоритет цвета в `MyMusicTheme`: собственный акцент (работает на **всех** версиях Android, перекрывает Dynamic Color) → Dynamic Color (Android 12+) → ручная палитра кружочков (только ниже 12) → fallback-палитра. Кружки палитры и RGB-пикер пишут в `customAccentColor`, поэтому работают и поверх Dynamic Color; `accentColorArgb` — legacy-фолбэк для Android ниже 12.
 - `MainActivity` читает `SettingsRepository.settings` и передаёт в `MyMusicTheme` параметры `themeMode`, `accentColor`, `customAccentColor`.
-- Палитра плеера при заданном `customAccentColor` смешивается с ним на 40% (`blendPaletteWithAccent` в PlayerScreen), чтобы цвета обложки не конфликтовали с темой.
-- Экраны-вкладки сами ставят себе фон (`Modifier.background(MaterialTheme.colorScheme.background)`) и инсеты: корневого Scaffold в `AppNavGraph` больше нет (док — оверлей, высота через `LocalBottomDockHeight`).
+- Палитра плеера при заданном `customAccentColor` смешивается с ним на 40% (`blendPaletteWithAccent` в PlayerScreen), чтобы цвета обложки не конфликтовали с темой. Контрастные роли (`onPrimary`, `on*Container`) после смешивания пересчитываются от светлоты, а не лерпаются.
+- Экраны-вкладки сами ставят себе фон (`Modifier.background(MaterialTheme.colorScheme.background)`) и инсеты: корневого Scaffold в `AppNavGraph` больше нет (док — оверлей, высота через `LocalBottomDockHeight`). Корневой Box навграфа тоже непрозрачный — иначе в переходах вкладок проглядывает окно.
+- `MyMusicTheme` провайдит `LocalContentColor = colorScheme.onBackground`: MaterialTheme его не ставит, дефолт — `Color.Black`, и после удаления корневого Scaffold любой Text без явного цвета чернел на тёмном фоне. Scaffold плеера с `containerColor = Transparent` обязан задавать `contentColor` явно (`contentColorFor(Transparent)` = Unspecified).
+- `windowBackground` задан в `values/themes.xml` и `values-night/themes.xml` (#FFF8F5 / #171210, совпадает с Color.kt) — без ночного варианта окно оставалось белым и давало вспышку на холодном старте.
 
 ---
 

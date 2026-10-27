@@ -3,6 +3,7 @@ package com.my.music.core.download
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -17,8 +18,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,8 +43,12 @@ class DownloadManager @Inject constructor(
 
     private val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
 
-    /** Время последнего клика по кнопке скачивания для защиты от двойного тапа. */
-    private val lastTapAt = mutableMapOf<String, Long>()
+    /**
+     * Время последнего клика по кнопке скачивания для защиты от двойного тапа.
+     * `download()` — suspend и вызывается из разных ViewModelScope, поэтому карта
+     * обязана быть потокобезопасной; устаревшие записи вычищаются при каждом тапе.
+     */
+    private val lastTapAt = ConcurrentHashMap<String, Long>()
 
     /**
      * Ставит трек в очередь на скачивание.
@@ -51,12 +59,20 @@ class DownloadManager @Inject constructor(
      */
     suspend fun download(track: Track): Result<Unit> {
         val now = SystemClock.elapsedRealtime()
+        lastTapAt.entries.removeAll { now - it.value > TAP_HISTORY_TTL_MS }
         val previous = lastTapAt[track.id]
         if (previous != null && now - previous < TAP_DEBOUNCE_MS) {
             Log.d(TAG, "download(): повторный клик проигнорирован для ${track.id}")
             return Result.success(Unit)
         }
         lastTapAt[track.id] = now
+
+        // Активную задачу не перезапускаем: REPLACE оборвал бы RUNNING-воркер
+        // и потерял прогресс вместе с недокачанным `.part`.
+        if (observeState(track.id).first() is DownloadState.InProgress) {
+            Log.d(TAG, "download(): скачивание уже идёт для ${track.id}")
+            return Result.success(Unit)
+        }
 
         return try {
             enqueue(track)
@@ -119,6 +135,7 @@ class DownloadManager @Inject constructor(
                     isDownloaded = trackId in downloaded,
                     workState = workInfo?.state,
                     workProgress = progress,
+                    workError = workInfo?.outputData?.getString(DownloadTrackWorker.KEY_ERROR),
                 )
             }
         }.distinctUntilChanged()
@@ -144,6 +161,13 @@ class DownloadManager @Inject constructor(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build(),
+            )
+            // Воркер возвращает Result.retry() на транзиентных сбоях — без критерия
+            // повтора WorkManager перезапустил бы задачу немедленно и по кругу.
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                RETRY_BACKOFF_SECONDS,
+                TimeUnit.SECONDS,
             )
             .addTag(TAG_DOWNLOAD)
             .addTag(trackTag(track.id))
@@ -200,6 +224,12 @@ class DownloadManager @Inject constructor(
         /** Защита от двойного тапа по кнопке скачивания. */
         private const val TAP_DEBOUNCE_MS = 700L
 
+        /** Срок жизни записи о тапе: карта не должна расти всю сессию. */
+        private const val TAP_HISTORY_TTL_MS = 60_000L
+
+        /** Начальная задержка экспоненциального повтора воркера. */
+        private const val RETRY_BACKOFF_SECONDS = 30L
+
         private val ACTIVE_WORK_STATES = setOf(
             WorkInfo.State.ENQUEUED,
             WorkInfo.State.BLOCKED,
@@ -219,6 +249,7 @@ class DownloadManager @Inject constructor(
             isDownloaded: Boolean,
             workState: WorkInfo.State?,
             workProgress: Float,
+            workError: String? = null,
         ): DownloadState {
             val safeProgress = workProgress.coerceIn(0f, 1f)
             return when {
@@ -228,7 +259,7 @@ class DownloadManager @Inject constructor(
                     DownloadState.Error(DownloadState.Cause.CANCELLED)
 
                 workState == WorkInfo.State.FAILED ->
-                    DownloadState.Error(DownloadState.Cause.FAILED)
+                    DownloadState.Error(DownloadState.Cause.FAILED, workError)
 
                 workState != null && workState in ACTIVE_WORK_STATES ->
                     DownloadState.InProgress(safeProgress)

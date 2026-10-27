@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp as lerpColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -207,9 +208,11 @@ fun PlayerScreen(
         if (error?.cause != DownloadState.Cause.FAILED || track == null) return@LaunchedEffect
 
         val isSoundCloud = track.source == Source.SOUNDCLOUD
+        // Точная причина из outputData воркера важнее общего текста по источнику.
+        val workerMessage = DownloadMessages.friendly(error.message)
         snackbarScope.launch {
             val result = snackbarHostState.showSnackbar(
-                message = if (isSoundCloud) {
+                message = workerMessage ?: if (isSoundCloud) {
                     DownloadMessages.SOURCE_NOT_FOUND
                 } else {
                     DOWNLOAD_FAILED_MESSAGE
@@ -282,11 +285,13 @@ fun PlayerScreen(
     val backgroundBrush = remember(animatedBgTop, animatedBgBottom, defaultSurface) {
         // Тонировка композитится поверх непрозрачного surface: полупрозрачный
         // верх градиента иначе просвечивал экран под плеером при переходах.
+        // Явные остановки со смещением кверху дают плавный спад оттенка без
+        // видимой полосы посередине экрана.
         Brush.verticalGradient(
-            colors = listOf(
-                animatedBgTop.compositeOver(defaultSurface),
-                animatedBgBottom.compositeOver(defaultSurface),
-                defaultSurface,
+            colorStops = arrayOf(
+                0.00f to animatedBgTop.compositeOver(defaultSurface),
+                0.55f to animatedBgBottom.compositeOver(defaultSurface),
+                1.00f to defaultSurface,
             ),
         )
     }
@@ -309,6 +314,9 @@ fun PlayerScreen(
             // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
             .background(backgroundBrush),
         containerColor = Color.Transparent,
+        // contentColorFor(Color.Transparent) возвращает Unspecified, и весь текст
+        // внутри плеера наследовал бы его как чёрный. Задаём явно.
+        contentColor = MaterialTheme.colorScheme.onSurface,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
@@ -501,9 +509,13 @@ fun PlayerScreen(
                     )
                 }
 
-                // Остаток высоты уходит под остров: в режиме обложки контент идёт
-                // плотно (карточка → остров), без пустой «дыры» между ними.
-                Spacer(Modifier.weight(1f))
+                // В режиме обложки hero-зона оборачивает контент, и остаток высоты
+                // забирает этот Spacer: карточка и остров идут плотно, без «дыры».
+                // В режиме текстов weight(1f) уже занят списком — второй weight делил
+                // бы остаток пополам, задирал остров в середину и оставлял дыру внизу.
+                if (!isLyricsMode) {
+                    Spacer(Modifier.weight(1f))
+                }
             }
         }
     }
@@ -1658,6 +1670,8 @@ private fun formatMs(ms: Long): String {
  * Смешивает палитру обложки с собственным акцентом пользователя (40% акцента):
  * цвета плеера остаются «живыми» от обложки, но не конфликтуют с выбранной темой.
  * Прозрачные роли сохраняют свою альфу — смещается только оттенок.
+ * Контрастные роли не смешиваются, а пересчитываются от светлоты результата:
+ * lerp к акценту уводил их в цвет контейнера и ронял контраст текста.
  */
 private fun blendPaletteWithAccent(
     palette: PlayerDynamicColors,
@@ -1666,14 +1680,18 @@ private fun blendPaletteWithAccent(
     fun tinted(color: Color): Color =
         lerpColor(color, accent.copy(alpha = color.alpha), 0.4f)
 
+    val primary = lerpColor(palette.primary, accent, 0.4f)
+    val onTint = if (primary.luminance() > 0.5f) Color.Black else Color.White
+
     return palette.copy(
         dominant = lerpColor(palette.dominant, accent, 0.4f),
         backgroundTop = tinted(palette.backgroundTop),
         backgroundBottom = tinted(palette.backgroundBottom),
-        primary = lerpColor(palette.primary, accent, 0.4f),
+        primary = primary,
+        onPrimary = onTint,
         primaryContainer = tinted(palette.primaryContainer),
-        onPrimaryContainer = lerpColor(palette.onPrimaryContainer, accent, 0.4f),
+        onPrimaryContainer = onTint,
         secondaryContainer = tinted(palette.secondaryContainer),
-        onSecondaryContainer = lerpColor(palette.onSecondaryContainer, accent, 0.4f),
+        onSecondaryContainer = onTint,
     )
 }

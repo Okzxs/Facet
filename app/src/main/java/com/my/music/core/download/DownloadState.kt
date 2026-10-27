@@ -17,8 +17,14 @@ sealed interface DownloadState {
     /**
      * Ошибка или отмена задачи.
      * UI показывает крестик, затем через секунду возвращает иконку скачивания.
+     *
+     * @param message текст из `outputData` воркера, если он его передал;
+     * по нему Snackbar объясняет причину вместо безликого «не скачалось».
      */
-    data class Error(val cause: Cause) : DownloadState
+    data class Error(
+        val cause: Cause,
+        val message: String? = null,
+    ) : DownloadState
 
     /** Причина крестика: отмена пользователем или реальный провал загрузки. */
     enum class Cause {

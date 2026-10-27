@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.MyMusic" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      windowBackground задан явно и совпадает с Compose-фоном (Background из
+      Color.kt): до первого кадра Compose и в переходах вкладок окно не должно
+      быть белым. Ночной вариант — в values-night/themes.xml.
+    -->
+    <style name="Theme.MyMusic" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
 </resources>

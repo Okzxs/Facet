@@ -41,16 +41,24 @@ class NewPipeDownloader @Inject constructor(
         val httpMethod = request.httpMethod()
         val url = request.url()
 
-        val requestBuilder = okhttp3.Request.Builder()
-            .url(url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            )
+        val requestBuilder = okhttp3.Request.Builder().url(url)
 
-        // Прокидываем заголовки от NewPipe (User-Agent, Accept и т.д.)
+        // Заголовки NewPipe имеют приоритет, браузерный User-Agent — резерв.
+        // Дублирующийся User-Agent часть сервисов трактует как признак бота,
+        // поэтому первое значение ставим через header(), остальные — addHeader().
+        var hasUserAgent = false
         request.headers().forEach { (key, values) ->
-            values.forEach { value -> requestBuilder.addHeader(key, value) }
+            if (key.equals("User-Agent", ignoreCase = true)) hasUserAgent = true
+            values.forEachIndexed { index, value ->
+                if (index == 0) {
+                    requestBuilder.header(key, value)
+                } else {
+                    requestBuilder.addHeader(key, value)
+                }
+            }
+        }
+        if (!hasUserAgent) {
+            requestBuilder.header("User-Agent", CHROME_USER_AGENT)
         }
 
         when (httpMethod) {
@@ -125,5 +133,15 @@ class NewPipeDownloader @Inject constructor(
             cancelHandle?.dispose()
             if (previous == null) currentScope.remove() else currentScope.set(previous)
         }
+    }
+
+    private companion object {
+        /**
+         * Резервный браузерный User-Agent. SoundCloud и YouTube отдают контент
+         * только браузерам: на небраузерный UA отвечают 403 или капчей.
+         */
+        const val CHROME_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     }
 }

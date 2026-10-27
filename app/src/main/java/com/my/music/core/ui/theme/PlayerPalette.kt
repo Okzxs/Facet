@@ -11,6 +11,7 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -161,38 +162,45 @@ private suspend fun computePlayerColors(
         val luminance = ColorUtils.calculateLuminance(swatchInt)
         val isLightCover = luminance > 0.35f
 
-        // Для светлых/металлических обложек поднимаем насыщенность и светлоту оттенка,
-        // иначе серый доминант на тёмном фоне выглядит почти чёрным.
+        // Оттенок фона. Насыщенность поднимаем мягко и держим в «благородном»
+        // диапазоне: прежний буст ×1.4 с полом 0.32 красил даже серые и пастельные
+        // обложки в кислотный цвет. Светлота ограничена средним диапазоном, чтобы
+        // оттенок читался и на светлом, и на тёмном фоне.
         val hsl = FloatArray(3)
         ColorUtils.colorToHSL(swatchInt, hsl)
-        if (isLightCover) {
-            hsl[1] = (hsl[1] * 1.4f).coerceIn(0.32f, 0.82f)
-            hsl[2] = hsl[2].coerceIn(0.50f, 0.66f)
-        }
+        hsl[1] = (hsl[1] * 1.15f).coerceIn(0.20f, 0.58f)
+        hsl[2] = hsl[2].coerceIn(0.38f, 0.62f)
         val tintInt = ColorUtils.HSLToColor(hsl)
         val tintColor = Color(tintInt)
         val tintLuminance = ColorUtils.calculateLuminance(tintInt)
 
-        // Больший вес цвета: фон реально окрашивается даже на тёмной теме
-        val topAlpha = if (isLightCover) 0.88f else 0.62f
-        val bottomAlpha = if (isLightCover) 0.40f else 0.22f
-        val onPrimary = if (tintLuminance > 0.5) Color.Black else Color.White
+        // Контрастная пара к оттенку. Раньше onPrimaryContainer/onSecondaryContainer
+        // возвращали сам tintColor — текст сливался с полупрозрачным контейнером.
+        val onTint = if (tintLuminance > 0.5f) Color.Black else Color.White
+
+        // Плавная рампа фона: без резкой ступени 0.88 → 0.40, которая читалась
+        // как видимая полоса и делала верх «кричащим».
+        val topAlpha = if (isLightCover) 0.58f else 0.46f
+        val bottomAlpha = if (isLightCover) 0.26f else 0.20f
 
         val colors = PlayerDynamicColors(
             dominant = tintColor,
             backgroundTop = tintColor.copy(alpha = topAlpha),
             backgroundBottom = tintColor.copy(alpha = bottomAlpha),
             primary = tintColor,
-            onPrimary = onPrimary,
+            onPrimary = onTint,
             primaryContainer = tintColor.copy(alpha = 0.30f),
-            onPrimaryContainer = if (tintLuminance > 0.5) Color.Black else tintColor,
+            onPrimaryContainer = onTint,
             secondaryContainer = tintColor.copy(alpha = 0.24f),
-            onSecondaryContainer = tintColor,
+            onSecondaryContainer = onTint,
             surfaceContainerHigh = tintColor.copy(alpha = 0.15f),
             isLoading = false,
         )
         putPalette(artworkUrl, colors)
         colors
+    } catch (e: CancellationException) {
+        // Отмену пробрасываем: иначе уход с экрана не отменял загрузку битмапа.
+        throw e
     } catch (e: Exception) {
         // Любая ошибка загрузки/декодирования — вернём null, фон останется дефолтным.
         null

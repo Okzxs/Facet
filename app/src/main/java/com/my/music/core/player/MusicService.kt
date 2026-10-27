@@ -106,6 +106,19 @@ class MusicService : MediaSessionService() {
             .also { mediaSession = it }
     }
 
+    /**
+     * Смахивание задачи из «недавних»: останавливаем сервис, только если ничего
+     * не играет. Иначе фоновое воспроизведение обрывалось вместе с карточкой задачи.
+     */
+    @UnstableApi
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val player = mediaSession?.player
+        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
+            stopSelf()
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     @UnstableApi
     override fun onDestroy() {
         mediaSession?.release()

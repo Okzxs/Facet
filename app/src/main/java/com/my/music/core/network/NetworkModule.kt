@@ -31,11 +31,19 @@ object NetworkModule {
     fun provideOkHttpClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .addInterceptor { chain ->
-                val request = chain.request().newBuilder()
-                    .header("User-Agent", "MyMusicApp/1.0 (https://github.com/souler/mymusic)")
-                    .header("Accept", "application/json")
-                    .build()
-                chain.proceed(request)
+                val original = chain.request()
+                val builder = original.newBuilder()
+                // Подставляем заголовки, только если их не задал вызывающий код:
+                // header() перезаписывает значение, и NewPipe терял свой браузерный
+                // User-Agent — SoundCloud/YouTube отвечают на небраузерный UA
+                // блокировкой (403/ReCaptcha).
+                if (original.header("User-Agent") == null) {
+                    builder.header("User-Agent", FALLBACK_USER_AGENT)
+                }
+                if (original.header("Accept") == null) {
+                    builder.header("Accept", "application/json")
+                }
+                chain.proceed(builder.build())
             }
 
         // BASIC-логи содержат подписанные URL и токены — только для debug-сборки.
@@ -89,4 +97,8 @@ object NetworkModule {
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
         .create(com.my.music.data.source.lastfm.LastFmApi::class.java)
+
+    /** Резервный User-Agent для запросов, которые его не задали сами. */
+    private const val FALLBACK_USER_AGENT =
+        "MyMusicApp/1.0 (https://github.com/souler/mymusic)"
 }

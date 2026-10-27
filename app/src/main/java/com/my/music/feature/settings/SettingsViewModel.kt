@@ -55,9 +55,16 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Готовый акцент из палитры. Пишется и в legacy-поле для Android ниже 12,
+     * и в активный [AppSettings.customAccentColor] — только он перекрывает
+     * Dynamic Color на Android 12+, поэтому без второй записи кружки «не работали».
+     */
     fun setAccentColor(color: Color) {
+        val argb = color.toArgb()
         viewModelScope.launch {
-            settingsRepository.setAccentColorArgb(color.toArgb())
+            settingsRepository.setAccentColorArgb(argb)
+            settingsRepository.setCustomAccentColor(argb)
         }
     }
 

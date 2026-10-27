@@ -12,8 +12,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
@@ -115,7 +117,13 @@ fun AppNavGraph() {
     var dockHeightPx by remember { mutableStateOf(0) }
     val dockHeight = with(density) { dockHeightPx.toDp() }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Непрозрачный фон под NavHost: во время перехода вкладок оба экрана
+            // полупрозрачны (fade), и без подложки проглядывало windowBackground.
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         CompositionLocalProvider(LocalBottomDockHeight provides dockHeight) {
             NavHost(
                 navController = navController,
