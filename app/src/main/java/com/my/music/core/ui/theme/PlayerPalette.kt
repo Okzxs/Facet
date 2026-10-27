@@ -108,95 +108,105 @@ fun rememberPlayerDynamicColors(
     var dynamicColors by remember(artworkUrl) { mutableStateOf(fallback.copy(isLoading = true)) }
 
     LaunchedEffect(artworkUrl) {
-        val cached = cachedPalette(artworkUrl)
-        if (cached != null) {
-            dynamicColors = cached
+        // Кэш мог заполниться прогревом (prewarmPlayerPalette) ещё до навигации —
+        // тогда берём готовые цвета сразу и не трогаем фон во время перехода.
+        cachedPalette(artworkUrl)?.let {
+            dynamicColors = it
             return@LaunchedEffect
         }
-
-        // Пока картинка грузится — ставим дефолтный фон
+        // Пока картинка грузится — дефолтный фон; по готовности ставим палитру.
         dynamicColors = fallback.copy(isLoading = true)
-
-        withContext(Dispatchers.IO) {
-            try {
-                val loader = imageLoader(context)
-                val request = ImageRequest.Builder(context)
-                    .data(artworkUrl)
-                    .allowHardware(false)
-                    .build()
-
-                val result = loader.execute(request)
-                if (result is SuccessResult) {
-                    val bitmap: Bitmap? = (result.image as? BitmapImage)?.bitmap
-                        ?: runCatching { result.image.toBitmap() }.getOrNull()
-
-                    if (bitmap != null) {
-                        val palette = Palette.from(bitmap).generate()
-                        // Сначала ищем выразительные (насыщенные) свотчи, и только потом — доминанту:
-                        // у светлых «металлических» обложек доминанта серая и почти не даёт цвета.
-                        val swatch = palette.vibrantSwatch
-                            ?: palette.lightVibrantSwatch
-                            ?: palette.dominantSwatch
-                            ?: palette.mutedSwatch
-                            ?: palette.lightMutedSwatch
-                            ?: palette.darkVibrantSwatch
-                            ?: palette.swatches.maxByOrNull { it.population }
-
-                        if (swatch != null) {
-                            val swatchInt = swatch.rgb
-                            val luminance = ColorUtils.calculateLuminance(swatchInt)
-                            val isLightCover = luminance > 0.35f
-
-                            // Для светлых/металлических обложек поднимаем насыщенность и светлоту оттенка,
-                            // иначе серый доминант на тёмном фоне выглядит почти чёрным.
-                            val hsl = FloatArray(3)
-                            ColorUtils.colorToHSL(swatchInt, hsl)
-                            if (isLightCover) {
-                                hsl[1] = (hsl[1] * 1.4f).coerceIn(0.32f, 0.82f)
-                                hsl[2] = hsl[2].coerceIn(0.50f, 0.66f)
-                            }
-                            val tintInt = ColorUtils.HSLToColor(hsl)
-                            val tintColor = Color(tintInt)
-                            val tintLuminance = ColorUtils.calculateLuminance(tintInt)
-
-                            // Больший вес цвета: фон реально окрашивается даже на тёмной теме
-                            val topAlpha = if (isLightCover) 0.88f else 0.62f
-                            val bottomAlpha = if (isLightCover) 0.40f else 0.22f
-                            val onPrimary = if (tintLuminance > 0.5) Color.Black else Color.White
-
-                            val colors = PlayerDynamicColors(
-                                dominant = tintColor,
-                                backgroundTop = tintColor.copy(alpha = topAlpha),
-                                backgroundBottom = tintColor.copy(alpha = bottomAlpha),
-                                primary = tintColor,
-                                onPrimary = onPrimary,
-                                primaryContainer = tintColor.copy(alpha = 0.30f),
-                                onPrimaryContainer = if (tintLuminance > 0.5) Color.Black else tintColor,
-                                secondaryContainer = tintColor.copy(alpha = 0.24f),
-                                onSecondaryContainer = tintColor,
-                                surfaceContainerHigh = tintColor.copy(alpha = 0.15f),
-                                isLoading = false,
-                            )
-                            putPalette(artworkUrl, colors)
-                            withContext(Dispatchers.Main) {
-                                dynamicColors = colors
-                            }
-                            return@withContext
-                        }
-                    }
-                }
-                // Ошибка извлечения или пустая палитра: оставляем дефолт
-                withContext(Dispatchers.Main) {
-                    dynamicColors = fallback
-                }
-            } catch (e: Exception) {
-                // При ошибке загрузки — оставляем дефолтный фон
-                withContext(Dispatchers.Main) {
-                    dynamicColors = fallback
-                }
-            }
-        }
+        dynamicColors = computePlayerColors(context, artworkUrl) ?: fallback
     }
 
     return dynamicColors
+}
+
+/**
+ * Извлекает палитру обложки и кладёт результат в кэш. Тяжёлая работа (загрузка
+ * битмапа + Palette) выполняется на IO. Возвращает null, если обложку не удалось
+ * декодировать или палитра пустая — вызывающий код сам подставит дефолт.
+ */
+private suspend fun computePlayerColors(
+    context: android.content.Context,
+    artworkUrl: String,
+): PlayerDynamicColors? = withContext(Dispatchers.IO) {
+    try {
+        val loader = imageLoader(context)
+        val request = ImageRequest.Builder(context)
+            .data(artworkUrl)
+            .allowHardware(false)
+            .build()
+
+        val result = loader.execute(request)
+        if (result !is SuccessResult) return@withContext null
+
+        val bitmap: Bitmap = (result.image as? BitmapImage)?.bitmap
+            ?: runCatching { result.image.toBitmap() }.getOrNull()
+            ?: return@withContext null
+
+        val palette = Palette.from(bitmap).generate()
+        // Сначала ищем выразительные (насыщенные) свотчи, и только потом — доминанту:
+        // у светлых «металлических» обложек доминанта серая и почти не даёт цвета.
+        val swatch = palette.vibrantSwatch
+            ?: palette.lightVibrantSwatch
+            ?: palette.dominantSwatch
+            ?: palette.mutedSwatch
+            ?: palette.lightMutedSwatch
+            ?: palette.darkVibrantSwatch
+            ?: palette.swatches.maxByOrNull { it.population }
+            ?: return@withContext null
+
+        val swatchInt = swatch.rgb
+        val luminance = ColorUtils.calculateLuminance(swatchInt)
+        val isLightCover = luminance > 0.35f
+
+        // Для светлых/металлических обложек поднимаем насыщенность и светлоту оттенка,
+        // иначе серый доминант на тёмном фоне выглядит почти чёрным.
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(swatchInt, hsl)
+        if (isLightCover) {
+            hsl[1] = (hsl[1] * 1.4f).coerceIn(0.32f, 0.82f)
+            hsl[2] = hsl[2].coerceIn(0.50f, 0.66f)
+        }
+        val tintInt = ColorUtils.HSLToColor(hsl)
+        val tintColor = Color(tintInt)
+        val tintLuminance = ColorUtils.calculateLuminance(tintInt)
+
+        // Больший вес цвета: фон реально окрашивается даже на тёмной теме
+        val topAlpha = if (isLightCover) 0.88f else 0.62f
+        val bottomAlpha = if (isLightCover) 0.40f else 0.22f
+        val onPrimary = if (tintLuminance > 0.5) Color.Black else Color.White
+
+        val colors = PlayerDynamicColors(
+            dominant = tintColor,
+            backgroundTop = tintColor.copy(alpha = topAlpha),
+            backgroundBottom = tintColor.copy(alpha = bottomAlpha),
+            primary = tintColor,
+            onPrimary = onPrimary,
+            primaryContainer = tintColor.copy(alpha = 0.30f),
+            onPrimaryContainer = if (tintLuminance > 0.5) Color.Black else tintColor,
+            secondaryContainer = tintColor.copy(alpha = 0.24f),
+            onSecondaryContainer = tintColor,
+            surfaceContainerHigh = tintColor.copy(alpha = 0.15f),
+            isLoading = false,
+        )
+        putPalette(artworkUrl, colors)
+        colors
+    } catch (e: Exception) {
+        // Любая ошибка загрузки/декодирования — вернём null, фон останется дефолтным.
+        null
+    }
+}
+
+/**
+ * Прогрев палитры до открытия плеера. Безопасно вызывать при тапе по треку:
+ * к первому кадру PlayerScreen цвета уже в кэше, поэтому rememberPlayerDynamicColors
+ * берёт их синхронно — без isLoading и без анимации фона прямо во время перехода.
+ * Повторные вызовы для уже закэшированной обложки ничего не делают.
+ */
+suspend fun prewarmPlayerPalette(context: android.content.Context, artworkUrl: String?) {
+    if (artworkUrl.isNullOrBlank()) return
+    if (cachedPalette(artworkUrl) != null) return
+    computePlayerColors(context, artworkUrl)
 }

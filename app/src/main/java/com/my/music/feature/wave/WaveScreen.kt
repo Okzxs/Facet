@@ -25,7 +25,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -78,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.my.music.core.ui.components.TrackArtwork
 import com.my.music.data.model.Track
+import com.my.music.navigation.LocalBottomDockHeight
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -94,6 +98,9 @@ private data class WaveSpec(
 @Composable
 fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
+    // Инсеты ставим сами: корневого Scaffold больше нет. Низ — запас под плавающий док.
+    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val bottomInset = LocalBottomDockHeight.current
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
 
@@ -109,7 +116,7 @@ fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 28.dp),
+            contentPadding = PaddingValues(top = topInset, bottom = 28.dp + bottomInset),
         ) {
             item(key = "wave_header") {
                 WaveHeader()

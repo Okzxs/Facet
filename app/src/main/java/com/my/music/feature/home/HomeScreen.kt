@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -81,6 +82,7 @@ import com.my.music.core.ui.theme.SquircleShape
 import com.my.music.core.util.SeasonProvider
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Track
+import com.my.music.navigation.LocalBottomDockHeight
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -107,7 +109,10 @@ fun HomeScreen(
     PullToRefreshBox(
         isRefreshing = uiState.isRefreshing,
         onRefresh = viewModel::refresh,
-        modifier = Modifier.fillMaxSize(),
+        // Статус-бар раньше обеспечивал корневой Scaffold; теперь отступ ставит сам экран.
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
     ) {
         LazyColumn(
             state = homeListState,
@@ -116,7 +121,8 @@ fun HomeScreen(
                 start = ScreenPadding,
                 end = ScreenPadding,
                 top = 10.dp,
-                bottom = 30.dp,
+                // Запас снизу под плавающий док (его больше нет в слоте Scaffold).
+                bottom = 30.dp + LocalBottomDockHeight.current,
             ),
             verticalArrangement = Arrangement.spacedBy(BlockGap),
         ) {

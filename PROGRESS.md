@@ -1,6 +1,15 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 27.10.2026 (сессия 28)
+## Последнее обновление: 27.10.2026 (сессия 29)
+
+## Архитектурный фикс перехода в плеер: док-оверлей + вертикальный слайд (от Claude) — сессия 29
+- Первопричина «25-го кадра» (а не анимация): док жил в слоте `bottomBar` корневого `Scaffold`, поэтому при входе/выходе из плеера `showBottomBar` переключался, `innerPadding` прыгал, и `NavHost` переизмерял оба экрана в один кадр — отсюда «развал» (кнопки и текст исчезали, фон/обложка дёргались). Поэтому ни `ExitTransition.None` (сессия 27), ни fade (сессия 28) кадр не убирали: fade к тому же добавлял джанк, оборачивая весь тяжёлый сабтри в offscreen alpha-слой.
+- `AppNavGraph`: корневой `Scaffold` заменён на `Box`. `NavHost` теперь всегда во весь экран (`fillMaxSize`) и НЕ меняет размер при показе/скрытии дока. Док вынесен в оверлей (`AnimatedVisibility`, slide снизу + fade, выравнивание по низу). Высота дока меряется `onSizeChanged` и раздаётся вкладкам через `LocalBottomDockHeight` (новый `navigation/LocalBottomDock.kt`).
+- Переход плеера: вместо fade — вертикальный slide (`slideInVertically`/`slideOutVertically`, 300 мс, `FastOutSlowInEasing`) — дешёвая трансляция без offscreen-слоя. Нижний экран держится на месте и видимым (`fadeIn/fadeOut(alpha = 1f)` в `tabEnter/tabExitTransition` для маршрута Player) — плеер наезжает «шторкой», за ним не мелькает пустой фон.
+- `PlayerPalette`: добавлен `prewarmPlayerPalette(context, url)` — прогрев палитры обложки в кэш при тапе по треку (вызов в `openPlayer`). К первому кадру PlayerScreen цвет уже в кэше, `rememberPlayerDynamicColors` берёт его синхронно — без `isLoading` и без 400 мс анимации фона прямо во время перехода. Экстракция вынесена в общий `computePlayerColors` без дублирования логики.
+- Инсеты: корневого Scaffold больше нет, поэтому статус-бар ставят сами экраны — Home/Wave через `statusBarsPadding`/`WindowInsets.statusBars`, Search/Library через `contentWindowInsets = WindowInsets.statusBars`, Settings через `systemBarsPadding`. Нижний отступ вкладок = `LocalBottomDockHeight` (высота плавающего дока, уже включает `navigationBarsPadding`).
+- Затронуто: `AppNavGraph.kt`, `LocalBottomDock.kt` (новый), `PlayerPalette.kt`, `HomeScreen.kt`, `WaveScreen.kt`, `SearchScreen.kt`, `LibraryScreen.kt`, `SettingsScreen.kt`.
+- Сборка: `assembleDebug` — BUILD SUCCESSFUL; `testDebugUnitTest` — BUILD SUCCESSFUL (под JDK 17 из Eclipse Adoptium; JAVA_HOME задавался только для команды, т.к. AGP требует Java 17). Живой тест на устройстве — на пользователе.
 
 ## Фейд вместо слайда и убран blur фона — сессия 28
 - Проблема: фикс сессии 27 дал наложение экранов — полупрозрачный верх градиента фона плеера просвечивал главную при переходах; плюс при открытии плеера были просадки FPS от `Modifier.blur`.

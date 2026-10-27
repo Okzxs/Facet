@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.my.music.core.download.DownloadState
 import com.my.music.core.ui.components.TrackCard
+import com.my.music.navigation.LocalBottomDockHeight
 import com.my.music.core.ui.components.TrackDownloadButton
 import com.my.music.data.model.Track
 
@@ -48,6 +49,9 @@ fun LibraryScreen(
     }
 
     Scaffold(
+        // Статус-бар обеспечивает сам экран (корневого Scaffold больше нет);
+        // низ — через contentPadding списка с запасом под плавающий док.
+        contentWindowInsets = WindowInsets.statusBars,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -112,7 +116,7 @@ fun LibraryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentPadding = PaddingValues(bottom = 96.dp),
+                contentPadding = PaddingValues(bottom = 16.dp + LocalBottomDockHeight.current),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 // Быстрые кнопки: «Слушать всё» и «Перемешать»
