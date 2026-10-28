@@ -100,6 +100,13 @@ class PlayerController private constructor(
     private var controllerReady = CompletableDeferred<MediaController>()
     private var connectAttempts = 0
 
+    // Подключение к MusicService откладываем до первого кадра: создание
+    // ExoPlayer, MediaSession и уведомления на главном потоке заметно
+    // удлиняло холодный старт. Играть без соединения всё равно нельзя,
+    // поэтому перед воспроизведением ensureConnected() сработает сразу.
+    @Volatile
+    private var connectionRequested = false
+
     // Исходная очередь до перемешивания (для восстановления исходного порядка)
     private var originalQueue: List<Track> = emptyList()
 
@@ -162,11 +169,25 @@ class PlayerController private constructor(
         if (initialController != null) {
             attachController(initialController)
         } else {
-            connectToService()
+            scope.launch {
+                delay(COLD_START_CONNECT_DELAY_MS)
+                ensureConnected()
+            }
         }
     }
 
+    /**
+     * Подключение по требованию. Повторные вызовы безопасны: соединение
+     * инициируется один раз, дальше работает штатный реконнект.
+     */
+    @Synchronized
+    private fun ensureConnected() {
+        if (mediaController != null || connectionRequested) return
+        connectToService()
+    }
+
     private fun connectToService() {
+        connectionRequested = true
         val context = appContext ?: return
         val token = SessionToken(
             context,
@@ -325,6 +346,7 @@ class PlayerController private constructor(
      * Воспроизвести трек по индексу в текущей очереди.
      */
     fun playTrackAt(index: Int) {
+        ensureConnected()
         val tracks = _state.value.queue
         if (index !in tracks.indices) return
 
@@ -512,6 +534,7 @@ class PlayerController private constructor(
      * Разрешить URL трека и передать в MediaController.
      */
     private fun resolveAndPlay(track: Track, recordHistory: Boolean = true) {
+        ensureConnected()
         resolveJob?.cancel()
         mediaController?.apply {
             pause()
@@ -613,6 +636,7 @@ class PlayerController private constructor(
      * Прямой запуск потока (для вызова с уже готовым AudioStreamResult).
      */
     fun play(track: Track, streamResult: AudioStreamResult) {
+        ensureConnected()
         resolveJob?.cancel()
         mediaController?.apply {
             pause()
@@ -710,6 +734,7 @@ class PlayerController private constructor(
     }
 
     fun pauseOrResume() {
+        ensureConnected()
         // После ошибки нажатие Play/Pause сразу снимает сообщение и повторяет запуск трека
         if (_state.value.error != null) {
             _state.update { it.copy(error = null) }
@@ -759,6 +784,9 @@ class PlayerController private constructor(
 
         /** Базовая задержка переподключения; удваивается с каждой попыткой. */
         const val RECONNECT_BASE_DELAY_MS = 500L
+
+        /** Пауза перед первым подключением: даём UI отрисовать первый кадр. */
+        const val COLD_START_CONNECT_DELAY_MS = 600L
 
         /** Текст ошибки, который снимается при успешном переподключении. */
         const val PLAYER_UNAVAILABLE_MESSAGE = "Не удалось подключиться к плееру"

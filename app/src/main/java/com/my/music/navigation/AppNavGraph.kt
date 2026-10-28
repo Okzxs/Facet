@@ -2,14 +2,15 @@ package com.my.music.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -56,10 +58,12 @@ import com.my.music.core.ui.components.FloatingMiniPlayer
 import com.my.music.core.ui.components.MiniPlayerGap
 import com.my.music.core.ui.components.MiniPlayerHorizontalMargin
 import com.my.music.core.ui.components.MiniPlayerIslandHeight
+import com.my.music.core.ui.motionBlur
 import com.my.music.core.ui.theme.prewarmPlayerPalette
 import com.my.music.data.model.Track
 import com.my.music.feature.home.HomeScreen
 import com.my.music.feature.library.LibraryScreen
+import com.my.music.feature.player.PlayerSwipeState
 import com.my.music.feature.player.PlayerViewModel
 import com.my.music.feature.player.PlayerScreen
 import com.my.music.feature.search.SearchScreen
@@ -128,6 +132,31 @@ fun AppNavGraph() {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // Состояние свайпа живёт здесь, а не в PlayerScreen: блюр применяется
+    // к контейнеру SharedTransitionLayout, и его радиус читается внутри
+    // graphicsLayer без рекомпозиции на каждый кадр.
+    val playerSwipe = remember { PlayerSwipeState(scope) }
+
+    // Blur enter/exit считаем от MutableTransitionState, чтобы им можно было
+    // управлять снаружи AnimatedVisibility (на контейнере shared-перехода).
+    val playerVisibleState = remember { MutableTransitionState(false) }
+    SideEffect { playerVisibleState.targetState = isPlayerOpen }
+    val playerVisibility = rememberTransition(playerVisibleState, label = "playerVisibility")
+    val playerTransitionBlur = playerVisibility.animateFloat(
+        transitionSpec = { tween(PlayerSlideMillis) },
+        targetValueByState = { visible ->
+            if (visible) 0f else PlayerSwipeState.MAX_BLUR_RADIUS
+        },
+        label = "playerTransitionBlur",
+    )
+    // В покое (плеер открыт или закрыт) радиус нулевой: иначе мини-плеер
+    // оставался бы размытым, пока полноэкранный плеер не виден.
+    val playerBlur = remember {
+        derivedStateOf {
+            if (playerVisibleState.isIdle) 0f else playerTransitionBlur.value
+        }
+    }
 
     // Открыть плеер и загрузить трек с очередью
     fun openPlayer(track: Track, queue: List<Track> = listOf(track)) {
@@ -235,7 +264,18 @@ fun AppNavGraph() {
         // Общий SharedTransitionLayout для морфа обложки между мини-плеером
         // и полноэкранным плеером. Слой прозрачный: NavHost и бар остаются
         // под ним, а обложка летит в общем оверлее.
-        SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+        //
+        // Motion blur навешен на сам SharedTransitionLayout: его слой
+        // захватывает и контент, и оверлей shared-элементов (панели, которые
+        // летят в мини-плеер). Радиус читается в layer-блоке, поэтому drag
+        // не вызывает рекомпозицию графа.
+        SharedTransitionLayout(
+            modifier = Modifier
+                .fillMaxSize()
+                .motionBlur {
+                    maxOf(playerSwipe.blurRadius, playerBlur.value)
+                },
+        ) {
             val sharedScope = this
             Box(modifier = Modifier.fillMaxSize()) {
                 // Мини-плеер — отдельный островок над баром. Выезжает снизу и
@@ -304,7 +344,7 @@ fun AppNavGraph() {
                     animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
                 ) + fadeOut(animationSpec = tween(PlayerSlideMillis))
                 AnimatedVisibility(
-                    visible = isPlayerOpen,
+                    visibleState = playerVisibleState,
                     // Вход без полноэкранного слайда: экран мягко проявляется,
                     // а обложка через sharedElement летит из мини-плеера.
                     enter = playerEnter,
@@ -314,15 +354,6 @@ fun AppNavGraph() {
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     val animatedScope = this
-                    // Motion blur на enter/exit: при открытии 15px → 0,
-                    // при закрытии 0 → 15px. В покое ровно 0.
-                    val transitionBlur by animatedScope.transition.animateFloat(
-                        transitionSpec = { tween(PlayerSlideMillis) },
-                        targetValueByState = { state ->
-                            if (state == EnterExitState.Visible) 0f else 15f
-                        },
-                        label = "playerTransitionBlur",
-                    )
                     val coverModifier = with(sharedScope) {
                         Modifier.sharedElement(
                             rememberSharedContentState(PlayerCoverSharedKey),
@@ -365,7 +396,7 @@ fun AppNavGraph() {
                         coverModifier = coverModifier,
                         foregroundModifier = foregroundModifier,
                         isClosing = !isPlayerOpen,
-                        transitionBlur = transitionBlur,
+                        swipeState = playerSwipe,
                     )
                 }
             }

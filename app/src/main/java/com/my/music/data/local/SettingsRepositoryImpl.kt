@@ -5,28 +5,49 @@ import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.SettingsRepository
 import com.my.music.data.repository.ThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Реализация настроек на SharedPreferences:
- * значения читаются синхронно при создании, запись — в IO-диспетчере.
+ * Реализация настроек на SharedPreferences.
+ *
+ * Чтение вынесено в IO: первый доступ к XML-файлу SharedPreferences на
+ * холодном старте заметно блокировал главный поток. До завершения загрузки
+ * [settings] не эмитит значения — UI показывает дефолты из initial value,
+ * а подписчики получают реальные настройки сразу после фонового чтения.
  */
 @Singleton
 class SettingsRepositoryImpl @Inject constructor(
     @ApplicationContext context: Context,
 ) : SettingsRepository {
 
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    // Открываем лениво: сам getSharedPreferences тоже читает диск.
+    private val prefs by lazy {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
-    private val _settings = MutableStateFlow(load())
-    override val settings: Flow<AppSettings> = _settings.asStateFlow()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val loaded = CompletableDeferred<Unit>()
+    private val _settings = MutableStateFlow<AppSettings?>(null)
+    override val settings: Flow<AppSettings> = _settings.filterNotNull()
+
+    init {
+        scope.launch {
+            _settings.value = load()
+            loaded.complete(Unit)
+        }
+    }
 
     private fun load(): AppSettings = AppSettings(
         // По умолчанию — фиолетовая тема, динамика обложки выключена
@@ -46,28 +67,39 @@ class SettingsRepositoryImpl @Inject constructor(
             ?: emptyList(),
     )
 
+    /**
+     * Дожидаемся фонового чтения: до него запись в [_settings] стёрла бы
+     * значения, прочитанные с диска, и настройка «откатилась» бы к дефолтам.
+     */
+    private suspend fun awaitLoaded() = loaded.await()
+
     override suspend fun setDynamicCoverColors(enabled: Boolean) {
+        awaitLoaded()
         withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_DYNAMIC_COVER_COLORS, enabled).apply()
         }
-        _settings.update { it.copy(dynamicCoverColors = enabled) }
+        // update атомарен: параллельная смена другой настройки не потеряется.
+        _settings.update { (it ?: AppSettings()).copy(dynamicCoverColors = enabled) }
     }
 
     override suspend fun setAccentColorArgb(argb: Int) {
+        awaitLoaded()
         withContext(Dispatchers.IO) {
             prefs.edit().putInt(KEY_ACCENT_COLOR, argb).apply()
         }
-        _settings.update { it.copy(accentColorArgb = argb) }
+        _settings.update { (it ?: AppSettings()).copy(accentColorArgb = argb) }
     }
 
     override suspend fun setThemeMode(mode: ThemeMode) {
+        awaitLoaded()
         withContext(Dispatchers.IO) {
             prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
         }
-        _settings.update { it.copy(themeMode = mode) }
+        _settings.update { (it ?: AppSettings()).copy(themeMode = mode) }
     }
 
     override suspend fun setCustomAccentColor(argb: Int?) {
+        awaitLoaded()
         withContext(Dispatchers.IO) {
             if (argb == null) {
                 prefs.edit().remove(KEY_CUSTOM_ACCENT).apply()
@@ -75,18 +107,27 @@ class SettingsRepositoryImpl @Inject constructor(
                 prefs.edit().putInt(KEY_CUSTOM_ACCENT, argb).apply()
             }
         }
-        _settings.update { it.copy(customAccentColor = argb) }
+        _settings.update { (it ?: AppSettings()).copy(customAccentColor = argb) }
     }
 
     override suspend fun addRecentAccentColor(argb: Int) {
+        awaitLoaded()
         // Свежий цвет в начало, дубликаты убираем, хвост обрезаем до лимита.
-        val updated = (listOf(argb) + _settings.value.recentAccentColors)
-            .distinct()
-            .take(AppSettings.MAX_RECENT_ACCENTS)
+        // updateAndGet атомарен: два быстрых тапа не затрут друг друга,
+        // а список для записи на диск берётся ровно тот, что ушёл в состояние.
+        val updated = _settings.updateAndGet { current ->
+            val base = current ?: AppSettings()
+            base.copy(
+                recentAccentColors = (listOf(argb) + base.recentAccentColors)
+                    .distinct()
+                    .take(AppSettings.MAX_RECENT_ACCENTS),
+            )
+        } ?: return
         withContext(Dispatchers.IO) {
-            prefs.edit().putString(KEY_RECENT_ACCENTS, updated.joinToString(",")).apply()
+            prefs.edit()
+                .putString(KEY_RECENT_ACCENTS, updated.recentAccentColors.joinToString(","))
+                .apply()
         }
-        _settings.update { it.copy(recentAccentColors = updated) }
     }
 
     private companion object {

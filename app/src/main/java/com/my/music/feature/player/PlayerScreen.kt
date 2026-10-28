@@ -7,7 +7,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -101,7 +100,6 @@ import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
 import com.my.music.core.ui.components.PlayerSliderState
-import com.my.music.core.ui.motionBlur
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
@@ -155,7 +153,7 @@ fun PlayerScreen(
     coverModifier: Modifier = Modifier,
     foregroundModifier: Modifier = Modifier,
     isClosing: Boolean = false,
-    transitionBlur: Float = 0f,
+    swipeState: PlayerSwipeState,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
@@ -337,11 +335,14 @@ fun PlayerScreen(
     // Жест живёт на корневом Box (он оборачивает весь экран вместе с шапкой)
     // и видит касание в Initial-проходе раньше LazyColumn/verticalScroll.
     // Поэтому свайп вниз работает и поверх текста, а вверх жест уходит списку.
-    var screenHeightPx by remember { mutableFloatStateOf(0f) }
-    var screenWidthPx by remember { mutableFloatStateOf(0f) }
-    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
-    var isDragging by remember { mutableStateOf(false) }
-    var isDismissed by remember { mutableStateOf(false) }
+    //
+    // Смещение и прогресс живут в PlayerSwipeState (AppNavGraph): их читают
+    // только graphicsLayer-блоки, поэтому drag и пружина не пересобирают
+    // тяжёлые панели с текстом и кнопками — анимация идёт на RenderThread.
+    LaunchedEffect(Unit) {
+        swipeState.reset()
+    }
+
     // Границы острова управления в координатах корня: касание из этой зоны
     // не запускает закрытие — кнопки и слайдер должны работать как обычно.
     var controlIslandBounds by remember { mutableStateOf<Rect?>(null) }
@@ -352,73 +353,45 @@ fun PlayerScreen(
     // тянуть плеер или отдать движение списку.
     val lyricsListState = rememberLazyListState()
 
-    // Пока палец на экране — смещение следует за ним без анимации (snap).
-    // После отпускания animateFloatAsState плавно возвращает плеер пружиной.
-    val playerOffsetPx by animateFloatAsState(
-        targetValue = dragOffsetPx,
-        animationSpec = if (isDragging) {
-            snap()
-        } else {
-            spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)
-        },
-        label = "playerDismissOffset",
-    )
-
-    // Прогресс свайпа берём из анимированного смещения, а не из dragOffsetPx:
-    // пока палец на экране значения совпадают (snap), а после отмены жеста
-    // пружина плавно возвращает обложку вместе с плеером.
-    val swipeProgress = if (screenHeightPx > 0f) {
-        (playerOffsetPx / screenHeightPx).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-
-    // При закрытии обложку забирает shared-переход: ручной свайп-сдвиг
-    // сбрасываем, чтобы морф не начинался из двойной трансформации.
-    val coverSwipeProgress = if (isDismissed) 0f else swipeProgress
-
     // Обложка сжимается и уезжает вниз-влево к мини-плееру прямо во время
-    // перетаскивания. Корневой Box уже едет на playerOffsetPx, поэтому здесь
-    // добавляем только дополнительный сдвиг к нижней панели.
-    val coverSwipeModifier = if (coverSwipeProgress > 0f) {
-        Modifier.graphicsLayer {
-            val scale = 1f - 0.75f * coverSwipeProgress
+    // перетаскивания. Корневой Box уже едет на смещении свайпа, поэтому здесь
+    // добавляем только дополнительный сдвиг к нижней панели. При закрытии
+    // обложку забирает shared-переход: ручной сдвиг сбрасываем, чтобы морф
+    // не начинался из двойной трансформации.
+    val coverSwipeModifier = Modifier.graphicsLayer {
+        val progress = if (swipeState.isDismissed) 0f else swipeState.progress
+        if (progress > 0f) {
+            val scale = 1f - 0.75f * progress
             scaleX = scale
             scaleY = scale
-            translationX = -screenWidthPx * 0.35f * coverSwipeProgress
-            translationY = screenHeightPx * 0.4f * coverSwipeProgress
+            translationX = -swipeState.screenWidthPx * 0.35f * progress
+            translationY = swipeState.screenHeightPx * 0.4f * progress
             clip = false
         }
-    } else {
-        Modifier
     }
 
-    // Motion blur: свайп даёт до 15px, enter/exit плеера — свой прогресс.
-    // При нуле renderEffect внутри motionBlur сбрасывается в null.
-    val motionBlurRadius = maxOf(swipeProgress * 15f, transitionBlur)
-
     fun settlePlayer() {
-        isDragging = false
-        dragOffsetPx = 0f
+        swipeState.settle()
     }
 
     fun dismissPlayer() {
-        if (isDismissed) return
-        isDismissed = true
+        if (swipeState.isDismissed) return
+        swipeState.dismiss()
         onBack()
     }
 
     /** Отпускание пальца: выше порога — закрыть, иначе вернуть пружиной. */
     fun finishPlayerDrag() {
-        val threshold = screenHeightPx * DISMISS_THRESHOLD
-        if (screenHeightPx > 0f && dragOffsetPx > threshold) {
+        val height = swipeState.screenHeightPx
+        val threshold = height * DISMISS_THRESHOLD
+        if (height > 0f && swipeState.offsetPx > threshold) {
             dismissPlayer()
         } else {
             settlePlayer()
         }
     }
 
-    val swipeToDismissModifier = if (showQueueSheet || isDismissed) {
+    val swipeToDismissModifier = if (showQueueSheet || swipeState.isDismissed) {
         Modifier
     } else {
         Modifier.pointerInput(Unit) {
@@ -464,14 +437,12 @@ fun PlayerScreen(
                                 return@awaitEachGesture
                             }
                             dragStarted = true
-                            isDragging = true
+                            swipeState.beginDrag()
                             // Накопленный до slop путь тоже отдаём плееру,
                             // чтобы он не «дёргался» после порога.
-                            dragOffsetPx = (dragOffsetPx + totalDy)
-                                .coerceIn(0f, screenHeightPx)
+                            swipeState.dragTo(totalDy)
                         } else {
-                            dragOffsetPx = (dragOffsetPx + dy)
-                                .coerceIn(0f, screenHeightPx)
+                            swipeState.dragTo(swipeState.offsetPx + dy)
                         }
                         // Пока жест наш — гасим его в Initial, иначе LazyColumn
                         // начнёт скроллиться параллельно со шторкой.
@@ -481,7 +452,7 @@ fun PlayerScreen(
                     if (dragStarted) finishPlayerDrag()
                 } finally {
                     // Отмена жеста не должна оставлять плеер висеть смещённым.
-                    if (dragStarted && !isDismissed) settlePlayer()
+                    if (dragStarted && !swipeState.isDismissed) settlePlayer()
                 }
             }
         }
@@ -499,12 +470,8 @@ fun PlayerScreen(
     val panelModifier = foregroundModifier.then(
         Modifier.graphicsLayer {
             if (isClosing) {
-                translationY = playerOffsetPx
-                alpha = if (screenHeightPx > 0f) {
-                    1f - (playerOffsetPx / screenHeightPx).coerceIn(0f, 1f)
-                } else {
-                    1f
-                }
+                translationY = swipeState.offsetPx
+                alpha = 1f - swipeState.progress
             }
         },
     )
@@ -513,21 +480,15 @@ fun PlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged {
-                screenHeightPx = it.height.toFloat()
-                screenWidthPx = it.width.toFloat()
+                swipeState.onSizeChanged(it.width, it.height)
             }
             // Плеер целиком едет за пальцем и тает: сквозь него видна вкладка,
             // которая остаётся скомпонованной под оверлеем (см. AppNavGraph).
+            // Значения читаются внутри layer-блока — без рекомпозиции на кадр.
             .graphicsLayer {
-                translationY = playerOffsetPx
-                alpha = if (screenHeightPx > 0f) {
-                    1f - (playerOffsetPx / screenHeightPx).coerceIn(0f, 1f)
-                } else {
-                    1f
-                }
+                translationY = swipeState.offsetPx
+                alpha = 1f - swipeState.progress
             }
-            // Смаз движения: при свайпе и enter/exit всего экрана плеера.
-            .motionBlur(motionBlurRadius)
             // Непрозрачный градиент на весь экран, включая полосу под прозрачной
             // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
             .background(backgroundBrush)
@@ -651,8 +612,10 @@ fun PlayerScreen(
                         onToggleDislike = { viewModel.toggleDislike() },
                         onDownloadClick = { viewModel.toggleDownload() },
                         // Общий shared-element модификатор для морфа обложки
-                        // в мини-плеер при закрытии экрана.
-                        coverModifier = coverModifier,
+                        // в мини-плеер при закрытии экрана. На время drag его
+                        // отключаем: SharedTransitionLayout тяжёлый для 120 Гц,
+                        // а обложку в этот момент двигает graphicsLayer.
+                        coverModifier = if (swipeState.isDragging) Modifier else coverModifier,
                         // Сжатие и сдвиг обложки прямо во время свайпа.
                         coverSwipeModifier = coverSwipeModifier,
                         // Панель с текстом и кнопками при морфе идёт над обложкой.
