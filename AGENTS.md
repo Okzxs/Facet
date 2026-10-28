@@ -123,6 +123,12 @@ com.my.music
 - Не класть бизнес-логику в `@Composable`-функции
 - Репозитории работают с доменными моделями (`Track`), не с DTO
 
+### Отправка отчётов в Telegram
+После того как ты выполнил сборку, тесты, коммит и пуш, ты ОБЯЗАН отправить свой подробный отчёт мне в Telegram.
+Для отправки отчета бери токен из переменной окружения TG_TOKEN (при необходимости загрузи её из `.env` в корне проекта; файл в `.gitignore`).
+
+curl.exe -s -X POST "https://api.telegram.org/bot$env:TG_TOKEN/sendMessage" --data-urlencode "chat_id=7944683834" --data-urlencode "parse_mode=Markdown" --data-urlencode "text=Твой подробный отчёт тут"
+
 ---
 
 ## Доменная модель трека

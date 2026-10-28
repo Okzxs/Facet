@@ -31,6 +31,10 @@ release/
 # Логи
 *.log
 
+# Секреты и локальные скрипты
+.env
+tg_commander.py
+
 # Временные файлы Android Studio
 captures/
 .externalNativeBuild/
