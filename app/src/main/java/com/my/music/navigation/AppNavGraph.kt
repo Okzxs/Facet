@@ -2,12 +2,14 @@ package com.my.music.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -312,6 +314,15 @@ fun AppNavGraph() {
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     val animatedScope = this
+                    // Motion blur на enter/exit: при открытии 15px → 0,
+                    // при закрытии 0 → 15px. В покое ровно 0.
+                    val transitionBlur by animatedScope.transition.animateFloat(
+                        transitionSpec = { tween(PlayerSlideMillis) },
+                        targetValueByState = { state ->
+                            if (state == EnterExitState.Visible) 0f else 15f
+                        },
+                        label = "playerTransitionBlur",
+                    )
                     val coverModifier = with(sharedScope) {
                         Modifier.sharedElement(
                             rememberSharedContentState(PlayerCoverSharedKey),
@@ -354,6 +365,7 @@ fun AppNavGraph() {
                         coverModifier = coverModifier,
                         foregroundModifier = foregroundModifier,
                         isClosing = !isPlayerOpen,
+                        transitionBlur = transitionBlur,
                     )
                 }
             }

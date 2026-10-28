@@ -1,6 +1,15 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 28.10.2026 (сессия 42)
+## Последнее обновление: 28.10.2026 (сессия 43)
+
+## Морф обложки во время свайпа и motion blur — сессия 43
+- `PlayerScreen.kt`: добавлен `screenWidthPx` (из `onSizeChanged`). Прогресс свайпа считается от анимированного `playerOffsetPx`, а не от `dragOffsetPx`: пока палец на экране значения совпадают (`snap`), а после отмены жеста пружина плавно возвращает и плеер, и обложку.
+- Обложка получила `coverSwipeModifier`: `scaleX/scaleY = 1f - 0.75f * progress`, `translationX = -screenWidthPx * 0.35f * progress`, `translationY = screenHeightPx * 0.4f * progress`, `clip = false`. Модификатор применён к контейнеру обложки (вместе со свечением), а не к `Surface` с `sharedElement` — так морф не начинается из двойной трансформации.
+- Важно: `translationY` содержит только дополнительный сдвиг, потому что корневой `Box` уже едет на `playerOffsetPx`. Формула из задачи (`dragOffsetPx + ...`) дала бы двойное смещение и увела обложку за экран раньше порога.
+- При `isDismissed` свайп-прогресс обложки сбрасывается в 0: дальнейший полёт в мини-плеер выполняет shared-переход.
+- Новый `core/ui/MotionBlur.kt`: `Modifier.motionBlur(blurRadius)` для Android 12+ (`RenderEffect.createBlurEffect` с `Shader.TileMode.CLAMP`); при радиусе ≤ 0.1f `renderEffect = null`, на API ниже 31 модификатор ничего не делает.
+- Motion blur применён к корневому `Box` плеера: при свайпе `swipeProgress * 15f`, при enter/exit — `transitionBlur` из `AnimatedVisibilityScope.transition.animateFloat` (`EnterExitState.Visible → 0`, остальные → 15), итог — `maxOf`. В покое ровно 0.
+- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 835 081 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
 ## Ровная обложка и z-order панелей при морфе — сессия 42
 - `PlayerScreen.kt`: убран наклон обложки полностью — поле `HeroStyle.rotationZ` удалено, `graphicsLayer` больше не задаёт `rotationZ` (варианты 2/3 тоже без наклона). Форма обложки — единый `RoundedCornerShape(24.dp)` вместо асимметричных 56/24/56/24.

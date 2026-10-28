@@ -101,6 +101,7 @@ import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
 import com.my.music.core.ui.components.PlayerSliderState
+import com.my.music.core.ui.motionBlur
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
@@ -154,6 +155,7 @@ fun PlayerScreen(
     coverModifier: Modifier = Modifier,
     foregroundModifier: Modifier = Modifier,
     isClosing: Boolean = false,
+    transitionBlur: Float = 0f,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
@@ -336,6 +338,7 @@ fun PlayerScreen(
     // и видит касание в Initial-проходе раньше LazyColumn/verticalScroll.
     // Поэтому свайп вниз работает и поверх текста, а вверх жест уходит списку.
     var screenHeightPx by remember { mutableFloatStateOf(0f) }
+    var screenWidthPx by remember { mutableFloatStateOf(0f) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
     var isDismissed by remember { mutableStateOf(false) }
@@ -360,6 +363,39 @@ fun PlayerScreen(
         },
         label = "playerDismissOffset",
     )
+
+    // Прогресс свайпа берём из анимированного смещения, а не из dragOffsetPx:
+    // пока палец на экране значения совпадают (snap), а после отмены жеста
+    // пружина плавно возвращает обложку вместе с плеером.
+    val swipeProgress = if (screenHeightPx > 0f) {
+        (playerOffsetPx / screenHeightPx).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    // При закрытии обложку забирает shared-переход: ручной свайп-сдвиг
+    // сбрасываем, чтобы морф не начинался из двойной трансформации.
+    val coverSwipeProgress = if (isDismissed) 0f else swipeProgress
+
+    // Обложка сжимается и уезжает вниз-влево к мини-плееру прямо во время
+    // перетаскивания. Корневой Box уже едет на playerOffsetPx, поэтому здесь
+    // добавляем только дополнительный сдвиг к нижней панели.
+    val coverSwipeModifier = if (coverSwipeProgress > 0f) {
+        Modifier.graphicsLayer {
+            val scale = 1f - 0.75f * coverSwipeProgress
+            scaleX = scale
+            scaleY = scale
+            translationX = -screenWidthPx * 0.35f * coverSwipeProgress
+            translationY = screenHeightPx * 0.4f * coverSwipeProgress
+            clip = false
+        }
+    } else {
+        Modifier
+    }
+
+    // Motion blur: свайп даёт до 15px, enter/exit плеера — свой прогресс.
+    // При нуле renderEffect внутри motionBlur сбрасывается в null.
+    val motionBlurRadius = maxOf(swipeProgress * 15f, transitionBlur)
 
     fun settlePlayer() {
         isDragging = false
@@ -476,7 +512,10 @@ fun PlayerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onSizeChanged { screenHeightPx = it.height.toFloat() }
+            .onSizeChanged {
+                screenHeightPx = it.height.toFloat()
+                screenWidthPx = it.width.toFloat()
+            }
             // Плеер целиком едет за пальцем и тает: сквозь него видна вкладка,
             // которая остаётся скомпонованной под оверлеем (см. AppNavGraph).
             .graphicsLayer {
@@ -487,6 +526,8 @@ fun PlayerScreen(
                     1f
                 }
             }
+            // Смаз движения: при свайпе и enter/exit всего экрана плеера.
+            .motionBlur(motionBlurRadius)
             // Непрозрачный градиент на весь экран, включая полосу под прозрачной
             // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
             .background(backgroundBrush)
@@ -612,6 +653,8 @@ fun PlayerScreen(
                         // Общий shared-element модификатор для морфа обложки
                         // в мини-плеер при закрытии экрана.
                         coverModifier = coverModifier,
+                        // Сжатие и сдвиг обложки прямо во время свайпа.
+                        coverSwipeModifier = coverSwipeModifier,
                         // Панель с текстом и кнопками при морфе идёт над обложкой.
                         panelModifier = panelModifier,
                         // В режиме обложки hero-зона занимает ровно высоту своего контента —
@@ -819,6 +862,7 @@ private fun ExpressiveHeroZone(
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
     coverModifier: Modifier = Modifier,
+    coverSwipeModifier: Modifier = Modifier,
     panelModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
@@ -841,6 +885,8 @@ private fun ExpressiveHeroZone(
             modifier = Modifier
                 // Обложка всегда под панелью с текстом и кнопками.
                 .zIndex(0f)
+                // Свайп: обложка сжимается и уезжает вниз-влево вместе со свечением.
+                .then(coverSwipeModifier)
                 .align(style.alignment)
                 .padding(top = style.topPadding)
                 .fillMaxWidth(style.widthFraction)
