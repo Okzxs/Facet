@@ -9,7 +9,7 @@
 - При `isDismissed` свайп-прогресс обложки сбрасывается в 0: дальнейший полёт в мини-плеер выполняет shared-переход.
 - Новый `core/ui/MotionBlur.kt`: `Modifier.motionBlur(blurRadius)` для Android 12+ (`RenderEffect.createBlurEffect` с `Shader.TileMode.CLAMP`); при радиусе ≤ 0.1f `renderEffect = null`, на API ниже 31 модификатор ничего не делает.
 - Motion blur применён к корневому `Box` плеера: при свайпе `swipeProgress * 15f`, при enter/exit — `transitionBlur` из `AnimatedVisibilityScope.transition.animateFloat` (`EnterExitState.Visible → 0`, остальные → 15), итог — `maxOf`. В покое ровно 0.
-- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 835 081 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 835 081 байт. APK установлен на устройство через `adb install -r` — Success; живой прогон не выполнялся по просьбе пользователя.
 
 ## Ровная обложка и z-order панелей при морфе — сессия 42
 - `PlayerScreen.kt`: убран наклон обложки полностью — поле `HeroStyle.rotationZ` удалено, `graphicsLayer` больше не задаёт `rotationZ` (варианты 2/3 тоже без наклона). Форма обложки — единый `RoundedCornerShape(24.dp)` вместо асимметричных 56/24/56/24.
