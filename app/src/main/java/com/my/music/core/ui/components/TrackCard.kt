@@ -15,9 +15,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -69,6 +73,7 @@ fun TrackCard(
     modifier: Modifier = Modifier,
     isDownloaded: Boolean = false,
     isPlaying: Boolean = false,
+    isPaused: Boolean = false,
     artworkSize: Int = 56,
     artworkCornerDp: Int = 12,
     trailingContent: @Composable (() -> Unit)? = null,
@@ -113,27 +118,31 @@ fun TrackCard(
                 onClick = onClick,
             ),
             headlineContent = {
-                Text(
-                    text = track.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                )
-            },
-            supportingContent = {
-                Text(
-                    text = buildString {
-                        append(track.artist)
-                        if (!track.genre.isNullOrBlank()) append(" · ${track.genre}")
-                        if (track.durationMs > 0) append(" · ${formatDuration(track.durationMs)}")
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // Название и автор живут в одной колонке без supporting-слота:
+                // ListItem иначе разводит их по высоте, и у коротких названий
+                // между строками появляется пустая дыра.
+                Column(verticalArrangement = Arrangement.Center) {
+                    Text(
+                        text = track.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = buildString {
+                            append(track.artist)
+                            if (!track.genre.isNullOrBlank()) append(" · ${track.genre}")
+                            if (track.durationMs > 0) append(" · ${formatDuration(track.durationMs)}")
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             },
             leadingContent = {
                 Box {
@@ -166,9 +175,15 @@ fun TrackCard(
                 {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (isPlaying) {
-                            PlayingEqualizerIcon(
-                                modifier = Modifier.padding(end = 10.dp),
-                            )
+                            if (isPaused) {
+                                PausedEqualizerDots(
+                                    modifier = Modifier.padding(end = 10.dp),
+                                )
+                            } else {
+                                PlayingEqualizerIcon(
+                                    modifier = Modifier.padding(end = 10.dp),
+                                )
+                            }
                         }
                         trailingContent?.invoke()
                     }
@@ -211,6 +226,29 @@ fun PlayingEqualizerIcon(modifier: Modifier = Modifier) {
                 topLeft = Offset(index * step, size.height - barHeight),
                 size = Size(barWidth, barHeight),
                 cornerRadius = CornerRadius(barWidth / 2f),
+            )
+        }
+    }
+}
+
+/**
+ * Три статичные точки вместо бегущих полосок: трек на паузе.
+ * Тот же размер, что у эквалайзера, чтобы строка не «дёргалась».
+ */
+@Composable
+fun PausedEqualizerDots(modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(modifier.size(16.dp)) {
+        val radius = size.minDimension * 0.14f
+        val y = size.height / 2f
+        for (index in 0..2) {
+            drawCircle(
+                color = color,
+                radius = radius,
+                center = Offset(
+                    x = size.width * (index * 2f + 1f) / 6f,
+                    y = y,
+                ),
             )
         }
     }

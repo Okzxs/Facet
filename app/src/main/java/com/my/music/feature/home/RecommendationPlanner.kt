@@ -270,6 +270,18 @@ class RecommendationPlanner @Inject constructor() {
     }
 
     /**
+     * Убирает из кандидатов треки, которые пользователь отметил дизлайком.
+     * Фильтр применяется до отбора, чтобы дизлайки не занимали слоты ленты.
+     */
+    internal fun filterDisliked(
+        candidates: List<Track>,
+        dislikedTrackIds: Set<String>,
+    ): List<Track> {
+        if (dislikedTrackIds.isEmpty()) return candidates
+        return candidates.filter { it.id !in dislikedTrackIds }
+    }
+
+    /**
      * Перемешивает кандидатов и набирает не больше [limit] треков.
      * Обычный кап — [maxPerArtist], для доминирующих артистов —
      * [maxPerDominantArtist].

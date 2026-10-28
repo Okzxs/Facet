@@ -7,6 +7,7 @@ import com.my.music.core.util.SeasonProvider
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
+import com.my.music.data.local.dao.DislikedTrackDao
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
@@ -65,6 +66,7 @@ class HomeViewModel @Inject constructor(
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
     private val recentlyShownRepository: RecentlyShownRepository,
+    private val dislikedTrackDao: DislikedTrackDao,
     private val recommendationPlanner: RecommendationPlanner,
 ) : ViewModel() {
 
@@ -156,10 +158,12 @@ class HomeViewModel @Inject constructor(
                 val liked = _uiState.value.likedTracks
                 val history = _uiState.value.recentTracks
                 val recentlyShownIds = loadRecentlyShownIds()
+                val dislikedTrackIds = loadDislikedTrackIds()
                 val result = loadRecommendationTracks(
                     liked = liked,
                     history = history,
                     recentlyShownIds = recentlyShownIds,
+                    dislikedTrackIds = dislikedTrackIds,
                 )
                 if (requestId != recommendationsRequestId) return@launch
 
@@ -212,16 +216,21 @@ class HomeViewModel @Inject constructor(
         liked: List<Track>,
         history: List<Track>,
         recentlyShownIds: Set<String>,
+        dislikedTrackIds: Set<String>,
     ): Result<List<Track>> = coroutineScope {
         val hasPersonalData = liked.isNotEmpty() || history.isNotEmpty()
         val trackSeeds = recommendationPlanner.selectTrackSeeds(
             recommendationPlanner.buildTrackSeeds(liked, history),
         )
         val related = loadRelatedCandidates(trackSeeds, recentlyShownIds)
+        val relatedCandidates = recommendationPlanner.filterDisliked(
+            candidates = related.candidates,
+            dislikedTrackIds = dislikedTrackIds,
+        )
         val dominantArtists = recommendationPlanner.findDominantArtists(liked, history)
 
         val relatedSelection = recommendationPlanner.selectTracks(
-            candidates = related.candidates,
+            candidates = relatedCandidates,
             maxPerArtist = MAX_TRACKS_PER_ARTIST,
             dominantArtists = dominantArtists,
             maxPerDominantArtist = MAX_TRACKS_PER_DOMINANT_ARTIST,
@@ -234,7 +243,7 @@ class HomeViewModel @Inject constructor(
         // Холодный старт: лайков и истории нет, related-сидов тоже.
         // Глобальный популярный запрос разрешён только в этом случае.
         if (!hasPersonalData) {
-            return@coroutineScope loadPopularRecommendations(recentlyShownIds)
+            return@coroutineScope loadPopularRecommendations(recentlyShownIds, dislikedTrackIds)
         }
 
         val fallbackQueries = recommendationPlanner.buildArtistFallbackQueries(
@@ -242,9 +251,13 @@ class HomeViewModel @Inject constructor(
             history = history,
         )
         val fallback = loadFallbackCandidates(fallbackQueries, recentlyShownIds)
+        val fallbackCandidates = recommendationPlanner.filterDisliked(
+            candidates = fallback.candidates,
+            dislikedTrackIds = dislikedTrackIds,
+        )
         val selected = recommendationPlanner.appendTracks(
             selected = relatedSelection,
-            candidates = fallback.candidates,
+            candidates = fallbackCandidates,
             maxPerArtist = MAX_TRACKS_PER_ARTIST,
             dominantArtists = dominantArtists,
             maxPerDominantArtist = MAX_TRACKS_PER_DOMINANT_ARTIST,
@@ -385,6 +398,7 @@ class HomeViewModel @Inject constructor(
      */
     private suspend fun loadPopularRecommendations(
         recentlyShownIds: Set<String>,
+        dislikedTrackIds: Set<String>,
     ): Result<List<Track>> {
         val popularResult = youtubeRepository.search(
             query = POPULAR_QUERY,
@@ -397,12 +411,15 @@ class HomeViewModel @Inject constructor(
             )
         }
 
-        val candidates = popularResult
-            .getOrDefault(emptyList())
-            .asSequence()
-            .filter { it.isEligible(recentlyShownIds) }
-            .distinctBy { it.id }
-            .toList()
+        val candidates = recommendationPlanner.filterDisliked(
+            candidates = popularResult
+                .getOrDefault(emptyList())
+                .asSequence()
+                .filter { it.isEligible(recentlyShownIds) }
+                .distinctBy { it.id }
+                .toList(),
+            dislikedTrackIds = dislikedTrackIds,
+        )
         val selected = recommendationPlanner.selectTracks(
             candidates = candidates,
             maxPerArtist = MAX_TRACKS_PER_ARTIST,
@@ -425,6 +442,16 @@ class HomeViewModel @Inject constructor(
         if (NON_STUDIO_PHRASES.any { text.contains(it, ignoreCase = true) }) return false
         return !NON_STUDIO_WORDS.containsMatchIn(text)
     }
+
+    /** Дизлайки пользователя: их треки не должны попадать в рекомендации. */
+    private suspend fun loadDislikedTrackIds(): Set<String> =
+        runCatching {
+            dislikedTrackDao.getAll().mapTo(HashSet()) { it.trackId }
+        }.rethrowCancellation()
+            .onFailure { error ->
+                Log.w(tag, "Не удалось загрузить дизлайки: ${error.message}", error)
+            }
+            .getOrDefault(emptySet())
 
     private suspend fun loadRecentlyShownIds(): Set<String> =
         runCatching {

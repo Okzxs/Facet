@@ -8,6 +8,7 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.my.music.data.local.entity.ChartCacheEntity
+import com.my.music.data.local.entity.DislikedTrackEntity
 import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.GenreWeightEntity
 import com.my.music.data.local.entity.RecentlyShownEntity
@@ -85,7 +86,7 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(9, database.openHelper.writableDatabase.version)
+            assertEquals(10, database.openHelper.writableDatabase.version)
 
             // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
@@ -137,6 +138,15 @@ class DatabaseMigrationTest {
             assertEquals(
                 listOf("shown-1"),
                 database.recentlyShownDao().getTrackIdsSince(1_000L),
+            )
+
+            // Таблица дизлайков создана миграцией 9 → 10
+            database.dislikedTrackDao().insert(
+                DislikedTrackEntity(trackId = "disliked-1", dislikedAt = 7_000L),
+            )
+            assertEquals(
+                listOf("disliked-1"),
+                database.dislikedTrackDao().getAll().map { it.trackId },
             )
         } finally {
             database.close()
@@ -272,6 +282,21 @@ class DatabaseMigrationTest {
 
         assertTrue(hasTable(db, "recently_shown"))
         assertTrue(hasIndex(db, "index_recently_shown_shownAt"))
+    }
+
+    @Test
+    fun `migration 9 to 10 creates disliked tracks table`() {
+        val db = openLegacyDatabase("m-9-10.db", 9) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+        }
+
+        MIGRATION_9_10.migrate(db)
+
+        assertTrue(hasTable(db, "disliked_tracks"))
+        assertEquals(
+            setOf("trackId", "dislikedAt"),
+            tableColumns(db, "disliked_tracks"),
+        )
     }
 
     @Test

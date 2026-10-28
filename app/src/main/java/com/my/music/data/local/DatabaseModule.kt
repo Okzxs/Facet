@@ -2,6 +2,7 @@ package com.my.music.data.local
 
 import android.content.Context
 import androidx.room.Room
+import com.my.music.data.local.dao.DislikedTrackDao
 import com.my.music.data.local.dao.DownloadedTracksDao
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
@@ -36,6 +37,12 @@ object DatabaseModule {
     @Singleton
     fun provideLikedTracksDao(database: AppDatabase): LikedTracksDao {
         return database.likedTracksDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideDislikedTrackDao(database: AppDatabase): DislikedTrackDao {
+        return database.dislikedTrackDao()
     }
 
     @Provides

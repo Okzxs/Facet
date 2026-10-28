@@ -1,5 +1,7 @@
 package com.my.music.feature.home
 
+import com.my.music.data.local.dao.DislikedTrackDao
+import com.my.music.data.local.entity.DislikedTrackEntity
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
@@ -33,6 +35,7 @@ class HomeViewModelRecommendationsTest {
     private val likedTracksRepository = mockk<LikedTracksRepository>()
     private val playHistoryRepository = mockk<PlayHistoryRepository>()
     private val recentlyShownRepository = mockk<RecentlyShownRepository>()
+    private val dislikedTrackDao = mockk<DislikedTrackDao>()
     private val recommendationPlanner = RecommendationPlanner()
 
     private val historyFlow = MutableStateFlow<List<Track>>(emptyList())
@@ -57,6 +60,7 @@ class HomeViewModelRecommendationsTest {
         } answers {
             recentlyShownIds = firstArg<Collection<String>>().toSet()
         }
+        coEvery { dislikedTrackDao.getAll() } returns emptyList()
     }
 
     @Test
@@ -339,6 +343,26 @@ class HomeViewModelRecommendationsTest {
     }
 
     @Test
+    fun `excludes disliked tracks from recommendations`() {
+        val popular = (1..12).map { index ->
+            track(
+                id = "popular-$index",
+                title = "Popular Song $index",
+                artist = "Artist $index",
+            )
+        }
+        coEvery { youtubeRepository.search(any(), any()) } returns Result.success(popular)
+        coEvery { dislikedTrackDao.getAll() } returns listOf(
+            DislikedTrackEntity(trackId = "popular-3", dislikedAt = 1_000L),
+        )
+
+        val state = createViewModel().uiState.value
+
+        assertEquals(11, state.recommendations.size)
+        assertTrue(state.recommendations.none { it.id == "popular-3" })
+    }
+
+    @Test
     fun `requests related items for four to six seed tracks`() {
         likedFlow.value = (0 until 8).map { index ->
             track(
@@ -392,6 +416,7 @@ class HomeViewModelRecommendationsTest {
             likedTracksRepository = likedTracksRepository,
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,
+            dislikedTrackDao = dislikedTrackDao,
             recommendationPlanner = recommendationPlanner,
         )
 

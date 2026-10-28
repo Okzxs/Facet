@@ -70,6 +70,7 @@ fun LibraryScreen(
     val downloadError by viewModel.downloadError.collectAsState()
     val likeError by viewModel.likeError.collectAsState()
     val currentTrackId by viewModel.currentTrackId.collectAsState()
+    val isPlayerPlaying by viewModel.isPlaying.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(downloadError) {
@@ -178,6 +179,7 @@ fun LibraryScreen(
                             track = track,
                             isDownloaded = track.id in downloadedIds,
                             isPlaying = track.id == currentTrackId,
+                            isPaused = track.id == currentTrackId && !isPlayerPlaying,
                             artworkSize = 60,
                             artworkCornerDp = 16,
                             onClick = { onTrackClick(track, likedTracks) },

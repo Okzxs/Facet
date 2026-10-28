@@ -12,6 +12,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,11 +56,15 @@ fun AppNavGraph() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
+    // Плеер — оверлей поверх NavHost, а не отдельный маршрут. Так вкладка
+    // остаётся скомпонованной под ним и реально проглядывает при свайпе вниз.
+    var isPlayerOpen by rememberSaveable { mutableStateOf(false) }
+
     // Скрываем BottomBar на полноэкранных экранах (плеер, настройки).
     val showBottomBar by remember {
         derivedStateOf {
             val route = navBackStackEntry?.destination?.route
-            route != Screen.Player.route && route != Screen.Settings.route
+            !isPlayerOpen && route != Screen.Settings.route
         }
     }
 
@@ -89,8 +95,8 @@ fun AppNavGraph() {
             }
         }
     }
-    val onDockExpand: () -> Unit = remember(navController) {
-        { navController.navigate(Screen.Player.route) }
+    val onDockExpand: () -> Unit = remember {
+        { isPlayerOpen = true }
     }
 
     val context = LocalContext.current
@@ -102,11 +108,7 @@ fun AppNavGraph() {
         // поэтому фон не пересчитывается и не анимируется прямо во время перехода.
         scope.launch { prewarmPlayerPalette(context, track.artworkUrl) }
         playerViewModel.playTrackWithQueue(track, queue)
-        navController.navigate(Screen.Player.route) {
-            // Защита от дублей плеера в стеке: иначе повторный pop
-            // проигрывал бы slide-вход плеера поверх самого себя.
-            launchSingleTop = true
-        }
+        isPlayerOpen = true
     }
 
     // Измеренная высота плавающего дока (вместе с его navigationBarsPadding).
@@ -164,42 +166,6 @@ fun AppNavGraph() {
                 composable(Screen.Settings.route) {
                     SettingsScreen(onBack = { navController.popBackStack() })
                 }
-                composable(
-                    route = Screen.Player.route,
-                    // Плеер наезжает вертикальным слайдом, как «шторка». Slide — это
-                    // дешёвая трансляция без offscreen alpha-слоя, поэтому тяжёлый
-                    // экран не роняет кадры (fade оборачивал весь сабтри в alpha-слой).
-                    // Нижний экран держится на месте — см. tabEnter/tabExitTransition.
-                    enterTransition = {
-                        slideInVertically(
-                            animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                        ) { height -> height }
-                    },
-                    // Уход из плеера не кнопкой «назад» (например, в поиск) — быстрый fade.
-                    exitTransition = { fadeOut(animationSpec = tween(150)) },
-                    popEnterTransition = { fadeIn(animationSpec = tween(150)) },
-                    popExitTransition = {
-                        slideOutVertically(
-                            animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                        ) { height -> height }
-                    },
-                ) {
-                    PlayerScreen(
-                        onBack = { navController.popBackStack() },
-                        onFindOnYouTube = { track ->
-                            playerViewModel.findOnYouTube(track)
-                            navController.navigate(Screen.Search.route) {
-                                // Уходим из полноэкранного плеера в поиск, сохраняя вкладки
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        viewModel = playerViewModel,
-                    )
-                }
             }
         }
 
@@ -225,17 +191,44 @@ fun AppNavGraph() {
                 modifier = Modifier.onSizeChanged { size -> dockHeightPx = size.height },
             )
         }
+
+        // Плеер — верхний оверлей. NavHost с вкладкой остаётся под ним живым,
+        // поэтому при свайпе вниз сквозь тающий плеер видна именно вкладка.
+        AnimatedVisibility(
+            visible = isPlayerOpen,
+            enter = slideInVertically(
+                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+            ) { height -> height },
+            exit = slideOutVertically(
+                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+            ) { height -> height },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            PlayerScreen(
+                onBack = { isPlayerOpen = false },
+                onFindOnYouTube = { track ->
+                    playerViewModel.findOnYouTube(track)
+                    isPlayerOpen = false
+                    navController.navigate(Screen.Search.route) {
+                        // Уходим из плеера в поиск, сохраняя состояние вкладок.
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                viewModel = playerViewModel,
+            )
+        }
     }
+
+    // Системный «назад» закрывает плеер, не трогая back stack вкладок.
+    BackHandler(enabled = isPlayerOpen) { isPlayerOpen = false }
 }
 
 private const val TabTransitionMillis = 300
 private const val PlayerSlideMillis = 300
-
-/**
- * true, если маршрут — полноэкранный плеер.
- */
-private fun NavBackStackEntry.isPlayerRoute(): Boolean =
-    destination.route == Screen.Player.route
 
 /**
  * Индекс вкладки в нижнем доке или -1 для полноэкранных маршрутов.
@@ -258,15 +251,8 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(): In
 
 /**
  * Вход вкладки: выезжает с той стороны, куда движется пользователь.
- * С полноэкранными маршрутами — быстрый кросс-фейд вместо слайда:
- * тяжёлый плеер не должен проигрывать slide-анимации с просадками кадров.
  */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition(): EnterTransition {
-    // Возврат из плеера (плеер уезжает вниз) — нижний экран уже на месте.
-    // Держим его видимым и неподвижным (alpha=1), не проигрывая «въезд».
-    if (initialState.isPlayerRoute()) {
-        return fadeIn(animationSpec = tween(PlayerSlideMillis), initialAlpha = 1f)
-    }
     val direction = tabDirection()
     if (direction == 0) {
         return fadeIn(animationSpec = tween(150))
@@ -287,16 +273,8 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
 
 /**
  * Выход вкладки: уезжает в сторону, противоположную входу новой.
- * Для полноэкранных маршрутов — быстрый fade, симметричный входу.
  */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(): ExitTransition {
-    // Открытие плеера (плеер наезжает сверху) — нижний экран остаётся на месте и
-    // полностью видимым (alpha=1), пока плеер его не закроет. ExitTransition.None
-    // здесь не годится: экран убрался бы мгновенно и за наезжающим плеером мелькал
-    // бы пустой фон.
-    if (targetState.isPlayerRoute()) {
-        return fadeOut(animationSpec = tween(PlayerSlideMillis), targetAlpha = 1f)
-    }
     val direction = tabDirection()
     if (direction == 0) {
         return fadeOut(animationSpec = tween(150))

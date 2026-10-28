@@ -2,12 +2,12 @@ package com.my.music.feature.player
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -17,7 +17,6 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -39,6 +38,7 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
@@ -66,7 +66,6 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -100,7 +99,6 @@ import com.my.music.core.ui.theme.rememberPlayerDynamicColors
 import com.my.music.data.model.LyricsResult
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -117,11 +115,8 @@ private const val DOWNLOAD_FAILED_MESSAGE = "Не удалось скачать 
 
 private const val FIND_ON_YOUTUBE_ACTION = "Найти"
 
-/** Порог закрытия свайпом вниз: доля высоты экрана, пройденная пальцем. */
-private const val DISMISS_PROGRESS_THRESHOLD = 0.20f
-
-/** Порог закрытия свайпом вниз: скорость пальца в пикселях в секунду. */
-private const val DISMISS_VELOCITY_PX_PER_SEC = 1200f
+/** Порог закрытия свайпом вниз: 85% высоты экрана. */
+private const val DISMISS_THRESHOLD = 0.85f
 
 /** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
@@ -151,6 +146,7 @@ fun PlayerScreen(
     val playerState by viewModel.playerState.collectAsState()
     val isBuffering by viewModel.isBuffering.collectAsState()
     val isLiked by viewModel.isLiked.collectAsState()
+    val isDisliked by viewModel.isDisliked.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
 
@@ -210,6 +206,8 @@ fun PlayerScreen(
 
     // Текущий трек берём из PlayerController (он всегда актуален после play())
     val track = playerState.currentTrack ?: uiState.track
+    // Локальный файл уже лежит на диске — скачивать его нечего.
+    val canDownload = track != null && track.source != Source.LOCAL
 
     // Скачивание невозможно (нет прав/404/HLS-ошибка) — сообщаем пользователю.
     // Крестик живёт секунду, поэтому Snackbar запускаем в scope композиции,
@@ -321,97 +319,88 @@ fun PlayerScreen(
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
     // ─── Свайп вниз для закрытия плеера ─────────────────────────────────
-    // Жест живёт только в верхней зоне (шапка и обложка в режиме обложки):
-    // скролл текстов и шторка очереди оставляют свои жесты себе.
+    // Жест работает на всей площади плеера, кроме острова управления:
+    // список текстов и слайдер оставляют себе свои вертикальные/горизонтальные жесты.
     var screenHeightPx by remember { mutableFloatStateOf(0f) }
-    var dismissDragPx by remember { mutableFloatStateOf(0f) }
-    var isDismissing by remember { mutableStateOf(false) }
-    var springBackJob by remember { mutableStateOf<Job?>(null) }
-    val dragVelocityTracker = remember { VelocityTracker() }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    var isDismissed by remember { mutableStateOf(false) }
 
-    fun springDismissBack() {
-        springBackJob = snackbarScope.launch {
-            Animatable(dismissDragPx).animateTo(
-                targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            ) { dismissDragPx = value }
-        }
+    // Пока палец на экране — смещение следует за ним без анимации (snap).
+    // После отпускания animateFloatAsState плавно возвращает плеер пружиной.
+    val playerOffsetPx by animateFloatAsState(
+        targetValue = dragOffsetPx,
+        animationSpec = if (isDragging) {
+            snap()
+        } else {
+            spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)
+        },
+        label = "playerDismissOffset",
+    )
+
+    fun settlePlayer() {
+        isDragging = false
+        dragOffsetPx = 0f
     }
 
-    fun finishDismiss() {
-        // Дальше экран уезжает штатным popExit-слайдом NavHost: второй слайд
-        // здесь дал бы пустую паузу между исчезновением контента и фона.
-        if (isDismissing) return
-        isDismissing = true
+    fun dismissPlayer() {
+        if (isDismissed) return
+        isDismissed = true
         onBack()
     }
 
-    val swipeToDismissModifier = if (showQueueSheet || isDismissing) {
+    val swipeToDismissModifier = if (showQueueSheet || isDismissed) {
         Modifier
     } else {
         Modifier.pointerInput(Unit) {
             detectVerticalDragGestures(
-                onDragStart = {
-                    // Новая попытка отменяет незавершённый возврат пружиной.
-                    springBackJob?.cancel()
-                    dragVelocityTracker.resetTracking()
-                },
+                onDragStart = { isDragging = true },
                 onDragEnd = {
-                    val progress = if (screenHeightPx > 0f) {
-                        dismissDragPx / screenHeightPx
+                    val threshold = screenHeightPx * DISMISS_THRESHOLD
+                    if (screenHeightPx > 0f && dragOffsetPx >= threshold) {
+                        dismissPlayer()
                     } else {
-                        0f
-                    }
-                    // Скорость считаем по последним событиям, а не по одному кадру:
-                    // случайный рывок в конце жеста не закроет плеер.
-                    val velocityY = dragVelocityTracker.calculateVelocity().y
-                    if (progress > DISMISS_PROGRESS_THRESHOLD ||
-                        velocityY > DISMISS_VELOCITY_PX_PER_SEC
-                    ) {
-                        finishDismiss()
-                    } else {
-                        springDismissBack()
+                        settlePlayer()
                     }
                 },
-                onDragCancel = { springDismissBack() },
+                onDragCancel = { settlePlayer() },
                 onVerticalDrag = { change, dragAmount ->
-                    // Только вниз: свайп вверх не должен бороться с прочими жестами.
-                    if (dragAmount > 0f) {
-                        dragVelocityTracker.addPosition(change.uptimeMillis, change.position)
-                        dismissDragPx = (dismissDragPx + dragAmount)
-                            .coerceIn(0f, screenHeightPx * 0.6f)
+                    // Вниз тянем всегда, вверх — только если плеер уже смещён:
+                    // иначе жест не должен мешать скроллу и прочим свайпам.
+                    if (dragAmount > 0f || dragOffsetPx > 0f) {
+                        change.consume()
+                        dragOffsetPx = (dragOffsetPx + dragAmount)
+                            .coerceIn(0f, screenHeightPx)
                     }
                 },
             )
         }
     }
 
-    // Пока идёт pop-слайд после свайпа, системный «назад» не должен popping'ать дважды.
-    BackHandler(enabled = isDismissing) { }
-
-    // Контент уезжает и тает, а градиентный фон остаётся на месте:
-    // при перетаскивании под плеером не проглядывает пустое окно.
-    val dismissLayer = Modifier.graphicsLayer {
-        translationY = dismissDragPx
-        val progress = if (screenHeightPx > 0f) {
-            (dismissDragPx / screenHeightPx).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-        alpha = 1f - 0.30f * progress
+    // Остров управления не участвует в закрытии: его кнопки и слайдер
+    // получают жест первыми и гасят вертикальное движение.
+    val controlIslandSwipeGuard = Modifier.pointerInput(Unit) {
+        detectVerticalDragGestures { change, _ -> change.consume() }
     }
 
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { screenHeightPx = it.height.toFloat() }
+            // Плеер целиком едет за пальцем и тает: сквозь него видна вкладка,
+            // которая остаётся скомпонованной под оверлеем (см. AppNavGraph).
+            .graphicsLayer {
+                translationY = playerOffsetPx
+                alpha = if (screenHeightPx > 0f) {
+                    1f - (playerOffsetPx / screenHeightPx).coerceIn(0f, 1f)
+                } else {
+                    1f
+                }
+            }
             // Непрозрачный градиент на весь экран, включая полосу под прозрачной
             // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
-            // Фон не участвует в свайпе — уезжает только контент (см. dismissLayer).
-            .background(backgroundBrush),
+            .background(backgroundBrush)
+            .then(swipeToDismissModifier),
         containerColor = Color.Transparent,
         // contentColorFor(Color.Transparent) возвращает Unspecified, и весь текст
         // внутри плеера наследовал бы его как чёрный. Задаём явно.
@@ -419,11 +408,8 @@ fun PlayerScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
-                // Шапка — верхняя зона свайпа: жест закрытия не трогает списки.
-                // dismissLayer двигает и гасит её вместе с контентом.
-                modifier = swipeToDismissModifier.then(dismissLayer),
                 navigationIcon = {
-                    IconButton(onClick = { if (!isDismissing) onBack() }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Назад")
                     }
                 },
@@ -470,11 +456,7 @@ fun PlayerScreen(
             )
         },
     ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(dismissLayer),
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // ─── Фон режима текста: градиент от акцента палитры к surface ───
             // Blur обложки убран полностью: Modifier.blur давал просадки FPS
             // при анимациях. Градиент имитирует тонировку фона без размытия.
@@ -515,6 +497,8 @@ fun PlayerScreen(
                     artist = track?.artist ?: "—",
                     artworkUrl = track?.artworkUrl,
                     isLiked = isLiked,
+                    isDisliked = isDisliked,
+                    canDownload = canDownload,
                     downloadState = downloadState,
                     isLyricsMode = isLyricsMode,
                     lyricsResult = uiState.lyrics,
@@ -527,6 +511,7 @@ fun PlayerScreen(
                     onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                     onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
                     onToggleLike = { toggleLikeWithPermission() },
+                    onToggleDislike = { viewModel.toggleDislike() },
                     onDownloadClick = { viewModel.toggleDownload() },
                     // В режиме обложки hero-зона занимает ровно высоту своего контента —
                     // иначе между карточкой трека и островом управления образуется
@@ -538,9 +523,7 @@ fun PlayerScreen(
                             if (isLyricsMode) {
                                 Modifier.weight(1f)
                             } else {
-                                // В режиме обложки hero-зона принимает жест закрытия;
-                                // в режиме текстов список скроллится, жест остаётся в шапке.
-                                swipeToDismissModifier
+                                Modifier
                             },
                         ),
                 )
@@ -599,7 +582,9 @@ fun PlayerScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         // Запас под выступающий язычок «Текст» и воздух до текстов/обложки
-                        .padding(top = 30.dp),
+                        .padding(top = 30.dp)
+                        // Кнопки и слайдер не должны запускать закрытие свайпом.
+                        .then(controlIslandSwipeGuard),
                 ) {
                     PlayerProgressSection(
                         isPlaying = playerState.isPlaying,
@@ -707,6 +692,8 @@ private fun ExpressiveHeroZone(
     artist: String,
     artworkUrl: String?,
     isLiked: Boolean,
+    isDisliked: Boolean,
+    canDownload: Boolean,
     downloadState: DownloadState,
     isLyricsMode: Boolean,
     lyricsResult: LyricsResult?,
@@ -719,6 +706,7 @@ private fun ExpressiveHeroZone(
     onSeekToLine: (Long) -> Unit,
     onRetryLyrics: () -> Unit,
     onToggleLike: () -> Unit,
+    onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -877,11 +865,14 @@ private fun ExpressiveHeroZone(
                     title = title,
                     artist = artist,
                     isLiked = isLiked,
+                    isDisliked = isDisliked,
+                    canDownload = canDownload,
                     downloadState = downloadState,
                     primaryColor = palette.primary,
                     primaryContainerColor = palette.primaryContainer,
                     surfaceColor = palette.surfaceContainerHigh,
                     onToggleLike = onToggleLike,
+                    onToggleDislike = onToggleDislike,
                     onDownloadClick = onDownloadClick,
                 )
             }
@@ -900,11 +891,14 @@ private fun CoverForeground(
     title: String,
     artist: String,
     isLiked: Boolean,
+    isDisliked: Boolean,
+    canDownload: Boolean,
     downloadState: DownloadState,
     primaryColor: Color,
     primaryContainerColor: Color,
     surfaceColor: Color,
     onToggleLike: () -> Unit,
+    onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
 ) {
     Column(
@@ -938,18 +932,29 @@ private fun CoverForeground(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(12.dp))
-                DownloadSquircle(
-                    state = downloadState,
-                    primaryColor = primaryColor,
-                    primaryContainerColor = primaryContainerColor,
-                    onClick = onDownloadClick,
-                )
+                // Слот скачивания сохраняет ширину даже для локального трека:
+                // иначе лайк и дизлайк прыгают между разными композициями.
+                if (canDownload) {
+                    DownloadSquircle(
+                        state = downloadState,
+                        primaryColor = primaryColor,
+                        primaryContainerColor = primaryContainerColor,
+                        onClick = onDownloadClick,
+                    )
+                } else {
+                    Spacer(Modifier.size(46.dp))
+                }
                 Spacer(Modifier.width(8.dp))
                 LikeSquircle(
                     isLiked = isLiked,
                     primaryColor = primaryColor,
                     primaryContainerColor = primaryContainerColor,
                     onToggleLike = onToggleLike,
+                )
+                Spacer(Modifier.width(8.dp))
+                DislikeSquircle(
+                    isDisliked = isDisliked,
+                    onToggleDislike = onToggleDislike,
                 )
             }
             Spacer(Modifier.height(16.dp))
@@ -958,11 +963,14 @@ private fun CoverForeground(
                 title = title,
                 artist = artist,
                 isLiked = isLiked,
+                isDisliked = isDisliked,
+                canDownload = canDownload,
                 downloadState = downloadState,
                 primaryColor = primaryColor,
                 primaryContainerColor = primaryContainerColor,
                 surfaceColor = surfaceColor,
                 onToggleLike = onToggleLike,
+                onToggleDislike = onToggleDislike,
                 onDownloadClick = onDownloadClick,
                 modifier = Modifier.offset(y = -style.overlap),
             )
@@ -979,11 +987,14 @@ private fun TrackGlassCard(
     title: String,
     artist: String,
     isLiked: Boolean,
+    isDisliked: Boolean,
+    canDownload: Boolean,
     downloadState: DownloadState,
     primaryColor: Color,
     primaryContainerColor: Color,
     surfaceColor: Color,
     onToggleLike: () -> Unit,
+    onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1037,18 +1048,29 @@ private fun TrackGlassCard(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(12.dp))
-                DownloadSquircle(
-                    state = downloadState,
-                    primaryColor = primaryColor,
-                    primaryContainerColor = primaryContainerColor,
-                    onClick = onDownloadClick,
-                )
+                // Резерв под кнопку скачивания: без него ряд действий «прыгает»
+                // у локальных треков, которые уже лежат на диске.
+                if (canDownload) {
+                    DownloadSquircle(
+                        state = downloadState,
+                        primaryColor = primaryColor,
+                        primaryContainerColor = primaryContainerColor,
+                        onClick = onDownloadClick,
+                    )
+                } else {
+                    Spacer(Modifier.size(46.dp))
+                }
                 Spacer(Modifier.width(8.dp))
                 LikeSquircle(
                     isLiked = isLiked,
                     primaryColor = primaryColor,
                     primaryContainerColor = primaryContainerColor,
                     onToggleLike = onToggleLike,
+                )
+                Spacer(Modifier.width(8.dp))
+                DislikeSquircle(
+                    isDisliked = isDisliked,
+                    onToggleDislike = onToggleDislike,
                 )
             }
         }
@@ -1174,6 +1196,34 @@ private fun LikeSquircle(
         Icon(
             imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
             contentDescription = "Лайк",
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+/** Дизлайк-сквиркл 46dp: красный, пока трек исключён из рекомендаций. */
+@Composable
+private fun DislikeSquircle(
+    isDisliked: Boolean,
+    onToggleDislike: () -> Unit,
+) {
+    val error = MaterialTheme.colorScheme.error
+    FilledTonalIconButton(
+        onClick = onToggleDislike,
+        modifier = Modifier.size(46.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = if (isDisliked) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            },
+            contentColor = if (isDisliked) error else MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.ThumbDown,
+            contentDescription = if (isDisliked) "Убрать дизлайк" else "Дизлайк",
             modifier = Modifier.size(22.dp),
         )
     }

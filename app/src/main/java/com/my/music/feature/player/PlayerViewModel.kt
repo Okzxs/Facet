@@ -16,6 +16,8 @@ import com.my.music.core.player.toFriendlyPlaybackMessage
 import com.my.music.core.service.ServiceType
 import com.my.music.core.util.SeasonProvider
 import com.my.music.core.util.rethrowCancellation
+import com.my.music.data.local.dao.DislikedTrackDao
+import com.my.music.data.local.entity.DislikedTrackEntity
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.LyricsResult
 import com.my.music.data.model.Track
@@ -44,6 +46,7 @@ class PlayerViewModel @Inject constructor(
     private val soundCloudRepository: SoundCloudRepository,
     private val lyricsRepository: LyricsRepository,
     private val likedTracksRepository: LikedTracksRepository,
+    private val dislikedTrackDao: DislikedTrackDao,
     private val playHistoryRepository: PlayHistoryRepository,
     private val settingsRepository: SettingsRepository,
     private val playerController: PlayerController,
@@ -99,6 +102,24 @@ class PlayerViewModel @Inject constructor(
         .flatMapLatest { trackId ->
             if (trackId != null) {
                 likedTracksRepository.isLiked(trackId)
+            } else {
+                flowOf(false)
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false,
+        )
+
+    /** Наблюдение за дизлайком текущего трека из БД Room. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val isDisliked: StateFlow<Boolean> = playerController.state
+        .map { it.currentTrack?.id ?: _uiState.value.track?.id }
+        .distinctUntilChanged()
+        .flatMapLatest { trackId ->
+            if (trackId != null) {
+                dislikedTrackDao.isDisliked(trackId)
             } else {
                 flowOf(false)
             }
@@ -230,15 +251,55 @@ class PlayerViewModel @Inject constructor(
                 _uiState.update { it.copy(error = LIKE_FAILED_MESSAGE) }
                 return@launch
             }
+            val likedNow = result.getOrThrow()
+            // Лайк и дизлайк взаимоисключающие: поставили лайк — снимаем дизлайк.
+            if (likedNow && isDisliked.value) {
+                runCatching { dislikedTrackDao.delete(track.id) }
+                    .rethrowCancellation()
+                    .onFailure { error ->
+                        Log.w(tag, "Не удалось снять дизлайк после лайка", error)
+                    }
+            }
             // Feedback для вкусов некритичен: его сбой логируем, лайк уже сохранён.
             runCatching {
-                if (result.getOrThrow()) {
+                if (likedNow) {
                     tasteRepository.onLike(track)
                 } else {
                     tasteRepository.onUnlike(track)
                 }
             }.rethrowCancellation().onFailure { error ->
                 Log.w(tag, "Feedback вкусов не записан", error)
+            }
+        }
+    }
+
+    /**
+     * Переключить дизлайк текущего трека.
+     * Дизлайк автоматически снимает лайк: трек не должен быть
+     * одновременно в избранном и в списке исключённых.
+     */
+    fun toggleDislike() {
+        val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
+        viewModelScope.launch {
+            val addingDislike = !isDisliked.value
+            val result = runCatching {
+                if (addingDislike) {
+                    if (isLiked.value) {
+                        likedTracksRepository.unlikeTrack(track.id)
+                        runCatching { tasteRepository.onUnlike(track) }
+                            .rethrowCancellation()
+                            .onFailure { error ->
+                                Log.w(tag, "Feedback вкусов не записан после дизлайка", error)
+                            }
+                    }
+                    dislikedTrackDao.insert(DislikedTrackEntity(trackId = track.id))
+                } else {
+                    dislikedTrackDao.delete(track.id)
+                }
+            }.rethrowCancellation()
+            result.onFailure { error ->
+                Log.e(tag, "Не удалось переключить дизлайк", error)
+                _uiState.update { it.copy(error = DISLIKE_FAILED_MESSAGE) }
             }
         }
     }
@@ -490,6 +551,9 @@ class PlayerViewModel @Inject constructor(
 
         /** Сообщение при сбое БД на лайке — показывается вместо краша. */
         const val LIKE_FAILED_MESSAGE = "Не удалось обновить лайк: база данных недоступна"
+
+        /** Сообщение при сбое БД на дизлайке. */
+        const val DISLIKE_FAILED_MESSAGE = "Не удалось обновить дизлайк: база данных недоступна"
     }
 }
 

@@ -1,5 +1,6 @@
 package com.my.music.feature.home
 
+import com.my.music.data.local.dao.DislikedTrackDao
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
@@ -44,6 +45,7 @@ class HomeViewModelGenreTest {
         val likedTracksRepository = mockk<LikedTracksRepository>()
         val playHistoryRepository = mockk<PlayHistoryRepository>()
         val recentlyShownRepository = mockk<RecentlyShownRepository>()
+        val dislikedTrackDao = mockk<DislikedTrackDao>()
         val recommendationPlanner = RecommendationPlanner().apply {
             random = Random(0)
         }
@@ -60,6 +62,7 @@ class HomeViewModelGenreTest {
         coEvery {
             recentlyShownRepository.markShown(any(), any(), any())
         } just Runs
+        coEvery { dislikedTrackDao.getAll() } returns emptyList()
 
         viewModel = HomeViewModel(
             youtubeRepository = youtubeRepository,
@@ -67,6 +70,7 @@ class HomeViewModelGenreTest {
             likedTracksRepository = likedTracksRepository,
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,
+            dislikedTrackDao = dislikedTrackDao,
             recommendationPlanner = recommendationPlanner,
         )
     }

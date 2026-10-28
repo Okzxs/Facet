@@ -382,7 +382,12 @@ private fun ContinueListeningCard(
                 shape = SquircleShape,
             )
             Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            // Автор идёт сразу за названием: колонка центрируется по высоте
+            // обложки, а не растягивается с пустотой между строками.
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center,
+            ) {
                 Text(
                     text = "ПРОДОЛЖИТЬ",
                     style = MaterialTheme.typography.labelSmall.copy(

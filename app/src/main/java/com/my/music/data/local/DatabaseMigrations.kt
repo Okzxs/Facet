@@ -14,6 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v6 → v7: офлайн-кэш Media3: вместо пути к файлу — URL потока и MIME-тип.
  * v7 → v8: память о треках, уже показанных в рекомендациях.
  * v8 → v9: индексы по горячим полям выборок (сезон и дата лайка, время прослушивания, вес жанра).
+ * v9 → v10: таблица дизлайков для фильтрации рекомендаций.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -185,6 +186,20 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `disliked_tracks` (
+                `trackId` TEXT NOT NULL,
+                `dislikedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`trackId`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -194,4 +209,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_6_7,
     MIGRATION_7_8,
     MIGRATION_8_9,
+    MIGRATION_9_10,
 )

@@ -49,6 +49,16 @@ class LibraryViewModel @Inject constructor(
             initialValue = null,
         )
 
+    /** Играет ли плеер сейчас: на паузе эквалайзер заменяется точками. */
+    val isPlaying: StateFlow<Boolean> = playerController.state
+        .map { it.isPlaying }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false,
+        )
+
     /** Идентификаторы скачанных треков — для бейджей «офлайн». */
     val downloadedIds: StateFlow<Set<String>> = downloadRepository.observeDownloadedIds()
         .stateIn(
