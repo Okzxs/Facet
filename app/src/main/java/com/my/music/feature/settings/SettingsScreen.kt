@@ -37,6 +37,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -336,6 +337,33 @@ fun SettingsScreen(
                     // размер вместо сплющивания, а крайние Spacer держат отступ от границ.
                     val customArgb = settings.customAccentColor
                     val isPresetSelected = AccentOptions.any { it.color.toArgb() == customArgb }
+                    val recents = settings.recentAccentColors
+                    if (recents.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 18.dp),
+                        ) {
+                            Text(
+                                text = "Недавние",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                recents.forEach { argb ->
+                                    RecentColorDot(
+                                        color = Color(argb),
+                                        selected = customArgb == argb,
+                                        onClick = { viewModel.setAccentColor(Color(argb)) },
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                        }
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -565,10 +593,15 @@ private fun CustomColorDialog(
     onApply: (Color) -> Unit,
     onReset: () -> Unit,
 ) {
-    var red by remember { mutableFloatStateOf(initial?.red ?: 0.65f) }
-    var green by remember { mutableFloatStateOf(initial?.green ?: 0.36f) }
-    var blue by remember { mutableFloatStateOf(initial?.blue ?: 0.55f) }
+    val startColor = initial ?: Color(0.65f, 0.36f, 0.55f)
+    var red by remember { mutableFloatStateOf(startColor.red) }
+    var green by remember { mutableFloatStateOf(startColor.green) }
+    var blue by remember { mutableFloatStateOf(startColor.blue) }
     val preview = Color(red, green, blue)
+    // HEX-поле и слайдеры связаны в обе стороны: корректный код двигает слайдеры,
+    // слайдеры переписывают код. Некорректный ввод цвет не применяет.
+    var hexInput by remember { mutableStateOf(formatHexColor(startColor)) }
+    var hexError by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -588,10 +621,35 @@ private fun CustomColorDialog(
                             ),
                     )
                     Spacer(Modifier.width(14.dp))
-                    Text(
-                        text = formatHexColor(preview),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    OutlinedTextField(
+                        value = hexInput,
+                        onValueChange = { value ->
+                            val normalized = value.take(MAX_HEX_INPUT_LENGTH)
+                            hexInput = normalized
+                            val parsed = parseHexColor(normalized)
+                            if (parsed != null) {
+                                red = parsed.red
+                                green = parsed.green
+                                blue = parsed.blue
+                                hexError = false
+                            } else {
+                                hexError = true
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("HEX-код") },
+                        singleLine = true,
+                        isError = hexError,
+                        supportingText = {
+                            Text(
+                                if (hexError) {
+                                    "Некорректный код: нужно 6 hex-цифр, например #FF5733"
+                                } else {
+                                    "6 цифр, например #FF5733"
+                                },
+                            )
+                        },
+                        shape = RoundedCornerShape(16.dp),
                     )
                 }
                 Spacer(Modifier.height(18.dp))
@@ -599,19 +657,31 @@ private fun CustomColorDialog(
                     label = "Красный",
                     value = red,
                     accent = Color(0xFFE5484D),
-                    onValueChange = { red = it },
+                    onValueChange = { v ->
+                        red = v
+                        hexInput = formatHexColor(Color(v, green, blue))
+                        hexError = false
+                    },
                 )
                 RgbSlider(
                     label = "Зелёный",
                     value = green,
                     accent = Color(0xFF43A047),
-                    onValueChange = { green = it },
+                    onValueChange = { v ->
+                        green = v
+                        hexInput = formatHexColor(Color(red, v, blue))
+                        hexError = false
+                    },
                 )
                 RgbSlider(
                     label = "Синий",
                     value = blue,
                     accent = Color(0xFF3F6BD8),
-                    onValueChange = { blue = it },
+                    onValueChange = { v ->
+                        blue = v
+                        hexInput = formatHexColor(Color(red, green, v))
+                        hexError = false
+                    },
                 )
                 if (initial != null) {
                     Spacer(Modifier.height(6.dp))
@@ -681,6 +751,75 @@ private fun formatHexColor(color: Color): String {
     val g = (color.green * 255f).roundToInt()
     val b = (color.blue * 255f).roundToInt()
     return "#%02X%02X%02X".format(r, g, b)
+}
+
+/** Допустимые символы HEX-кода без учёта регистра. */
+private const val HEX_DIGITS = "0123456789abcdefABCDEF"
+
+/** Предельная длина ввода HEX-поля: «#» плюс 6 цифр. */
+private const val MAX_HEX_INPUT_LENGTH = 7
+
+/**
+ * Разбирает HEX-код вида #RRGGBB или RRGGBB (регистр не важен).
+ * Возвращает null на некорректном коде — диалог подсветит ошибку
+ * и оставит слайдеры и превью нетронутыми.
+ */
+private fun parseHexColor(input: String): Color? {
+    val hex = input.removePrefix("#").trim()
+    if (hex.length != 6 || !hex.all { HEX_DIGITS.contains(it) }) return null
+    val rgb = hex.toLongOrNull(radix = 16) ?: return null
+    return Color((rgb or 0xFF000000L).toInt())
+}
+
+/**
+ * Маленький кружок недавнего цвета: тап применяет цвет мгновенно.
+ * Размер меньше кружков основной палитры, чтобы ряд читался вторичным.
+ */
+@Composable
+private fun RecentColorDot(
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val dotSize by animateDpAsState(
+        targetValue = if (selected) 26.dp else 22.dp,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
+        label = "recentDotSize",
+    )
+
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(dotSize)
+                .clip(CircleShape)
+                .background(color)
+                .border(
+                    width = 1.5.dp,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                    },
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = "Недавний цвет выбран",
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
 }
 
 /**

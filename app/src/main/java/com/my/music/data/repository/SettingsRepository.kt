@@ -23,17 +23,23 @@ enum class ThemeMode {
  * @param accentColorArgb выбранный вручную акцентный цвет (ARGB), применяется на Android ниже 12;
  * @param themeMode режим темы: светлая/тёмная/системная;
  * @param customAccentColor собственный акцентный цвет пользователя (ARGB) — работает
- * на всех версиях Android и имеет приоритет над Dynamic Color; null — не задан.
+ * на всех версиях Android и имеет приоритет над Dynamic Color; null — не задан;
+ * @param recentAccentColors недавно применённые акцентные цвета (ARGB), свежие в
+ * начале списка, без дубликатов, не больше [AppSettings.MAX_RECENT_ACCENTS].
  */
 data class AppSettings(
     val dynamicCoverColors: Boolean = false,
     val accentColorArgb: Int = DEFAULT_ACCENT_ARGB,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val customAccentColor: Int? = null,
+    val recentAccentColors: List<Int> = emptyList(),
 ) {
     companion object {
         /** Базовый коралловый — совпадает с fallback-палитрой приложения. */
         const val DEFAULT_ACCENT_ARGB: Int = 0xFFA63A2B.toInt()
+
+        /** Сколько недавних цветов держим в настройках и показываем в UI. */
+        const val MAX_RECENT_ACCENTS: Int = 5
     }
 }
 
@@ -56,4 +62,10 @@ interface SettingsRepository {
 
     /** Сохранить собственный акцентный цвет; null сбрасывает выбор. */
     suspend fun setCustomAccentColor(argb: Int?)
+
+    /**
+     * Добавить цвет в недавние акценты: свежий уходит в начало (LIFO),
+     * дубликаты убираются, список обрезается до [AppSettings.MAX_RECENT_ACCENTS].
+     */
+    suspend fun addRecentAccentColor(argb: Int)
 }

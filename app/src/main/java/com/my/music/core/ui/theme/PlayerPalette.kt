@@ -168,7 +168,11 @@ private suspend fun computePlayerColors(
         // оттенок читался и на светлом, и на тёмном фоне.
         val hsl = FloatArray(3)
         ColorUtils.colorToHSL(swatchInt, hsl)
-        hsl[1] = (hsl[1] * 1.15f).coerceIn(0.20f, 0.58f)
+        // Ахроматическая обложка (чёрная/белая/серая): оттенок в HSL равен 0 (красный),
+        // и принудительная насыщенность красила плеер в бордовый. Держим такую
+        // палитру монохромной — насыщенность остаётся нулевой.
+        val achromatic = hsl[1] < ACHROMATIC_SATURATION_THRESHOLD
+        hsl[1] = if (achromatic) 0f else (hsl[1] * 1.15f).coerceIn(0.20f, 0.58f)
         hsl[2] = hsl[2].coerceIn(0.38f, 0.62f)
         val tintInt = ColorUtils.HSLToColor(hsl)
         val tintColor = Color(tintInt)

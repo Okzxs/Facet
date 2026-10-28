@@ -94,18 +94,34 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 /**
+ * Порог насыщенности HSL, ниже которого цвет считается ахроматическим
+ * (чёрный, белый, серый): у таких цветов оттенок в HSL равен 0 (красный).
+ */
+internal const val ACHROMATIC_SATURATION_THRESHOLD = 0.05f
+
+/**
  * Схема из пользовательского акцента: primary/secondary/tertiary-группы генерируются
  * из seed, поверхности остаются тёплыми. Используется для собственного акцента
  * (все версии Android) и для ручной палитры (Android ниже 12).
+ *
+ * Ахроматический seed (чёрный/белый/серый) даёт строго монохромную палитру:
+ * насыщенность ролей обнуляется, иначе hue=0 и принудительная насыщенность
+ * красили такой акцент в бордовый.
  */
-private fun accentColorScheme(accent: Color, darkTheme: Boolean): ColorScheme {
+internal fun accentColorScheme(accent: Color, darkTheme: Boolean): ColorScheme {
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(accent.toArgb(), hsl)
     val baseHue = hsl[0]
+    val achromatic = hsl[1] < ACHROMATIC_SATURATION_THRESHOLD
+    // Светлоту ролей слегка тянем к светлоте seed, чтобы чёрный и белый давали
+    // различимые оттенки серого, но контраст пар оставался читаемым.
+    val lightnessShift = if (achromatic) (hsl[2] - 0.5f) * 0.16f else 0f
 
     fun tint(saturation: Float, lightness: Float, hueShift: Float = 0f): Color {
+        val sat = if (achromatic) 0f else saturation
+        val lit = (lightness + lightnessShift).coerceIn(0.04f, 0.96f)
         val shifted = ((baseHue + hueShift) % 360f + 360f) % 360f
-        return Color(ColorUtils.HSLToColor(floatArrayOf(shifted, saturation, lightness)))
+        return Color(ColorUtils.HSLToColor(floatArrayOf(shifted, sat, lit)))
     }
 
     return if (darkTheme) {

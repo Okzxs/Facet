@@ -65,6 +65,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.setAccentColorArgb(argb)
             settingsRepository.setCustomAccentColor(argb)
+            settingsRepository.addRecentAccentColor(argb)
         }
     }
 
@@ -76,8 +77,13 @@ class SettingsViewModel @Inject constructor(
 
     /** Применить собственный цвет; null сбрасывает собственный акцент. */
     fun setCustomAccentColor(color: Color?) {
+        val argb = color?.toArgb()
         viewModelScope.launch {
-            settingsRepository.setCustomAccentColor(color?.toArgb())
+            settingsRepository.setCustomAccentColor(argb)
+            // Сброс (null) в недавние не попадает — применять нечего.
+            if (argb != null) {
+                settingsRepository.addRecentAccentColor(argb)
+            }
         }
     }
 }

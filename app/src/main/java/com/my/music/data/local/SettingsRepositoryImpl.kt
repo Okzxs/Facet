@@ -40,6 +40,10 @@ class SettingsRepositoryImpl @Inject constructor(
         } else {
             null
         },
+        recentAccentColors = prefs.getString(KEY_RECENT_ACCENTS, null)
+            ?.split(',')
+            ?.mapNotNull { it.trim().toIntOrNull() }
+            ?: emptyList(),
     )
 
     override suspend fun setDynamicCoverColors(enabled: Boolean) {
@@ -74,11 +78,23 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { it.copy(customAccentColor = argb) }
     }
 
+    override suspend fun addRecentAccentColor(argb: Int) {
+        // Свежий цвет в начало, дубликаты убираем, хвост обрезаем до лимита.
+        val updated = (listOf(argb) + _settings.value.recentAccentColors)
+            .distinct()
+            .take(AppSettings.MAX_RECENT_ACCENTS)
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_RECENT_ACCENTS, updated.joinToString(",")).apply()
+        }
+        _settings.update { it.copy(recentAccentColors = updated) }
+    }
+
     private companion object {
         const val PREFS_NAME = "mymusic_settings"
         const val KEY_DYNAMIC_COVER_COLORS = "dynamic_cover_colors"
         const val KEY_ACCENT_COLOR = "accent_color"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_CUSTOM_ACCENT = "custom_accent_color"
+        const val KEY_RECENT_ACCENTS = "recent_accent_colors"
     }
 }
