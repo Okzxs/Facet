@@ -23,10 +23,13 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -52,7 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -66,11 +69,13 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -79,7 +84,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -106,6 +110,7 @@ import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * Вариант компоновки hero-зоны (для сравнения на устройстве, поменяй цифру и пересобери):
@@ -324,14 +329,22 @@ fun PlayerScreen(
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
     // ─── Свайп вниз для закрытия плеера ─────────────────────────────────
-    // Жест живёт на корне плеера (Scaffold занимает весь экран вместе с шапкой),
-    // поэтому работает и на пустых зонах. Скроллируемые дети (список текстов,
-    // обложка) сначала прокручиваются сами, а остаток тяги отдают родителю
-    // через nestedScroll — см. dismissNestedScrollConnection ниже.
+    // Жест живёт на корневом Box (он оборачивает весь экран вместе с шапкой)
+    // и видит касание в Initial-проходе раньше LazyColumn/verticalScroll.
+    // Поэтому свайп вниз работает и поверх текста, а вверх жест уходит списку.
     var screenHeightPx by remember { mutableFloatStateOf(0f) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
     var isDismissed by remember { mutableStateOf(false) }
+    // Границы острова управления в координатах корня: касание из этой зоны
+    // не запускает закрытие — кнопки и слайдер должны работать как обычно.
+    var controlIslandBounds by remember { mutableStateOf<Rect?>(null) }
+    // Границы самого LazyColumn с текстом: только по нему решаем,
+    // скроллить текст или тянуть плеер (шапка и пустые зоны — всегда плеер).
+    var lyricsListBounds by remember { mutableStateOf<Rect?>(null) }
+    // Состояние списка текста поднято сюда: по нему жест решает,
+    // тянуть плеер или отдать движение списку.
+    val lyricsListState = rememberLazyListState()
 
     // Пока палец на экране — смещение следует за ним без анимации (snap).
     // После отпускания animateFloatAsState плавно возвращает плеер пружиной.
@@ -370,78 +383,78 @@ fun PlayerScreen(
         Modifier
     } else {
         Modifier.pointerInput(Unit) {
-            detectVerticalDragGestures(
-                onDragStart = { isDragging = true },
-                onDragEnd = { finishPlayerDrag() },
-                onDragCancel = { settlePlayer() },
-                onVerticalDrag = { change, dragAmount ->
-                    // Вниз тянем всегда, вверх — только если плеер уже смещён:
-                    // иначе жест не должен мешать скроллу и прочим свайпам.
-                    if (dragAmount > 0f || dragOffsetPx > 0f) {
+            awaitEachGesture {
+                // Initial-проход: корень получает событие раньше списка текста,
+                // поэтому может забрать вертикальный жест себе.
+                val down = awaitFirstDown(
+                    requireUnconsumed = false,
+                    pass = PointerEventPass.Initial,
+                )
+                // Остров управления не участвует в закрытии.
+                val island = controlIslandBounds
+                if (island != null && island.contains(down.position)) {
+                    return@awaitEachGesture
+                }
+
+                var dragStarted = false
+                var totalDy = 0f
+
+                try {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.changedToUpIgnoreConsumed()) {
+                            if (dragStarted) change.consume()
+                            break
+                        }
+                        if (!change.pressed) break
+
+                        val dy = change.positionChange().y
+                        totalDy += dy
+
+                        if (!dragStarted) {
+                            if (abs(totalDy) < viewConfiguration.touchSlop) continue
+                            // Вертикаль принадлежит списку только если касание
+                            // началось внутри LazyColumn и текст уже проскроллен:
+                            // тогда вниз листаем текст, а не тянем шторку.
+                            // Шапка, обложка и пустые зоны всегда двигают плеер.
+                            val inLyricsList =
+                                lyricsListBounds?.contains(down.position) == true
+                            val lyricsAtTop = !lyricsListState.canScrollBackward
+                            if (totalDy <= 0f || (isLyricsMode && inLyricsList && !lyricsAtTop)) {
+                                return@awaitEachGesture
+                            }
+                            dragStarted = true
+                            isDragging = true
+                            // Накопленный до slop путь тоже отдаём плееру,
+                            // чтобы он не «дёргался» после порога.
+                            dragOffsetPx = (dragOffsetPx + totalDy)
+                                .coerceIn(0f, screenHeightPx)
+                        } else {
+                            dragOffsetPx = (dragOffsetPx + dy)
+                                .coerceIn(0f, screenHeightPx)
+                        }
+                        // Пока жест наш — гасим его в Initial, иначе LazyColumn
+                        // начнёт скроллиться параллельно со шторкой.
                         change.consume()
-                        dragOffsetPx = (dragOffsetPx + dragAmount)
-                            .coerceIn(0f, screenHeightPx)
                     }
-                },
-            )
+
+                    if (dragStarted) finishPlayerDrag()
+                } finally {
+                    // Отмена жеста не должна оставлять плеер висеть смещённым.
+                    if (dragStarted && !isDismissed) settlePlayer()
+                }
+            }
         }
     }
 
-    // Остров управления не участвует в закрытии: его кнопки и слайдер
-    // получают жест первыми и гасят вертикальное движение.
+    // Остров управления гасит вертикальные драги: его кнопки и слайдер
+    // не должны запускать закрытие (страховка к проверке bounds выше).
     val controlIslandSwipeGuard = Modifier.pointerInput(Unit) {
         detectVerticalDragGestures { change, _ -> change.consume() }
     }
 
-    // Список текстов (и verticalScroll обложки) сначала прокручиваются сами.
-    // Когда им некуда скроллить, остаток вертикальной дельты забирает плеер:
-    // так свайп вниз работает поверх текста, а не только в шапке.
-    val dismissNestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source != NestedScrollSource.UserInput || isDismissed) {
-                    return Offset.Zero
-                }
-                // Пока плеер смещён, сначала двигаем его, а не список:
-                // иначе контент успеет прокрутиться под возвращающейся шторкой.
-                if (dragOffsetPx <= 0f || available.y == 0f) return Offset.Zero
-                val newOffset = (dragOffsetPx - available.y)
-                    .coerceIn(0f, screenHeightPx)
-                val consumed = newOffset - dragOffsetPx
-                dragOffsetPx = newOffset
-                isDragging = true
-                return Offset(0f, consumed)
-            }
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                if (source != NestedScrollSource.UserInput || isDismissed) {
-                    return Offset.Zero
-                }
-                // available.y < 0 — палец тянет вниз, а список уже в начале.
-                val delta = available.y
-                if (delta >= 0f) return Offset.Zero
-                val newOffset = (dragOffsetPx - delta).coerceIn(0f, screenHeightPx)
-                val consumedByPlayer = newOffset - dragOffsetPx
-                dragOffsetPx = newOffset
-                isDragging = true
-                return Offset(0f, consumedByPlayer)
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (isDismissed || dragOffsetPx <= 0f) return Velocity.Zero
-                finishPlayerDrag()
-                // Гасим скорость списка: пока плеер возвращается или закрывается,
-                // текст не должен улетать отдельной анимацией.
-                return available
-            }
-        }
-    }
-
-    Scaffold(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { screenHeightPx = it.height.toFloat() }
@@ -458,215 +471,222 @@ fun PlayerScreen(
             // Непрозрачный градиент на весь экран, включая полосу под прозрачной
             // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
             .background(backgroundBrush)
-            // Список текста/обложка докладывают сюда остаток жеста, когда им
-            // некуда скроллить: так свайп вниз работает поверх текста песни.
-            .nestedScroll(dismissNestedScrollConnection)
+            // Жест висит на корне и видит касание раньше скроллируемых детей.
             .then(swipeToDismissModifier),
-        containerColor = Color.Transparent,
-        // contentColorFor(Color.Transparent) возвращает Unspecified, и весь текст
-        // внутри плеера наследовал бы его как чёрный. Задаём явно.
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            CenterAlignedTopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Назад")
-                    }
-                },
-                title = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "СЕЙЧАС ИГРАЕТ",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                letterSpacing = 1.6.sp,
-                                fontWeight = FontWeight.Bold,
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            textAlign = TextAlign.Center,
-                        )
-                        Text(
-                            text = track?.artist ?: "—",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                // Мягкое свечение именем акцента палитры
-                                shadow = Shadow(
-                                    color = playerColors.primary.copy(alpha = 0.55f),
-                                    blurRadius = 8f,
+    ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
+            // contentColorFor(Color.Transparent) возвращает Unspecified, и весь текст
+            // внутри плеера наследовал бы его как чёрный. Задаём явно.
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                CenterAlignedTopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Назад")
+                        }
+                    },
+                    title = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = "СЕЙЧАС ИГРАЕТ",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    letterSpacing = 1.6.sp,
+                                    fontWeight = FontWeight.Bold,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                textAlign = TextAlign.Center,
+                            )
+                            Text(
+                                text = track?.artist ?: "—",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    // Мягкое свечение именем акцента палитры
+                                    shadow = Shadow(
+                                        color = playerColors.primary.copy(alpha = 0.55f),
+                                        blurRadius = 8f,
+                                    ),
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {}) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "Меню")
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color.Transparent,
+                    ),
+                )
+            },
+        ) { padding ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                // ─── Фон режима текста: градиент от акцента палитры к surface ───
+                // Blur обложки убран полностью: Modifier.blur давал просадки FPS
+                // при анимациях. Градиент имитирует тонировку фона без размытия.
+                if (lyricsBackdrop > 0.01f) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = lyricsBackdrop }
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        playerColors.primary.copy(alpha = 0.45f),
+                                        playerColors.primaryContainer.copy(alpha = 0.22f),
+                                        defaultSurface,
+                                    ),
                                 ),
                             ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Меню")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent,
-                ),
-            )
-        },
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            // ─── Фон режима текста: градиент от акцента палитры к surface ───
-            // Blur обложки убран полностью: Modifier.blur давал просадки FPS
-            // при анимациях. Градиент имитирует тонировку фона без размытия.
-            if (lyricsBackdrop > 0.01f) {
+                    )
+                }
+    
+                // Спокойный scrim поверх фона: держит контраст текста на любой обложке
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .graphicsLayer { alpha = lyricsBackdrop }
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    playerColors.primary.copy(alpha = 0.45f),
-                                    playerColors.primaryContainer.copy(alpha = 0.22f),
-                                    defaultSurface,
-                                ),
-                            ),
-                        ),
+                        .graphicsLayer { alpha = 0.65f * lyricsBackdrop }
+                        .background(MaterialTheme.colorScheme.surface),
                 )
-            }
-
-            // Спокойный scrim поверх фона: держит контраст текста на любой обложке
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer { alpha = 0.65f * lyricsBackdrop }
-                    .background(MaterialTheme.colorScheme.surface),
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            ) {
-                // ─── Hero-зона: обложка-задник + передний план (обложка/тексты) ──
-                ExpressiveHeroZone(
-                    variant = PLAYER_LAYOUT_VARIANT,
-                    title = track?.title ?: "Нет трека",
-                    artist = track?.artist ?: "—",
-                    artworkUrl = track?.artworkUrl,
-                    isLiked = isLiked,
-                    isDisliked = isDisliked,
-                    canDownload = canDownload,
-                    downloadState = downloadState,
-                    isLyricsMode = isLyricsMode,
-                    lyricsResult = uiState.lyrics,
-                    isLyricsLoading = uiState.isLyricsLoading,
-                    lyricsError = uiState.lyricsError,
-                    palette = playerColors,
-                    notePainter = notePainter,
-                    placeholderPainter = placeholderPainter,
-                    currentPositionMs = { viewModel.currentPositionMs() },
-                    onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
-                    onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
-                    onToggleLike = { toggleLikeWithPermission() },
-                    onToggleDislike = { viewModel.toggleDislike() },
-                    onDownloadClick = { viewModel.toggleDownload() },
-                    // В режиме обложки hero-зона занимает ровно высоту своего контента —
-                    // иначе между карточкой трека и островом управления образуется
-                    // пустая «дыра». В режиме текстов список требует ограниченной
-                    // высоты, поэтому там сохраняем weight(1f).
+    
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (isLyricsMode) {
-                                Modifier.weight(1f)
-                            } else {
-                                Modifier
-                            },
-                        ),
-                )
-
-                // ─── Подсказка про геопозицию для «Воспоминаний» ─────────────
-                if (!hasLocationPermission) {
-                    LocationPermissionBanner(
-                        actionLabel = if (permissionRequested) "Настройки" else "Разрешить",
-                        onAction = { onPermissionBannerAction() },
+                        .fillMaxSize()
+                        .padding(padding),
+                ) {
+                    // ─── Hero-зона: обложка-задник + передний план (обложка/тексты) ──
+                    ExpressiveHeroZone(
+                        variant = PLAYER_LAYOUT_VARIANT,
+                        title = track?.title ?: "Нет трека",
+                        artist = track?.artist ?: "—",
+                        artworkUrl = track?.artworkUrl,
+                        isLiked = isLiked,
+                        isDisliked = isDisliked,
+                        canDownload = canDownload,
+                        downloadState = downloadState,
+                        isLyricsMode = isLyricsMode,
+                        lyricsResult = uiState.lyrics,
+                        isLyricsLoading = uiState.isLyricsLoading,
+                        lyricsError = uiState.lyricsError,
+                        lyricsListState = lyricsListState,
+                        palette = playerColors,
+                        notePainter = notePainter,
+                        placeholderPainter = placeholderPainter,
+                        currentPositionMs = { viewModel.currentPositionMs() },
+                        onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
+                        onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
+                        onLyricsListBoundsChanged = { lyricsListBounds = it },
+                        onToggleLike = { toggleLikeWithPermission() },
+                        onToggleDislike = { viewModel.toggleDislike() },
+                        onDownloadClick = { viewModel.toggleDownload() },
+                        // В режиме обложки hero-зона занимает ровно высоту своего контента —
+                        // иначе между карточкой трека и островом управления образуется
+                        // пустая «дыра». В режиме текстов список требует ограниченной
+                        // высоты, поэтому там сохраняем weight(1f).
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (isLyricsMode) {
+                                    Modifier.weight(1f)
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    )
+    
+                    // ─── Подсказка про геопозицию для «Воспоминаний» ─────────────
+                    if (!hasLocationPermission) {
+                        LocationPermissionBanner(
+                            actionLabel = if (permissionRequested) "Настройки" else "Разрешить",
+                            onAction = { onPermissionBannerAction() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 6.dp),
+                        )
+                    }
+    
+                    // ─── Сообщение об ошибке (скрывается, как только плеер в STATE_READY) ──
+                    val isPlayerReady = playerState.playbackState == androidx.media3.common.Player.STATE_READY
+                    val errorMessage = if (isPlayerReady) null else (uiState.error ?: playerState.error)
+    
+                    if (errorMessage != null) {
+                        Text(
+                            text = "⚠️ $errorMessage",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
+                        )
+                    }
+    
+                    // ─── Плавающий остров управления ─────────────────────────
+                    PlayerControlIsland(
+                        isPlaying = playerState.isPlaying,
+                        isBuffering = isBuffering,
+                        playbackSpeed = playerState.playbackSpeed,
+                        isLyricsActive = isLyricsMode,
+                        containerColor = surfaceColor.copy(alpha = 0.94f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        accentColor = playerColors.primary,
+                        onAccentColor = playerColors.onPrimary,
+                        lyricsActiveContainer = playerColors.primaryContainer,
+                        lyricsActiveContent = playerColors.onPrimaryContainer,
+                        borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                        onPlayPause = { viewModel.togglePlayPause() },
+                        onPrev = { viewModel.playPrevious() },
+                        onNext = { viewModel.playNext() },
+                        onSpeedClick = { viewModel.cyclePlaybackSpeed() },
+                        onQueueClick = { showQueueSheet = true },
+                        onLyricsClick = {
+                            val nextMode = !isLyricsMode
+                            isLyricsMode = nextMode
+                            if (nextMode) {
+                                viewModel.loadLyricsIfNeeded(track)
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
-                            .padding(bottom = 6.dp),
-                    )
-                }
-
-                // ─── Сообщение об ошибке (скрывается, как только плеер в STATE_READY) ──
-                val isPlayerReady = playerState.playbackState == androidx.media3.common.Player.STATE_READY
-                val errorMessage = if (isPlayerReady) null else (uiState.error ?: playerState.error)
-
-                if (errorMessage != null) {
-                    Text(
-                        text = "⚠️ $errorMessage",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
-                    )
-                }
-
-                // ─── Плавающий остров управления ─────────────────────────
-                PlayerControlIsland(
-                    isPlaying = playerState.isPlaying,
-                    isBuffering = isBuffering,
-                    playbackSpeed = playerState.playbackSpeed,
-                    isLyricsActive = isLyricsMode,
-                    containerColor = surfaceColor.copy(alpha = 0.94f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    accentColor = playerColors.primary,
-                    onAccentColor = playerColors.onPrimary,
-                    lyricsActiveContainer = playerColors.primaryContainer,
-                    lyricsActiveContent = playerColors.onPrimaryContainer,
-                    borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                    onPlayPause = { viewModel.togglePlayPause() },
-                    onPrev = { viewModel.playPrevious() },
-                    onNext = { viewModel.playNext() },
-                    onSpeedClick = { viewModel.cyclePlaybackSpeed() },
-                    onQueueClick = { showQueueSheet = true },
-                    onLyricsClick = {
-                        val nextMode = !isLyricsMode
-                        isLyricsMode = nextMode
-                        if (nextMode) {
-                            viewModel.loadLyricsIfNeeded(track)
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        // Запас под выступающий язычок «Текст» и воздух до текстов/обложки
-                        .padding(top = 30.dp)
-                        // Кнопки и слайдер не должны запускать закрытие свайпом.
-                        .then(controlIslandSwipeGuard),
-                ) {
-                    PlayerProgressSection(
-                        isPlaying = playerState.isPlaying,
-                        isBuffering = isBuffering,
-                        isResolving = uiState.isResolving,
-                        trackId = track?.id,
-                        durationMs = track?.durationMs ?: 0L,
-                        primaryColor = playerColors.primary,
-                        currentFraction = { viewModel.currentFraction() },
-                        currentPositionMs = { viewModel.currentPositionMs() },
-                        bufferedFraction = { viewModel.bufferedFraction() },
-                        onSeek = { fraction -> viewModel.seekTo(fraction) },
-                    )
-                }
-
-                // В режиме обложки hero-зона оборачивает контент, и остаток высоты
-                // забирает этот Spacer: карточка и остров идут плотно, без «дыры».
-                // В режиме текстов weight(1f) уже занят списком — второй weight делил
-                // бы остаток пополам, задирал остров в середину и оставлял дыру внизу.
-                if (!isLyricsMode) {
-                    Spacer(Modifier.weight(1f))
+                            // Запоминаем реальные границы острова: корневой жест
+                            // игнорирует касания из этой зоны (кнопки и слайдер).
+                            .onGloballyPositioned { controlIslandBounds = it.boundsInRoot() }
+                            // Запас под выступающий язычок «Текст» и воздух до текстов/обложки
+                            .padding(top = 30.dp)
+                            // Кнопки и слайдер не должны запускать закрытие свайпом.
+                            .then(controlIslandSwipeGuard),
+                    ) {
+                        PlayerProgressSection(
+                            isPlaying = playerState.isPlaying,
+                            isBuffering = isBuffering,
+                            isResolving = uiState.isResolving,
+                            trackId = track?.id,
+                            durationMs = track?.durationMs ?: 0L,
+                            primaryColor = playerColors.primary,
+                            currentFraction = { viewModel.currentFraction() },
+                            currentPositionMs = { viewModel.currentPositionMs() },
+                            bufferedFraction = { viewModel.bufferedFraction() },
+                            onSeek = { fraction -> viewModel.seekTo(fraction) },
+                        )
+                    }
+    
+                    // В режиме обложки hero-зона оборачивает контент, и остаток высоты
+                    // забирает этот Spacer: карточка и остров идут плотно, без «дыры».
+                    // В режиме текстов weight(1f) уже занят списком — второй weight делил
+                    // бы остаток пополам, задирал остров в середину и оставлял дыру внизу.
+                    if (!isLyricsMode) {
+                        Spacer(Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -760,12 +780,14 @@ private fun ExpressiveHeroZone(
     lyricsResult: LyricsResult?,
     isLyricsLoading: Boolean,
     lyricsError: String?,
+    lyricsListState: LazyListState,
     palette: PlayerDynamicColors,
     notePainter: Painter,
     placeholderPainter: Painter,
     currentPositionMs: () -> Long,
     onSeekToLine: (Long) -> Unit,
     onRetryLyrics: () -> Unit,
+    onLyricsListBoundsChanged: (Rect?) -> Unit,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
@@ -912,12 +934,14 @@ private fun ExpressiveHeroZone(
                     lyricsResult = lyricsResult,
                     isLoading = isLyricsLoading,
                     error = lyricsError,
+                    listState = lyricsListState,
                     highlightColor = palette.primary,
                     notePainter = notePainter,
                     placeholderPainter = placeholderPainter,
                     currentPositionMs = currentPositionMs,
                     onSeekToLine = onSeekToLine,
                     onRetry = onRetryLyrics,
+                    onListBoundsChanged = onLyricsListBoundsChanged,
                 )
             } else {
                 CoverForeground(
@@ -1302,12 +1326,14 @@ private fun LyricsForeground(
     lyricsResult: LyricsResult?,
     isLoading: Boolean,
     error: String?,
+    listState: LazyListState,
     highlightColor: Color,
     notePainter: Painter,
     placeholderPainter: Painter,
     currentPositionMs: () -> Long,
     onSeekToLine: (Long) -> Unit,
     onRetry: () -> Unit,
+    onListBoundsChanged: (Rect?) -> Unit,
 ) {
     val miniShape = RoundedCornerShape(13.dp)
     val onSurface = MaterialTheme.colorScheme.onSurface
@@ -1369,10 +1395,12 @@ private fun LyricsForeground(
                 lyricsResult = lyricsResult,
                 isLoading = isLoading,
                 error = error,
+                listState = listState,
                 highlightColor = highlightColor,
                 currentPositionMs = currentPositionMs,
                 onSeekToLine = onSeekToLine,
                 onRetry = onRetry,
+                onListBoundsChanged = onListBoundsChanged,
             )
         }
 
@@ -1434,12 +1462,13 @@ private fun LyricsListView(
     lyricsResult: LyricsResult?,
     isLoading: Boolean,
     error: String?,
+    listState: LazyListState,
     highlightColor: Color,
     currentPositionMs: () -> Long,
     onSeekToLine: (Long) -> Unit,
     onRetry: () -> Unit,
+    onListBoundsChanged: (Rect?) -> Unit,
 ) {
-    val listState = rememberLazyListState()
     var activeIndex by remember { mutableIntStateOf(-1) }
     var activeProgress by remember { mutableFloatStateOf(0f) }
     var hasCentered by remember { mutableStateOf(false) }
@@ -1533,11 +1562,19 @@ private fun LyricsListView(
             }
 
             lyricsResult != null && lyricsResult.lines.isNotEmpty() -> {
+                // Список ушёл из композиции (загрузка/ошибка/смена режима) —
+                // сбрасываем его границы, иначе жест продолжит считать их живыми.
+                DisposableEffect(Unit) {
+                    onDispose { onListBoundsChanged(null) }
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .onSizeChanged { viewportHeightPx = it.height },
+                        .onSizeChanged { viewportHeightPx = it.height }
+                        // Корневой жест сверяет точку касания с этой областью:
+                        // только внутри неё вертикаль принадлежит списку.
+                        .onGloballyPositioned { onListBoundsChanged(it.boundsInRoot()) },
                     // Воздух до шапки и до нижней градиентной маски над контролами
                     contentPadding = PaddingValues(
                         top = if (lyricsResult.isSynced) 64.dp else 28.dp,

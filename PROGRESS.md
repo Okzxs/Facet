@@ -1,6 +1,15 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 28.10.2026 (сессия 37)
+## Последнее обновление: 28.10.2026 (сессия 38)
+
+## Свайп плеера: перехват первого касания вместо nestedScroll — сессия 38
+- `NestedScrollConnection` удалён полностью: `dismissNestedScrollConnection`, `Modifier.nestedScroll()`, корневой `detectVerticalDragGestures` и импорты `NestedScrollConnection`/`NestedScrollSource`/`nestedScroll`/`Velocity`/`Offset`. Причина: на тексте и пустых зонах жест не срабатывал.
+- Новый жест — `Modifier.pointerInput(Unit) { awaitEachGesture { ... } }` на корневом `Box`, который оборачивает `Scaffold` всего плеера. `awaitFirstDown(pass = PointerEventPass.Initial)` получает касание раньше `LazyColumn`/`verticalScroll`; при своём жесте изменения потребляются в Initial-проходе, поэтому drag списка отменяется (`awaitPointerSlopOrCancellation` проверяет `isConsumed`).
+- Решение о жесте принимается по накопленному `totalDy`: вверх (`totalDy <= 0`) всегда отдаётся списку/обложке; вниз двигает плеер, кроме касания внутри `LazyColumn` при уже проскролленном тексте (`isLyricsMode && inLyricsList && !lyricsListState.canScrollBackward`). Шапка, обложка и пустые зоны двигают плеер даже при проскролленном тексте.
+- Области определяются реальными границами: `controlIslandBounds` и `lyricsListBounds` через `onGloballyPositioned { it.boundsInRoot() }`; касание из острова управления игнорируется. `LazyListState` поднят из `LyricsListView` в `PlayerScreen` и проброшен через `ExpressiveHeroZone` → `LyricsForeground`; границы списка передаются callback'ом `onListBoundsChanged` и сбрасываются в `null` через `DisposableEffect`, когда список уходит из композиции.
+- Остров управления сохраняет функциональный guard `detectVerticalDragGestures { change, _ -> change.consume() }` (пустой `pointerInput` ничего не блокирует): кнопки и слайдер не запускают закрытие.
+- Порог `DISMISS_THRESHOLD = 0.45f` сохранён: `finishPlayerDrag()` закрывает при `dragOffsetPx > screenHeightPx * 0.45f`, иначе `settlePlayer()` возвращает пружиной; отмена жеста в `finally` также возвращает плеер.
+- Тесты: 22 suites / 148 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 635 309 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
 ## Свайп плеера: порог 45% и закрытие поверх текстов — сессия 37
 - Порог закрытия снижен с 85% до 45% высоты экрана (`DISMISS_THRESHOLD = 0.45f`). Логика отпускания вынесена в `finishPlayerDrag()` и используется обоими путями: жестом на свободной зоне и nested-scroll'ом списка текста.
