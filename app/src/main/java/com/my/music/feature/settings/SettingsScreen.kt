@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -305,31 +307,43 @@ fun SettingsScreen(
                 )
 
                 // ─── Акцентный цвет ───
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
-                ) {
-                    Text(
-                        text = "Акцентный цвет",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        text = "Палитра и «Свой цвет» перекрывают системные цвета " +
-                            "на всех версиях Android. Сброс — в диалоге «Свой цвет».",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp)
+                            .padding(top = 16.dp),
+                    ) {
+                        Text(
+                            text = "Акцентный цвет",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = "Выберите цвет из палитры или нажмите на круг с палитрой " +
+                                "в конце списка, чтобы задать свой RGB",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.height(16.dp))
                     // Готовые кружки и «Свой цвет» пишут в одно поле customAccentColor:
                     // оно имеет высший приоритет в теме и работает поверх Dynamic Color.
+                    // Список скроллится горизонтально: на узких экранах кружки сохраняют
+                    // размер вместо сплющивания, а крайние Spacer держат отступ от границ.
                     val customArgb = settings.customAccentColor
                     val isPresetSelected = AccentOptions.any { it.color.toArgb() == customArgb }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Spacer(Modifier.width(8.dp))
                         AccentOptions.forEach { option ->
                             AccentDot(
                                 option = option,
@@ -337,12 +351,14 @@ fun SettingsScreen(
                                 onClick = { viewModel.setAccentColor(option.color) },
                             )
                         }
-                        CustomAccentDot(
+                        CustomColorDot(
                             color = customArgb?.let { Color(it) },
                             selected = customArgb != null && !isPresetSelected,
                             onClick = { showCustomColorDialog = true },
                         )
+                        Spacer(Modifier.width(8.dp))
                     }
+                    Spacer(Modifier.height(16.dp))
                 }
             }
         }
@@ -464,11 +480,12 @@ private fun SettingsHeader(onBack: () -> Unit) {
 }
 
 /**
- * Кружок «Свой цвет»: открывает RGB-диалог. Показывает текущий собственный цвет
- * или значок палитры, если цвет ещё не выбран. Работает на всех версиях Android.
+ * Кружок «Свой цвет» в конце списка акцентов: радужный RGB-градиент с иконкой
+ * палитры, а после применения собственного цвета — заливка этим цветом с галочкой.
+ * Размер и зона нажатия как у готовых кружков; открывает RGB-диалог со слайдерами.
  */
 @Composable
-private fun CustomAccentDot(
+private fun CustomColorDot(
     color: Color?,
     selected: Boolean,
     onClick: () -> Unit,
@@ -476,26 +493,41 @@ private fun CustomAccentDot(
     val dotSize by animateDpAsState(
         targetValue = if (selected) 40.dp else 34.dp,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
-        label = "customDotSize",
+        label = "customColorDotSize",
     )
+    // Замкнутый радужный контур: первый и последний цвет совпадают, чтобы стык не мерцал.
+    val rainbowBrush = remember {
+        Brush.sweepGradient(
+            listOf(
+                Color(0xFFE5484D),
+                Color(0xFFF5A524),
+                Color(0xFF43A047),
+                Color(0xFF00A2A9),
+                Color(0xFF3F6BD8),
+                Color(0xFF8B5CF6),
+                Color(0xFFE5484D),
+            ),
+        )
+    }
 
     Box(
         modifier = Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            ),
+            // Штатная рябь вместо indication = null: круг должен читаться как кнопка.
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
                 .size(dotSize)
                 .clip(CircleShape)
-                .background(
-                    color ?: MaterialTheme.colorScheme.surfaceContainerHighest,
+                .then(
+                    if (selected && color != null) {
+                        Modifier.background(color)
+                    } else {
+                        Modifier.background(rainbowBrush)
+                    },
                 )
                 .border(
                     width = 2.dp,
@@ -508,21 +540,16 @@ private fun CustomAccentDot(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            if (selected) {
-                Icon(
-                    imageVector = Icons.Rounded.Check,
-                    contentDescription = "Свой цвет выбран",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
-            } else if (color == null) {
-                Icon(
-                    imageVector = Icons.Rounded.Palette,
-                    contentDescription = "Свой цвет",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+            Icon(
+                imageVector = if (selected) Icons.Rounded.Check else Icons.Rounded.Palette,
+                contentDescription = if (selected) {
+                    "Свой цвет выбран, изменить"
+                } else {
+                    "Задать свой RGB-цвет"
+                },
+                tint = Color.White,
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }
