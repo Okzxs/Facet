@@ -5,12 +5,13 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,9 +44,13 @@ private val DockMiniHeight = 56.dp
 /**
  * Единый нижний док: mini-player и навигация в одном плавающем объекте.
  *
+ * Док не растягивается на всю ширину экрана: по бокам остаётся по 24dp,
+ * снизу — 12dp воздуха над системной панелью навигации, поэтому поверхность
+ * читается как отдельный островок, а не как прибитая к краю плита.
+ *
  * Ряд навигации закреплён у нижней кромки и не участвует в анимации мини-плеера.
- * Фоновая поверхность растёт отдельно, а строка мини-плеера раскрывается
- * через [AnimatedVisibility] — высота всего дока вместе с детьми не анимируется.
+ * Фоновая поверхность растёт отдельно, а строка мини-плеера выезжает из-под
+ * навигации через [AnimatedVisibility] — высота всего дока с детьми не анимируется.
  */
 @Composable
 fun ExpressiveBottomDock(
@@ -80,8 +86,10 @@ fun ExpressiveBottomDock(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            // Инсет системной навигации + 12dp визуального зазора: док
+            // не прилипает к полосе жестов и выглядит парящим.
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 12.dp),
     ) {
         DockBackground(
             reveal = reveal,
@@ -96,34 +104,45 @@ fun ExpressiveBottomDock(
                 .matchParentSize()
                 .clip(shape),
         ) {
-            AnimatedVisibility(
-                visible = track != null,
-                enter = expandVertically(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMedium,
-                    ),
-                    expandFrom = Alignment.Bottom,
-                ) + fadeIn(animationSpec = tween(durationMillis = 160)),
-                exit = shrinkVertically(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMedium,
-                    ),
-                    shrinkTowards = Alignment.Bottom,
-                ) + fadeOut(animationSpec = tween(durationMillis = 120)),
+            // Окно мини-плеера: ровно 56dp над навигацией. Собственный clip
+            // не даёт строке проехать поверх иконок, пока она выезжает из-под них.
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = DockNavHeight),
+                    .padding(bottom = DockNavHeight)
+                    .fillMaxWidth()
+                    .height(DockMiniHeight)
+                    .clipToBounds(),
             ) {
-                if (miniTrack != null) {
-                    MiniPlayerRow(
-                        track = miniTrack,
-                        isPlaying = playerState.isPlaying,
-                        onExpandClick = onExpandClick,
-                        onPlayPauseClick = { viewModel.togglePlayPause() },
-                        currentFraction = { viewModel.currentFraction() },
-                    )
+                AnimatedVisibility(
+                    visible = track != null,
+                    // Строка выезжает из-под ряда навигации, а не разворачивается
+                    // на месте: появление читается как движение всего дока.
+                    enter = slideInVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                        initialOffsetY = { height -> height },
+                    ) + fadeIn(animationSpec = tween(durationMillis = 160)),
+                    exit = slideOutVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                        targetOffsetY = { height -> height },
+                    ) + fadeOut(animationSpec = tween(durationMillis = 120)),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    if (miniTrack != null) {
+                        MiniPlayerRow(
+                            track = miniTrack,
+                            isPlaying = playerState.isPlaying,
+                            onExpandClick = onExpandClick,
+                            onPlayPauseClick = { viewModel.togglePlayPause() },
+                            currentFraction = { viewModel.currentFraction() },
+                        )
+                    }
                 }
             }
 

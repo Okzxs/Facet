@@ -1,6 +1,13 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 28.10.2026 (сессия 38)
+## Последнее обновление: 28.10.2026 (сессия 39)
+
+## Плавающий нижний док — сессия 39
+- `ExpressiveBottomDock`: боковые отступы увеличены с 16dp до 24dp, снизу — `navigationBarsPadding()` + 12dp (было 8dp), сверху осталось 8dp. Фон `surfaceContainerHigh` больше не тянется до краёв экрана и не прилипает к системной панели — док читается как отдельный островок.
+- Радиус 30dp, обводка 1dp и тень 8dp не менялись; `DockNavHeight = 64dp`, `DockMiniHeight = 56dp`, обложка 44dp и кнопка Play 48dp сохранены — на ширине 320–360dp контент помещается, навигация по-прежнему делится через `weight(1f)`.
+- Анимация мини-плеера переведена с `expandVertically`/`shrinkVertically` на `slideInVertically`/`slideOutVertically` + fade: строка выезжает из-под ряда навигации. Добавлено отдельное окно высотой 56dp над навигацией с `clipToBounds()`, чтобы во время выезда строка не рисовалась поверх иконок; фон дока растёт через `reveal` (spring NoBouncy/Medium), поэтому высота и slide синхронизированы.
+- `LocalBottomDockHeight` автоматически вырос на 4dp (нижний padding), экраны уже используют его в `contentPadding` — правок не потребовалось.
+- Тесты: 22 suites / 148 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 635 309 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
 ## Свайп плеера: перехват первого касания вместо nestedScroll — сессия 38
 - `NestedScrollConnection` удалён полностью: `dismissNestedScrollConnection`, `Modifier.nestedScroll()`, корневой `detectVerticalDragGestures` и импорты `NestedScrollConnection`/`NestedScrollSource`/`nestedScroll`/`Velocity`/`Offset`. Причина: на тексте и пустых зонах жест не срабатывал.
