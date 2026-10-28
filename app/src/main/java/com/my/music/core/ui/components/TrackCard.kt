@@ -1,15 +1,22 @@
 package com.my.music.core.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +38,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
@@ -44,6 +54,9 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.my.music.data.model.Track
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.sin
 
 /**
  * Переиспользуемая карточка трека — горизонтальный layout.
@@ -55,6 +68,9 @@ fun TrackCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isDownloaded: Boolean = false,
+    isPlaying: Boolean = false,
+    artworkSize: Int = 56,
+    artworkCornerDp: Int = 12,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -62,10 +78,11 @@ fun TrackCard(
     val shape = RoundedCornerShape(20.dp)
 
     val containerColor by animateColorAsState(
-        targetValue = if (pressed) {
-            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.62f)
-        } else {
-            Color.Transparent
+        targetValue = when {
+            pressed -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.62f)
+            // Играющий трек подсвечен в списке: строка тонирована контейнером акцента.
+            isPlaying -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 180),
         label = "trackCardContainer",
@@ -123,6 +140,8 @@ fun TrackCard(
                     TrackArtwork(
                         url = track.artworkUrl,
                         contentDescription = "${track.title} обложка",
+                        size = artworkSize,
+                        cornerDp = artworkCornerDp,
                     )
                     // Значок «скачано» — маленькая галочка поверх обложки
                     if (isDownloaded) {
@@ -143,9 +162,57 @@ fun TrackCard(
                     }
                 }
             },
-            trailingContent = trailingContent,
+            trailingContent = if (isPlaying || trailingContent != null) {
+                {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isPlaying) {
+                            PlayingEqualizerIcon(
+                                modifier = Modifier.padding(end = 10.dp),
+                            )
+                        }
+                        trailingContent?.invoke()
+                    }
+                }
+            } else {
+                null
+            },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         )
+    }
+}
+
+/**
+ * Эквалайзер из трёх полосок для играющего трека: высоты бегут по кругу
+ * через infiniteTransition, отрисовка на Canvas без лишних рекомпозиций.
+ */
+@Composable
+fun PlayingEqualizerIcon(modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.primary
+    val transition = rememberInfiniteTransition(label = "equalizer")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "equalizerPhase",
+    )
+    Canvas(modifier.size(16.dp)) {
+        val barWidth = size.width / 5f
+        val step = barWidth * 2f
+        for (index in 0..2) {
+            val t = (phase + index * 0.33f) % 1f
+            // sin/PI работают в Double — явно сужаем к Float для геометрии Canvas.
+            val wave = abs(sin(t * 2.0 * PI)).toFloat()
+            val barHeight = size.height * (0.35f + 0.65f * wave)
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(index * step, size.height - barHeight),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(barWidth / 2f),
+            )
+        }
     }
 }
 
@@ -155,8 +222,9 @@ fun TrackArtwork(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     size: Int = 56,
+    cornerDp: Int = 12,
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(cornerDp.dp)
     val context = LocalContext.current
     val surfaceColor = MaterialTheme.colorScheme.surfaceVariant
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.my.music.core.download.DownloadManager
 import com.my.music.core.download.DownloadMessages
 import com.my.music.core.download.DownloadState
+import com.my.music.core.player.PlayerController
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
@@ -28,6 +29,7 @@ class LibraryViewModel @Inject constructor(
     private val likedTracksRepository: LikedTracksRepository,
     downloadRepository: DownloadRepository,
     private val downloadManager: DownloadManager,
+    playerController: PlayerController,
 ) : ViewModel() {
 
     val likedTracks: StateFlow<List<Track>> = likedTracksRepository.getLikedTracks()
@@ -35,6 +37,16 @@ class LibraryViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList(),
+        )
+
+    /** Id играющего трека — строка в списке подсвечивается и показывает эквалайзер. */
+    val currentTrackId: StateFlow<String?> = playerController.state
+        .map { it.currentTrack?.id }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null,
         )
 
     /** Идентификаторы скачанных треков — для бейджей «офлайн». */

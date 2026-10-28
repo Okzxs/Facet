@@ -2,6 +2,7 @@ package com.my.music.feature.player
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -16,12 +17,14 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -62,6 +65,8 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -95,6 +100,7 @@ import com.my.music.core.ui.theme.rememberPlayerDynamicColors
 import com.my.music.data.model.LyricsResult
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -110,6 +116,12 @@ private const val PLAYER_LAYOUT_VARIANT = 1
 private const val DOWNLOAD_FAILED_MESSAGE = "Не удалось скачать трек (доступен только онлайн)"
 
 private const val FIND_ON_YOUTUBE_ACTION = "Найти"
+
+/** Порог закрытия свайпом вниз: доля высоты экрана, пройденная пальцем. */
+private const val DISMISS_PROGRESS_THRESHOLD = 0.20f
+
+/** Порог закрытия свайпом вниз: скорость пальца в пикселях в секунду. */
+private const val DISMISS_VELOCITY_PX_PER_SEC = 1200f
 
 /** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
@@ -308,10 +320,97 @@ fun PlayerScreen(
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
+    // ─── Свайп вниз для закрытия плеера ─────────────────────────────────
+    // Жест живёт только в верхней зоне (шапка и обложка в режиме обложки):
+    // скролл текстов и шторка очереди оставляют свои жесты себе.
+    var screenHeightPx by remember { mutableFloatStateOf(0f) }
+    var dismissDragPx by remember { mutableFloatStateOf(0f) }
+    var isDismissing by remember { mutableStateOf(false) }
+    var springBackJob by remember { mutableStateOf<Job?>(null) }
+    val dragVelocityTracker = remember { VelocityTracker() }
+
+    fun springDismissBack() {
+        springBackJob = snackbarScope.launch {
+            Animatable(dismissDragPx).animateTo(
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ) { dismissDragPx = value }
+        }
+    }
+
+    fun finishDismiss() {
+        // Дальше экран уезжает штатным popExit-слайдом NavHost: второй слайд
+        // здесь дал бы пустую паузу между исчезновением контента и фона.
+        if (isDismissing) return
+        isDismissing = true
+        onBack()
+    }
+
+    val swipeToDismissModifier = if (showQueueSheet || isDismissing) {
+        Modifier
+    } else {
+        Modifier.pointerInput(Unit) {
+            detectVerticalDragGestures(
+                onDragStart = {
+                    // Новая попытка отменяет незавершённый возврат пружиной.
+                    springBackJob?.cancel()
+                    dragVelocityTracker.resetTracking()
+                },
+                onDragEnd = {
+                    val progress = if (screenHeightPx > 0f) {
+                        dismissDragPx / screenHeightPx
+                    } else {
+                        0f
+                    }
+                    // Скорость считаем по последним событиям, а не по одному кадру:
+                    // случайный рывок в конце жеста не закроет плеер.
+                    val velocityY = dragVelocityTracker.calculateVelocity().y
+                    if (progress > DISMISS_PROGRESS_THRESHOLD ||
+                        velocityY > DISMISS_VELOCITY_PX_PER_SEC
+                    ) {
+                        finishDismiss()
+                    } else {
+                        springDismissBack()
+                    }
+                },
+                onDragCancel = { springDismissBack() },
+                onVerticalDrag = { change, dragAmount ->
+                    // Только вниз: свайп вверх не должен бороться с прочими жестами.
+                    if (dragAmount > 0f) {
+                        dragVelocityTracker.addPosition(change.uptimeMillis, change.position)
+                        dismissDragPx = (dismissDragPx + dragAmount)
+                            .coerceIn(0f, screenHeightPx * 0.6f)
+                    }
+                },
+            )
+        }
+    }
+
+    // Пока идёт pop-слайд после свайпа, системный «назад» не должен popping'ать дважды.
+    BackHandler(enabled = isDismissing) { }
+
+    // Контент уезжает и тает, а градиентный фон остаётся на месте:
+    // при перетаскивании под плеером не проглядывает пустое окно.
+    val dismissLayer = Modifier.graphicsLayer {
+        translationY = dismissDragPx
+        val progress = if (screenHeightPx > 0f) {
+            (dismissDragPx / screenHeightPx).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        alpha = 1f - 0.30f * progress
+    }
+
     Scaffold(
         modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { screenHeightPx = it.height.toFloat() }
             // Непрозрачный градиент на весь экран, включая полосу под прозрачной
             // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
+            // Фон не участвует в свайпе — уезжает только контент (см. dismissLayer).
             .background(backgroundBrush),
         containerColor = Color.Transparent,
         // contentColorFor(Color.Transparent) возвращает Unspecified, и весь текст
@@ -320,8 +419,11 @@ fun PlayerScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
+                // Шапка — верхняя зона свайпа: жест закрытия не трогает списки.
+                // dismissLayer двигает и гасит её вместе с контентом.
+                modifier = swipeToDismissModifier.then(dismissLayer),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { if (!isDismissing) onBack() }) {
                         Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Назад")
                     }
                 },
@@ -369,7 +471,9 @@ fun PlayerScreen(
         },
     ) { padding ->
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .then(dismissLayer),
         ) {
             // ─── Фон режима текста: градиент от акцента палитры к surface ───
             // Blur обложки убран полностью: Modifier.blur давал просадки FPS
@@ -434,7 +538,9 @@ fun PlayerScreen(
                             if (isLyricsMode) {
                                 Modifier.weight(1f)
                             } else {
-                                Modifier
+                                // В режиме обложки hero-зона принимает жест закрытия;
+                                // в режиме текстов список скроллится, жест остаётся в шапке.
+                                swipeToDismissModifier
                             },
                         ),
                 )

@@ -144,7 +144,19 @@ fun AppNavGraph() {
                     SearchScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
                 }
                 composable(Screen.Library.route) {
-                    LibraryScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
+                    LibraryScreen(
+                        onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        onOpenSearch = {
+                            navController.navigate(Screen.Search.route) {
+                                // Вкладки сохраняем: поиск открывается поверх стартового графа
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                    )
                 }
                 composable(Screen.Wave.route) {
                     WaveScreen()

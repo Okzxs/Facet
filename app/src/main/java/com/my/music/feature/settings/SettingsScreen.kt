@@ -62,6 +62,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -69,6 +70,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.my.music.BuildConfig
 import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.theme.AccentOption
 import com.my.music.core.ui.theme.AccentOptions
@@ -120,6 +122,7 @@ fun SettingsScreen(
         Text(
             text = "ГЕОПОЗИЦИЯ",
             style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.4.sp,
             ),
@@ -132,8 +135,15 @@ fun SettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-            shape = RoundedCornerShape(24.dp),
+                .padding(horizontal = 20.dp)
+                // Тонкий контур: граница карточки читается на обеих темах,
+                // не споря с заливкой surfaceContainerLow.
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                    shape = RoundedCornerShape(30.dp),
+                ),
+            shape = RoundedCornerShape(30.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
@@ -186,7 +196,7 @@ fun SettingsScreen(
                             LocationPermissions.openAppSettings(context)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.height(44.dp),
                     shape = RoundedCornerShape(16.dp),
                 ) {
                     Text("Проверить разрешения")
@@ -203,11 +213,12 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
 
         Text(
             text = "ОФОРМЛЕНИЕ",
             style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.4.sp,
             ),
@@ -220,8 +231,15 @@ fun SettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-            shape = RoundedCornerShape(24.dp),
+                .padding(horizontal = 20.dp)
+                // Тонкий контур: граница карточки читается на обеих темах,
+                // не споря с заливкой surfaceContainerLow.
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                    shape = RoundedCornerShape(30.dp),
+                ),
+            shape = RoundedCornerShape(30.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Column {
@@ -391,11 +409,12 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
 
         Text(
             text = "МОЯ ВОЛНА",
             style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.4.sp,
             ),
@@ -408,8 +427,15 @@ fun SettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-            shape = RoundedCornerShape(24.dp),
+                .padding(horizontal = 20.dp)
+                // Тонкий контур: граница карточки читается на обеих темах,
+                // не споря с заливкой surfaceContainerLow.
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                    shape = RoundedCornerShape(30.dp),
+                ),
+            shape = RoundedCornerShape(30.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Row(
@@ -448,7 +474,18 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
+
+        // Футер с версией сборки: читается как подпись экрана, а не как элемент списка.
+        Text(
+            text = "MyMusic · версия ${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+        )
     }
 
     if (showCustomColorDialog) {
