@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -65,6 +66,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -75,6 +79,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -115,8 +120,8 @@ private const val DOWNLOAD_FAILED_MESSAGE = "Не удалось скачать 
 
 private const val FIND_ON_YOUTUBE_ACTION = "Найти"
 
-/** Порог закрытия свайпом вниз: 85% высоты экрана. */
-private const val DISMISS_THRESHOLD = 0.85f
+/** Порог закрытия свайпом вниз: 45% высоты экрана. */
+private const val DISMISS_THRESHOLD = 0.45f
 
 /** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
@@ -319,8 +324,10 @@ fun PlayerScreen(
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
     // ─── Свайп вниз для закрытия плеера ─────────────────────────────────
-    // Жест работает на всей площади плеера, кроме острова управления:
-    // список текстов и слайдер оставляют себе свои вертикальные/горизонтальные жесты.
+    // Жест живёт на корне плеера (Scaffold занимает весь экран вместе с шапкой),
+    // поэтому работает и на пустых зонах. Скроллируемые дети (список текстов,
+    // обложка) сначала прокручиваются сами, а остаток тяги отдают родителю
+    // через nestedScroll — см. dismissNestedScrollConnection ниже.
     var screenHeightPx by remember { mutableFloatStateOf(0f) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
@@ -349,20 +356,23 @@ fun PlayerScreen(
         onBack()
     }
 
+    /** Отпускание пальца: выше порога — закрыть, иначе вернуть пружиной. */
+    fun finishPlayerDrag() {
+        val threshold = screenHeightPx * DISMISS_THRESHOLD
+        if (screenHeightPx > 0f && dragOffsetPx > threshold) {
+            dismissPlayer()
+        } else {
+            settlePlayer()
+        }
+    }
+
     val swipeToDismissModifier = if (showQueueSheet || isDismissed) {
         Modifier
     } else {
         Modifier.pointerInput(Unit) {
             detectVerticalDragGestures(
                 onDragStart = { isDragging = true },
-                onDragEnd = {
-                    val threshold = screenHeightPx * DISMISS_THRESHOLD
-                    if (screenHeightPx > 0f && dragOffsetPx >= threshold) {
-                        dismissPlayer()
-                    } else {
-                        settlePlayer()
-                    }
-                },
+                onDragEnd = { finishPlayerDrag() },
                 onDragCancel = { settlePlayer() },
                 onVerticalDrag = { change, dragAmount ->
                     // Вниз тянем всегда, вверх — только если плеер уже смещён:
@@ -383,6 +393,54 @@ fun PlayerScreen(
         detectVerticalDragGestures { change, _ -> change.consume() }
     }
 
+    // Список текстов (и verticalScroll обложки) сначала прокручиваются сами.
+    // Когда им некуда скроллить, остаток вертикальной дельты забирает плеер:
+    // так свайп вниз работает поверх текста, а не только в шапке.
+    val dismissNestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || isDismissed) {
+                    return Offset.Zero
+                }
+                // Пока плеер смещён, сначала двигаем его, а не список:
+                // иначе контент успеет прокрутиться под возвращающейся шторкой.
+                if (dragOffsetPx <= 0f || available.y == 0f) return Offset.Zero
+                val newOffset = (dragOffsetPx - available.y)
+                    .coerceIn(0f, screenHeightPx)
+                val consumed = newOffset - dragOffsetPx
+                dragOffsetPx = newOffset
+                isDragging = true
+                return Offset(0f, consumed)
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source != NestedScrollSource.UserInput || isDismissed) {
+                    return Offset.Zero
+                }
+                // available.y < 0 — палец тянет вниз, а список уже в начале.
+                val delta = available.y
+                if (delta >= 0f) return Offset.Zero
+                val newOffset = (dragOffsetPx - delta).coerceIn(0f, screenHeightPx)
+                val consumedByPlayer = newOffset - dragOffsetPx
+                dragOffsetPx = newOffset
+                isDragging = true
+                return Offset(0f, consumedByPlayer)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (isDismissed || dragOffsetPx <= 0f) return Velocity.Zero
+                finishPlayerDrag()
+                // Гасим скорость списка: пока плеер возвращается или закрывается,
+                // текст не должен улетать отдельной анимацией.
+                return available
+            }
+        }
+    }
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
@@ -400,6 +458,9 @@ fun PlayerScreen(
             // Непрозрачный градиент на весь экран, включая полосу под прозрачной
             // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
             .background(backgroundBrush)
+            // Список текста/обложка докладывают сюда остаток жеста, когда им
+            // некуда скроллить: так свайп вниз работает поверх текста песни.
+            .nestedScroll(dismissNestedScrollConnection)
             .then(swipeToDismissModifier),
         containerColor = Color.Transparent,
         // contentColorFor(Color.Transparent) возвращает Unspecified, и весь текст
