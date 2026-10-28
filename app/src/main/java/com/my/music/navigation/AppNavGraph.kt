@@ -288,22 +288,27 @@ fun AppNavGraph() {
 
                 // Плеер — верхний оверлей. NavHost с вкладкой остаётся под ним живым,
                 // поэтому при свайпе вниз сквозь тающий плеер видна именно вкладка.
+                //
+                // Общие enter/exit: тот же набор применяется к панелям, которые
+                // при морфе уходят в оверлей shared-перехода.
+                val playerEnter = fadeIn(animationSpec = tween(PlayerSlideMillis)) + scaleIn(
+                    initialScale = 0.96f,
+                    transformOrigin = TransformOrigin(0.5f, 1f),
+                    animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                )
+                val playerExit = scaleOut(
+                    targetScale = 0.9f,
+                    transformOrigin = TransformOrigin(0.5f, 1f),
+                    animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                ) + fadeOut(animationSpec = tween(PlayerSlideMillis))
                 AnimatedVisibility(
                     visible = isPlayerOpen,
                     // Вход без полноэкранного слайда: экран мягко проявляется,
                     // а обложка через sharedElement летит из мини-плеера.
-                    enter = fadeIn(animationSpec = tween(PlayerSlideMillis)) + scaleIn(
-                        initialScale = 0.96f,
-                        transformOrigin = TransformOrigin(0.5f, 1f),
-                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                    ),
+                    enter = playerEnter,
                     // Фон экрана мягко сжимается и тает, а обложка через
                     // sharedElement перелетает в мини-плеер.
-                    exit = scaleOut(
-                        targetScale = 0.9f,
-                        transformOrigin = TransformOrigin(0.5f, 1f),
-                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                    ) + fadeOut(animationSpec = tween(PlayerSlideMillis)),
+                    exit = playerExit,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     val animatedScope = this
@@ -312,6 +317,24 @@ fun AppNavGraph() {
                             rememberSharedContentState(PlayerCoverSharedKey),
                             animatedVisibilityScope = animatedScope,
                         )
+                    }
+                    // Панели с текстом и кнопками рисуются в оверлее shared-перехода
+                    // с zIndex выше обложки: морф проходит под ними, а не поверх.
+                    // Вне enter/exit модификатор не активен, чтобы панели не
+                    // перекрывали снекбар и мини-плеер.
+                    val foregroundModifier = with(sharedScope) {
+                        Modifier
+                            .renderInSharedTransitionScopeOverlay(
+                                renderInOverlay = {
+                                    !isPlayerOpen || animatedScope.transition.isRunning
+                                },
+                                zIndexInOverlay = 1f,
+                            )
+                            .then(
+                                with(animatedScope) {
+                                    Modifier.animateEnterExit(enter = playerEnter, exit = playerExit)
+                                },
+                            )
                     }
                     PlayerScreen(
                         onBack = { isPlayerOpen = false },
@@ -329,6 +352,8 @@ fun AppNavGraph() {
                         },
                         viewModel = playerViewModel,
                         coverModifier = coverModifier,
+                        foregroundModifier = foregroundModifier,
+                        isClosing = !isPlayerOpen,
                     )
                 }
             }

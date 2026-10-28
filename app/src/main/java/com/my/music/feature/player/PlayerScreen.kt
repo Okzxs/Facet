@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -114,7 +115,7 @@ import kotlin.math.abs
 
 /**
  * Вариант компоновки hero-зоны (для сравнения на устройстве, поменяй цифру и пересобери):
- * 1 — «Редакция»: наклонённая обложка по центру, стеклянная карточка с огромным названием свисает с её нижнего края;
+ * 1 — «Редакция»: обложка по центру, стеклянная карточка с огромным названием свисает с её нижнего края;
  * 2 — «Смещение»: обложка свисает за правый край экрана, карточка с названием — слева;
  * 3 — «На обложке»: название лежит прямо на обложке в матово-стеклянной плашке.
  */
@@ -131,7 +132,6 @@ private const val DISMISS_THRESHOLD = 0.45f
 /** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
     val widthFraction: Float,
-    val rotationZ: Float,
     val alignment: Alignment,
     val topPadding: Dp,
     val offsetX: Dp,
@@ -140,9 +140,9 @@ private data class HeroStyle(
 )
 
 private fun heroStyle(variant: Int): HeroStyle = when (variant) {
-    2 -> HeroStyle(0.62f, 7f, Alignment.TopEnd, 26.dp, 16.dp, 60.dp, false)
-    3 -> HeroStyle(0.94f, -3f, Alignment.TopCenter, 4.dp, 0.dp, 0.dp, true)
-    else -> HeroStyle(0.88f, -5f, Alignment.TopCenter, 6.dp, 0.dp, 46.dp, false)
+    2 -> HeroStyle(0.62f, Alignment.TopEnd, 26.dp, 16.dp, 60.dp, false)
+    3 -> HeroStyle(0.94f, Alignment.TopCenter, 4.dp, 0.dp, 0.dp, true)
+    else -> HeroStyle(0.88f, Alignment.TopCenter, 6.dp, 0.dp, 46.dp, false)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -152,6 +152,8 @@ fun PlayerScreen(
     onFindOnYouTube: (Track) -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
     coverModifier: Modifier = Modifier,
+    foregroundModifier: Modifier = Modifier,
+    isClosing: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
@@ -455,6 +457,22 @@ fun PlayerScreen(
         detectVerticalDragGestures { change, _ -> change.consume() }
     }
 
+    // Панели (карточка трека и остров управления) при морфе рисуются в оверлее
+    // shared-перехода выше обложки. Оверлей не наследует сдвиг и прозрачность
+    // свайпа — повторяем их, чтобы панели не прыгали при закрытии жестом.
+    val panelModifier = foregroundModifier.then(
+        Modifier.graphicsLayer {
+            if (isClosing) {
+                translationY = playerOffsetPx
+                alpha = if (screenHeightPx > 0f) {
+                    1f - (playerOffsetPx / screenHeightPx).coerceIn(0f, 1f)
+                } else {
+                    1f
+                }
+            }
+        },
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -594,6 +612,8 @@ fun PlayerScreen(
                         // Общий shared-element модификатор для морфа обложки
                         // в мини-плеер при закрытии экрана.
                         coverModifier = coverModifier,
+                        // Панель с текстом и кнопками при морфе идёт над обложкой.
+                        panelModifier = panelModifier,
                         // В режиме обложки hero-зона занимает ровно высоту своего контента —
                         // иначе между карточкой трека и островом управления образуется
                         // пустая «дыра». В режиме текстов список требует ограниченной
@@ -661,6 +681,8 @@ fun PlayerScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
+                            // При морфе панель рисуется в оверлее выше обложки.
+                            .then(panelModifier)
                             .padding(horizontal = 16.dp)
                             // Запоминаем реальные границы острова: корневой жест
                             // игнорирует касания из этой зоны (кнопки и слайдер).
@@ -767,7 +789,8 @@ private fun LocationPermissionBanner(
 
 /**
  * Hero-зона плеера:
- * - постоянный слой-задник: наклонённая обложка со свечением, параллаксом и «уходом на задний план»;
+ * - постоянный слой-задник: ровная квадратная обложка со свечением, параллаксом
+ *   и «уходом на задний план»;
  * - передний план через AnimatedContent: карточка трека ИЛИ стеклянный экран текстов.
  */
 @Composable
@@ -796,6 +819,7 @@ private fun ExpressiveHeroZone(
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
     coverModifier: Modifier = Modifier,
+    panelModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
     val style = heroStyle(variant)
@@ -808,24 +832,21 @@ private fun ExpressiveHeroZone(
         label = "artworkRecede",
     )
 
-    val artworkShape = RoundedCornerShape(
-        topStart = 56.dp,
-        topEnd = 24.dp,
-        bottomEnd = 56.dp,
-        bottomStart = 24.dp,
-    )
+    // Ровный квадрат со скруглением 24dp: без наклона и асимметрии.
+    val artworkShape = RoundedCornerShape(24.dp)
 
     Box(modifier = modifier) {
         // ─── Постоянный слой-задник: обложка ───
         Box(
             modifier = Modifier
+                // Обложка всегда под панелью с текстом и кнопками.
+                .zIndex(0f)
                 .align(style.alignment)
                 .padding(top = style.topPadding)
                 .fillMaxWidth(style.widthFraction)
                 .aspectRatio(1f)
                 .offset(x = style.offsetX, y = (26f * recede).dp)
                 .graphicsLayer {
-                    rotationZ = lerp(style.rotationZ, style.rotationZ * 2.4f, recede)
                     scaleX = lerp(1f, 0.58f, recede)
                     scaleY = lerp(1f, 0.58f, recede)
                     // В режиме текста карточка полностью уступает место градиентному
@@ -912,7 +933,12 @@ private fun ExpressiveHeroZone(
         // на весь свободный экран и не оставляла «дыру» над островом управления.
         AnimatedContent(
             targetState = isLyricsMode,
-            modifier = if (isLyricsMode) Modifier.fillMaxSize() else Modifier,
+            // Панель с названием и кнопками всегда выше обложки; при морфе
+            // она уходит в оверлей shared-перехода.
+            modifier = Modifier
+                .zIndex(1f)
+                .then(panelModifier)
+                .then(if (isLyricsMode) Modifier.fillMaxSize() else Modifier),
             transitionSpec = {
                 if (targetState) {
                     // Обложка → Текст: тексты въезжают снизу, обложка уходит вверх

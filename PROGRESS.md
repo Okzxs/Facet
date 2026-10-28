@@ -1,6 +1,16 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 28.10.2026 (сессия 41)
+## Последнее обновление: 28.10.2026 (сессия 42)
+
+## Ровная обложка и z-order панелей при морфе — сессия 42
+- `PlayerScreen.kt`: убран наклон обложки полностью — поле `HeroStyle.rotationZ` удалено, `graphicsLayer` больше не задаёт `rotationZ` (варианты 2/3 тоже без наклона). Форма обложки — единый `RoundedCornerShape(24.dp)` вместо асимметричных 56/24/56/24.
+- В hero-`Box` добавлены явные слои: обложка `Modifier.zIndex(0f)`, `AnimatedContent` с карточкой трека/текстами — `Modifier.zIndex(1f)`. Панель объявлена после обложки, поэтому в обычном состоянии всегда рисуется поверх.
+- Причина наложения при морфе: оверлей `SharedTransitionLayout` рисуется выше всего контента, и `zIndex` внутри `PlayerScreen` на него не влияет. Решение: панели (карточка трека и остров управления) на время enter/exit поднимаются в оверлей через `renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f)` и получают `animateEnterExit(enter = playerEnter, exit = playerExit)`.
+- `renderInOverlay = { !isPlayerOpen || animatedScope.transition.isRunning }`: в оверлее панели только во время перехода, в покое они остаются на своих местах и не перекрывают снекбар/мини-плеер.
+- Оверлей не наследует `graphicsLayer` свайпа, поэтому `panelModifier` добавляет `graphicsLayer` с `translationY = playerOffsetPx` и той же alpha при `isClosing` — панели не прыгают при закрытии жестом.
+- В оверлей поднимаются только панели, а не вся колонка: иначе свечение обложки оказалось бы над ней.
+- `PlayerScreen` получил параметры `foregroundModifier: Modifier = Modifier` и `isClosing: Boolean = false`; `ExpressiveHeroZone` — `panelModifier`. В `AppNavGraph` enter/exit плеера вынесены в локальные `playerEnter`/`playerExit` и переиспользуются в `animateEnterExit`.
+- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 835 081 байт (порядок импорта не изменил байткод). Живой тест на устройстве не выполнялся по просьбе пользователя; визуальный результат морфа не проверялся.
 
 ## Свайп-переключение треков и морф обложки — сессия 41
 - `MiniPlayer.kt`: горизонтальный свайп переведён с перемотки на переключение треков. Влево — следующий (`onNext` → `PlayerViewModel.playNext()`), вправо — предыдущий (`onPrevious` → `playPrevious()`); `onSeekToFraction` удалён.
