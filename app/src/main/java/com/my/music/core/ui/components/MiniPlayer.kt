@@ -2,6 +2,7 @@ package com.my.music.core.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -28,13 +28,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -48,40 +52,106 @@ import com.my.music.core.ui.theme.PillShape
 import com.my.music.data.model.Track
 import kotlinx.coroutines.delay
 
+/** Высота островка мини-плеера без внешних отступов. */
+internal val MiniPlayerIslandHeight = 64.dp
+
+/** Боковые отступы островка от краёв экрана. */
+internal val MiniPlayerHorizontalMargin = 16.dp
+
+/** Зазор между островком и верхней кромкой навигационного бара. */
+internal val MiniPlayerGap = 12.dp
+
 /**
- * Строка мини-плеера внутри общего нижнего дока.
- * Высота 56dp: обложка 44dp, название 14sp SemiBold, артист 11sp, Play 40dp.
- * Собственной панели и тени нет — фон и форма принадлежат доку.
+ * Плавающий мини-плеер: отдельный островок над навигационным баром.
+ *
+ * Высота 64dp, обложка 48dp, скругление 30dp и тень 8dp. Внизу — полоска
+ * прогресса 2dp с отступом 24dp, чтобы она не выходила за скругление.
+ *
+ * Горизонтальный свайп по островку перематывает трек: полоска следует
+ * за пальцем, а [onSeekToFraction] вызывается только при отпускании.
+ * Короткий тап по островку раскрывает полноэкранный плеер.
  */
 @Composable
-internal fun MiniPlayerRow(
+internal fun FloatingMiniPlayer(
     track: Track,
     isPlaying: Boolean,
     onExpandClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     currentFraction: () -> Float,
+    onSeekToFraction: (Float) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val surfaceColor = MaterialTheme.colorScheme.surfaceVariant
+    val shape = RoundedCornerShape(30.dp)
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
+    // Колбэки могут пересоздаваться на каждой рекомпозиции, а жест и опрос
+    // позиции живут дольше — читаем актуальные версии через rememberUpdatedState.
+    val latestFraction = rememberUpdatedState(currentFraction)
+    val latestSeek = rememberUpdatedState(onSeekToFraction)
+
+    var progress by remember(track.id) { mutableFloatStateOf(0f) }
+    var isSeeking by remember(track.id) { mutableStateOf(false) }
+    var seekStartFraction by remember(track.id) { mutableFloatStateOf(0f) }
+
+    // Пока палец на островке, полоска живёт по жесту и не дёргается от опроса.
+    // После перемотки ждём 120 мс: плееру нужно мгновение, чтобы обновить
+    // позицию, иначе полоска на кадр прыгнет назад к старому значению.
+    LaunchedEffect(track.id, isPlaying, isSeeking) {
+        if (isSeeking) return@LaunchedEffect
+        delay(120)
+        progress = latestFraction.value().coerceIn(0f, 1f)
+        while (isPlaying) {
+            delay(150) // ~6-7 обновлений в секунду
+            progress = latestFraction.value().coerceIn(0f, 1f)
+        }
+    }
+
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(56.dp),
+            .height(MiniPlayerIslandHeight)
+            // Тень рисуется до клипа, поэтому не обрезается по контуру островка.
+            .shadow(elevation = 8.dp, shape = shape, clip = false)
+            .background(surfaceColor, shape)
+            .clip(shape)
+            .pointerInput(track.id) {
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        seekStartFraction = progress
+                        isSeeking = true
+                    },
+                    onDragEnd = {
+                        isSeeking = false
+                        latestSeek.value(progress)
+                    },
+                    onDragCancel = {
+                        // Жест отменён — возвращаем полоску к позиции плеера.
+                        isSeeking = false
+                        progress = seekStartFraction
+                    },
+                ) { change, dragAmount ->
+                    change.consume()
+                    if (size.width > 0) {
+                        val delta = dragAmount / size.width
+                        progress = (progress + delta).coerceIn(0f, 1f)
+                    }
+                }
+            }
+            .clickable(role = Role.Button, onClick = onExpandClick),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .clickable(role = Role.Button, onClick = onExpandClick)
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(48.dp),
                 shape = RoundedCornerShape(14.dp),
-                color = surfaceColor,
+                color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 if (!track.artworkUrl.isNullOrBlank()) {
                     val imageRequest = remember(track.artworkUrl) {
@@ -109,7 +179,7 @@ internal fun MiniPlayerRow(
                             painter = notePainter,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                 }
@@ -168,45 +238,23 @@ internal fun MiniPlayerRow(
             }
         }
 
-        // Тонкий прогресс вверху, внутри клипа дока.
+        // Тонкий прогресс внизу островка: inset 24dp держит его внутри скругления.
         MiniPlayerProgressBar(
-            isPlaying = isPlaying,
-            currentFraction = currentFraction,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth(),
-        )
-
-        // Разделитель с рядом навигации, inset 16dp.
-        HorizontalDivider(
+            fraction = progress,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 16.dp),
-            thickness = 1.dp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                .padding(start = 24.dp, end = 24.dp, bottom = 3.dp)
+                .fillMaxWidth(),
         )
     }
 }
 
-/** Изолированный прогресс-бар для минимизации лишних рекомпозиций. */
+/** Полоска прогресса, управляемая снаружи — во время свайпа рисует позицию пальца. */
 @Composable
 private fun MiniPlayerProgressBar(
-    isPlaying: Boolean,
-    currentFraction: () -> Float,
+    fraction: Float,
     modifier: Modifier = Modifier,
 ) {
-    var progress by remember { mutableFloatStateOf(0f) }
-
-    // На паузе не опрашиваем позицию вхолостую — прогресс не меняется.
-    LaunchedEffect(isPlaying) {
-        progress = currentFraction()
-        while (isPlaying) {
-            delay(150) // ~6-7 обновлений в секунду
-            progress = currentFraction()
-        }
-    }
-
-    val fraction = progress.coerceIn(0f, 1f)
     Box(
         modifier = modifier
             .height(2.dp)
@@ -215,7 +263,7 @@ private fun MiniPlayerProgressBar(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(fraction)
+                .fillMaxWidth(fraction.coerceIn(0f, 1f))
                 .fillMaxHeight()
                 .clip(PillShape)
                 .background(MaterialTheme.colorScheme.primary),

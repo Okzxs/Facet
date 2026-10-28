@@ -1,6 +1,14 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 28.10.2026 (сессия 39)
+## Последнее обновление: 28.10.2026 (сессия 40)
+
+## Навигация и мини-плеер разделены, свайп-перемотка — сессия 40
+- `ExpressiveBottomDock` теперь только навигационный бар: `Surface` во всю ширину, фон `surfaceContainerHigh` (alpha 0.97) доходит до нижней кромки, `navigationBarsPadding()` внутри, высота контента `DockNavHeight = 72dp`, обводка 1dp. Иконки выросли с 22dp до 28dp, подписи — с 11sp до 12sp, индикатор совмещён с квадратом иконки (`indicatorTop = 13dp`).
+- `MiniPlayer.kt` переписан в `FloatingMiniPlayer`: отдельный островок высотой 64dp, радиус 30dp, тень 8dp, обложка 48dp, название/артист, кнопка Play/Pause 40dp (зона 48dp), полоска прогресса 2dp внизу с inset 24dp. Боковые отступы 16dp и позиция над баром задаются в `AppNavGraph`.
+- Перемотка свайпом: `detectHorizontalDragGestures` на островке, прогресс следует за пальцем через `size.width`, при отпускании вызывается `PlayerViewModel.seekTo(fraction)`, при отмене жеста полоска возвращается к стартовой доле. Опрос позиции останавливается на время жеста и возобновляется через 120 мс после seek, чтобы полоска не прыгала назад.
+- `AppNavGraph`: бар и мини-плеер — два независимых `AnimatedVisibility`. Высота бара измеряется через `onSizeChanged`; островок висит на `navBarHeight + 12dp`, виден при `showBottomBar && track != null && navBarHeightPx > 0`. `lastTrack` удерживает контент на время exit-анимации. `LocalBottomDockHeight = navBarHeight + анимированный резерв (64 + 12dp)`, поэтому контент вкладок не прыгает при появлении островка.
+- Сворачивание плеера: exit заменён с полного `slideOutVertically` на `scaleOut(0.9f, TransformOrigin(0.5f, 1f)) + fadeOut`; мини-плеер входит `slideInVertically + scaleIn(0.85f, bottom origin) + fadeIn`. Визуально экран сжимается к низу и тает, а островок выезжает из-под бара.
+- Тесты: 22 suites / 148 тестов, 0 failures/errors. `assembleDebug` — BUILD SUCCESSFUL, APK 27 635 291 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
 ## Плавающий нижний док — сессия 39
 - `ExpressiveBottomDock`: боковые отступы увеличены с 16dp до 24dp, снизу — `navigationBarsPadding()` + 12dp (было 8dp), сверху осталось 8dp. Фон `surfaceContainerHigh` больше не тянется до краёв экрана и не прилипает к системной панели — док читается как отдельный островок.

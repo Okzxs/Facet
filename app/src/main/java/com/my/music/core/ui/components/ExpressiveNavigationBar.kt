@@ -79,12 +79,14 @@ fun ExpressiveNavigationBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp),
+            .height(DockNavHeight),
     ) {
         val itemWidth = maxWidth / items.size
         val indicatorWidth = 60.dp
         val indicatorHeight = 32.dp
-        val indicatorTop = 9.dp
+        // Индикатор совмещён с квадратом иконки: контент пункта центрируется
+        // в баре 72dp, поэтому верх иконки оказывается на 13dp.
+        val indicatorTop = 13.dp
 
         // Плавное скольжение без отскока: стандартная пружина Compose.
         val indicatorOffset = animateDpAsState(
@@ -112,7 +114,7 @@ fun ExpressiveNavigationBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp),
+                .height(DockNavHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEachIndexed { index, item ->
@@ -190,7 +192,7 @@ private fun ExpressiveNavItem(
                 contentDescription = null,
                 tint = contentColor,
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(28.dp)
                     .graphicsLayer {
                         scaleX = iconScale
                         scaleY = iconScale
@@ -203,7 +205,7 @@ private fun ExpressiveNavItem(
         Text(
             text = item.label,
             color = contentColor,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,

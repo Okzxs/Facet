@@ -5,9 +5,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -16,9 +19,12 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,9 +34,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -40,6 +48,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.my.music.core.ui.components.ExpressiveBottomDock
+import com.my.music.core.ui.components.FloatingMiniPlayer
+import com.my.music.core.ui.components.MiniPlayerGap
+import com.my.music.core.ui.components.MiniPlayerHorizontalMargin
+import com.my.music.core.ui.components.MiniPlayerIslandHeight
 import com.my.music.core.ui.theme.prewarmPlayerPalette
 import com.my.music.data.model.Track
 import com.my.music.feature.home.HomeScreen
@@ -81,6 +93,16 @@ fun AppNavGraph() {
 
     // Общий PlayerViewModel для MiniPlayer и PlayerScreen (один и тот же экземпляр через Hilt)
     val playerViewModel: PlayerViewModel = hiltViewModel()
+    val playerState by playerViewModel.playerState.collectAsState()
+    val currentTrack = playerState.currentTrack
+
+    // Последний трек переживает очистку currentTrack: мини-плеер успевает
+    // проиграть exit-анимацию и не исчезает рывком.
+    var lastTrack by remember { mutableStateOf<Track?>(null) }
+    LaunchedEffect(currentTrack) {
+        if (currentTrack != null) lastTrack = currentTrack
+    }
+    val miniTrack = currentTrack ?: lastTrack
 
     // Стабильные колбэки: не пересоздаются при рекомпозиции дока.
     val onTabSelect: (BottomNavItem) -> Unit = remember(navController) {
@@ -95,7 +117,7 @@ fun AppNavGraph() {
             }
         }
     }
-    val onDockExpand: () -> Unit = remember {
+    val onMiniPlayerExpand: () -> Unit = remember {
         { isPlayerOpen = true }
     }
 
@@ -111,13 +133,26 @@ fun AppNavGraph() {
         isPlayerOpen = true
     }
 
-    // Измеренная высота плавающего дока (вместе с его navigationBarsPadding).
-    // Экраны-вкладки добавляют её в нижний contentPadding, чтобы контент не
-    // прятался под доком. NavHost при этом остаётся во весь экран и НЕ меняет
-    // размер при показе/скрытии дока — отсюда и плавность перехода в плеер.
+    // Измеренная высота навигационного бара (вместе с его navigationBarsPadding).
+    // От неё зависят позиция островка мини-плеера и нижний contentPadding вкладок.
+    // NavHost при этом остаётся во весь экран и НЕ меняет размер при показе/скрытии
+    // бара — отсюда и плавность перехода в плеер.
     val density = LocalDensity.current
-    var dockHeightPx by remember { mutableStateOf(0) }
-    val dockHeight = with(density) { dockHeightPx.toDp() }
+    var navBarHeightPx by remember { mutableStateOf(0) }
+    val navBarHeight = with(density) { navBarHeightPx.toDp() }
+
+    // Островок показываем только когда есть трек и бар уже измерен: иначе
+    // он не знает, на сколько подняться над навигацией.
+    val showMiniPlayer = showBottomBar && miniTrack != null && navBarHeightPx > 0
+
+    // Резерв под островок в нижнем contentPadding вкладок. Анимируем, чтобы
+    // контент не прыгал в момент появления/исчезновения мини-плеера.
+    val miniPlayerReserve by animateDpAsState(
+        targetValue = if (showMiniPlayer) MiniPlayerIslandHeight + MiniPlayerGap else 0.dp,
+        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+        label = "miniPlayerReserve",
+    )
+    val bottomDockHeight = navBarHeight + miniPlayerReserve
 
     Box(
         modifier = Modifier
@@ -126,7 +161,7 @@ fun AppNavGraph() {
             // полупрозрачны (fade), и без подложки проглядывало windowBackground.
             .background(MaterialTheme.colorScheme.background),
     ) {
-        CompositionLocalProvider(LocalBottomDockHeight provides dockHeight) {
+        CompositionLocalProvider(LocalBottomDockHeight provides bottomDockHeight) {
             NavHost(
                 navController = navController,
                 startDestination = Screen.Home.route,
@@ -169,8 +204,9 @@ fun AppNavGraph() {
             }
         }
 
-        // Док — оверлей поверх NavHost. Его появление/скрытие анимируется отдельно
-        // (slide + fade) и НЕ влияет на размер NavHost — в этом суть фикса «25-го кадра».
+        // Навигационный бар — полноценная панель во всю ширину у нижней кромки.
+        // Живёт отдельно от мини-плеера; появление/скрытие анимируется здесь
+        // и НЕ влияет на размер NavHost — в этом суть фикса «25-го кадра».
         AnimatedVisibility(
             visible = showBottomBar,
             enter = slideInVertically(
@@ -185,11 +221,51 @@ fun AppNavGraph() {
                 items = bottomNavItems,
                 selectedRoute = selectedRoute,
                 onSelect = onTabSelect,
-                onExpandClick = onDockExpand,
-                viewModel = playerViewModel,
-                // Меряем реальную высоту дока для нижнего отступа вкладок.
-                modifier = Modifier.onSizeChanged { size -> dockHeightPx = size.height },
+                // Меряем реальную высоту бара: от неё зависят позиция островка
+                // и нижний отступ контента вкладок.
+                modifier = Modifier.onSizeChanged { size -> navBarHeightPx = size.height },
             )
+        }
+
+        // Мини-плеер — отдельный островок над баром. Выезжает снизу и проявляется
+        // масштабом, пока полноэкранный плеер сжимается и тает.
+        AnimatedVisibility(
+            visible = showMiniPlayer,
+            enter = slideInVertically(
+                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                initialOffsetY = { height -> height },
+            ) + scaleIn(
+                initialScale = 0.85f,
+                transformOrigin = TransformOrigin(0.5f, 1f),
+                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+            ) + fadeIn(animationSpec = tween(PlayerSlideMillis)),
+            exit = slideOutVertically(
+                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                targetOffsetY = { height -> height },
+            ) + scaleOut(
+                targetScale = 0.85f,
+                transformOrigin = TransformOrigin(0.5f, 1f),
+                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+            ) + fadeOut(animationSpec = tween(PlayerSlideMillis)),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(
+                    start = MiniPlayerHorizontalMargin,
+                    end = MiniPlayerHorizontalMargin,
+                    // 12dp воздуха между островком и верхней кромкой бара.
+                    bottom = navBarHeight + MiniPlayerGap,
+                ),
+        ) {
+            miniTrack?.let { track ->
+                FloatingMiniPlayer(
+                    track = track,
+                    isPlaying = playerState.isPlaying,
+                    onExpandClick = onMiniPlayerExpand,
+                    onPlayPauseClick = { playerViewModel.togglePlayPause() },
+                    currentFraction = { playerViewModel.currentFraction() },
+                    onSeekToFraction = { fraction -> playerViewModel.seekTo(fraction) },
+                )
+            }
         }
 
         // Плеер — верхний оверлей. NavHost с вкладкой остаётся под ним живым,
@@ -199,9 +275,13 @@ fun AppNavGraph() {
             enter = slideInVertically(
                 animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
             ) { height -> height },
-            exit = slideOutVertically(
+            // Сворачивание: экран сжимается к нижней кромке и растворяется,
+            // визуально «уходя» в мини-плеер, который в этот момент выезжает снизу.
+            exit = scaleOut(
+                targetScale = 0.9f,
+                transformOrigin = TransformOrigin(0.5f, 1f),
                 animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-            ) { height -> height },
+            ) + fadeOut(animationSpec = tween(PlayerSlideMillis)),
             modifier = Modifier.fillMaxSize(),
         ) {
             PlayerScreen(
