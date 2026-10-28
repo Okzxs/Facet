@@ -1,14 +1,19 @@
 package com.my.music.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 
 /**
  * Сущность истории прослушиваний для таблицы play_history в Room.
+ * Индекс по playedAt: недавние прослушивания выбираются по времени.
  */
-@Entity(tableName = "play_history")
+@Entity(
+    tableName = "play_history",
+    indices = [Index("playedAt")],
+)
 data class PlayHistoryEntity(
     @PrimaryKey
     val id: String,

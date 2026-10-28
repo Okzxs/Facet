@@ -30,8 +30,8 @@ class DownloadRepositoryImpl @Inject constructor(
 ) : DownloadRepository {
 
     override fun observeDownloadedIds(): Flow<Set<String>> {
-        return downloadedTracksDao.getDownloadedIds()
-            .map { ids -> ids.toSet() }
+        return downloadedTracksDao.getAll()
+            .map { list -> pruneUnplayable(list).map { it.id }.toSet() }
             .flowOn(Dispatchers.IO)
     }
 
@@ -42,7 +42,7 @@ class DownloadRepositoryImpl @Inject constructor(
 
     override fun observeDownloadedTracks(): Flow<List<DownloadedTrack>> {
         return downloadedTracksDao.getAll()
-            .map { list -> list.map { it.toDomain() } }
+            .map { list -> pruneUnplayable(list).map { it.toDomain() } }
             .flowOn(Dispatchers.IO)
     }
 
@@ -75,6 +75,20 @@ class DownloadRepositoryImpl @Inject constructor(
     private fun isPlayable(entry: DownloadedTrackEntity): Boolean {
         val file = localFileOf(entry) ?: return false
         return file.exists() && file.length() > 0L
+    }
+
+    /**
+     * Возвращает только валидные записи (файл реально лежит на диске),
+     * а мусорные удаляет из БД: удалённый файл или наследие старого HLS-кэша
+     * не должны светиться в списках «скачано». Удаление внутри map перезапускает
+     * Flow Room — следующий эмиссион уже приходит без мусора.
+     */
+    private suspend fun pruneUnplayable(
+        entries: List<DownloadedTrackEntity>,
+    ): List<DownloadedTrackEntity> {
+        val (alive, dead) = entries.partition { isPlayable(it) }
+        dead.forEach { downloadedTracksDao.delete(it.id) }
+        return alive
     }
 
     /**

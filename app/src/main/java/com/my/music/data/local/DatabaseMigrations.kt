@@ -13,6 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v5 → v6: таблица скачанных треков для офлайн-режима.
  * v6 → v7: офлайн-кэш Media3: вместо пути к файлу — URL потока и MIME-тип.
  * v7 → v8: память о треках, уже показанных в рекомендациях.
+ * v8 → v9: индексы по горячим полям выборок (сезон и дата лайка, время прослушивания, вес жанра).
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -161,6 +162,29 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Имена индексов совпадают с теми, что Room генерирует для Index(...)
+        // в сущностях, иначе схема после миграции не сойдётся с 9.json.
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_liked_tracks_season` " +
+                "ON `liked_tracks` (`season`)",
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_liked_tracks_likedAt` " +
+                "ON `liked_tracks` (`likedAt`)",
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_play_history_playedAt` " +
+                "ON `play_history` (`playedAt`)",
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_genre_weights_weight` " +
+                "ON `genre_weights` (`weight`)",
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -169,4 +193,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_5_6,
     MIGRATION_6_7,
     MIGRATION_7_8,
+    MIGRATION_8_9,
 )

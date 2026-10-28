@@ -62,6 +62,8 @@ com.my.music
 └── MyMusicApp.kt        # @HiltAndroidApp, NewPipe.init()
 ```
 
+**БД:** Room v9, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI).
+
 ---
 
 ## Источники контента

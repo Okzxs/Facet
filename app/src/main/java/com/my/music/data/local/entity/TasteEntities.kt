@@ -1,12 +1,17 @@
 package com.my.music.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
  * Накопленный вес жанра по feedback-событиям волны.
+ * Индекс по weight: вкусовые подборки сортируют жанры по весу.
  */
-@Entity(tableName = "genre_weights")
+@Entity(
+    tableName = "genre_weights",
+    indices = [Index("weight")],
+)
 data class GenreWeightEntity(
     @PrimaryKey
     val genre: String,

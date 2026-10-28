@@ -38,6 +38,7 @@ fun LibraryScreen(
     val downloadedIds by viewModel.downloadedIds.collectAsState()
     val downloadStates by viewModel.downloadStates.collectAsState()
     val downloadError by viewModel.downloadError.collectAsState()
+    val likeError by viewModel.likeError.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(downloadError) {
@@ -47,6 +48,15 @@ fun LibraryScreen(
             duration = SnackbarDuration.Short,
         )
         viewModel.consumeDownloadError()
+    }
+
+    LaunchedEffect(likeError) {
+        val message = likeError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = message,
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.consumeLikeError()
     }
 
     Scaffold(

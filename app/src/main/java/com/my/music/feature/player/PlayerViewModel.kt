@@ -15,6 +15,7 @@ import com.my.music.core.player.PlayerState
 import com.my.music.core.player.toFriendlyPlaybackMessage
 import com.my.music.core.service.ServiceType
 import com.my.music.core.util.SeasonProvider
+import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.LyricsResult
 import com.my.music.data.model.Track
@@ -142,28 +143,7 @@ class PlayerViewModel @Inject constructor(
         )
 
     init {
-        // При смене текущего трека в PlayerController (автопереход/очередь) — подгружаем текст и сбрасываем позицию и ошибки
-        viewModelScope.launch {
-            playerController.state
-                .map { it.currentTrack }
-                .distinctUntilChanged()
-                .collect { track ->
-                    if (track != null) {
-                        _uiState.update {
-                            it.copy(
-                                track = track,
-                                positionMs = 0L,
-                                lyrics = null,
-                                isLyricsLoading = true,
-                                lyricsError = null,
-                                error = null,
-                                downloadError = null,
-                            )
-                        }
-                        loadLyrics(track)
-                    }
-                }
-        }
+        observeCurrentTrack()
 
         // Сброс флага isResolving и ошибок при готовности плеера
         viewModelScope.launch {
@@ -183,6 +163,47 @@ class PlayerViewModel @Inject constructor(
         observeWaveRefill()
     }
 
+    /**
+     * Реакция на смену текущего трека: сброс позиции и ошибок + загрузка текста.
+     *
+     * Текст грузится отдельным потоком через flatMapLatest: раньше suspend-вызов
+     * loadLyrics жил внутри collect и блокировал обработку следующей смены трека,
+     * пока LRCLIB отвечал. Теперь старый запрос отменяется при переключении.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun observeCurrentTrack() {
+        viewModelScope.launch {
+            playerController.state
+                .map { it.currentTrack }
+                .distinctUntilChanged()
+                .collect { track ->
+                    if (track != null) {
+                        _uiState.update {
+                            it.copy(
+                                track = track,
+                                positionMs = 0L,
+                                lyrics = null,
+                                isLyricsLoading = true,
+                                lyricsError = null,
+                                error = null,
+                                downloadError = null,
+                            )
+                        }
+                    }
+                }
+        }
+        viewModelScope.launch {
+            playerController.state
+                .map { it.currentTrack }
+                .distinctUntilChanged()
+                .flatMapLatest { track ->
+                    // Эмиссий нет: поток нужен только как отменяемая единица работы.
+                    flow<Unit> { if (track != null) loadLyrics(track) }
+                }
+                .collect()
+        }
+    }
+
     // ─── Публичные методы ─────────────────────────────────────────────────────
 
     /**
@@ -194,17 +215,30 @@ class PlayerViewModel @Inject constructor(
         val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
         viewModelScope.launch {
             val addingLike = !isLiked.value
-            val point = if (addingLike) locationProvider.lastKnownLocation() else null
-            val nowLiked = likedTracksRepository.toggleLike(
-                track = track,
-                latitude = point?.latitude,
-                longitude = point?.longitude,
-                season = if (addingLike) SeasonProvider.currentSeason() else null,
-            )
-            if (nowLiked) {
-                tasteRepository.onLike(track)
-            } else {
-                tasteRepository.onUnlike(track)
+            // Сбой БД не должен ронять приложение: показываем ошибку в UI.
+            val result = runCatching {
+                val point = if (addingLike) locationProvider.lastKnownLocation() else null
+                likedTracksRepository.toggleLike(
+                    track = track,
+                    latitude = point?.latitude,
+                    longitude = point?.longitude,
+                    season = if (addingLike) SeasonProvider.currentSeason() else null,
+                )
+            }.rethrowCancellation()
+            result.onFailure { error ->
+                Log.e(tag, "Не удалось переключить лайк", error)
+                _uiState.update { it.copy(error = LIKE_FAILED_MESSAGE) }
+                return@launch
+            }
+            // Feedback для вкусов некритичен: его сбой логируем, лайк уже сохранён.
+            runCatching {
+                if (result.getOrThrow()) {
+                    tasteRepository.onLike(track)
+                } else {
+                    tasteRepository.onUnlike(track)
+                }
+            }.rethrowCancellation().onFailure { error ->
+                Log.w(tag, "Feedback вкусов не записан", error)
             }
         }
     }
@@ -453,6 +487,9 @@ class PlayerViewModel @Inject constructor(
 
         /** Сколько держать крестик ошибки/отмены перед возвратом иконки скачивания. */
         const val ERROR_ICON_DURATION_MS = 1_000L
+
+        /** Сообщение при сбое БД на лайке — показывается вместо краша. */
+        const val LIKE_FAILED_MESSAGE = "Не удалось обновить лайк: база данных недоступна"
     }
 }
 

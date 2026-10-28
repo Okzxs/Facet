@@ -31,6 +31,9 @@ class DatabaseMigrationTest {
     private val databaseName = "migration-test.db"
     private lateinit var context: Context
 
+    /** Helpers открывают легаси-базы; закрываем их все в tearDown. */
+    private val openedHelpers = mutableListOf<SupportSQLiteOpenHelper>()
+
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
@@ -39,6 +42,8 @@ class DatabaseMigrationTest {
 
     @After
     fun tearDown() {
+        openedHelpers.forEach { it.close() }
+        openedHelpers.clear()
         context.deleteDatabase(databaseName)
     }
 
@@ -80,7 +85,14 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(8, database.openHelper.writableDatabase.version)
+            assertEquals(9, database.openHelper.writableDatabase.version)
+
+            // Индексы миграции 8 → 9 созданы на живой схеме
+            val migrated = database.openHelper.writableDatabase
+            assertTrue(hasIndex(migrated, "index_liked_tracks_season"))
+            assertTrue(hasIndex(migrated, "index_liked_tracks_likedAt"))
+            assertTrue(hasIndex(migrated, "index_play_history_playedAt"))
+            assertTrue(hasIndex(migrated, "index_genre_weights_weight"))
 
             // Таблица офлайн-режима создана миграцией 5 → 6 и обновлена в 6 → 7
             database.downloadedTracksDao().insert(
@@ -191,6 +203,209 @@ class DatabaseMigrationTest {
             helper.close()
             context.deleteDatabase(databaseName)
         }
+    }
+
+    // ─── Изолированные тесты отдельных миграций ───────────────────────────────
+    // Схемы v1–v3 не экспортировались в app/schemas, поэтому базовые схемы
+    // восстанавливаются DDL-заглушками: для проверки ALTER/CREATE этого достаточно.
+
+    @Test
+    fun `migration 2 to 3 adds coordinates columns to likes`() {
+        val db = openLegacyDatabase("m-2-3.db", 2) { it.execSQL(LIKED_TRACKS_V1_DDL) }
+
+        MIGRATION_2_3.migrate(db)
+
+        val columns = tableColumns(db, "liked_tracks")
+        assertTrue("latitude" in columns)
+        assertTrue("longitude" in columns)
+    }
+
+    @Test
+    fun `migration 3 to 4 adds season column to likes`() {
+        val db = openLegacyDatabase("m-3-4.db", 3) {
+            it.execSQL(LIKED_TRACKS_V1_DDL)
+            it.execSQL("ALTER TABLE `liked_tracks` ADD COLUMN `latitude` REAL")
+            it.execSQL("ALTER TABLE `liked_tracks` ADD COLUMN `longitude` REAL")
+        }
+
+        MIGRATION_3_4.migrate(db)
+
+        assertTrue("season" in tableColumns(db, "liked_tracks"))
+    }
+
+    @Test
+    fun `migration 4 to 5 creates taste tables`() {
+        val db = openLegacyDatabase("m-4-5.db", 4) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(PLAY_HISTORY_DDL)
+        }
+
+        MIGRATION_4_5.migrate(db)
+
+        assertTrue(hasTable(db, "genre_weights"))
+        assertTrue(hasTable(db, "artist_weights"))
+        assertTrue(hasTable(db, "user_preferences"))
+    }
+
+    @Test
+    fun `migration 5 to 6 creates downloaded tracks table`() {
+        val db = openLegacyDatabase("m-5-6.db", 5) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(PLAY_HISTORY_DDL)
+            it.execSQL(GENRE_WEIGHTS_DDL)
+        }
+
+        MIGRATION_5_6.migrate(db)
+
+        assertTrue(hasTable(db, "downloaded_tracks"))
+        assertTrue("localFilePath" in tableColumns(db, "downloaded_tracks"))
+    }
+
+    @Test
+    fun `migration 7 to 8 creates recently shown table with index`() {
+        val db = openLegacyDatabase("m-7-8.db", 7) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(DOWNLOADED_TRACKS_V7_DDL)
+        }
+
+        MIGRATION_7_8.migrate(db)
+
+        assertTrue(hasTable(db, "recently_shown"))
+        assertTrue(hasIndex(db, "index_recently_shown_shownAt"))
+    }
+
+    @Test
+    fun `migration 8 to 9 creates indexes for hot fields`() {
+        val db = openLegacyDatabase("m-8-9.db", 8) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(PLAY_HISTORY_DDL)
+            it.execSQL(GENRE_WEIGHTS_DDL)
+        }
+
+        MIGRATION_8_9.migrate(db)
+
+        assertTrue(hasIndex(db, "index_liked_tracks_season"))
+        assertTrue(hasIndex(db, "index_liked_tracks_likedAt"))
+        assertTrue(hasIndex(db, "index_play_history_playedAt"))
+        assertTrue(hasIndex(db, "index_genre_weights_weight"))
+    }
+
+    // ─── Хелперы ──────────────────────────────────────────────────────────────
+
+    /** Открывает сырую базу версии [version] со схемой [create] для прогона одной миграции. */
+    private fun openLegacyDatabase(
+        name: String,
+        version: Int,
+        create: (SupportSQLiteDatabase) -> Unit,
+    ): SupportSQLiteDatabase {
+        context.deleteDatabase(name)
+        val config = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(name)
+            .callback(
+                object : SupportSQLiteOpenHelper.Callback(version) {
+                    override fun onCreate(db: SupportSQLiteDatabase) = create(db)
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                },
+            )
+            .build()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(config)
+        openedHelpers += helper
+        return helper.writableDatabase
+    }
+
+    private fun tableColumns(db: SupportSQLiteDatabase, table: String): Set<String> {
+        db.query("PRAGMA table_info(`$table`)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            val names = mutableSetOf<String>()
+            while (cursor.moveToNext()) names += cursor.getString(nameIndex)
+            return names
+        }
+    }
+
+    private fun hasTable(db: SupportSQLiteDatabase, table: String): Boolean {
+        db.query("SELECT 1 FROM `sqlite_master` WHERE `type` = 'table' AND `name` = '$table'")
+            .use { return it.moveToFirst() }
+    }
+
+    private fun hasIndex(db: SupportSQLiteDatabase, index: String): Boolean {
+        db.query("SELECT 1 FROM `sqlite_master` WHERE `type` = 'index' AND `name` = '$index'")
+            .use { return it.moveToFirst() }
+    }
+
+    private companion object {
+        /** liked_tracks до координат (схемы v1–v2). */
+        val LIKED_TRACKS_V1_DDL = """
+            CREATE TABLE IF NOT EXISTS `liked_tracks` (
+                `id` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `genre` TEXT,
+                `transcodingUrl` TEXT,
+                `likedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+        """.trimIndent()
+
+        /** liked_tracks состояния v4: координаты и сезон уже на месте. */
+        val LIKED_TRACKS_V4_DDL = """
+            CREATE TABLE IF NOT EXISTS `liked_tracks` (
+                `id` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `genre` TEXT,
+                `transcodingUrl` TEXT,
+                `likedAt` INTEGER NOT NULL,
+                `latitude` REAL,
+                `longitude` REAL,
+                `season` TEXT,
+                PRIMARY KEY(`id`)
+            )
+        """.trimIndent()
+
+        val PLAY_HISTORY_DDL = """
+            CREATE TABLE IF NOT EXISTS `play_history` (
+                `id` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `genre` TEXT,
+                `transcodingUrl` TEXT,
+                `playedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+        """.trimIndent()
+
+        val GENRE_WEIGHTS_DDL = """
+            CREATE TABLE IF NOT EXISTS `genre_weights` (
+                `genre` TEXT NOT NULL,
+                `weight` REAL NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`genre`)
+            )
+        """.trimIndent()
+
+        /** downloaded_tracks состояния v7: mediaUrl + mimeType. */
+        val DOWNLOADED_TRACKS_V7_DDL = """
+            CREATE TABLE IF NOT EXISTS `downloaded_tracks` (
+                `id` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `mediaUrl` TEXT NOT NULL,
+                `mimeType` TEXT NOT NULL,
+                `downloadedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+        """.trimIndent()
     }
 
     private fun createVersion1Database() {

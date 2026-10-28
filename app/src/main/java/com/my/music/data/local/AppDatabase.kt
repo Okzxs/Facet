@@ -31,7 +31,7 @@ import com.my.music.data.local.entity.UserPreferenceEntity
         DownloadedTrackEntity::class,
         RecentlyShownEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

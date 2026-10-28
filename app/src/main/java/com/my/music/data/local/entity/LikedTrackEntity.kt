@@ -1,6 +1,7 @@
 package com.my.music.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
@@ -8,8 +9,13 @@ import com.my.music.data.model.Track
 
 /**
  * Сущность лайкнутого трека для таблицы liked_tracks в Room.
+ * Индексы по сезону и дате лайка: «Воспоминания» и история
+ * выбирают по ним, полный перебор таблицы не нужен.
  */
-@Entity(tableName = "liked_tracks")
+@Entity(
+    tableName = "liked_tracks",
+    indices = [Index("season"), Index("likedAt")],
+)
 data class LikedTrackEntity(
     @PrimaryKey
     val id: String,
