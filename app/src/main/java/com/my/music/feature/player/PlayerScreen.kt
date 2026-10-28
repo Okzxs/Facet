@@ -151,6 +151,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     onFindOnYouTube: (Track) -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
+    coverModifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
@@ -590,6 +591,9 @@ fun PlayerScreen(
                         onToggleLike = { toggleLikeWithPermission() },
                         onToggleDislike = { viewModel.toggleDislike() },
                         onDownloadClick = { viewModel.toggleDownload() },
+                        // Общий shared-element модификатор для морфа обложки
+                        // в мини-плеер при закрытии экрана.
+                        coverModifier = coverModifier,
                         // В режиме обложки hero-зона занимает ровно высоту своего контента —
                         // иначе между карточкой трека и островом управления образуется
                         // пустая «дыра». В режиме текстов список требует ограниченной
@@ -791,6 +795,7 @@ private fun ExpressiveHeroZone(
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
+    coverModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
     val style = heroStyle(variant)
@@ -854,6 +859,9 @@ private fun ExpressiveHeroZone(
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
+                    // Морф обложки: в режиме текстов она скрыта, поэтому
+                    // shared-element не подключаем, чтобы не «оживлять» её.
+                    .then(if (isLyricsMode) Modifier else coverModifier)
                     .shadow(
                         elevation = 22.dp,
                         shape = artworkShape,

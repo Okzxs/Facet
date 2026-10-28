@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -63,6 +65,7 @@ import com.my.music.feature.settings.SettingsScreen
 import com.my.music.feature.wave.WaveScreen
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun AppNavGraph() {
     val navController = rememberNavController()
@@ -227,79 +230,108 @@ fun AppNavGraph() {
             )
         }
 
-        // Мини-плеер — отдельный островок над баром. Выезжает снизу и проявляется
-        // масштабом, пока полноэкранный плеер сжимается и тает.
-        AnimatedVisibility(
-            visible = showMiniPlayer,
-            enter = slideInVertically(
-                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                initialOffsetY = { height -> height },
-            ) + scaleIn(
-                initialScale = 0.85f,
-                transformOrigin = TransformOrigin(0.5f, 1f),
-                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-            ) + fadeIn(animationSpec = tween(PlayerSlideMillis)),
-            exit = slideOutVertically(
-                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                targetOffsetY = { height -> height },
-            ) + scaleOut(
-                targetScale = 0.85f,
-                transformOrigin = TransformOrigin(0.5f, 1f),
-                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-            ) + fadeOut(animationSpec = tween(PlayerSlideMillis)),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(
-                    start = MiniPlayerHorizontalMargin,
-                    end = MiniPlayerHorizontalMargin,
-                    // 12dp воздуха между островком и верхней кромкой бара.
-                    bottom = navBarHeight + MiniPlayerGap,
-                ),
-        ) {
-            miniTrack?.let { track ->
-                FloatingMiniPlayer(
-                    track = track,
-                    isPlaying = playerState.isPlaying,
-                    onExpandClick = onMiniPlayerExpand,
-                    onPlayPauseClick = { playerViewModel.togglePlayPause() },
-                    currentFraction = { playerViewModel.currentFraction() },
-                    onSeekToFraction = { fraction -> playerViewModel.seekTo(fraction) },
-                )
-            }
-        }
-
-        // Плеер — верхний оверлей. NavHost с вкладкой остаётся под ним живым,
-        // поэтому при свайпе вниз сквозь тающий плеер видна именно вкладка.
-        AnimatedVisibility(
-            visible = isPlayerOpen,
-            enter = slideInVertically(
-                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-            ) { height -> height },
-            // Сворачивание: экран сжимается к нижней кромке и растворяется,
-            // визуально «уходя» в мини-плеер, который в этот момент выезжает снизу.
-            exit = scaleOut(
-                targetScale = 0.9f,
-                transformOrigin = TransformOrigin(0.5f, 1f),
-                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-            ) + fadeOut(animationSpec = tween(PlayerSlideMillis)),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            PlayerScreen(
-                onBack = { isPlayerOpen = false },
-                onFindOnYouTube = { track ->
-                    playerViewModel.findOnYouTube(track)
-                    isPlayerOpen = false
-                    navController.navigate(Screen.Search.route) {
-                        // Уходим из плеера в поиск, сохраняя состояние вкладок.
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
+        // Общий SharedTransitionLayout для морфа обложки между мини-плеером
+        // и полноэкранным плеером. Слой прозрачный: NavHost и бар остаются
+        // под ним, а обложка летит в общем оверлее.
+        SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+            val sharedScope = this
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Мини-плеер — отдельный островок над баром. Выезжает снизу и
+                // проявляется масштабом, пока полноэкранный плеер сжимается и тает.
+                AnimatedVisibility(
+                    visible = showMiniPlayer,
+                    enter = slideInVertically(
+                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                        initialOffsetY = { height -> height },
+                    ) + scaleIn(
+                        initialScale = 0.85f,
+                        transformOrigin = TransformOrigin(0.5f, 1f),
+                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                    ) + fadeIn(animationSpec = tween(PlayerSlideMillis)),
+                    exit = slideOutVertically(
+                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                        targetOffsetY = { height -> height },
+                    ) + scaleOut(
+                        targetScale = 0.85f,
+                        transformOrigin = TransformOrigin(0.5f, 1f),
+                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                    ) + fadeOut(animationSpec = tween(PlayerSlideMillis)),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(
+                            start = MiniPlayerHorizontalMargin,
+                            end = MiniPlayerHorizontalMargin,
+                            // 12dp воздуха между островком и верхней кромкой бара.
+                            bottom = navBarHeight + MiniPlayerGap,
+                        ),
+                ) {
+                    val animatedScope = this
+                    val coverModifier = with(sharedScope) {
+                        Modifier.sharedElement(
+                            rememberSharedContentState(PlayerCoverSharedKey),
+                            animatedVisibilityScope = animatedScope,
+                        )
                     }
-                },
-                viewModel = playerViewModel,
-            )
+                    miniTrack?.let { track ->
+                        FloatingMiniPlayer(
+                            track = track,
+                            isPlaying = playerState.isPlaying,
+                            onExpandClick = onMiniPlayerExpand,
+                            onPlayPauseClick = { playerViewModel.togglePlayPause() },
+                            onNext = { playerViewModel.playNext() },
+                            onPrevious = { playerViewModel.playPrevious() },
+                            currentFraction = { playerViewModel.currentFraction() },
+                            coverModifier = coverModifier,
+                        )
+                    }
+                }
+
+                // Плеер — верхний оверлей. NavHost с вкладкой остаётся под ним живым,
+                // поэтому при свайпе вниз сквозь тающий плеер видна именно вкладка.
+                AnimatedVisibility(
+                    visible = isPlayerOpen,
+                    // Вход без полноэкранного слайда: экран мягко проявляется,
+                    // а обложка через sharedElement летит из мини-плеера.
+                    enter = fadeIn(animationSpec = tween(PlayerSlideMillis)) + scaleIn(
+                        initialScale = 0.96f,
+                        transformOrigin = TransformOrigin(0.5f, 1f),
+                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                    ),
+                    // Фон экрана мягко сжимается и тает, а обложка через
+                    // sharedElement перелетает в мини-плеер.
+                    exit = scaleOut(
+                        targetScale = 0.9f,
+                        transformOrigin = TransformOrigin(0.5f, 1f),
+                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                    ) + fadeOut(animationSpec = tween(PlayerSlideMillis)),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    val animatedScope = this
+                    val coverModifier = with(sharedScope) {
+                        Modifier.sharedElement(
+                            rememberSharedContentState(PlayerCoverSharedKey),
+                            animatedVisibilityScope = animatedScope,
+                        )
+                    }
+                    PlayerScreen(
+                        onBack = { isPlayerOpen = false },
+                        onFindOnYouTube = { track ->
+                            playerViewModel.findOnYouTube(track)
+                            isPlayerOpen = false
+                            navController.navigate(Screen.Search.route) {
+                                // Уходим из плеера в поиск, сохраняя состояние вкладок.
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        viewModel = playerViewModel,
+                        coverModifier = coverModifier,
+                    )
+                }
+            }
         }
     }
 
@@ -309,6 +341,9 @@ fun AppNavGraph() {
 
 private const val TabTransitionMillis = 300
 private const val PlayerSlideMillis = 300
+
+/** Общий ключ обложки для морфа между полноэкранным и мини-плеером. */
+private const val PlayerCoverSharedKey = "player-cover"
 
 /**
  * Индекс вкладки в нижнем доке или -1 для полноэкранных маршрутов.

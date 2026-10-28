@@ -1,6 +1,16 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 28.10.2026 (сессия 40)
+## Последнее обновление: 28.10.2026 (сессия 41)
+
+## Свайп-переключение треков и морф обложки — сессия 41
+- `MiniPlayer.kt`: горизонтальный свайп переведён с перемотки на переключение треков. Влево — следующий (`onNext` → `PlayerViewModel.playNext()`), вправо — предыдущий (`onPrevious` → `playPrevious()`); `onSeekToFraction` удалён.
+- Порог вынесен в чистую функцию `swipeTrackDirection(offsetPx, widthPx, velocityX)`: 30% ширины островка или скорость больше 1000 px/s (`VelocityTracker`); +1 — следующий, -1 — предыдущий, 0 — возврат.
+- Обложка и текст едут за пальцем через `Animatable` + `graphicsLayer.translationX` с лёгким fade (до 25%), кнопка Play остаётся на месте; после отпускания или отмены — `spring(DampingRatioMediumBouncy, StiffnessMediumLow)`. Новый жест прерывает пружину через `offsetX.stop()`.
+- `AppNavGraph`: контейнер мини-плеера и плеера обёрнут в `SharedTransitionLayout`; обе обложки получают `Modifier.sharedElement(rememberSharedContentState(PlayerCoverSharedKey), animatedVisibilityScope)` с общим ключом `"player-cover"`.
+- Вход полноэкранного плеера заменён с `slideInVertically` на `fadeIn + scaleIn(0.96f)`, чтобы обложка летела в уже видимый экран; выход остался `scaleOut(0.9f) + fadeOut`.
+- `PlayerScreen` и `FloatingMiniPlayer` получили параметр `coverModifier`; в режиме текстов shared-element к скрытой обложке не применяется, чтобы она не «оживала».
+- `sharedBounds` для названия трека не делали: разные масштабы типографики дают заметный reflow при перелёте.
+- Тесты: 23 suites / 156 тестов, 0 failures/errors (добавлен `MiniPlayerSwipeTest` — 8 тестов порогов и скорости). `assembleDebug` — BUILD SUCCESSFUL, APK 27 835 081 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
 ## Навигация и мини-плеер разделены, свайп-перемотка — сессия 40
 - `ExpressiveBottomDock` теперь только навигационный бар: `Surface` во всю ширину, фон `surfaceContainerHigh` (alpha 0.97) доходит до нижней кромки, `navigationBarsPadding()` внутри, высота контента `DockNavHeight = 72dp`, обводка 1dp. Иконки выросли с 22dp до 28dp, подписи — с 11sp до 12sp, индикатор совмещён с квадратом иконки (`indicatorTop = 13dp`).
