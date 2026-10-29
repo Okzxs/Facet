@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.my.music.core.navigation.NavigationEvents
 import com.my.music.core.navigation.SearchIntent
+import com.my.music.core.search.SearchHistoryStore
 import com.my.music.core.service.ServiceHealth
 import com.my.music.core.service.ServiceStatusManager
 import com.my.music.core.service.ServiceType
+import com.my.music.core.source.MusicSourceRegistry
 import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.SoundCloudRepository
@@ -34,6 +36,8 @@ data class SearchUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val selectedService: ServiceType = ServiceType.SOUNDCLOUD,
+    /** Последние запросы — показываются чипсами, пока поле пустое. */
+    val recentQueries: List<String> = emptyList(),
 )
 
 /** Запрос поиска: источник входит в ключ, чтобы смена сервиса перезапускала поиск. */
@@ -47,12 +51,16 @@ private data class SearchRequest(
 class SearchViewModel @Inject constructor(
     private val soundCloudRepository: SoundCloudRepository,
     private val youTubeRepository: YouTubeRepository,
+    private val sourceRegistry: MusicSourceRegistry,
+    private val searchHistoryStore: SearchHistoryStore,
     private val serviceStatusManager: ServiceStatusManager,
     private val navigationEvents: NavigationEvents,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SearchUiState())
+    private val _uiState = MutableStateFlow(
+        SearchUiState(recentQueries = searchHistoryStore.recent()),
+    )
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
     /** Глобальные статусы сервисов из Singleton-менеджера. */
@@ -141,6 +149,41 @@ class SearchViewModel @Inject constructor(
         startSearch(SearchRequest(query = current.query, service = current.selectedService))
     }
 
+    /**
+     * Поиск в выбранном источнике: сначала провайдер из реестра (Deezer, Apple),
+     * затем репозитории для исторических источников (SoundCloud, YouTube).
+     */
+    private suspend fun searchInSource(service: ServiceType, query: String): Result<List<Track>> {
+        sourceRegistry.provider(service.source)?.let { provider ->
+            return provider.search(query = query)
+        }
+        return when (service) {
+            ServiceType.SOUNDCLOUD -> soundCloudRepository.search(query)
+            ServiceType.YOUTUBE -> youTubeRepository.search(query)
+            ServiceType.DEEZER, ServiceType.APPLE -> Result.failure(
+                IllegalStateException("Источник ${service.displayName} не подключён"),
+            )
+        }
+    }
+
+    /** Тап по чипсу недавнего запроса: подставляем текст и сразу ищем. */
+    fun onRecentQueryClick(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return
+        directRequest = null
+        searchJob?.cancel()
+        _uiState.update {
+            it.copy(query = trimmed, results = emptyList(), error = null, isLoading = true)
+        }
+        startSearch(SearchRequest(query = trimmed, service = _uiState.value.selectedService))
+    }
+
+    /** Очистка истории запросов (кнопка рядом с чипсами). */
+    fun clearHistory() {
+        searchHistoryStore.clear()
+        _uiState.update { it.copy(recentQueries = emptyList()) }
+    }
+
     /** Ручное обновление статусов из меню. */
     fun refreshStatuses() {
         serviceStatusManager.refreshStatus()
@@ -183,17 +226,19 @@ class SearchViewModel @Inject constructor(
     private suspend fun performSearch(request: SearchRequest) {
         _uiState.update { it.copy(isLoading = true, error = null) }
 
-        val result = when (request.service) {
-            ServiceType.SOUNDCLOUD -> soundCloudRepository.search(request.query)
-            ServiceType.YOUTUBE -> youTubeRepository.search(request.query)
-        }
+        val result = searchInSource(request.service, request.query)
 
         result
             .onSuccess { tracks ->
                 serviceStatusManager.markAvailable(request.service)
+                searchHistoryStore.add(request.query)
                 _uiState.update { state ->
                     if (state.matches(request)) {
-                        state.copy(results = tracks, isLoading = false)
+                        state.copy(
+                            results = tracks,
+                            isLoading = false,
+                            recentQueries = searchHistoryStore.recent(),
+                        )
                     } else {
                         state
                     }

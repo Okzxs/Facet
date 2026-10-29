@@ -1,6 +1,7 @@
 package com.my.music.core.service
 
 import com.my.music.data.model.Track
+import com.my.music.core.source.MusicSourceRegistry
 import com.my.music.data.repository.SoundCloudRepository
 import com.my.music.data.repository.YouTubeRepository
 import io.mockk.coEvery
@@ -30,7 +31,7 @@ class ServiceStatusManagerTest {
         coEvery {
             youTubeRepository.search(any(), any())
         } returns Result.success(emptyList())
-        manager = ServiceStatusManager(soundCloudRepository, youTubeRepository)
+        manager = ServiceStatusManager(soundCloudRepository, youTubeRepository, MusicSourceRegistry(emptySet()))
     }
 
     @Test

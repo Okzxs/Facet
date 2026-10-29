@@ -1,6 +1,7 @@
 package com.my.music.core.service
 
 import android.util.Log
+import com.my.music.core.source.MusicSourceRegistry
 import com.my.music.data.repository.SoundCloudRepository
 import com.my.music.data.repository.YouTubeRepository
 import kotlinx.coroutines.CancellationException
@@ -30,6 +31,7 @@ import javax.inject.Singleton
 class ServiceStatusManager @Inject constructor(
     private val soundCloudRepository: SoundCloudRepository,
     private val youTubeRepository: YouTubeRepository,
+    private val sourceRegistry: MusicSourceRegistry,
 ) {
 
     private val tag = "ServiceStatus"
@@ -112,10 +114,21 @@ class ServiceStatusManager @Inject constructor(
 
     private suspend fun checkService(type: ServiceType): Boolean =
         try {
-            when (type) {
-                ServiceType.SOUNDCLOUD -> soundCloudRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
-                ServiceType.YOUTUBE -> youTubeRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
-            }.isSuccess
+            // Источники с собственным провайдером проверяются через реестр,
+            // остальные — через свои репозитории.
+            val provider = sourceRegistry.provider(type.source)
+            val result = if (provider != null) {
+                provider.search(HEALTH_QUERY, HEALTH_LIMIT)
+            } else {
+                when (type) {
+                    ServiceType.SOUNDCLOUD -> soundCloudRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
+                    ServiceType.YOUTUBE -> youTubeRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
+                    ServiceType.DEEZER, ServiceType.APPLE -> Result.failure(
+                        IllegalStateException("Нет провайдера для ${type.displayName}"),
+                    )
+                }
+            }
+            result.isSuccess
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -50,6 +50,7 @@ class WaveRepositoryTest {
             chartsRepository = chartsRepository,
             lastFmRepository = lastFmRepository,
             tasteRepository = tasteRepository,
+            dislikedTrackDao = mockk(relaxed = true),
         )
     }
 

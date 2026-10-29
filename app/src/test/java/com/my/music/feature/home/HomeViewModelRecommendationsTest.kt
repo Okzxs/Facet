@@ -5,9 +5,11 @@ import com.my.music.data.local.entity.DislikedTrackEntity
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
+import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.RecentlyShownRepository
+import com.my.music.data.repository.SoundCloudChartsRepository
 import com.my.music.data.repository.SoundCloudRepository
 import com.my.music.data.repository.YouTubeRepository
 import com.my.music.testutil.MainDispatcherRule
@@ -16,6 +18,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -36,6 +39,14 @@ class HomeViewModelRecommendationsTest {
     private val playHistoryRepository = mockk<PlayHistoryRepository>()
     private val recentlyShownRepository = mockk<RecentlyShownRepository>()
     private val dislikedTrackDao = mockk<DislikedTrackDao>()
+    private var chartTracks: List<Track> = emptyList()
+    private val chartsRepository = object : SoundCloudChartsRepository {
+        override fun observeNewAndHot() = flowOf(emptyList<Track>())
+        override fun observeTop50() = flowOf(chartTracks)
+        override suspend fun getNewAndHot(forceRefresh: Boolean) = Result.success(emptyList<Track>())
+        override suspend fun getTop50(forceRefresh: Boolean) = Result.success(chartTracks)
+    }
+    private val downloadRepository = mockk<DownloadRepository>(relaxed = true)
     private val recommendationPlanner = RecommendationPlanner()
 
     private val historyFlow = MutableStateFlow<List<Track>>(emptyList())
@@ -61,6 +72,9 @@ class HomeViewModelRecommendationsTest {
             recentlyShownIds = firstArg<Collection<String>>().toSet()
         }
         coEvery { dislikedTrackDao.getAll() } returns emptyList()
+        // Холодный старт идёт через чарты; в тестах чарт пуст, поэтому
+        // срабатывает YouTube-фолбэк, как и раньше.
+        every { downloadRepository.observeDownloadedIds() } returns flowOf(emptySet())
     }
 
     @Test
@@ -409,10 +423,45 @@ class HomeViewModelRecommendationsTest {
         assertEquals(5, state.recommendations.size)
     }
 
+    @Test
+    fun `cold start prefers SoundCloud charts over popular search`() {
+        val chart = listOf(
+            track("chart-1", title = "Chart One", artist = "Artist A"),
+            track("chart-2", title = "Chart Two", artist = "Artist B"),
+        )
+        chartTracks = chart
+
+        val state = createViewModel().uiState.value
+
+        assertEquals(setOf("chart-1", "chart-2"), state.recommendations.map { it.id }.toSet())
+        coVerify(exactly = 0) { youtubeRepository.search(POPULAR_QUERY, 24) }
+    }
+
+    @Test
+    fun `collapses duplicate uploads of the same track`() {
+        coEvery { youtubeRepository.search(any(), any()) } returns Result.success(
+            listOf(
+                track("dup-1", title = "Same Song", artist = "Artist X"),
+                track("dup-2", title = "Same Song (Official Video)", artist = "Artist X"),
+                track("other", title = "Other Song", artist = "Artist Y"),
+            ),
+        )
+
+        val state = createViewModel().uiState.value
+
+        assertEquals(2, state.recommendations.size)
+        assertEquals(
+            setOf("dup-1", "other"),
+            state.recommendations.map { it.id }.toSet(),
+        )
+    }
+
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
             youtubeRepository = youtubeRepository,
             soundCloudRepository = soundCloudRepository,
+            chartsRepository = chartsRepository,
+            downloadRepository = mockk(relaxed = true),
             likedTracksRepository = likedTracksRepository,
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,

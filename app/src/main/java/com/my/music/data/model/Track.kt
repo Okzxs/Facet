@@ -20,6 +20,13 @@ data class Track(
     val liked: Boolean = false,
     /** URL страницы трека/видео для последующего resolve потока. */
     val transcodingUrl: String? = null,
+    /** ISRC из метаданных Deezer — ключ для точного сопоставления между источниками. */
+    val isrc: String? = null,
+    /**
+     * Длина превью в секундах (Deezer/iTunes отдают только 30-секундный отрывок).
+     * null — трек играет целиком.
+     */
+    val previewSeconds: Int? = null,
 )
 
-enum class Source { SOUNDCLOUD, YOUTUBE, SPOTIFY, YANDEX, VK, LOCAL }
+enum class Source { SOUNDCLOUD, YOUTUBE, SPOTIFY, YANDEX, VK, DEEZER, APPLE, LOCAL }

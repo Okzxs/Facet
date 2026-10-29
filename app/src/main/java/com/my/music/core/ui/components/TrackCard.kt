@@ -139,6 +139,9 @@ fun TrackCard(
                             append(track.artist)
                             if (!track.genre.isNullOrBlank()) append(" · ${track.genre}")
                             if (track.durationMs > 0) append(" · ${formatDuration(track.durationMs)}")
+                            // Превью-источники (Deezer, Apple) играют только отрывок —
+                            // это честно видно в карточке, а не выясняется на середине.
+                            track.previewSeconds?.let { append(" · превью $it с") }
                         },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

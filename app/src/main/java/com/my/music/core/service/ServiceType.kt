@@ -1,11 +1,15 @@
 package com.my.music.core.service
 
+import com.my.music.data.model.Source
+
 /**
- * Сервисы, доступность которых отслеживает приложение.
- * Это не то же самое, что [com.my.music.data.model.Source]:
- * здесь только источники, для которых есть онлайн-проверка.
+ * Сервисы, доступность которых отслеживает приложение и между которыми
+ * переключается поиск. Это не то же самое, что [Source]: здесь только те
+ * источники, у которых есть онлайн-поиск.
  */
-enum class ServiceType(val displayName: String) {
-    SOUNDCLOUD("SoundCloud"),
-    YOUTUBE("YouTube"),
+enum class ServiceType(val displayName: String, val source: Source) {
+    SOUNDCLOUD("SoundCloud", Source.SOUNDCLOUD),
+    YOUTUBE("YouTube", Source.YOUTUBE),
+    DEEZER("Deezer", Source.DEEZER),
+    APPLE("Apple Music", Source.APPLE),
 }

@@ -2,7 +2,9 @@ package com.my.music.feature.search
 
 import com.my.music.core.navigation.NavigationEvents
 import com.my.music.core.service.ServiceHealth
+import com.my.music.core.search.SearchHistoryStore
 import com.my.music.core.service.ServiceStatusManager
+import com.my.music.core.source.MusicSourceRegistry
 import com.my.music.core.service.ServiceType
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.SoundCloudRepository
@@ -73,6 +75,8 @@ class SearchViewModelExternalRequestTest {
     private fun createViewModel(events: NavigationEvents): SearchViewModel = SearchViewModel(
         soundCloudRepository = soundCloudRepository,
         youTubeRepository = youTubeRepository,
+        sourceRegistry = MusicSourceRegistry(emptySet()),
+        searchHistoryStore = mockk(relaxed = true),
         serviceStatusManager = statusManager,
         navigationEvents = events,
         downloadRepository = downloadRepository,

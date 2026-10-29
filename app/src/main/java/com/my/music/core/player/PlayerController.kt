@@ -12,6 +12,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.my.music.core.source.StreamResolver
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
@@ -53,11 +54,30 @@ class PlayerController private constructor(
     private val playHistoryRepository: PlayHistoryRepository,
     /** Репозиторий скачанных треков; null только в JVM-тестах. */
     private val downloadRepository: DownloadRepository?,
+    /** Резолвер стрима для внешних источников; null в тестах и легаси-конструкторах. */
+    private val streamResolver: StreamResolver?,
     initialController: MediaController?,
 ) {
 
     @Inject
     constructor(
+        @ApplicationContext context: Context,
+        soundCloudRepository: SoundCloudRepository,
+        youTubeRepository: YouTubeRepository,
+        playHistoryRepository: PlayHistoryRepository,
+        downloadRepository: DownloadRepository,
+        streamResolver: StreamResolver,
+    ) : this(
+        context,
+        soundCloudRepository,
+        youTubeRepository,
+        playHistoryRepository,
+        downloadRepository,
+        streamResolver,
+        null,
+    )
+
+    internal constructor(
         @ApplicationContext context: Context,
         soundCloudRepository: SoundCloudRepository,
         youTubeRepository: YouTubeRepository,
@@ -70,6 +90,7 @@ class PlayerController private constructor(
         playHistoryRepository,
         downloadRepository,
         null,
+        null,
     )
 
     /** Конструктор для JVM-тестов: готовый контроллер без подключения к сервису. */
@@ -79,12 +100,14 @@ class PlayerController private constructor(
         playHistoryRepository: PlayHistoryRepository,
         youTubeRepository: YouTubeRepository? = null,
         downloadRepository: DownloadRepository? = null,
+        streamResolver: StreamResolver? = null,
     ) : this(
         null,
         soundCloudRepository,
         youTubeRepository,
         playHistoryRepository,
         downloadRepository,
+        streamResolver,
         mediaController,
     )
 
@@ -586,6 +609,18 @@ class PlayerController private constructor(
                         )
                     }
                 }
+                // Внешние источники (Deezer/Apple): ссылка может быть превью или
+                // отсутствовать — резолвер обновит её либо сматчит трек на YouTube.
+                track.source == Source.DEEZER || track.source == Source.APPLE -> {
+                    val resolver = streamResolver
+                    if (resolver != null) {
+                        resolver.resolve(track)
+                    } else {
+                        Result.failure(
+                            IllegalStateException("Нет резолвера потока для трека: ${track.id}"),
+                        )
+                    }
+                }
                 track.streamUrl != null ->
                     Result.success(
                         AudioStreamResult(
@@ -661,7 +696,7 @@ class PlayerController private constructor(
 
     /** MIME по умолчанию для прямых URL, если источник его не сообщил. */
     private fun defaultMimeType(source: Source): String = when (source) {
-        Source.YOUTUBE -> MimeTypes.AUDIO_MP4
+        Source.YOUTUBE, Source.APPLE -> MimeTypes.AUDIO_MP4
         else -> MimeTypes.AUDIO_MPEG
     }
 

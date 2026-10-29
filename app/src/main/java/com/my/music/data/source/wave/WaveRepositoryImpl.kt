@@ -1,6 +1,7 @@
 package com.my.music.data.source.wave
 
 import com.my.music.core.util.rethrowCancellation
+import com.my.music.data.local.dao.DislikedTrackDao
 import com.my.music.data.model.Track
 import com.my.music.data.repository.LastFmRepository
 import com.my.music.data.repository.LikedTracksRepository
@@ -45,6 +46,7 @@ class WaveRepositoryImpl @Inject constructor(
     private val chartsRepository: SoundCloudChartsRepository,
     private val lastFmRepository: LastFmRepository,
     private val tasteRepository: TasteRepository,
+    private val dislikedTrackDao: DislikedTrackDao,
 ) : WaveRepository {
 
     private val _activeSession = MutableStateFlow<WaveSession?>(null)
@@ -127,13 +129,20 @@ class WaveRepositoryImpl @Inject constructor(
 
         val knownIds = session.shownTrackIds.toMutableSet()
         val entries = LinkedHashMap<String, WavePick>()
+        // Дизлайки и дубликаты одного трека из разных загрузок не должны
+        // попадать в волну: первое — осознанный отказ, второе — визуальный шум.
+        val dislikedIds = loadDislikedIds()
+        val seenTitles = HashSet<String>()
 
         fun take(candidates: List<Track>, limit: Int, origin: WaveOrigin) {
             if (limit <= 0) return
             var taken = 0
             for (candidate in prioritize(candidates, russianPriority)) {
                 if (taken >= limit || entries.size >= target) break
-                if (candidate.id.isBlank() || !knownIds.add(candidate.id)) continue
+                if (candidate.id.isBlank()) continue
+                if (candidate.id in dislikedIds) continue
+                if (!seenTitles.add(candidate.titleKey())) continue
+                if (!knownIds.add(candidate.id)) continue
                 entries[candidate.id] = WavePick(candidate, origin)
                 taken++
             }
@@ -220,6 +229,16 @@ class WaveRepositoryImpl @Inject constructor(
         _activeSession.value = updatedSession
         return WaveBatch(tracks, updatedSession)
     }
+
+    /** Дизлайки пользователя — в волну такие треки не возвращаем. */
+    private suspend fun loadDislikedIds(): Set<String> =
+        runCatching { dislikedTrackDao.getAll().mapTo(HashSet()) { it.trackId } }
+            .rethrowCancellation()
+            .getOrDefault(emptySet())
+
+    /** Ключ дедупа: артист и название без регистра, скобок и пунктуации. */
+    private fun Track.titleKey(): String =
+        normalizeWords(artist) + "|" + normalizeWords(BRACKET_NOISE.replace(title, " "))
 
     private suspend fun buildSeedArtists(
         liked: List<Track>,
@@ -504,6 +523,9 @@ class WaveRepositoryImpl @Inject constructor(
         val CYRILLIC_RANGE = '\u0400'..'\u04FF'
 
         val NON_WORD_CHARS = Regex("[^\\p{L}\\p{N}]+")
+
+        /** Скобочные пометки версии — не часть названия при дедупе. */
+        val BRACKET_NOISE = Regex("[(\\[][^)\\]]*[)\\]]")
 
         /** Служебные подписи вместо жанра */
         val JUNK_GENRES = setOf(

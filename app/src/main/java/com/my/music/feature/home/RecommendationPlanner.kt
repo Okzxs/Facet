@@ -282,6 +282,32 @@ class RecommendationPlanner @Inject constructor() {
     }
 
     /**
+     * Убирает дубликаты одного и того же трека из разных загрузок.
+     *
+     * YouTube отдаёт каждый перезалив отдельным id, поэтому дедуп по id
+     * пропускал одинаковые песни. Сравниваем нормализованные «артист + название».
+     */
+    internal fun dedupeByTitle(tracks: List<Track>): List<Track> {
+        val seen = HashSet<String>()
+        return tracks.filter { track ->
+            val key = track.matchKey()
+            key.isBlank() || seen.add(key)
+        }
+    }
+
+    /** Ключ сравнения: артист без feat./prod. + название без скобочных пометок. */
+    internal fun Track.matchKey(): String {
+        val artistKeys = normalizeArtist(artist)
+        val titleKey = title
+            .lowercase(Locale.ROOT)
+            .replace(TITLE_NOISE, " ")
+            .replace(NON_WORD, " ")
+            .replace(WHITESPACE_PATTERN, " ")
+            .trim()
+        return if (titleKey.isBlank()) "" else "$artistKeys|$titleKey"
+    }
+
+    /**
      * Перемешивает кандидатов и набирает не больше [limit] треков.
      * Обычный кап — [maxPerArtist], для доминирующих артистов —
      * [maxPerDominantArtist].
@@ -448,6 +474,11 @@ class RecommendationPlanner @Inject constructor() {
 internal const val POPULAR_QUERY = "popular songs official audio"
 
 private val WHITESPACE_PATTERN = Regex("\\s+")
+
+private val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
+
+/** Скобочные пометки версии: «(Official Video)», «[Remastered]», «— Live». */
+private val TITLE_NOISE = Regex("[(\\[][^)\\]]*[)\\]]")
 
 /**
  * Убирает feat./prod. и всё, что идёт после них, схлопывает пробелы

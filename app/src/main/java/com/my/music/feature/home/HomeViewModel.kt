@@ -9,9 +9,11 @@ import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Source
 import com.my.music.data.local.dao.DislikedTrackDao
 import com.my.music.data.model.Track
+import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlayHistoryRepository
 import com.my.music.data.repository.RecentlyShownRepository
+import com.my.music.data.repository.SoundCloudChartsRepository
 import com.my.music.data.repository.SoundCloudRepository
 import com.my.music.data.repository.YouTubeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -63,6 +66,8 @@ private data class CandidateLoadResult(
 class HomeViewModel @Inject constructor(
     private val youtubeRepository: YouTubeRepository,
     private val soundCloudRepository: SoundCloudRepository,
+    private val chartsRepository: SoundCloudChartsRepository,
+    private val downloadRepository: DownloadRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
     private val recentlyShownRepository: RecentlyShownRepository,
@@ -159,11 +164,19 @@ class HomeViewModel @Inject constructor(
                 val history = _uiState.value.recentTracks
                 val recentlyShownIds = loadRecentlyShownIds()
                 val dislikedTrackIds = loadDislikedTrackIds()
+                // Лента не должна «открывать» то, что уже лайкнуто, слушалось
+                // или лежит офлайн: знакомые треки не занимают слоты новизны.
+                val excludedTrackIds = buildSet {
+                    liked.forEach { add(it.id) }
+                    history.forEach { add(it.id) }
+                    addAll(loadDownloadedIds())
+                }
                 val result = loadRecommendationTracks(
                     liked = liked,
                     history = history,
                     recentlyShownIds = recentlyShownIds,
                     dislikedTrackIds = dislikedTrackIds,
+                    excludedTrackIds = excludedTrackIds,
                 )
                 if (requestId != recommendationsRequestId) return@launch
 
@@ -217,12 +230,13 @@ class HomeViewModel @Inject constructor(
         history: List<Track>,
         recentlyShownIds: Set<String>,
         dislikedTrackIds: Set<String>,
+        excludedTrackIds: Set<String>,
     ): Result<List<Track>> = coroutineScope {
         val hasPersonalData = liked.isNotEmpty() || history.isNotEmpty()
         val trackSeeds = recommendationPlanner.selectTrackSeeds(
             recommendationPlanner.buildTrackSeeds(liked, history),
         )
-        val related = loadRelatedCandidates(trackSeeds, recentlyShownIds)
+        val related = loadRelatedCandidates(trackSeeds, recentlyShownIds, excludedTrackIds)
         val relatedCandidates = recommendationPlanner.filterDisliked(
             candidates = related.candidates,
             dislikedTrackIds = dislikedTrackIds,
@@ -230,7 +244,7 @@ class HomeViewModel @Inject constructor(
         val dominantArtists = recommendationPlanner.findDominantArtists(liked, history)
 
         val relatedSelection = recommendationPlanner.selectTracks(
-            candidates = relatedCandidates,
+            candidates = recommendationPlanner.dedupeByTitle(relatedCandidates),
             maxPerArtist = MAX_TRACKS_PER_ARTIST,
             dominantArtists = dominantArtists,
             maxPerDominantArtist = MAX_TRACKS_PER_DOMINANT_ARTIST,
@@ -241,23 +255,27 @@ class HomeViewModel @Inject constructor(
         }
 
         // Холодный старт: лайков и истории нет, related-сидов тоже.
-        // Глобальный популярный запрос разрешён только в этом случае.
+        // Чарты SoundCloud — единственный источник без персонализации.
         if (!hasPersonalData) {
-            return@coroutineScope loadPopularRecommendations(recentlyShownIds, dislikedTrackIds)
+            return@coroutineScope loadChartRecommendations(
+                recentlyShownIds = recentlyShownIds,
+                dislikedTrackIds = dislikedTrackIds,
+                excludedTrackIds = excludedTrackIds,
+            )
         }
 
         val fallbackQueries = recommendationPlanner.buildArtistFallbackQueries(
             liked = liked,
             history = history,
         )
-        val fallback = loadFallbackCandidates(fallbackQueries, recentlyShownIds)
+        val fallback = loadFallbackCandidates(fallbackQueries, recentlyShownIds, excludedTrackIds)
         val fallbackCandidates = recommendationPlanner.filterDisliked(
             candidates = fallback.candidates,
             dislikedTrackIds = dislikedTrackIds,
         )
         val selected = recommendationPlanner.appendTracks(
             selected = relatedSelection,
-            candidates = fallbackCandidates,
+            candidates = recommendationPlanner.dedupeByTitle(fallbackCandidates),
             maxPerArtist = MAX_TRACKS_PER_ARTIST,
             dominantArtists = dominantArtists,
             maxPerDominantArtist = MAX_TRACKS_PER_DOMINANT_ARTIST,
@@ -281,6 +299,7 @@ class HomeViewModel @Inject constructor(
     private suspend fun loadRelatedCandidates(
         seeds: List<TrackSeed>,
         recentlyShownIds: Set<String>,
+        excludedTrackIds: Set<String>,
     ): CandidateLoadResult = coroutineScope {
         if (seeds.isEmpty()) {
             return@coroutineScope CandidateLoadResult(
@@ -317,7 +336,7 @@ class HomeViewModel @Inject constructor(
             .asSequence()
             // Не рекомендуем сам сид и то, что уже показывали за последние 24 часа.
             // Артиста здесь не проверяем: related-выдача специально приводит новых.
-            .filter { track -> track.id !in seedIds && track.isEligible(recentlyShownIds) }
+            .filter { track -> track.id !in seedIds && track.isEligible(recentlyShownIds, excludedTrackIds) }
             .distinctBy { it.id }
             .toList()
 
@@ -346,6 +365,7 @@ class HomeViewModel @Inject constructor(
     private suspend fun loadFallbackCandidates(
         queries: List<RecommendationQuery>,
         recentlyShownIds: Set<String>,
+        excludedTrackIds: Set<String>,
     ): CandidateLoadResult = coroutineScope {
         if (queries.isEmpty()) {
             return@coroutineScope CandidateLoadResult(
@@ -374,7 +394,7 @@ class HomeViewModel @Inject constructor(
                         recommendationPlanner.matchesExactArtist(
                             track = track,
                             allowedArtists = query.allowedArtists,
-                        ) && track.isEligible(recentlyShownIds)
+                        ) && track.isEligible(recentlyShownIds, excludedTrackIds)
                     }
                     .toList()
             }
@@ -393,12 +413,47 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Единственный сценарий с глобальным популярным запросом — первый запуск,
-     * когда у пользователя ещё нет ни лайков, ни истории.
+     * Холодный старт: лайков и истории нет. Вместо глобального запроса
+     * «popular songs» берём чарт SoundCloud — он хотя бы музыкальный,
+     * а не случайная выдача YouTube. Если чарт недоступен — последний
+     * фолбэк на YouTube-поиск.
+     */
+    private suspend fun loadChartRecommendations(
+        recentlyShownIds: Set<String>,
+        dislikedTrackIds: Set<String>,
+        excludedTrackIds: Set<String>,
+    ): Result<List<Track>> {
+        val chart = chartsRepository.getTop50().getOrNull().orEmpty()
+            .asSequence()
+            .filter { it.isEligible(recentlyShownIds, excludedTrackIds) }
+            .toList()
+
+        val candidates = recommendationPlanner.filterDisliked(
+            candidates = recommendationPlanner.dedupeByTitle(chart),
+            dislikedTrackIds = dislikedTrackIds,
+        )
+
+        val selected = recommendationPlanner.selectTracks(
+            candidates = candidates,
+            maxPerArtist = MAX_TRACKS_PER_ARTIST,
+        )
+        if (selected.isNotEmpty()) return Result.success(selected)
+
+        return loadPopularRecommendations(
+            recentlyShownIds = recentlyShownIds,
+            dislikedTrackIds = dislikedTrackIds,
+            excludedTrackIds = excludedTrackIds,
+        )
+    }
+
+    /**
+     * Последний фолбэк холодного старта — YouTube-поиск.
+     * Глобальный запрос разрешён только когда нет ни лайков, ни истории.
      */
     private suspend fun loadPopularRecommendations(
         recentlyShownIds: Set<String>,
         dislikedTrackIds: Set<String>,
+        excludedTrackIds: Set<String>,
     ): Result<List<Track>> {
         val popularResult = youtubeRepository.search(
             query = POPULAR_QUERY,
@@ -412,12 +467,14 @@ class HomeViewModel @Inject constructor(
         }
 
         val candidates = recommendationPlanner.filterDisliked(
-            candidates = popularResult
-                .getOrDefault(emptyList())
-                .asSequence()
-                .filter { it.isEligible(recentlyShownIds) }
-                .distinctBy { it.id }
-                .toList(),
+            candidates = recommendationPlanner.dedupeByTitle(
+                popularResult
+                    .getOrDefault(emptyList())
+                    .asSequence()
+                    .filter { it.isEligible(recentlyShownIds, excludedTrackIds) }
+                    .distinctBy { it.id }
+                    .toList(),
+            ),
             dislikedTrackIds = dislikedTrackIds,
         )
         val selected = recommendationPlanner.selectTracks(
@@ -427,10 +484,13 @@ class HomeViewModel @Inject constructor(
         return Result.success(selected)
     }
 
-    private fun Track.isEligible(recentlyShownIds: Set<String>): Boolean =
-        id !in recentlyShownIds &&
-            durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS &&
-            isStudioOriginal()
+    private fun Track.isEligible(
+        recentlyShownIds: Set<String>,
+        excludedTrackIds: Set<String>,
+    ): Boolean = id !in recentlyShownIds &&
+        id !in excludedTrackIds &&
+        durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS &&
+        isStudioOriginal()
 
     /**
      * Отсекаем переводы, каверы, ремиксы, live-версии и прочие нестудийные записи.
@@ -450,6 +510,15 @@ class HomeViewModel @Inject constructor(
         }.rethrowCancellation()
             .onFailure { error ->
                 Log.w(tag, "Не удалось загрузить дизлайки: ${error.message}", error)
+            }
+            .getOrDefault(emptySet())
+
+    /** Скачанные треки: не предлагаем то, что уже лежит офлайн. */
+    private suspend fun loadDownloadedIds(): Set<String> =
+        runCatching { downloadRepository.observeDownloadedIds().first() }
+            .rethrowCancellation()
+            .onFailure { error ->
+                Log.w(tag, "Не удалось загрузить скачанные: ${error.message}", error)
             }
             .getOrDefault(emptySet())
 

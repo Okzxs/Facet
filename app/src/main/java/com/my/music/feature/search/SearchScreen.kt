@@ -17,6 +17,14 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -149,6 +157,18 @@ fun SearchScreen(
             )
 
             AnimatedVisibility(
+                visible = state.query.isBlank() && state.recentQueries.isNotEmpty(),
+                enter = fadeIn(tween(200)),
+                exit = fadeOut(tween(120)),
+            ) {
+                RecentQueriesRow(
+                    queries = state.recentQueries,
+                    onClick = viewModel::onRecentQueryClick,
+                    onClear = viewModel::clearHistory,
+                )
+            }
+
+            AnimatedVisibility(
                 visible = state.query.isBlank(),
                 enter = fadeIn(tween(220)) +
                     expandVertically(
@@ -187,6 +207,8 @@ fun SearchScreen(
                     SearchContentState.Empty -> EmptyResultsState(
                         query = state.query,
                         serviceName = state.selectedService.displayName,
+                        selectedService = state.selectedService,
+                        onSelectService = viewModel::onServiceSelected,
                     )
                     SearchContentState.Results -> ResultsList(
                         tracks = state.results,
@@ -211,7 +233,7 @@ private fun SearchHeader() {
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "Найди свой саунд на SoundCloud и YouTube",
+            text = "Найди свой саунд на ${ServiceType.entries.joinToString(", ") { it.displayName }}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -233,16 +255,19 @@ private fun SourceSwitcher(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ServiceType.entries.forEachIndexed { index, service ->
-                ServiceSourceChip(
-                    service = service,
-                    selected = service == selected,
-                    health = statuses[service] ?: ServiceHealth(),
-                    onClick = { onSelect(service) },
-                    modifier = Modifier.weight(1f),
-                )
-                if (index < ServiceType.entries.lastIndex) {
-                    Spacer(Modifier.width(8.dp))
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ServiceType.entries.forEach { service ->
+                    ServiceSourceChip(
+                        service = service,
+                        selected = service == selected,
+                        health = statuses[service] ?: ServiceHealth(),
+                        onClick = { onSelect(service) },
+                    )
                 }
             }
 
@@ -637,6 +662,8 @@ private fun UnavailableServiceWarning(
 private fun serviceIcon(service: ServiceType) = when (service) {
     ServiceType.SOUNDCLOUD -> Icons.Rounded.Cloud
     ServiceType.YOUTUBE -> Icons.Rounded.SmartDisplay
+    ServiceType.DEEZER -> Icons.Rounded.Equalizer
+    ServiceType.APPLE -> Icons.Rounded.MusicNote
 }
 
 @Composable
@@ -798,6 +825,75 @@ private fun SuggestionChips(onSuggestion: (String) -> Unit) {
     }
 }
 
+/**
+ * Недавние запросы: горизонтальный ряд чипсов над подсказками.
+ * Появляются, только пока поле пустое — чтобы не мешать вводу.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RecentQueriesRow(
+    queries: List<String>,
+    onClick: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Недавние",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = onClear,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+                Text(
+                    text = "Очистить",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            queries.forEach { query ->
+                AssistChip(
+                    onClick = { onClick(query) },
+                    label = {
+                        Text(
+                            text = query,
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.History,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                    shape = MaterialTheme.shapes.large,
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        labelColor = MaterialTheme.colorScheme.onSurface,
+                        leadingIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun IdleState(
     query: String,
@@ -850,11 +946,15 @@ private fun IdleState(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EmptyResultsState(
     query: String,
     serviceName: String,
+    selectedService: ServiceType,
+    onSelectService: (ServiceType) -> Unit,
 ) {
+    val alternatives = ServiceType.entries.filter { it != selectedService }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -891,6 +991,44 @@ private fun EmptyResultsState(
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
+        if (query.length >= 2) {
+            Spacer(Modifier.height(18.dp))
+            Text(
+                text = "Поискать в другом источнике",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                alternatives.forEach { service ->
+                    AssistChip(
+                        onClick = { onSelectService(service) },
+                        label = {
+                            Text(
+                                text = service.displayName,
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = serviceIcon(service),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        },
+                        shape = MaterialTheme.shapes.large,
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            labelColor = MaterialTheme.colorScheme.onSurface,
+                            leadingIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                }
+            }
+        }
     }
 }
 

@@ -1,6 +1,14 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 29.10.2026 (сессия 52)
+## Последнее обновление: 30.10.2026 (сессия 53)
+
+## Deezer + Apple Music, фиксы рекомендаций и UX из Dotify — сессия 53
+- **S1. Фундамент источников**: новый `core/source/MusicSourceProvider` (source + `SourceCapabilities`: search/preview/fullStream/requiresAuth/supportsDownload) и `MusicSourceRegistry` (Set-провайдеров через `@IntoSet`). Новый источник добавляется одним биндингом — поиск, статусы и резолвер подхватывают его сами. `core/source/StreamResolver`: 1) прямая ссылка трека (превью), 2) провайдер обновляет ссылку, 3) матч на YouTube через `YouTubeMatcher` (скоринг артиста/названия/длительности, штраф за cover/remix/live/slowed, бонус official/topic, ISRC; порог 5.0 — лучше «не найдено», чем чужой трек).
+- **S2. Deezer и Apple/iTunes**: `DeezerProvider` (`api.deezer.com/search`, 30-сек. MP3-превью, ISRC) и `AppleMusicProvider` (`itunes.apple.com/search`, `previewUrl` M4A, апскейл обложки до 600×600, `country=RU` для кириллицы). Оба без авторизации; в `Track` добавлены `isrc` и `previewSeconds`, в `Source` — `DEEZER` и `APPLE`. `PlayerController` резолвит их через `StreamResolver` (null-safe, тестовые конструкторы не тронуты), MIME: Apple → M4A, Deezer → MP3.
+- **Рекомендации (P0/P1 из аудита)**: из кандидатов Дома исключаются `liked_tracks`, `play_history` и `downloaded_tracks`; дедуп по нормализованному `(artist, title)` в Доме, волне и фолбэке; в волну добавлен `filterDisliked` (дизлайки больше не возвращаются); холодный старт — `SoundCloudChartsRepository.getTop50()` вместо `"popular songs official audio"`, YouTube-поиск остался последним фолбэком.
+- **UX из Dotify (адаптировано под M3)**: 1) «Недавние» запросы чипсами под полем поиска (`SearchHistoryStore`, SharedPreferences, 8 записей, «Очистить»); 2) в пустой выдаче — «Поискать в другом источнике» с чипсами остальных сервисов; 3) в карточке трека видно «превью 30 с» — честная индикация того, что играет отрывок. Чипсы источников стали горизонтально скроллируемыми (4 сервиса не влезают в строку), статусы сервисов расширены до SoundCloud/YouTube/Deezer/Apple.
+- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 572 301 байт; тесты 24 suites / 164, 0 failures/errors/skipped (добавлены `YouTubeMatcherTest` — 6 кейсов, 2 кейса холодного старта и дедупа в `HomeViewModelRecommendationsTest`).
+- Живая проверка на 192.168.1.106:44537: чипсы Deezer/Apple Music, поиск «cachalot» в Deezer — 20 результатов с бейджем «превью 30 с», превью играет (0:17, очередь листается дальше), статусы всех четырёх сервисов «Онлайн» (значит и iTunes-поиск вернул результат), «Недавние» с чипсом «cachalot» и «Очистить».
 
 ## Кнопки под обложкой в палитре плеера — сессия 52
 - Кнопки «скачать / лайк / дизлайк» под обложкой больше не берут цвет темы: при включённых динамических цветах обложки акцент — `coverAccent`, контейнер активного состояния — `playerColors.primaryContainer`, подложка покоя — `coverAccent.copy(alpha = 0.14f)` вместо серой `onSurface.copy(alpha = 0.08f)`.

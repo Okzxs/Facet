@@ -67,6 +67,8 @@ class HomeViewModelGenreTest {
         viewModel = HomeViewModel(
             youtubeRepository = youtubeRepository,
             soundCloudRepository = soundCloudRepository,
+            chartsRepository = mockk(relaxed = true),
+            downloadRepository = mockk(relaxed = true),
             likedTracksRepository = likedTracksRepository,
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,
