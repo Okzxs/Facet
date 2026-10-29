@@ -93,6 +93,7 @@ com.my.music
 - Экраны-вкладки сами ставят себе фон (`Modifier.background(MaterialTheme.colorScheme.background)`) и инсеты: корневого Scaffold в `AppNavGraph` больше нет (док — оверлей, высота через `LocalBottomDockHeight`). Корневой Box навграфа тоже непрозрачный — иначе в переходах вкладок проглядывает окно.
 - `MyMusicTheme` провайдит `LocalContentColor = colorScheme.onBackground`: MaterialTheme его не ставит, дефолт — `Color.Black`, и после удаления корневого Scaffold любой Text без явного цвета чернел на тёмном фоне. Scaffold плеера с `containerColor = Transparent` обязан задавать `contentColor` явно (`contentColorFor(Transparent)` = Unspecified).
 - `windowBackground` задан в `values/themes.xml` и `values-night/themes.xml` (#FAFAFA / #121212, совпадает с Color.kt) — без ночного варианта окно оставалось белым и давало вспышку на холодном старте.
+- Текст песни (`LyricLineItem` в `PlayerScreen.kt`): у строк списка **нет** `Modifier.animateItem()` — на каждый `animateScrollToItem` (смена активной строки) он запускает анимацию появления у уже видимых строк, и весь текст гаснет в ноль и проявляется ~250 мс. Полоска прогресса живёт в постоянном слоте `LyricBarSlot = 12.dp` и не меняет высоту строки — иначе список прыгает при каждой смене строки (сессия 51).
 
 ---
 

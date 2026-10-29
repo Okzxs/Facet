@@ -1,11 +1,8 @@
 package com.my.music.feature.player
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -134,6 +131,13 @@ private const val FIND_ON_YOUTUBE_ACTION = "Найти"
 
 /** Порог закрытия свайпом вниз: 30% высоты экрана. */
 private const val DISMISS_THRESHOLD = 0.30f
+
+/**
+ * Постоянный слот под полоску прогресса активной строки текста.
+ * Высота строки не должна зависеть от того, активна она или нет: иначе
+ * список пересчитывает смещения и на каждой смене строки дёргается.
+ */
+private val LyricBarSlot = 12.dp
 
 /** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
@@ -1541,6 +1545,11 @@ private fun LyricsListView(
                     ),
                     verticalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
+                    // Modifier.animateItem() здесь сознательно не используется:
+                    // список не добавляет и не удаляет строки, а на каждый
+                    // animateScrollToItem (смена активной строки) аниматор
+                    // появления гасит уже видимые строки в ноль и проявляет их
+                    // заново ~250 мс — текст «исчезал» и возвращался.
                     itemsIndexed(
                         items = lyricsResult.lines,
                         key = { index, line -> "$index-${line.timeMs}" },
@@ -1561,8 +1570,6 @@ private fun LyricsListView(
                             } else {
                                 null
                             },
-                            // Сдвиг строк при смене размера/активной строки анимируется.
-                            modifier = Modifier.animateItem(),
                         )
                     }
                 }
@@ -1593,7 +1600,9 @@ private fun LyricsListView(
 /**
  * Одна строка синхронного текста:
  * - размер, цвет и прозрачность анимируются — строка «вырастает» и гаснет плавно;
- * - полоска прогресса выезжает снизу и так же плавно исчезает при смене строки;
+ * - полоска прогресса живёт в постоянном слоте высотой 12dp и проявляется альфой:
+ *   раньше она въезжала через expandVertically, из-за чего у строки менялась высота,
+ *   LazyColumn пересчитывал смещения и список дёргался на каждой смене строки;
  * - альфа читается в graphicsLayer, поэтому анимация не дёргает весь список.
  */
 @Composable
@@ -1646,6 +1655,14 @@ private fun LyricLineItem(
         label = "lyricAlpha",
     )
 
+    // Полоска не занимает и не освобождает место — она просто проявляется
+    // и гаснет внутри своего постоянного слота.
+    val barAlpha = animateFloatAsState(
+        targetValue = if (isActive && isSynced) 1f else 0f,
+        animationSpec = tween(durationMillis = if (isActive) 200 else 140),
+        label = "lyricBar",
+    )
+
     val targetColor = when {
         isActive -> onSurface
         isSynced -> onSurfaceVariant
@@ -1677,7 +1694,7 @@ private fun LyricLineItem(
                 indication = null,
                 onClick = { onClick?.invoke() },
             )
-            .padding(vertical = 6.dp),
+            .padding(top = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -1693,34 +1710,27 @@ private fun LyricLineItem(
                 // Альфа — в фазе отрисовки, без рекомпозиции на каждый кадр.
                 .graphicsLayer { alpha = lineAlpha.value },
         )
-        // Полоска прогресса выезжает снизу и плавно уезжает при смене строки.
-        AnimatedVisibility(
-            visible = isActive && isSynced,
-            enter = fadeIn(tween(durationMillis = 220)) +
-                expandVertically(tween(durationMillis = 220)),
-            exit = fadeOut(tween(durationMillis = 160)) +
-                shrinkVertically(tween(durationMillis = 160)),
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(LyricBarSlot)
+                .graphicsLayer { alpha = barAlpha.value },
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.5f)
+                    .height(2.dp)
+                    .clip(PillShape)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
             ) {
-                Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.5f)
-                        .height(2.dp)
+                        .fillMaxWidth(fill)
+                        .fillMaxHeight()
                         .clip(PillShape)
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(fill)
-                            .fillMaxHeight()
-                            .clip(PillShape)
-                            .background(highlightColor),
-                    )
-                }
+                        .background(highlightColor),
+                )
             }
         }
     }
