@@ -79,14 +79,14 @@ fun TrackCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val shape = MaterialTheme.shapes.large
+    val shape = MaterialTheme.shapes.medium
 
     val containerColor by animateColorAsState(
         targetValue = when {
             pressed -> MaterialTheme.colorScheme.surfaceContainerHigh
-            // Играющий трек подсвечен в списке: строка тонирована контейнером акцента.
-            isPlaying -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
-            else -> Color.Transparent
+            // Играющий трек подсвечен в списке: тон чуть выше обычной карточки.
+            isPlaying -> MaterialTheme.colorScheme.surfaceContainerHigh
+            else -> MaterialTheme.colorScheme.surfaceContainerLow
         },
         animationSpec = tween(durationMillis = 180),
         label = "trackCardContainer",
@@ -109,6 +109,7 @@ fun TrackCard(
             },
         shape = shape,
         color = containerColor,
+        tonalElevation = 0.dp,
     ) {
         ListItem(
             modifier = Modifier.clickable(
@@ -126,6 +127,11 @@ fun TrackCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium,
+                        color = if (isPlaying) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(

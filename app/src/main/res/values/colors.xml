@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Совпадает с Background из core/ui/theme/Color.kt (0xFFFAF9F6). -->
-    <color name="window_background">#FAF9F6</color>
+    <!-- Совпадает с Background из core/ui/theme/Color.kt (0xFFFAFAFA). -->
+    <color name="window_background">#FAFAFA</color>
 </resources>

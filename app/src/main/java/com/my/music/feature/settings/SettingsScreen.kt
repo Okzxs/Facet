@@ -120,10 +120,10 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = "ГЕОПОЗИЦИЯ",
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 20.dp),
+            text = "Геопозиция",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
         )
 
         Spacer(Modifier.height(10.dp))
@@ -131,18 +131,18 @@ fun SettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 16.dp)
                 // Тонкий контур: граница карточки читается на обеих темах,
                 // не споря с заливкой surfaceContainerLow.
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                    shape = MaterialTheme.shapes.extraLarge,
+                    shape = MaterialTheme.shapes.medium,
                 ),
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = if (hasLocationPermission) {
@@ -212,10 +212,10 @@ fun SettingsScreen(
         Spacer(Modifier.height(40.dp))
 
         Text(
-            text = "ОФОРМЛЕНИЕ",
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 20.dp),
+            text = "Оформление",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
         )
 
         Spacer(Modifier.height(10.dp))
@@ -223,15 +223,15 @@ fun SettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 16.dp)
                 // Тонкий контур: граница карточки читается на обеих темах,
                 // не споря с заливкой surfaceContainerLow.
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                    shape = MaterialTheme.shapes.extraLarge,
+                    shape = MaterialTheme.shapes.medium,
                 ),
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Column {
@@ -239,7 +239,7 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                        .padding(horizontal = 16.dp, vertical = 18.dp),
                 ) {
                     Text(
                         text = "Тема приложения",
@@ -287,7 +287,7 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                        .padding(horizontal = 16.dp, vertical = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -404,10 +404,10 @@ fun SettingsScreen(
         Spacer(Modifier.height(40.dp))
 
         Text(
-            text = "МОЯ ВОЛНА",
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 20.dp),
+            text = "Моя волна",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
         )
 
         Spacer(Modifier.height(10.dp))
@@ -415,21 +415,21 @@ fun SettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 16.dp)
                 // Тонкий контур: граница карточки читается на обеих темах,
                 // не споря с заливкой surfaceContainerLow.
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                    shape = MaterialTheme.shapes.extraLarge,
+                    shape = MaterialTheme.shapes.medium,
                 ),
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                    .padding(horizontal = 16.dp, vertical = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -497,7 +497,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 16.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FilledTonalIconButton(

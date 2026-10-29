@@ -89,22 +89,17 @@ fun PlayerControlIsland(
     modifier: Modifier = Modifier,
     progressContent: @Composable () -> Unit,
 ) {
-    val islandShape = RoundedCornerShape(
-        topStart = 44.dp,
-        topEnd = 44.dp,
-        bottomEnd = 22.dp,
-        bottomStart = 22.dp,
-    )
+    val islandShape = MaterialTheme.shapes.extraLarge
 
     Box(modifier = modifier) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = islandShape,
             color = containerColor,
-            border = BorderStroke(1.dp, borderColor),
+            tonalElevation = 0.dp,
         ) {
             Column(
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 34.dp, bottom = 18.dp),
+                modifier = Modifier.padding(16.dp),
             ) {
                 progressContent()
 
@@ -123,15 +118,14 @@ fun PlayerControlIsland(
                         onClick = onSpeedClick,
                         interactionSource = speedInteraction,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(40.dp)
                             .graphicsLayer {
                                 scaleX = speedScale
                                 scaleY = speedScale
                             },
                         shape = CircleShape,
-                        color = contentColor.copy(alpha = 0.08f),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = contentColor,
-                        border = BorderStroke(1.dp, borderColor),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
@@ -147,21 +141,21 @@ fun PlayerControlIsland(
                         onClick = onPrev,
                         interactionSource = prevInteraction,
                         modifier = Modifier
-                            .size(52.dp)
+                            .size(48.dp)
                             .graphicsLayer {
                                 scaleX = prevScale
                                 scaleY = prevScale
                             },
                         shape = CircleShape,
                         colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = accentColor.copy(alpha = 0.20f),
+                            containerColor = Color.Transparent,
                             contentColor = contentColor,
                         ),
                     ) {
                         Icon(
                             imageVector = Icons.Filled.SkipPrevious,
                             contentDescription = "Предыдущий",
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.size(24.dp),
                         )
                     }
 
@@ -179,21 +173,21 @@ fun PlayerControlIsland(
                         onClick = onNext,
                         interactionSource = nextInteraction,
                         modifier = Modifier
-                            .size(52.dp)
+                            .size(48.dp)
                             .graphicsLayer {
                                 scaleX = nextScale
                                 scaleY = nextScale
                             },
                         shape = CircleShape,
                         colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = accentColor.copy(alpha = 0.20f),
+                            containerColor = Color.Transparent,
                             contentColor = contentColor,
                         ),
                     ) {
                         Icon(
                             imageVector = Icons.Filled.SkipNext,
                             contentDescription = "Следующий",
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.size(24.dp),
                         )
                     }
 
@@ -203,15 +197,14 @@ fun PlayerControlIsland(
                         onClick = onQueueClick,
                         interactionSource = queueInteraction,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(40.dp)
                             .graphicsLayer {
                                 scaleX = queueScale
                                 scaleY = queueScale
                             },
                         shape = CircleShape,
-                        color = contentColor.copy(alpha = 0.08f),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = contentColor,
-                        border = BorderStroke(1.dp, borderColor),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -225,19 +218,6 @@ fun PlayerControlIsland(
             }
         }
 
-        // Язычок «Текст» прирос к верхней кромке острова и выступает над ней
-        LyricsTab(
-            isActive = isLyricsActive,
-            activeContainer = lyricsActiveContainer,
-            activeContent = lyricsActiveContent,
-            inactiveContainer = containerColor,
-            inactiveContent = contentColor,
-            borderColor = borderColor,
-            onClick = onLyricsClick,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = (-19).dp),
-        )
     }
 }
 
@@ -251,7 +231,7 @@ private fun PlayMorphButton(
     onClick: () -> Unit,
 ) {
     val radius by animateDpAsState(
-        targetValue = if (isPlaying) 26.dp else 37.dp,
+        targetValue = if (isPlaying) 22.dp else 32.dp,
         animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
         label = "playMorphRadius",
     )
@@ -262,7 +242,7 @@ private fun PlayMorphButton(
         onClick = onClick,
         interactionSource = interaction,
         modifier = Modifier
-            .size(74.dp)
+            .size(64.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -275,7 +255,7 @@ private fun PlayMorphButton(
     ) {
         if (isBuffering) {
             CircularProgressIndicator(
-                modifier = Modifier.size(28.dp),
+                modifier = Modifier.size(26.dp),
                 color = onAccentColor,
                 strokeWidth = 3.dp,
             )
@@ -283,7 +263,7 @@ private fun PlayMorphButton(
             Icon(
                 imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = if (isPlaying) "Пауза" else "Играть",
-                modifier = Modifier.size(34.dp),
+                modifier = Modifier.size(30.dp),
             )
         }
     }

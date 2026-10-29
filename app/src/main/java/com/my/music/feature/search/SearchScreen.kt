@@ -203,7 +203,7 @@ fun SearchScreen(
 @Composable
 private fun SearchHeader() {
     Column(
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 20.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
     ) {
         Text(
             text = "Поиск",
@@ -683,7 +683,6 @@ private fun ExpressiveSearchField(
             .height(64.dp),
         shape = shape,
         color = containerColor,
-        border = BorderStroke(1.dp, borderColor),
     ) {
         Row(
             modifier = Modifier
@@ -765,11 +764,9 @@ private fun SuggestionChips(onSuggestion: (String) -> Unit) {
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
     ) {
         Text(
-            text = "ПОПРОБУЙ",
-            style = MaterialTheme.typography.labelSmall.copy(
-                letterSpacing = 1.4.sp,
-            ),
-            color = MaterialTheme.colorScheme.primary,
+            text = "Попробуйте",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
         FlowRow(
@@ -968,11 +965,9 @@ private fun ResultsList(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "РЕЗУЛЬТАТЫ · ${serviceName.uppercase()}",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    letterSpacing = 1.2.sp,
-                ),
-                color = MaterialTheme.colorScheme.primary,
+                text = "Результаты · $serviceName",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.weight(1f))
             Surface(

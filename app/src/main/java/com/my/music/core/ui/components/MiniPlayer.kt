@@ -123,8 +123,8 @@ internal fun FloatingMiniPlayer(
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val shape = MaterialTheme.shapes.extraLarge
-    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val shape = MaterialTheme.shapes.medium
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
@@ -153,8 +153,7 @@ internal fun FloatingMiniPlayer(
         modifier = modifier
             .fillMaxWidth()
             .height(MiniPlayerIslandHeight)
-            // Отделение от контента — тоном и волосяной обводкой, без тени.
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), shape)
+            // Плоская поверхность без обводки: чистый Material 3.
             .background(surfaceColor, shape)
             .clip(shape)
             .pointerInput(track.id) {
@@ -232,7 +231,7 @@ internal fun FloatingMiniPlayer(
                     modifier = Modifier
                         .size(48.dp)
                         .then(coverModifier),
-                    shape = MaterialTheme.shapes.large,
+                    shape = MaterialTheme.shapes.small,
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
                     if (!track.artworkUrl.isNullOrBlank()) {

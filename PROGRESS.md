@@ -1,6 +1,17 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 29.10.2026 (сессия 46)
+## Последнее обновление: 29.10.2026 (сессия 47)
+
+## Чистый Material 3 — сессия 47
+- Палитра переведена в строго нейтральную: светлая `#FAFAFA`, тёмная `#121212`, контейнеры — чистые серые без тёплого/зелёного уклона (`Color.kt`). Акцент на Android 12+ берётся из Dynamic Color (обои), fallback — Google Blue; нейтральные роли прибиты в `withAiryNeutrals`, чтобы обои не перекрашивали фон.
+- Типографика — каноничная шкала M3: display 57/45/36, headline 32/28/24, title 22/16/14, body 16/14/12, label 14/12/11; SemiBold в display/headline, Medium в title/label, Regular в body. Ручных `fontWeight` в экранах больше нет.
+- Формы: строго 12/16/24 (`AppShapes`) плюс `PillShape` для кнопок. Убраны асимметрия острова 44/22, кастомные радиусы и squircle.
+- Навигация: вместо кастомного дока — стандартный `NavigationBar` + `NavigationBarItem` (`ExpressiveBottomDock.kt`); `ExpressiveNavigationBar.kt` удалён.
+- Home: hero-карточка `surfaceContainerHigh` (обложка 88, текст, `FilledIconButton` 48); секции — `titleLarge` без надзаголовков; «Воспоминания» и «Любимое» — нейтральные `surfaceContainerLow` без гигантских цифр и разделителей.
+- Плеер: убраны градиент от обложки, стекло, свечение и текстовые тени; фон — `colorScheme.background`, обложка 24dp, название `headlineSmall`, артист `bodyLarge`, панель управления — простая карточка 24dp на `surfaceContainerLow`, Play 64dp, остальные кнопки 48dp. Тексты песен — без свечения, активная строка акцентом.
+- Отступы: сетка 16/24, между секциями 32dp; карточки `surfaceContainerLow` без теней и обводок.
+- Логика свайпа, холодного старта, навигации, скачивания и рекомендаций не менялась: `PlayerSwipeState`, `AppNavGraph`, `PlayerController`, `SettingsRepositoryImpl` не в diff.
+- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 624 863 байт; тесты 23 suites / 156, 0 failures/errors/skipped; `adb install -r` на 192.168.0.102:39883 — Success.
 
 ## Редизайн «Light Airy MD3» — сессия 46
 - `Type.kt`: убран вес 800 из семейства, display/headline переведены с ExtraBold на SemiBold, title* — на Medium, labelSmall — Medium с трекингом 1.2; bodyLarge трекинг 0.5 → 0.25. Снято 30 ручных `fontWeight`-переопределений в экранах, теперь вес задаёт шкала.

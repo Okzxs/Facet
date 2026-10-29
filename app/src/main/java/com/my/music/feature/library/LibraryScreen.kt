@@ -213,14 +213,8 @@ fun LibraryScreen(
 @Composable
 private fun LibraryHeader(trackCount: Int, totalMs: Long) {
     Column(
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 12.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
     ) {
-        Text(
-            text = "КОЛЛЕКЦИЯ",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(8.dp))
         Text(
             text = "Медиатека",
             style = MaterialTheme.typography.headlineLarge,

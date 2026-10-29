@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -490,9 +491,8 @@ fun PlayerScreen(
                 translationY = swipeState.offsetPx
                 alpha = 1f - swipeState.progress
             }
-            // Непрозрачный градиент на весь экран, включая полосу под прозрачной
-            // TopAppBar: иначе главная просвечивала сквозь плеер при переходах.
-            .background(backgroundBrush)
+            // Чистый фон Material 3: без градиентов от обложки и цветных заливок.
+            .background(MaterialTheme.colorScheme.background)
             // Жест висит на корне и видит касание раньше скроллируемых детей.
             .then(swipeToDismissModifier),
     ) {
@@ -504,81 +504,37 @@ fun PlayerScreen(
             contentColor = MaterialTheme.colorScheme.onSurface,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                CenterAlignedTopAppBar(
+                TopAppBar(
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Назад")
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Назад",
+                            )
                         }
                     },
                     title = {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                text = "СЕЙЧАС ИГРАЕТ",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    letterSpacing = 1.6.sp,
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                                textAlign = TextAlign.Center,
-                            )
-                            Text(
-                                text = track?.artist ?: "—",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                        Text(
+                            text = "Сейчас играет",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                     },
                     actions = {
                         IconButton(onClick = {}) {
                             Icon(Icons.Filled.MoreVert, contentDescription = "Меню")
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
                     ),
                 )
             },
         ) { padding ->
-            Box(modifier = Modifier.fillMaxSize()) {
-                // ─── Фон режима текста: градиент от акцента палитры к surface ───
-                // Blur обложки убран полностью: Modifier.blur давал просадки FPS
-                // при анимациях. Градиент имитирует тонировку фона без размытия.
-                if (lyricsBackdrop > 0.01f) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .graphicsLayer { alpha = lyricsBackdrop }
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        playerColors.primary.copy(alpha = 0.45f),
-                                        playerColors.primaryContainer.copy(alpha = 0.22f),
-                                        defaultSurface,
-                                    ),
-                                ),
-                            ),
-                    )
-                }
-    
-                // Спокойный scrim поверх фона: держит контраст текста на любой обложке
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer { alpha = 0.65f * lyricsBackdrop }
-                        .background(MaterialTheme.colorScheme.surface),
-                )
-    
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+            ) {
                     // ─── Hero-зона: обложка-задник + передний план (обложка/тексты) ──
                     ExpressiveHeroZone(
                         variant = PLAYER_LAYOUT_VARIANT,
@@ -613,19 +569,11 @@ fun PlayerScreen(
                         coverSwipeModifier = coverSwipeModifier,
                         // Панель с текстом и кнопками при морфе идёт над обложкой.
                         panelModifier = panelModifier,
-                        // В режиме обложки hero-зона занимает ровно высоту своего контента —
-                        // иначе между карточкой трека и островом управления образуется
-                        // пустая «дыра». В режиме текстов список требует ограниченной
-                        // высоты, поэтому там сохраняем weight(1f).
+                        // Hero занимает всё доступное место: остров управления
+                        // всегда прижат к низу, а обложка скроллится при нехватке высоты.
                         modifier = Modifier
                             .fillMaxWidth()
-                            .then(
-                                if (isLyricsMode) {
-                                    Modifier.weight(1f)
-                                } else {
-                                    Modifier
-                                },
-                            ),
+                            .weight(1f),
                     )
     
                     // ─── Подсказка про геопозицию для «Воспоминаний» ─────────────
@@ -659,15 +607,13 @@ fun PlayerScreen(
                         isBuffering = isBuffering,
                         playbackSpeed = playerState.playbackSpeed,
                         isLyricsActive = isLyricsMode,
-                        containerColor = surfaceColor
-                            .copy(alpha = 0.55f)
-                            .compositeOver(MaterialTheme.colorScheme.surfaceContainerLow),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                         contentColor = MaterialTheme.colorScheme.onSurface,
-                        accentColor = playerColors.primary,
-                        onAccentColor = playerColors.onPrimary,
-                        lyricsActiveContainer = playerColors.primaryContainer,
-                        lyricsActiveContent = playerColors.onPrimaryContainer,
-                        borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                        accentColor = MaterialTheme.colorScheme.primary,
+                        onAccentColor = MaterialTheme.colorScheme.onPrimary,
+                        lyricsActiveContainer = MaterialTheme.colorScheme.primaryContainer,
+                        lyricsActiveContent = MaterialTheme.colorScheme.onPrimaryContainer,
+                        borderColor = Color.Transparent,
                         onPlayPause = { viewModel.togglePlayPause() },
                         onPrev = { viewModel.playPrevious() },
                         onNext = { viewModel.playNext() },
@@ -682,15 +628,10 @@ fun PlayerScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            // При морфе панель рисуется в оверлее выше обложки.
                             .then(panelModifier)
-                            .padding(horizontal = 24.dp)
-                            // Запоминаем реальные границы острова: корневой жест
-                            // игнорирует касания из этой зоны (кнопки и слайдер).
+                            .padding(horizontal = 16.dp)
                             .onGloballyPositioned { controlIslandBounds = it.boundsInRoot() }
-                            // Запас под выступающий язычок «Текст» и воздух до текстов/обложки
-                            .padding(top = 34.dp)
-                            // Кнопки и слайдер не должны запускать закрытие свайпом.
+                            .padding(top = 8.dp)
                             .then(controlIslandSwipeGuard),
                     ) {
                         PlayerProgressSection(
@@ -699,23 +640,27 @@ fun PlayerScreen(
                             isResolving = uiState.isResolving,
                             trackId = track?.id,
                             durationMs = track?.durationMs ?: 0L,
-                            primaryColor = playerColors.primary,
+                            primaryColor = MaterialTheme.colorScheme.primary,
                             currentFraction = { viewModel.currentFraction() },
                             currentPositionMs = { viewModel.currentPositionMs() },
                             bufferedFraction = { viewModel.bufferedFraction() },
                             onSeek = { fraction -> viewModel.seekTo(fraction) },
                         )
                     }
-    
-                    // В режиме обложки hero-зона оборачивает контент, и остаток высоты
-                    // забирает этот Spacer: карточка и остров идут плотно, без «дыры».
-                    // В режиме текстов weight(1f) уже занят списком — второй weight делил
-                    // бы остаток пополам, задирал остров в середину и оставлял дыру внизу.
-                    if (!isLyricsMode) {
-                        Spacer(Modifier.weight(1f))
+
+                    TextButton(
+                        onClick = {
+                            val nextMode = !isLyricsMode
+                            isLyricsMode = nextMode
+                            if (nextMode) {
+                                viewModel.loadLyricsIfNeeded(track)
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    ) {
+                        Text(if (isLyricsMode) "Обложка" else "Текст песни")
                     }
                 }
-            }
         }
     }
 
@@ -824,140 +769,18 @@ private fun ExpressiveHeroZone(
     panelModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
-    val style = heroStyle(variant)
     val heroScroll = rememberScrollState()
-
-    // «Уход на задний план»: при входе в тексты обложка уменьшается, мутнеет и тонет в тени
-    val recede by animateFloatAsState(
-        targetValue = if (isLyricsMode) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
-        label = "artworkRecede",
-    )
-
-    // Ровный квадрат со скруглением 24dp: без наклона и асимметрии.
     val artworkShape = MaterialTheme.shapes.extraLarge
 
     Box(modifier = modifier) {
-        // ─── Постоянный слой-задник: обложка ───
-        Box(
-            modifier = Modifier
-                // Обложка всегда под панелью с текстом и кнопками.
-                .zIndex(0f)
-                // Свайп: обложка сжимается и уезжает вниз-влево вместе со свечением.
-                .then(coverSwipeModifier)
-                .align(style.alignment)
-                .padding(top = style.topPadding)
-                .fillMaxWidth(style.widthFraction)
-                .aspectRatio(1f)
-                .offset(x = style.offsetX, y = (26f * recede).dp)
-                .graphicsLayer {
-                    scaleX = lerp(1f, 0.58f, recede)
-                    scaleY = lerp(1f, 0.58f, recede)
-                    // В режиме текста карточка полностью уступает место градиентному
-                    // фону — иначе её прямоугольные края видны как «кирпич».
-                    alpha = lerp(1f, 0f, recede)
-                    translationY = heroScroll.value * 0.32f
-                },
-        ) {
-            // Свечение: размытое цветное облако палитры под обложкой.
-            // В режиме текста оно гаснет вместе с обложкой, чтобы фон не «радужил».
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer {
-                        scaleX = 1.12f
-                        scaleY = 1.12f
-                        alpha = 1f - recede
-                    }
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                palette.primary.copy(alpha = 0.20f),
-                                palette.primaryContainer.copy(alpha = 0.06f),
-                                Color.Transparent,
-                            ),
-                        ),
-                        shape = CircleShape,
-                    ),
-            )
-
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    // Морф обложки: в режиме текстов она скрыта, поэтому
-                    // shared-element не подключаем, чтобы не «оживлять» её.
-                    .then(if (isLyricsMode) Modifier else coverModifier)
-                    .clip(artworkShape),
-                shape = artworkShape,
-                color = palette.surfaceContainerHigh,
-                border = BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                ),
-            ) {
-                ArtworkImage(
-                    artworkUrl = artworkUrl,
-                    shape = artworkShape,
-                    notePainter = notePainter,
-                    placeholderPainter = placeholderPainter,
-                )
-            }
-
-            // Вариант 3: название прямо на обложке — в матово-стеклянной плашке
-            if (style.titleOnArtwork) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(14.dp)
-                        .fillMaxWidth(),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = palette.surfaceContainerHigh.copy(alpha = 0.55f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.displaySmall,
-                        // Явный цвет: полупрозрачный container карточки давал чёрный
-                        // contentColor на тёмном фоне, и название было нечитаемым.
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                    )
-                }
-            }
-        }
-
-        // ─── Передний план ───
-        // В режиме текстов контент заполняет всю hero-зону (список с weight(1f)),
-        // в режиме обложки — оборачивает свой контент, чтобы hero-зона не тянулась
-        // на весь свободный экран и не оставляла «дыру» над островом управления.
         AnimatedContent(
             targetState = isLyricsMode,
-            // Панель с названием и кнопками всегда выше обложки; при морфе
-            // она уходит в оверлей shared-перехода.
             modifier = Modifier
-                .zIndex(1f)
                 .then(panelModifier)
                 .then(if (isLyricsMode) Modifier.fillMaxSize() else Modifier),
             transitionSpec = {
-                if (targetState) {
-                    // Обложка → Текст: тексты въезжают снизу, обложка уходит вверх
-                    (slideInVertically(
-                        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-                    ) { it / 3 } + fadeIn(tween(durationMillis = 240))) togetherWith
-                        (fadeOut(tween(durationMillis = 180)) + slideOutVertically(
-                            animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-                        ) { -it / 5 })
-                } else {
-                    // Текст → Обложка: зеркальный переход
-                    (slideInVertically(
-                        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-                    ) { -it / 5 } + fadeIn(tween(durationMillis = 240))) togetherWith
-                        (fadeOut(tween(durationMillis = 180)) + slideOutVertically(
-                            animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
-                        ) { it / 3 })
-                }
+                fadeIn(tween(durationMillis = 220)) togetherWith
+                    fadeOut(tween(durationMillis = 160))
             },
             label = "playerModeContent",
         ) { lyricsMode ->
@@ -970,7 +793,7 @@ private fun ExpressiveHeroZone(
                     isLoading = isLyricsLoading,
                     error = lyricsError,
                     listState = lyricsListState,
-                    highlightColor = palette.primary,
+                    highlightColor = MaterialTheme.colorScheme.primary,
                     notePainter = notePainter,
                     placeholderPainter = placeholderPainter,
                     currentPositionMs = currentPositionMs,
@@ -979,22 +802,84 @@ private fun ExpressiveHeroZone(
                     onListBoundsChanged = onLyricsListBoundsChanged,
                 )
             } else {
-                CoverForeground(
-                    style = style,
-                    heroScroll = heroScroll,
-                    title = title,
-                    artist = artist,
-                    isLiked = isLiked,
-                    isDisliked = isDisliked,
-                    canDownload = canDownload,
-                    downloadState = downloadState,
-                    primaryColor = palette.primary,
-                    primaryContainerColor = palette.primaryContainer,
-                    surfaceColor = palette.surfaceContainerHigh,
-                    onToggleLike = onToggleLike,
-                    onToggleDislike = onToggleDislike,
-                    onDownloadClick = onDownloadClick,
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(heroScroll)
+                        .padding(horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Spacer(Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.82f)
+                            .aspectRatio(1f)
+                            .then(coverSwipeModifier),
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(coverModifier),
+                            shape = artworkShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 0.dp,
+                        ) {
+                            ArtworkImage(
+                                artworkUrl = artworkUrl,
+                                shape = artworkShape,
+                                notePainter = notePainter,
+                                placeholderPainter = placeholderPainter,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = artist,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (canDownload) {
+                            DownloadSquircle(
+                                state = downloadState,
+                                primaryColor = MaterialTheme.colorScheme.primary,
+                                primaryContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                onClick = onDownloadClick,
+                            )
+                        } else {
+                            Spacer(Modifier.size(48.dp))
+                        }
+                        LikeSquircle(
+                            isLiked = isLiked,
+                            primaryColor = MaterialTheme.colorScheme.primary,
+                            primaryContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            onToggleLike = onToggleLike,
+                        )
+                        DislikeSquircle(
+                            isDisliked = isDisliked,
+                            onToggleDislike = onToggleDislike,
+                        )
+                    }
+                    Spacer(Modifier.height(24.dp))
+                }
             }
         }
     }
@@ -1233,8 +1118,8 @@ private fun DownloadSquircle(
 
     FilledTonalIconButton(
         onClick = onClick,
-        modifier = Modifier.size(46.dp),
-        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.size(48.dp),
+        shape = CircleShape,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = containerColor,
             contentColor = contentColor,
@@ -1297,8 +1182,8 @@ private fun LikeSquircle(
 ) {
     FilledTonalIconButton(
         onClick = onToggleLike,
-        modifier = Modifier.size(46.dp),
-        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.size(48.dp),
+        shape = CircleShape,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = if (isLiked) primaryContainerColor
             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
@@ -1322,8 +1207,8 @@ private fun DislikeSquircle(
     val error = MaterialTheme.colorScheme.error
     FilledTonalIconButton(
         onClick = onToggleDislike,
-        modifier = Modifier.size(46.dp),
-        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.size(48.dp),
+        shape = CircleShape,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = if (isDisliked) {
                 MaterialTheme.colorScheme.errorContainer

@@ -91,7 +91,7 @@ com.my.music
 - Палитра плеера при заданном `customAccentColor` смешивается с ним на 40% (`blendPaletteWithAccent` в PlayerScreen), чтобы цвета обложки не конфликтовали с темой. Контрастные роли (`onPrimary`, `on*Container`) после смешивания пересчитываются от светлоты, а не лерпаются.
 - Экраны-вкладки сами ставят себе фон (`Modifier.background(MaterialTheme.colorScheme.background)`) и инсеты: корневого Scaffold в `AppNavGraph` больше нет (док — оверлей, высота через `LocalBottomDockHeight`). Корневой Box навграфа тоже непрозрачный — иначе в переходах вкладок проглядывает окно.
 - `MyMusicTheme` провайдит `LocalContentColor = colorScheme.onBackground`: MaterialTheme его не ставит, дефолт — `Color.Black`, и после удаления корневого Scaffold любой Text без явного цвета чернел на тёмном фоне. Scaffold плеера с `containerColor = Transparent` обязан задавать `contentColor` явно (`contentColorFor(Transparent)` = Unspecified).
-- `windowBackground` задан в `values/themes.xml` и `values-night/themes.xml` (#FFF8F5 / #171210, совпадает с Color.kt) — без ночного варианта окно оставалось белым и давало вспышку на холодном старте.
+- `windowBackground` задан в `values/themes.xml` и `values-night/themes.xml` (#FAFAFA / #121212, совпадает с Color.kt) — без ночного варианта окно оставалось белым и давало вспышку на холодном старте.
 
 ---
 

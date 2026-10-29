@@ -230,7 +230,7 @@ private fun WaveHeader() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 14.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
     ) {
         Text(
             text = "Моя волна",

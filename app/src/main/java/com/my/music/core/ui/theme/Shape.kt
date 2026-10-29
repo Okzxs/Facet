@@ -6,16 +6,16 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 
 /**
- * Единая шкала форм Material 3: 4 / 8 / 12 / 16 / 24 плюс полная пилюля.
- * Весь интерфейс берёт радиусы отсюда — отдельных «магических» dp больше нет.
+ * Строгая шкала Material 3: 12 — мелкие элементы, 16 — карточки,
+ * 24 — крупные блоки и плеер. Асимметрии и «магических» радиусов нет.
  */
 val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
+    extraSmall = RoundedCornerShape(12.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
     large = RoundedCornerShape(16.dp),
     extraLarge = RoundedCornerShape(24.dp),
 )
 
-/** Форма-пилюля для чипсов, бейджей и компактных действий. */
+/** Форма-пилюля для кнопок, чипсов и индикатора навигации. */
 val PillShape: Shape = RoundedCornerShape(percent = 50)
