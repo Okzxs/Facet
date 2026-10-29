@@ -1,8 +1,11 @@
 package com.my.music.feature.player
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -1558,6 +1561,8 @@ private fun LyricsListView(
                             } else {
                                 null
                             },
+                            // Сдвиг строк при смене размера/активной строки анимируется.
+                            modifier = Modifier.animateItem(),
                         )
                     }
                 }
@@ -1586,12 +1591,10 @@ private fun LyricsListView(
 }
 
 /**
- * Одна строка текста в стиле Material 3 Expressive:
- * - физический размер шрифта одинаков у всех строк — никаких скачков лейаута;
- * - активная строка «вырастает» через graphicsLayer, получает Bold и мягкое свечение;
- * - пропетая часть — primary, непропетая — onSurface, между ними плавная кромка;
- * - неактивные строки приглушены, а далёкие — ещё и размыты;
- * - прогресс читает только активная строка, остальные не перерисовываются на опросе.
+ * Одна строка синхронного текста:
+ * - размер, цвет и прозрачность анимируются — строка «вырастает» и гаснет плавно;
+ * - полоска прогресса выезжает снизу и так же плавно исчезает при смене строки;
+ * - альфа читается в graphicsLayer, поэтому анимация не дёргает весь список.
  */
 @Composable
 private fun LyricLineItem(
@@ -1602,6 +1605,7 @@ private fun LyricLineItem(
     lineProgress: () -> Float,
     highlightColor: Color,
     onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1614,39 +1618,48 @@ private fun LyricLineItem(
         label = "lyricFill",
     )
 
-    // Иерархия строк: активная крупнее, соседние — средние, дальние — компактные.
-    val targetFontSize = when {
-        !isSynced -> 20.sp
-        isActive -> 22.sp
-        indexDistance == 1 -> 17.sp
-        else -> 15.sp
+    // Размер строки анимируется: активная плавно вырастает до 22sp,
+    // соседние подтягиваются к 17sp, дальние остаются компактными.
+    val targetSize = when {
+        !isSynced -> 18f
+        isActive -> 22f
+        indexDistance == 1 -> 17f
+        else -> 15f
     }
-    val targetLineHeight = when {
-        !isSynced || isActive -> 30.sp
-        indexDistance == 1 -> 24.sp
-        else -> 21.sp
-    }
+    val animatedSize by animateFloatAsState(
+        targetValue = targetSize,
+        animationSpec = spring(
+            dampingRatio = 0.9f,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "lyricSize",
+    )
 
-    val lineAlpha by animateFloatAsState(
+    val lineAlpha = animateFloatAsState(
         targetValue = when {
             !isSynced -> 0.85f
             isActive -> 1f
-            indexDistance == 1 -> 0.75f
-            else -> 0.45f
+            indexDistance == 1 -> 0.72f
+            else -> 0.42f
         },
-        animationSpec = tween(durationMillis = 260),
+        animationSpec = tween(durationMillis = 300),
         label = "lyricAlpha",
     )
 
-    val lineColor = when {
+    val targetColor = when {
         isActive -> onSurface
         isSynced -> onSurfaceVariant
         else -> onSurface
     }
+    val lineColor by animateColorAsState(
+        targetValue = targetColor,
+        animationSpec = tween(durationMillis = 280),
+        label = "lyricColor",
+    )
 
     val lineStyle = MaterialTheme.typography.bodyLarge.copy(
-        fontSize = targetFontSize,
-        lineHeight = targetLineHeight,
+        fontSize = animatedSize.sp,
+        lineHeight = (animatedSize * 1.36f).sp,
         letterSpacing = 0.sp,
         fontWeight = when {
             isActive -> FontWeight.SemiBold
@@ -1656,7 +1669,7 @@ private fun LyricLineItem(
     )
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(
                 enabled = onClick != null,
@@ -1664,7 +1677,7 @@ private fun LyricLineItem(
                 indication = null,
                 onClick = { onClick?.invoke() },
             )
-            .padding(vertical = 8.dp),
+            .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -1677,26 +1690,37 @@ private fun LyricLineItem(
             maxLines = Int.MAX_VALUE,
             modifier = Modifier
                 .fillMaxWidth()
-                .graphicsLayer { alpha = lineAlpha },
+                // Альфа — в фазе отрисовки, без рекомпозиции на каждый кадр.
+                .graphicsLayer { alpha = lineAlpha.value },
         )
-        // Прогресс строки — тонкая полоса под текстом, а не градиент по буквам:
-        // на перенесённой строке заливка не «съедает» ещё не пропетую часть.
-        if (isActive && isSynced) {
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.5f)
-                    .height(2.dp)
-                    .clip(PillShape)
-                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        // Полоска прогресса выезжает снизу и плавно уезжает при смене строки.
+        AnimatedVisibility(
+            visible = isActive && isSynced,
+            enter = fadeIn(tween(durationMillis = 220)) +
+                expandVertically(tween(durationMillis = 220)),
+            exit = fadeOut(tween(durationMillis = 160)) +
+                shrinkVertically(tween(durationMillis = 160)),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(fill)
-                        .fillMaxHeight()
+                        .fillMaxWidth(0.5f)
+                        .height(2.dp)
                         .clip(PillShape)
-                        .background(highlightColor),
-                )
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(fill)
+                            .fillMaxHeight()
+                            .clip(PillShape)
+                            .background(highlightColor),
+                    )
+                }
             }
         }
     }
