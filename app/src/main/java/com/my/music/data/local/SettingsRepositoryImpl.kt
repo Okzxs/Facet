@@ -1,6 +1,7 @@
 package com.my.music.data.local
 
 import android.content.Context
+import com.my.music.core.i18n.AppLocale
 import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.SettingsRepository
 import com.my.music.data.repository.ThemeMode
@@ -67,6 +68,13 @@ class SettingsRepositoryImpl @Inject constructor(
             ?: emptyList(),
         // По умолчанию акцент берётся с обоев (Dynamic Color).
         accentEnabled = prefs.getBoolean(KEY_ACCENT_ENABLED, false),
+        // Ключи Spotify: пустая строка — интеграция не настроена.
+        spotifyClientId = prefs.getString(KEY_SPOTIFY_CLIENT_ID, null).orEmpty(),
+        spotifyClientSecret = prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, null).orEmpty(),
+        // Язык интерфейса: «как в системе», пока пользователь не выбрал другой.
+        appLanguage = prefs.getString(KEY_APP_LANGUAGE, null)
+            ?.takeIf { it in AppSettings.SUPPORTED_LANGUAGES }
+            ?: AppSettings.LANGUAGE_SYSTEM,
     )
 
     /**
@@ -140,13 +148,47 @@ class SettingsRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun setSpotifyCredentials(clientId: String, secret: String) {
+        awaitLoaded()
+        val trimmedId = clientId.trim()
+        val trimmedSecret = secret.trim()
+        withContext(Dispatchers.IO) {
+            prefs.edit()
+                .putString(KEY_SPOTIFY_CLIENT_ID, trimmedId)
+                .putString(KEY_SPOTIFY_CLIENT_SECRET, trimmedSecret)
+                .apply()
+        }
+        _settings.update {
+            (it ?: AppSettings()).copy(
+                spotifyClientId = trimmedId,
+                spotifyClientSecret = trimmedSecret,
+            )
+        }
+    }
+
+    override suspend fun setAppLanguage(language: String) {
+        awaitLoaded()
+        // Неизвестное значение трактуем как «как в системе», чтобы Activity
+        // не осталась без языка после битой записи.
+        val normalized = language.takeIf { it in AppSettings.SUPPORTED_LANGUAGES }
+            ?: AppSettings.LANGUAGE_SYSTEM
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_APP_LANGUAGE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(appLanguage = normalized) }
+    }
+
     private companion object {
-        const val PREFS_NAME = "mymusic_settings"
+        // Имя файла совпадает с AppLocale: язык читает attachBaseContext напрямую.
+        const val PREFS_NAME = AppLocale.PREFS_NAME
         const val KEY_DYNAMIC_COVER_COLORS = "dynamic_cover_colors"
         const val KEY_ACCENT_COLOR = "accent_color"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_CUSTOM_ACCENT = "custom_accent_color"
         const val KEY_RECENT_ACCENTS = "recent_accent_colors"
         const val KEY_ACCENT_ENABLED = "accent_enabled"
+        const val KEY_SPOTIFY_CLIENT_ID = "spotify_client_id"
+        const val KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret"
+        const val KEY_APP_LANGUAGE = "app_language"
     }
 }

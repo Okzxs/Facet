@@ -609,9 +609,11 @@ class PlayerController private constructor(
                         )
                     }
                 }
-                // Внешние источники (Deezer/Apple): ссылка может быть превью или
-                // отсутствовать — резолвер обновит её либо сматчит трек на YouTube.
-                track.source == Source.DEEZER || track.source == Source.APPLE -> {
+                // Внешние источники (Deezer/Apple/Spotify): ссылка может быть превью
+                // или отсутствовать — резолвер обновит её либо сматчит трек на YouTube.
+                track.source == Source.DEEZER ||
+                    track.source == Source.APPLE ||
+                    track.source == Source.SPOTIFY -> {
                     val resolver = streamResolver
                     if (resolver != null) {
                         resolver.resolve(track)
@@ -697,6 +699,8 @@ class PlayerController private constructor(
     /** MIME по умолчанию для прямых URL, если источник его не сообщил. */
     private fun defaultMimeType(source: Source): String = when (source) {
         Source.YOUTUBE, Source.APPLE -> MimeTypes.AUDIO_MP4
+        // Spotify стрима не отдаёт: ссылка приходит с YouTube, это MP3/AAC-поток.
+        Source.SPOTIFY -> MimeTypes.AUDIO_MPEG
         else -> MimeTypes.AUDIO_MPEG
     }
 

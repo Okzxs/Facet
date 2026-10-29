@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Английский язык — базовые значения (values/). Русский лежит в values-ru/.
+  Ключи общие: правки делаются в обоих файлах синхронно.
+  Названия брендов (SoundCloud, Deezer, Spotify…) в ресурсы не выносятся.
+-->
+<resources>
+
+    <!-- Нижняя навигация -->
+    <string name="nav_home">Home</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_wave">My Wave</string>
+
+    <!-- Поиск -->
+    <string name="search_title">Search</string>
+    <string name="search_subtitle">Find your sound across every platform</string>
+    <string name="search_hint">Tracks, artists, genres…</string>
+    <string name="search_clear_input">Clear</string>
+    <string name="search_try">Try</string>
+    <string name="search_recent">Recent</string>
+    <string name="search_clear">Clear</string>
+    <string name="search_idle_title">Find your sound</string>
+    <string name="search_idle_hint">Type a track name or artist — we’ll search on %1$s</string>
+    <string name="search_idle_hint_short">Just a bit more — type at least 2 characters</string>
+    <string name="search_empty_title">Nothing found</string>
+    <string name="search_empty_message">Nothing for «%1$s» on %2$s. Try another query or pick another source.</string>
+    <string name="search_other_source">Search in another source</string>
+    <string name="search_error_title">Search failed</string>
+    <string name="search_retry">Retry</string>
+    <string name="search_results">Results · %1$s</string>
+    <string name="search_status_title">Service statuses</string>
+    <string name="search_status_subtitle">Real-time availability check</string>
+    <string name="search_status_refresh">Refresh statuses</string>
+    <string name="search_status_checking">Checking</string>
+    <string name="search_status_online">Online</string>
+    <string name="search_status_error">Error</string>
+    <string name="search_status_cd_checking">Checking service statuses</string>
+    <string name="search_status_cd_unavailable">Some services are unavailable</string>
+    <string name="search_status_cd_online">All services are online</string>
+    <string name="search_service_unavailable">%1$s is unavailable right now. Check your connection or refresh statuses.</string>
+
+    <!-- Настройки -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_subtitle">Appearance, integrations and permissions</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">App theme</string>
+    <string name="settings_theme_hint">Light, dark or follow the system</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_language">Interface language</string>
+    <string name="settings_language_hint">System, Russian or English</string>
+    <string name="settings_language_system">System</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_dynamic_cover">Dynamic cover colors</string>
+    <string name="settings_dynamic_cover_hint">The player background is softly tinted with the current cover</string>
+    <string name="settings_accent">Accent color</string>
+    <string name="settings_accent_on">Custom color instead of wallpaper colors</string>
+    <string name="settings_accent_off">Off — wallpaper colors are used</string>
+    <string name="settings_recent">Recent</string>
+    <string name="settings_custom_color">Custom color</string>
+    <string name="settings_custom_color_cd_selected">Custom color selected, change</string>
+    <string name="settings_custom_color_cd">Pick a custom RGB color</string>
+    <string name="settings_hex_label">HEX code</string>
+    <string name="settings_hex_error">Invalid code: 6 hex digits required, e.g. #FF5733</string>
+    <string name="settings_hex_hint">6 digits, e.g. #FF5733</string>
+    <string name="settings_red">Red</string>
+    <string name="settings_green">Green</string>
+    <string name="settings_blue">Blue</string>
+    <string name="settings_reset">Reset</string>
+    <string name="settings_apply">Apply</string>
+    <string name="settings_cancel">Cancel</string>
+    <string name="settings_wave">My Wave</string>
+    <string name="settings_russian_first">Russian music first</string>
+    <string name="settings_russian_first_hint">The wave plays tracks with Cyrillic titles or artist names more often</string>
+    <string name="settings_integrations">Integrations</string>
+    <string name="settings_spotify">Spotify</string>
+    <string name="settings_spotify_hint">Streaming goes through YouTube; keys are only needed to search in Spotify</string>
+    <string name="settings_spotify_where">Create an app in the Spotify developer dashboard and copy its Client ID and Client Secret</string>
+    <string name="settings_spotify_client_id">Client ID</string>
+    <string name="settings_spotify_client_secret">Client secret</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_saved">Saved</string>
+    <string name="settings_permissions">Permissions</string>
+    <string name="settings_location_allowed">Location allowed</string>
+    <string name="settings_location_denied">Location denied</string>
+    <string name="settings_location_allowed_hint">Coordinates are saved when you like a track and feed “Memories”</string>
+    <string name="settings_location_denied_hint">Without location, like coordinates are not saved and “Memories” are not tied to a place</string>
+    <string name="settings_check_permissions">Check permissions</string>
+    <string name="settings_location_footer">If access is denied, the button opens app settings</string>
+    <string name="settings_version">MyMusic · version %1$s</string>
+
+    <!-- Медиатека -->
+    <string name="library_title">Library</string>
+    <string name="library_tab_library">Library</string>
+    <string name="library_tab_downloaded">Downloaded</string>
+    <string name="library_play_all">Play all</string>
+    <string name="library_shuffle">Shuffle</string>
+    <string name="library_empty_title">Your library is empty</string>
+    <string name="library_empty_message">Tap the heart in the player or in track lists to build your collection of favourite music</string>
+    <string name="library_find_music">Find music</string>
+    <string name="library_remove_like">Remove from favourites</string>
+    <string name="library_downloaded_empty_title">Nothing here yet</string>
+    <string name="library_downloaded_empty_message">You have no downloaded tracks yet. Tap the arrow in the player to save music</string>
+    <string name="library_downloaded_open_search">Go to search</string>
+    <string name="library_delete_title">Delete track from device?</string>
+    <string name="library_delete_message">The file «%1$s» will be deleted from this device.</string>
+    <string name="library_delete_confirm">Delete</string>
+    <string name="library_delete_cancel">Cancel</string>
+    <string name="library_downloaded_menu">Remove download</string>
+
+    <!-- Главная -->
+    <string name="home_greeting_morning">Good morning</string>
+    <string name="home_greeting_day">Good afternoon</string>
+    <string name="home_greeting_evening">Good evening</string>
+    <string name="home_greeting_night">Good night</string>
+    <string name="home_settings_cd">Settings</string>
+    <string name="home_continue">Continue</string>
+    <string name="home_continue_cd">Continue listening to %1$s</string>
+    <string name="home_play_cd">Play</string>
+    <string name="home_for_you">For you</string>
+    <string name="home_recent">Recent</string>
+    <string name="home_memories">Memories</string>
+    <string name="home_favourites">Favourites</string>
+    <string name="home_more">%1$d more</string>
+    <string name="home_recs_error">Couldn’t load recommendations</string>
+    <string name="home_recs_empty">No recommendations yet</string>
+    <string name="home_recs_empty_hint">Try refreshing the selection.</string>
+    <string name="home_retry">Retry</string>
+    <string name="home_refresh">Refresh</string>
+    <string name="home_play_recommendation_cd">Play %1$s, %2$s</string>
+    <string name="home_play_track_cd">Play %1$s</string>
+    <string name="home_play_memories_cd">Play memories</string>
+    <string name="home_play_favourites_cd">Play favourites</string>
+    <string name="home_season_winter">Winter</string>
+    <string name="home_season_spring">Spring</string>
+    <string name="home_season_summer">Summer</string>
+    <string name="home_season_autumn">Autumn</string>
+
+    <!-- Карточка трека -->
+    <string name="track_preview">preview %1$d s</string>
+    <string name="track_downloaded_cd">Track downloaded</string>
+    <string name="track_artwork_cd">%1$s cover</string>
+
+    <!-- Длительность и количество -->
+    <string name="duration_hours_minutes">%1$d h %2$d min</string>
+    <string name="duration_minutes">%1$d min</string>
+    <plurals name="track_count">
+        <item quantity="one">%d track</item>
+        <item quantity="other">%d tracks</item>
+    </plurals>
+
+</resources>

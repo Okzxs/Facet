@@ -19,6 +19,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MusicNote
@@ -79,12 +80,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -93,6 +96,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.my.music.R
 import com.my.music.core.service.ServiceHealth
 import com.my.music.core.service.ServiceType
 import com.my.music.core.ui.components.TrackCard
@@ -102,6 +106,43 @@ import com.my.music.data.model.Track
 private enum class SearchContentState { Idle, Loading, Error, Empty, Results }
 
 private val searchSuggestions = listOf("Electronic", "Hip-Hop", "Rock", "Chill", "Pop", "R&B")
+
+/**
+ * Порядок кнопок-источников в поиске: сначала бренды с полноценным стримом,
+ * Spotify последним — он работает только при введённых ключах.
+ */
+private val sourceButtonOrder = listOf(
+    ServiceType.YOUTUBE,
+    ServiceType.SOUNDCLOUD,
+    ServiceType.DEEZER,
+    ServiceType.APPLE,
+    ServiceType.SPOTIFY,
+)
+
+// Брендовые цвета источников: фон кнопки — с альфой, текст — чистый цвет.
+private val YoutubeRed = Color(0xFFFF0000)
+private val SoundCloudOrange = Color(0xFFFF5500)
+private val DeezerPurple = Color(0xFFA238FF)
+private val ApplePink = Color(0xFFFA243C)
+private val SpotifyGreen = Color(0xFF1DB954)
+
+/** Аббревиатура бренда внутри квадратной кнопки источника. */
+private fun ServiceType.brandAbbreviation(): String = when (this) {
+    ServiceType.YOUTUBE -> "YT"
+    ServiceType.SOUNDCLOUD -> "SC"
+    ServiceType.DEEZER -> "DZ"
+    ServiceType.APPLE -> "AM"
+    ServiceType.SPOTIFY -> "SP"
+}
+
+/** Фирменный цвет бренда. */
+private fun ServiceType.brandColor(): Color = when (this) {
+    ServiceType.YOUTUBE -> YoutubeRed
+    ServiceType.SOUNDCLOUD -> SoundCloudOrange
+    ServiceType.DEEZER -> DeezerPurple
+    ServiceType.APPLE -> ApplePink
+    ServiceType.SPOTIFY -> SpotifyGreen
+}
 
 // Семантические цвета статусов: зелёный/красный не должны зависеть от Dynamic Color.
 private val OnlineGreenLight = Color(0xFF1E8E3E)
@@ -228,12 +269,12 @@ private fun SearchHeader() {
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
     ) {
         Text(
-            text = "Поиск",
+            text = stringResource(R.string.search_title),
             style = MaterialTheme.typography.headlineLarge,
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "Найди свой саунд на ${ServiceType.entries.joinToString(", ") { it.displayName }}",
+            text = stringResource(R.string.search_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -255,14 +296,16 @@ private fun SourceSwitcher(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Квадратные кнопки брендов: 5×64 + отступы не влезают в 360dp,
+            // поэтому ряд скроллится по горизонтали, а не сплющивает кнопки.
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                ServiceType.entries.forEach { service ->
-                    ServiceSourceChip(
+                sourceButtonOrder.forEach { service ->
+                    SourceButton(
                         service = service,
                         selected = service == selected,
                         health = statuses[service] ?: ServiceHealth(),
@@ -271,7 +314,7 @@ private fun SourceSwitcher(
                 }
             }
 
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
 
             ServiceStatusButton(
                 statuses = statuses,
@@ -286,98 +329,55 @@ private fun SourceSwitcher(
     }
 }
 
+/**
+ * Квадратная кнопка источника 64×64: фон — фирменный цвет с альфой 0.18,
+ * внутри аббревиатура бренда. Выбранный источник получает рамку 2dp цвета
+ * бренда и более плотный фон; недоступный — приглушается, но при выборе
+ * подсвечивается рамкой error.
+ */
 @Composable
-private fun ServiceSourceChip(
+private fun SourceButton(
     service: ServiceType,
     selected: Boolean,
     health: ServiceHealth,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val brand = service.brandColor()
     val unavailable = !health.isAvailable && !health.isChecking
 
     val containerColor by animateColorAsState(
-        targetValue = when {
-            unavailable -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.62f)
-            selected -> MaterialTheme.colorScheme.primaryContainer
-            else -> MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        animationSpec = spring(
-            dampingRatio = 0.75f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "sourceContainer",
-    )
-    val contentColor by animateColorAsState(
-        targetValue = when {
-            unavailable -> MaterialTheme.colorScheme.onErrorContainer
-            selected -> MaterialTheme.colorScheme.onPrimaryContainer
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        },
+        targetValue = brand.copy(alpha = if (selected) 0.28f else 0.18f),
         animationSpec = tween(180),
-        label = "sourceContent",
+        label = "sourceButtonContainer",
     )
     val borderColor by animateColorAsState(
         targetValue = when {
-            unavailable -> MaterialTheme.colorScheme.error.copy(alpha = 0.75f)
-            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            selected && unavailable -> MaterialTheme.colorScheme.error
+            selected -> brand
+            else -> Color.Transparent
         },
         animationSpec = tween(180),
-        label = "sourceBorder",
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.97f,
-        animationSpec = spring(
-            dampingRatio = 0.55f,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "sourceScale",
+        label = "sourceButtonBorder",
     )
 
     Surface(
         onClick = onClick,
         modifier = modifier
-            .height(46.dp)
-            .scale(scale),
-        shape = MaterialTheme.shapes.large,
+            .size(64.dp)
+            .alpha(if (unavailable) 0.5f else 1f),
+        shape = MaterialTheme.shapes.medium,
         color = containerColor,
-        contentColor = contentColor,
-        border = BorderStroke(
-            width = if (unavailable) 1.5.dp else 1.dp,
-            color = borderColor,
-        ),
-        tonalElevation = if (selected) 2.dp else 0.dp,
+        contentColor = brand,
+        border = BorderStroke(2.dp, borderColor),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Icon(
-                imageVector = serviceIcon(service),
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(6.dp))
+        Box(contentAlignment = Alignment.Center) {
             Text(
-                text = service.displayName,
+                text = service.brandAbbreviation(),
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.SemiBold,
+                color = brand,
             )
-            if (unavailable) {
-                Spacer(Modifier.width(6.dp))
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.error),
-                )
-            }
         }
     }
 }

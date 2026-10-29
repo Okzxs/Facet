@@ -150,8 +150,8 @@ class SearchViewModel @Inject constructor(
     }
 
     /**
-     * Поиск в выбранном источнике: сначала провайдер из реестра (Deezer, Apple),
-     * затем репозитории для исторических источников (SoundCloud, YouTube).
+     * Поиск в выбранном источнике: сначала провайдер из реестра (Deezer, Apple,
+     * Spotify), затем репозитории для исторических источников (SoundCloud, YouTube).
      */
     private suspend fun searchInSource(service: ServiceType, query: String): Result<List<Track>> {
         sourceRegistry.provider(service.source)?.let { provider ->
@@ -160,7 +160,7 @@ class SearchViewModel @Inject constructor(
         return when (service) {
             ServiceType.SOUNDCLOUD -> soundCloudRepository.search(query)
             ServiceType.YOUTUBE -> youTubeRepository.search(query)
-            ServiceType.DEEZER, ServiceType.APPLE -> Result.failure(
+            ServiceType.DEEZER, ServiceType.APPLE, ServiceType.SPOTIFY -> Result.failure(
                 IllegalStateException("Источник ${service.displayName} не подключён"),
             )
         }

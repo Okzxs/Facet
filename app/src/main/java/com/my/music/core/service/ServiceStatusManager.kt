@@ -118,12 +118,18 @@ class ServiceStatusManager @Inject constructor(
             // остальные — через свои репозитории.
             val provider = sourceRegistry.provider(type.source)
             val result = if (provider != null) {
+                // Ненастроенный источник (Spotify без ключей) недоступен по
+                // определению — сеть не дёргаем, чтобы не ждать таймаут.
+                if (!provider.isConfigured()) {
+                    Log.d(tag, "${type.displayName}: источник не настроен")
+                    return false
+                }
                 provider.search(HEALTH_QUERY, HEALTH_LIMIT)
             } else {
                 when (type) {
                     ServiceType.SOUNDCLOUD -> soundCloudRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
                     ServiceType.YOUTUBE -> youTubeRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
-                    ServiceType.DEEZER, ServiceType.APPLE -> Result.failure(
+                    ServiceType.DEEZER, ServiceType.APPLE, ServiceType.SPOTIFY -> Result.failure(
                         IllegalStateException("Нет провайдера для ${type.displayName}"),
                     )
                 }
