@@ -29,12 +29,20 @@ class MainActivity : ComponentActivity() {
             // Android 12+ использует Dynamic Color системы, пока пользователь
             // не задал собственный акцент в настройках (он работает на всех версиях).
             // Ручная палитра из настроек применяется только на старых версиях.
-            val accentOverride = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            // Акцент включается в настройках: пока выключен, тема берёт цвета обоев
+            // (Dynamic Color), а собственный цвет и legacy-палитра игнорируются.
+            val accentOverride = if (
+                settings.accentEnabled && Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+            ) {
                 Color(settings.accentColorArgb)
             } else {
                 null
             }
-            val customAccentOverride = settings.customAccentColor?.let { Color(it) }
+            val customAccentOverride = if (settings.accentEnabled) {
+                settings.customAccentColor?.let { Color(it) }
+            } else {
+                null
+            }
 
             MyMusicTheme(
                 themeMode = settings.themeMode,

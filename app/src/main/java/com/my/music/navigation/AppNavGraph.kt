@@ -250,26 +250,20 @@ fun AppNavGraph() {
         ) {
             val sharedScope = this
             Box(modifier = Modifier.fillMaxSize()) {
-                // Мини-плеер — отдельный островок над баром. Выезжает снизу и
-                // проявляется масштабом, пока полноэкранный плеер сжимается и тает.
+                // Мини-плеер: мягкое проявление без слайда и сильного масштаба —
+                // иначе вместе с морфом обложки получается двойная трансформация.
                 AnimatedVisibility(
                     visible = showMiniPlayer,
-                    enter = slideInVertically(
-                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                        initialOffsetY = { height -> height },
-                    ) + scaleIn(
-                        initialScale = 0.85f,
+                    enter = fadeIn(animationSpec = tween(PlayerSlideMillis)) + scaleIn(
+                        initialScale = 0.96f,
                         transformOrigin = TransformOrigin(0.5f, 1f),
                         animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                    ) + fadeIn(animationSpec = tween(PlayerSlideMillis)),
-                    exit = slideOutVertically(
-                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                        targetOffsetY = { height -> height },
-                    ) + scaleOut(
-                        targetScale = 0.85f,
+                    ),
+                    exit = fadeOut(animationSpec = tween(PlayerSlideMillis)) + scaleOut(
+                        targetScale = 0.96f,
                         transformOrigin = TransformOrigin(0.5f, 1f),
                         animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                    ) + fadeOut(animationSpec = tween(PlayerSlideMillis)),
+                    ),
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(
@@ -303,18 +297,15 @@ fun AppNavGraph() {
                 // Плеер — верхний оверлей. NavHost с вкладкой остаётся под ним живым,
                 // поэтому при свайпе вниз сквозь тающий плеер видна именно вкладка.
                 //
-                // Общие enter/exit: тот же набор применяется к панелям, которые
-                // при морфе уходят в оверлей shared-перехода.
-                val playerEnter = fadeIn(animationSpec = tween(PlayerSlideMillis)) + scaleIn(
-                    initialScale = 0.96f,
-                    transformOrigin = TransformOrigin(0.5f, 1f),
-                    animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                // Экран только проявляется/тает: единственная трансформация при
+                // открытии — морф обложки. Раньше scaleIn/scaleOut накладывались
+                // на полёт обложки, и картинка «ехала» дважды — отсюда кривой морф.
+                val playerEnter = fadeIn(
+                    animationSpec = tween(durationMillis = 180),
                 )
-                val playerExit = scaleOut(
-                    targetScale = 0.9f,
-                    transformOrigin = TransformOrigin(0.5f, 1f),
-                    animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-                ) + fadeOut(animationSpec = tween(PlayerSlideMillis))
+                val playerExit = fadeOut(
+                    animationSpec = tween(durationMillis = 160),
+                )
                 AnimatedVisibility(
                     visibleState = playerVisibleState,
                     // Вход без полноэкранного слайда: экран мягко проявляется,

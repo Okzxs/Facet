@@ -65,6 +65,8 @@ class SettingsRepositoryImpl @Inject constructor(
             ?.split(',')
             ?.mapNotNull { it.trim().toIntOrNull() }
             ?: emptyList(),
+        // По умолчанию акцент берётся с обоев (Dynamic Color).
+        accentEnabled = prefs.getBoolean(KEY_ACCENT_ENABLED, false),
     )
 
     /**
@@ -110,6 +112,14 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(customAccentColor = argb) }
     }
 
+    override suspend fun setAccentEnabled(enabled: Boolean) {
+        awaitLoaded()
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_ACCENT_ENABLED, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(accentEnabled = enabled) }
+    }
+
     override suspend fun addRecentAccentColor(argb: Int) {
         awaitLoaded()
         // Свежий цвет в начало, дубликаты убираем, хвост обрезаем до лимита.
@@ -137,5 +147,6 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_CUSTOM_ACCENT = "custom_accent_color"
         const val KEY_RECENT_ACCENTS = "recent_accent_colors"
+        const val KEY_ACCENT_ENABLED = "accent_enabled"
     }
 }

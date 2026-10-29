@@ -33,6 +33,8 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val customAccentColor: Int? = null,
     val recentAccentColors: List<Int> = emptyList(),
+    /** Включён ли собственный акцентный цвет; выключен — цвета берутся с обоев. */
+    val accentEnabled: Boolean = false,
 ) {
     companion object {
         /** Базовый коралловый — совпадает с fallback-палитрой приложения. */
@@ -62,6 +64,9 @@ interface SettingsRepository {
 
     /** Сохранить собственный акцентный цвет; null сбрасывает выбор. */
     suspend fun setCustomAccentColor(argb: Int?)
+
+    /** Включить/выключить собственный акцент; выключенный — цвета обоев. */
+    suspend fun setAccentEnabled(enabled: Boolean)
 
     /**
      * Добавить цвет в недавние акценты: свежий уходит в начало (LIFO),

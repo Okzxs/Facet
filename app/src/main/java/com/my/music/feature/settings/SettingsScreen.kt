@@ -25,7 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LocationOff
@@ -57,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -120,98 +121,6 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = "Геопозиция",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                // Тонкий контур: граница карточки читается на обеих темах,
-                // не споря с заливкой surfaceContainerLow.
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                    shape = MaterialTheme.shapes.medium,
-                ),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (hasLocationPermission) {
-                            Icons.Rounded.LocationOn
-                        } else {
-                            Icons.Rounded.LocationOff
-                        },
-                        contentDescription = null,
-                        tint = if (hasLocationPermission) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Геопозиция: ${
-                                if (hasLocationPermission) "Разрешено" else "Запрещено"
-                            }",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = if (hasLocationPermission) {
-                                "Координаты сохраняются при лайке и питают «Воспоминания»"
-                            } else {
-                                "Без доступа координаты лайков не сохраняются, а «Воспоминания» " +
-                                    "не привязываются к месту"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                FilledTonalButton(
-                    onClick = {
-                        hasLocationPermission = LocationPermissions.hasPermission(context)
-                        if (!hasLocationPermission) {
-                            LocationPermissions.openAppSettings(context)
-                        }
-                    },
-                    modifier = Modifier.height(48.dp),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text("Проверить разрешения")
-                }
-
-                if (!hasLocationPermission) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Если доступ запрещён, кнопка откроет настройки приложения",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(40.dp))
-
-        Text(
             text = "Оформление",
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -223,14 +132,7 @@ fun SettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                // Тонкий контур: граница карточки читается на обеих темах,
-                // не споря с заливкой surfaceContainerLow.
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                    shape = MaterialTheme.shapes.medium,
-                ),
+                .padding(horizontal = 16.dp),
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
@@ -300,7 +202,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(
-                            text = "Фон и акценты плеера подстраиваются под обложку трека",
+                            text = "Фон плеера мягко тонируется цветом обложки текущего трека",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -313,33 +215,52 @@ fun SettingsScreen(
                 }
 
                 HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 18.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                 )
 
-                // ─── Акцентный цвет ───
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp)
-                            .padding(top = 16.dp),
-                    ) {
+                // ─── Акцентный цвет: включение ───
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Акцентный цвет",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                            ),
+                            style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(
-                            text = "Выберите цвет из палитры или нажмите на круг с палитрой " +
-                                "в конце списка, чтобы задать свой RGB",
+                            text = if (settings.accentEnabled) {
+                                "Свой цвет вместо цветов обоев"
+                            } else {
+                                "Выключено — берутся цвета обоев"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(
+                        checked = settings.accentEnabled,
+                        onCheckedChange = viewModel::setAccentEnabled,
+                    )
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                )
+
+                // ─── Палитра акцента ───
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(if (settings.accentEnabled) 1f else 0.38f),
+                ) {
                     Spacer(Modifier.height(16.dp))
                     // Готовые кружки и «Свой цвет» пишут в одно поле customAccentColor:
                     // оно имеет высший приоритет в теме и работает поверх Dynamic Color.
@@ -415,14 +336,7 @@ fun SettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                // Тонкий контур: граница карточки читается на обеих темах,
-                // не споря с заливкой surfaceContainerLow.
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                    shape = MaterialTheme.shapes.medium,
-                ),
+                .padding(horizontal = 16.dp),
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
@@ -462,7 +376,92 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(32.dp))
+
+        Text(
+            text = "Разрешения",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (hasLocationPermission) {
+                            Icons.Rounded.LocationOn
+                        } else {
+                            Icons.Rounded.LocationOff
+                        },
+                        contentDescription = null,
+                        tint = if (hasLocationPermission) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (hasLocationPermission) {
+                                "Геопозиция разрешена"
+                            } else {
+                                "Геопозиция запрещена"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = if (hasLocationPermission) {
+                                "Координаты сохраняются при лайке и питают «Воспоминания»"
+                            } else {
+                                "Без доступа координаты лайков не сохраняются, а «Воспоминания» " +
+                                    "не привязываются к месту"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                FilledTonalButton(
+                    onClick = {
+                        hasLocationPermission = LocationPermissions.hasPermission(context)
+                        if (!hasLocationPermission) {
+                            LocationPermissions.openAppSettings(context)
+                        }
+                    },
+                    modifier = Modifier.height(48.dp),
+                    shape = CircleShape,
+                ) {
+                    Text("Проверить разрешения")
+                }
+
+                if (!hasLocationPermission) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Если доступ запрещён, кнопка откроет настройки приложения",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(32.dp))
 
         // Футер с версией сборки: читается как подпись экрана, а не как элемент списка.
         Text(
@@ -506,7 +505,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
             shape = MaterialTheme.shapes.large,
         ) {
             Icon(
-                imageVector = Icons.Filled.ArrowBackIosNew,
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Назад",
             )
         }

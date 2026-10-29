@@ -55,6 +55,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setAccentEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAccentEnabled(enabled)
+        }
+    }
+
     /**
      * Готовый акцент из палитры. Пишется и в legacy-поле для Android ниже 12,
      * и в активный [AppSettings.customAccentColor] — только он перекрывает
@@ -66,6 +72,7 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.setAccentColorArgb(argb)
             settingsRepository.setCustomAccentColor(argb)
             settingsRepository.addRecentAccentColor(argb)
+            settingsRepository.setAccentEnabled(true)
         }
     }
 
@@ -83,6 +90,7 @@ class SettingsViewModel @Inject constructor(
             // Сброс (null) в недавние не попадает — применять нечего.
             if (argb != null) {
                 settingsRepository.addRecentAccentColor(argb)
+                settingsRepository.setAccentEnabled(true)
             }
         }
     }
