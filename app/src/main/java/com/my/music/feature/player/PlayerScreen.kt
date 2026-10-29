@@ -2,6 +2,7 @@ package com.my.music.feature.player
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -297,22 +298,31 @@ fun PlayerScreen(
         }
     }
 
-    // Фон: нейтральный. Если включены динамические цвета обложки — сверху
-    // едва заметная тонировка цветом текущего трека, без «облаков» и градиентных волн.
-    val backgroundBrush = remember(
-        appSettings.dynamicCoverColors,
-        playerColors.primary,
-        defaultSurface,
-    ) {
-        if (appSettings.dynamicCoverColors) {
+    // Акцент плеера: цвет обложки, если включены динамические цвета, иначе — тема.
+    // Цвет анимируется, чтобы при смене трека фон и кнопки перетекали плавно.
+    val dynamicColorsEnabled = appSettings.dynamicCoverColors
+    val targetAccent = if (dynamicColorsEnabled) playerColors.primary else defaultPrimary
+    val coverAccent by animateColorAsState(
+        targetValue = targetAccent,
+        animationSpec = tween(durationMillis = 420),
+        label = "coverAccent",
+    )
+    val onCoverAccent = if (coverAccent.luminance() > 0.5f) Color.Black else Color.White
+    val themeBackground = MaterialTheme.colorScheme.background
+
+    // Фон: при включённых динамических цветах — заметная тонировка цветом обложки
+    // (28% сверху, 14% в середине), при выключенных — строго чистый background.
+    val backgroundBrush = remember(dynamicColorsEnabled, coverAccent, themeBackground) {
+        if (dynamicColorsEnabled) {
             Brush.verticalGradient(
                 colors = listOf(
-                    lerpColor(defaultSurface, playerColors.primary, 0.10f),
-                    defaultSurface,
+                    lerpColor(themeBackground, coverAccent, 0.28f),
+                    lerpColor(themeBackground, coverAccent, 0.14f),
+                    themeBackground,
                 ),
             )
         } else {
-            SolidColor(defaultSurface)
+            SolidColor(themeBackground)
         }
     }
 
@@ -541,6 +551,7 @@ fun PlayerScreen(
                         canDownload = canDownload,
                         downloadState = downloadState,
                         isLyricsMode = isLyricsMode,
+                        trackKey = track?.id,
                         lyricsResult = uiState.lyrics,
                         isLyricsLoading = uiState.isLyricsLoading,
                         lyricsError = uiState.lyricsError,
@@ -602,10 +613,18 @@ fun PlayerScreen(
                         isBuffering = isBuffering,
                         playbackSpeed = playerState.playbackSpeed,
                         isLyricsActive = isLyricsMode,
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        containerColor = if (dynamicColorsEnabled) {
+                            lerpColor(
+                                MaterialTheme.colorScheme.surfaceContainerLow,
+                                coverAccent,
+                                0.14f,
+                            )
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerLow
+                        },
                         contentColor = MaterialTheme.colorScheme.onSurface,
-                        accentColor = MaterialTheme.colorScheme.primary,
-                        onAccentColor = MaterialTheme.colorScheme.onPrimary,
+                        accentColor = coverAccent,
+                        onAccentColor = onCoverAccent,
                         lyricsActiveContainer = MaterialTheme.colorScheme.primaryContainer,
                         lyricsActiveContent = MaterialTheme.colorScheme.onPrimaryContainer,
                         borderColor = Color.Transparent,
@@ -635,7 +654,7 @@ fun PlayerScreen(
                             isResolving = uiState.isResolving,
                             trackId = track?.id,
                             durationMs = track?.durationMs ?: 0L,
-                            primaryColor = MaterialTheme.colorScheme.primary,
+                            primaryColor = coverAccent,
                             currentFraction = { viewModel.currentFraction() },
                             currentPositionMs = { viewModel.currentPositionMs() },
                             bufferedFraction = { viewModel.bufferedFraction() },
@@ -728,15 +747,22 @@ private fun LocationPermissionBanner(
     }
 }
 
+/** Снимок визуала трека — цель анимации при переключении. */
+private data class TrackDisplay(
+    val key: String?,
+    val title: String,
+    val artist: String,
+    val artworkUrl: String?,
+)
+
 /**
- * Hero-зона плеера:
- * - постоянный слой-задник: ровная квадратная обложка со свечением, параллаксом
- *   и «уходом на задний план»;
- * - передний план через AnimatedContent: карточка трека ИЛИ стеклянный экран текстов.
+ * Hero-зона плеера: обложка, название и артист. Смена трека анимируется
+ * мягким fade + slide, тексты и обложка меняются одним блоком.
  */
 @Composable
 private fun ExpressiveHeroZone(
     variant: Int,
+    trackKey: String?,
     title: String,
     artist: String,
     artworkUrl: String?,
@@ -766,6 +792,9 @@ private fun ExpressiveHeroZone(
 ) {
     val heroScroll = rememberScrollState()
     val artworkShape = MaterialTheme.shapes.extraLarge
+    val display = remember(trackKey, title, artist, artworkUrl) {
+        TrackDisplay(trackKey, title, artist, artworkUrl)
+    }
 
     Box(modifier = modifier) {
         AnimatedContent(
@@ -805,48 +834,68 @@ private fun ExpressiveHeroZone(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Spacer(Modifier.height(16.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.82f)
-                            .aspectRatio(1f)
-                            .then(coverSwipeModifier),
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .then(coverModifier),
-                            shape = artworkShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            tonalElevation = 0.dp,
+                    AnimatedContent(
+                        targetState = display,
+                        transitionSpec = {
+                            ((fadeIn(tween(durationMillis = 340)) +
+                                slideInVertically(tween(durationMillis = 340)) { it / 12 }) togetherWith
+                                (fadeOut(tween(durationMillis = 220)) +
+                                    slideOutVertically(tween(durationMillis = 220)) { -it / 12 }))
+                                .using(SizeTransform(clip = false))
+                        },
+                        contentAlignment = Alignment.TopCenter,
+                        label = "trackSwitch",
+                    ) { state ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            ArtworkImage(
-                                artworkUrl = artworkUrl,
-                                shape = artworkShape,
-                                notePainter = notePainter,
-                                placeholderPainter = placeholderPainter,
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.82f)
+                                    .aspectRatio(1f)
+                                    .then(coverSwipeModifier),
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        // Морф в мини-плеер — только на актуальном треке:
+                                        // уходящий кадр не должен дублировать shared-element.
+                                        .then(if (state.key == trackKey) coverModifier else Modifier),
+                                    shape = artworkShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    tonalElevation = 0.dp,
+                                ) {
+                                    ArtworkImage(
+                                        artworkUrl = state.artworkUrl,
+                                        shape = artworkShape,
+                                        notePainter = notePainter,
+                                        placeholderPainter = placeholderPainter,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(24.dp))
+                            Text(
+                                text = state.title,
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = state.artist,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }
-                    Spacer(Modifier.height(24.dp))
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = artist,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
                     Spacer(Modifier.height(16.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
