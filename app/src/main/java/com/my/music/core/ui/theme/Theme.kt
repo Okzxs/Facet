@@ -52,7 +52,8 @@ private val LightColorScheme = lightColorScheme(
     inverseSurface = InverseSurface,
     inverseOnSurface = InverseOnSurface,
     inversePrimary = InversePrimary,
-    surfaceTint = Primary,
+    // Иерархию задают роли surfaceContainer*, а не подмешивание акцента в elevation.
+    surfaceTint = Color.Transparent,
 )
 
 private val DarkColorScheme = darkColorScheme(
@@ -90,7 +91,7 @@ private val DarkColorScheme = darkColorScheme(
     inverseSurface = InverseSurfaceDark,
     inverseOnSurface = InverseOnSurfaceDark,
     inversePrimary = InversePrimaryDark,
-    surfaceTint = PrimaryDark,
+    surfaceTint = Color.Transparent,
 )
 
 /**
@@ -158,10 +159,56 @@ internal fun accentColorScheme(accent: Color, darkTheme: Boolean): ColorScheme {
 }
 
 /**
+ * Нейтральные роли «Light Airy»: мягкий off-white в светлой теме и тёмно-серый
+ * в тёмной. Применяются поверх любой схемы — Dynamic Color пользователя
+ * перекрашивает акцент, но не фон приложения.
+ */
+private fun ColorScheme.withAiryNeutrals(darkTheme: Boolean): ColorScheme = if (darkTheme) {
+    copy(
+        background = BackgroundDark,
+        onBackground = OnBackgroundDark,
+        surface = SurfaceDark,
+        onSurface = OnSurfaceDark,
+        surfaceVariant = SurfaceVariantDark,
+        onSurfaceVariant = OnSurfaceVariantDark,
+        outline = OutlineDark,
+        outlineVariant = OutlineVariantDark,
+        surfaceDim = SurfaceDimDark,
+        surfaceBright = SurfaceBrightDark,
+        surfaceContainerLowest = SurfaceContainerLowestDark,
+        surfaceContainerLow = SurfaceContainerLowDark,
+        surfaceContainer = SurfaceContainerDark,
+        surfaceContainerHigh = SurfaceContainerHighDark,
+        surfaceContainerHighest = SurfaceContainerHighestDark,
+        surfaceTint = Color.Transparent,
+    )
+} else {
+    copy(
+        background = Background,
+        onBackground = OnBackground,
+        surface = Surface,
+        onSurface = OnSurface,
+        surfaceVariant = SurfaceVariant,
+        onSurfaceVariant = OnSurfaceVariant,
+        outline = Outline,
+        outlineVariant = OutlineVariant,
+        surfaceDim = SurfaceDim,
+        surfaceBright = SurfaceBright,
+        surfaceContainerLowest = SurfaceContainerLowest,
+        surfaceContainerLow = SurfaceContainerLow,
+        surfaceContainer = SurfaceContainer,
+        surfaceContainerHigh = SurfaceContainerHigh,
+        surfaceContainerHighest = SurfaceContainerHighest,
+        surfaceTint = Color.Transparent,
+    )
+}
+
+/**
  * Главная тема приложения.
- * Приоритет: собственный акцент пользователя (все версии Android) → Dynamic Color
- * системы (Android 12+) → ручной акцент из палитры (Android ниже 12) → fallback-палитра.
- * Цвета главного экрана не зависят от обложки альбома.
+ * Приоритет акцента: собственный акцент пользователя (все версии Android) →
+ * Dynamic Color системы (Android 12+) → ручной акцент из палитры (Android ниже 12) →
+ * fallback-палитра. Нейтральные роли всегда приходят из «Light Airy»-палитры,
+ * поэтому фон не зависит от обоев. Цвета главного экрана не зависят от обложки.
  *
  * @param themeMode режим темы: светлая/тёмная/системная;
  * @param customAccentColor собственный акцентный цвет из RGB-пикера — переопределяет
@@ -182,7 +229,7 @@ fun MyMusicTheme(
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
-    val colorScheme = when {
+    val rawColorScheme = when {
         customAccentColor != null -> accentColorScheme(customAccentColor, darkTheme)
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -191,6 +238,7 @@ fun MyMusicTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
+    val colorScheme = rawColorScheme.withAiryNeutrals(darkTheme)
 
     MaterialTheme(
         colorScheme = colorScheme,

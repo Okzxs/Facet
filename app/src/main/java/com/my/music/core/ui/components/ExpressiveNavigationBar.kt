@@ -107,7 +107,7 @@ fun ExpressiveNavigationBar(
                 }
                 .width(indicatorWidth)
                 .height(indicatorHeight)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(MaterialTheme.shapes.large)
                 .background(indicatorBrush),
         )
 
@@ -207,7 +207,7 @@ private fun ExpressiveNavItem(
             color = contentColor,
             fontSize = 12.sp,
             lineHeight = 16.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.graphicsLayer { alpha = labelAlpha },

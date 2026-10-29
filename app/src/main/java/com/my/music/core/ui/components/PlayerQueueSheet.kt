@@ -74,7 +74,7 @@ fun PlayerQueueSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         dragHandle = {
             Box(
@@ -103,7 +103,7 @@ fun PlayerQueueSheet(
                 Column {
                     Text(
                         text = "Очередь",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.titleLarge,
                     )
                     Text(
                         text = "${queue.size} треков",
@@ -244,7 +244,7 @@ private fun QueueTrackItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(MaterialTheme.shapes.large)
                     .background(color)
                     .padding(horizontal = 20.dp),
                 contentAlignment = alignment,
@@ -268,9 +268,9 @@ private fun QueueTrackItem(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(MaterialTheme.shapes.large)
                 .clickable(onClick = onClick),
-            shape = RoundedCornerShape(16.dp),
+            shape = MaterialTheme.shapes.large,
             color = containerColor,
         ) {
             Row(
@@ -287,7 +287,7 @@ private fun QueueTrackItem(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(MaterialTheme.shapes.medium),
                     contentAlignment = Alignment.Center,
                 ) {
                     AsyncImage(
@@ -326,7 +326,7 @@ private fun QueueTrackItem(
                     Text(
                         text = track.title,
                         style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = if (isPlaying) FontWeight.SemiBold else FontWeight.Medium,
                         ),
                         color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,

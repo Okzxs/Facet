@@ -190,14 +190,12 @@ fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp),
+                            .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             text = "В волне",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                            ),
+                            style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.weight(1f),
                         )
                         Text(
@@ -232,14 +230,11 @@ private fun WaveHeader() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 10.dp),
+            .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 14.dp),
     ) {
         Text(
             text = "Моя волна",
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.5).sp,
-            ),
+            style = MaterialTheme.typography.headlineLarge,
         )
         Spacer(Modifier.height(2.dp))
         Text(
@@ -417,7 +412,7 @@ private fun WaveActionButton(
     val primary = MaterialTheme.colorScheme.primary
     val tertiary = MaterialTheme.colorScheme.tertiary
     val onPrimary = MaterialTheme.colorScheme.onPrimary
-    val shape = RoundedCornerShape(28.dp)
+    val shape = MaterialTheme.shapes.extraLarge
     val brush = remember(primary, tertiary) {
         Brush.linearGradient(listOf(primary, tertiary))
     }
@@ -514,7 +509,6 @@ private fun WaveActionButton(
                     else -> "Включить волну"
                 },
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
                     letterSpacing = 0.2.sp,
                 ),
             )
@@ -529,7 +523,7 @@ private fun WaveMetaBadges(
     onReset: () -> Unit,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 20.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "meta_language") {
@@ -553,7 +547,7 @@ private fun WaveMetaBadges(
         item(key = "meta_reset") {
             Surface(
                 onClick = onReset,
-                shape = RoundedCornerShape(14.dp),
+                shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 Row(
@@ -586,7 +580,7 @@ private fun WaveBreakdown(
     fromSimilar: Int,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 20.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (fromSimilar > 0) {
@@ -640,7 +634,7 @@ private fun BreakdownChip(
     contentColor: Color,
 ) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.large,
         color = containerColor,
     ) {
         Row(
@@ -697,7 +691,7 @@ private fun WaveTrackRow(
                 scaleX = scale
                 scaleY = scale
             },
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         color = containerColor,
     ) {
         Row(
@@ -754,7 +748,7 @@ private fun WaveTrackRow(
 private fun WaveHintCard(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Row(
@@ -764,7 +758,7 @@ private fun WaveHintCard(modifier: Modifier = Modifier) {
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(MaterialTheme.shapes.large)
                     .background(
                         Brush.linearGradient(
                             listOf(
@@ -802,7 +796,7 @@ private fun WaveMessageCard(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.errorContainer,
     ) {
         Row(

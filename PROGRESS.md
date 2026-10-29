@@ -1,6 +1,18 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 28.10.2026 (сессия 45)
+## Последнее обновление: 29.10.2026 (сессия 46)
+
+## Редизайн «Light Airy MD3» — сессия 46
+- `Type.kt`: убран вес 800 из семейства, display/headline переведены с ExtraBold на SemiBold, title* — на Medium, labelSmall — Medium с трекингом 1.2; bodyLarge трекинг 0.5 → 0.25. Снято 30 ручных `fontWeight`-переопределений в экранах, теперь вес задаёт шкала.
+- `Color.kt`: нейтральная гамма — светлый фон `#FAF9F6`, тёмный `#1A1918`, контейнеры surfaceContainer* переведены с розовых на тёплые нейтральные; смягчены primaryContainer/secondaryContainer/tertiaryContainer.
+- `Theme.kt`: `surfaceTint = Color.Transparent` (elevation не подмешивает акцент); новая `withAiryNeutrals()` прибивает нейтральные роли поверх любой схемы — Dynamic Color оставляет акцент с обоев, но не перекрашивает фон. `values/colors.xml` и `values-night/colors.xml` синхронизированы.
+- `Shape.kt`: единая шкала M3 4/8/12/16/24 (`AppShapes`) + `PillShape`; `SquircleShape`, `HeroShape`, `BentoCardShape` удалены. 63 места с радиусами переведены на `MaterialTheme.shapes.*`; асимметрия осталась только у острова управления (44/22 и язычок), у стеклянной карточки плеера — симметричные 24dp.
+- Тени: удалены `Modifier.shadow` у обложки (22dp), стеклянной карточки (20dp), острова управления (26dp), мини-плеера (8dp), поля поиска (3→10dp) и `shadowElevation` меню (12→4dp). Иерархия теперь на `surfaceContainer*` + hairline 1dp. Убраны текстовые `Shadow` у артиста и активной строки текста.
+- «Воздух»: края экранов 20 → 24dp, блоки Home 32 → 40dp, внутренние паддинги карточек 12/14/22 → 18/18/26dp, списки 10–12 → 14–16dp, низ под док унифицирован на 24dp.
+- Плеер: заголовок трека с 40sp ExtraBold на 30sp SemiBold, свечение обложки 0.45 → 0.20, остров получил тональный `containerColor` через `compositeOver`.
+- Логика свайпов и холодного старта не тронута: `PlayerSwipeState.kt`, `AppNavGraph.kt`, `PlayerController`, `SettingsRepositoryImpl` не менялись; все `graphicsLayer`-блоки (translationY/alpha/scale) на месте.
+- Сборка: `assembleDebug` — BUILD SUCCESSFUL (2m 25s), APK 27 461 047 байт. Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `adb install -r` на 192.168.1.106:45609 — Success.
+
 
 ## Удаление motion blur — сессия 45
 - Фича motion blur удалена из проекта полностью по решению пользователя: `core/ui/MotionBlur.kt` стёрт (`git rm`), других потребителей `Modifier.motionBlur` не было.

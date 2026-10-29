@@ -50,7 +50,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.my.music.core.download.DownloadState
 import com.my.music.core.ui.components.TrackCard
 import com.my.music.core.ui.components.TrackDownloadButton
-import com.my.music.core.ui.theme.SquircleShape
 import com.my.music.data.model.Track
 import com.my.music.navigation.LocalBottomDockHeight
 
@@ -121,15 +120,15 @@ fun LibraryScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 16.dp + LocalBottomDockHeight.current),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     // Быстрые кнопки: «Слушать всё» шире «Перемешать» (1.6 к 1.0)
                     item(key = "library_actions") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                .padding(horizontal = 20.dp, vertical = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Button(
@@ -214,28 +213,20 @@ fun LibraryScreen(
 @Composable
 private fun LibraryHeader(trackCount: Int, totalMs: Long) {
     Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp),
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 12.dp),
     ) {
         Text(
             text = "КОЛЛЕКЦИЯ",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            ),
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = "Медиатека",
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontSize = 34.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.5).sp,
-            ),
+            style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             // Для пустой коллекции не показываем «0 мин» — только количество.
             text = if (totalMs > 0L) {
@@ -262,7 +253,7 @@ private fun LibraryEmptyState(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
                 modifier = Modifier.size(96.dp),
-                shape = SquircleShape,
+                shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -277,13 +268,10 @@ private fun LibraryEmptyState(
             Spacer(Modifier.height(20.dp))
             Text(
                 text = "В медиатеке пока пусто",
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
+                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp),
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(24.dp))
             Text(
                 text = "Нажимайте сердечко в плеере или в списках треков, " +
                     "чтобы собирать свою коллекцию любимой музыки",

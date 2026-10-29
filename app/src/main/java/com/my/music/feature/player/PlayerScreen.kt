@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
@@ -518,21 +519,13 @@ fun PlayerScreen(
                                 text = "СЕЙЧАС ИГРАЕТ",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     letterSpacing = 1.6.sp,
-                                    fontWeight = FontWeight.Bold,
                                 ),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                                 textAlign = TextAlign.Center,
                             )
                             Text(
                                 text = track?.artist ?: "—",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    // Мягкое свечение именем акцента палитры
-                                    shadow = Shadow(
-                                        color = playerColors.primary.copy(alpha = 0.55f),
-                                        blurRadius = 8f,
-                                    ),
-                                ),
+                                style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -666,7 +659,9 @@ fun PlayerScreen(
                         isBuffering = isBuffering,
                         playbackSpeed = playerState.playbackSpeed,
                         isLyricsActive = isLyricsMode,
-                        containerColor = surfaceColor.copy(alpha = 0.94f),
+                        containerColor = surfaceColor
+                            .copy(alpha = 0.55f)
+                            .compositeOver(MaterialTheme.colorScheme.surfaceContainerLow),
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         accentColor = playerColors.primary,
                         onAccentColor = playerColors.onPrimary,
@@ -689,12 +684,12 @@ fun PlayerScreen(
                             .fillMaxWidth()
                             // При морфе панель рисуется в оверлее выше обложки.
                             .then(panelModifier)
-                            .padding(horizontal = 16.dp)
+                            .padding(horizontal = 24.dp)
                             // Запоминаем реальные границы острова: корневой жест
                             // игнорирует касания из этой зоны (кнопки и слайдер).
                             .onGloballyPositioned { controlIslandBounds = it.boundsInRoot() }
                             // Запас под выступающий язычок «Текст» и воздух до текстов/обложки
-                            .padding(top = 30.dp)
+                            .padding(top = 34.dp)
                             // Кнопки и слайдер не должны запускать закрытие свайпом.
                             .then(controlIslandSwipeGuard),
                     ) {
@@ -754,7 +749,7 @@ private fun LocationPermissionBanner(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
     ) {
@@ -840,7 +835,7 @@ private fun ExpressiveHeroZone(
     )
 
     // Ровный квадрат со скруглением 24dp: без наклона и асимметрии.
-    val artworkShape = RoundedCornerShape(24.dp)
+    val artworkShape = MaterialTheme.shapes.extraLarge
 
     Box(modifier = modifier) {
         // ─── Постоянный слой-задник: обложка ───
@@ -870,15 +865,15 @@ private fun ExpressiveHeroZone(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer {
-                        scaleX = 1.22f
-                        scaleY = 1.22f
+                        scaleX = 1.12f
+                        scaleY = 1.12f
                         alpha = 1f - recede
                     }
                     .background(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                palette.primary.copy(alpha = 0.45f),
-                                palette.primaryContainer.copy(alpha = 0.18f),
+                                palette.primary.copy(alpha = 0.20f),
+                                palette.primaryContainer.copy(alpha = 0.06f),
                                 Color.Transparent,
                             ),
                         ),
@@ -892,16 +887,13 @@ private fun ExpressiveHeroZone(
                     // Морф обложки: в режиме текстов она скрыта, поэтому
                     // shared-element не подключаем, чтобы не «оживлять» её.
                     .then(if (isLyricsMode) Modifier else coverModifier)
-                    .shadow(
-                        elevation = 22.dp,
-                        shape = artworkShape,
-                        clip = false,
-                        ambientColor = palette.primary.copy(alpha = 0.60f),
-                        spotColor = palette.primary,
-                    )
                     .clip(artworkShape),
                 shape = artworkShape,
                 color = palette.surfaceContainerHigh,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                ),
             ) {
                 ArtworkImage(
                     artworkUrl = artworkUrl,
@@ -918,7 +910,7 @@ private fun ExpressiveHeroZone(
                         .align(Alignment.BottomStart)
                         .padding(14.dp)
                         .fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
                     color = palette.surfaceContainerHigh.copy(alpha = 0.55f),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
                 ) {
@@ -1105,7 +1097,7 @@ private fun CoverForeground(
         }
 
         // Гарантированный воздух между карточкой и островом управления
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -1126,33 +1118,25 @@ private fun TrackGlassCard(
     onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cardShape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp, bottomEnd = 34.dp, bottomStart = 12.dp)
+    val cardShape = MaterialTheme.shapes.extraLarge
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .shadow(
-                elevation = 20.dp,
-                shape = cardShape,
-                clip = false,
-                ambientColor = primaryColor.copy(alpha = 0.35f),
-                spotColor = primaryColor.copy(alpha = 0.25f),
-            ),
+        modifier = modifier.fillMaxWidth(),
         shape = cardShape,
-        color = surfaceColor.copy(alpha = 0.88f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
     ) {
-        Column(modifier = Modifier.padding(22.dp)) {
-            // Огромная типографика Display (Google Sans Flex)
+        Column(modifier = Modifier.padding(26.dp)) {
+            // Крупная, но спокойная типографика: 30sp SemiBold вместо 40sp ExtraBold
             Text(
                 text = title,
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.headlineMedium,
                 // Явный цвет: contentColorFor полупрозрачной «стеклянной» карточки
                 // давал чёрный текст на тёмном фоне при светлых обложках.
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(18.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Акцентная полоска-градиент под названием
                 Box(
@@ -1166,7 +1150,7 @@ private fun TrackGlassCard(
                             ),
                         ),
                 )
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(12.dp))
                 Text(
                     text = artist,
                     style = MaterialTheme.typography.titleMedium,
@@ -1250,7 +1234,7 @@ private fun DownloadSquircle(
     FilledTonalIconButton(
         onClick = onClick,
         modifier = Modifier.size(46.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = containerColor,
             contentColor = contentColor,
@@ -1314,7 +1298,7 @@ private fun LikeSquircle(
     FilledTonalIconButton(
         onClick = onToggleLike,
         modifier = Modifier.size(46.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = if (isLiked) primaryContainerColor
             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
@@ -1339,7 +1323,7 @@ private fun DislikeSquircle(
     FilledTonalIconButton(
         onClick = onToggleDislike,
         modifier = Modifier.size(46.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = if (isDisliked) {
                 MaterialTheme.colorScheme.errorContainer
@@ -1378,7 +1362,7 @@ private fun LyricsForeground(
     onRetry: () -> Unit,
     onListBoundsChanged: (Rect?) -> Unit,
 ) {
-    val miniShape = RoundedCornerShape(13.dp)
+    val miniShape = MaterialTheme.shapes.medium
     val onSurface = MaterialTheme.colorScheme.onSurface
 
     Column(
@@ -1455,7 +1439,7 @@ private fun LyricsForeground(
 @Composable
 private fun ArtworkImage(
     artworkUrl: String?,
-    shape: RoundedCornerShape,
+    shape: Shape,
     notePainter: Painter,
     placeholderPainter: Painter,
 ) {
@@ -1623,7 +1607,7 @@ private fun LyricsListView(
                         top = if (lyricsResult.isSynced) 64.dp else 28.dp,
                         bottom = 136.dp,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
                     itemsIndexed(
                         items = lyricsResult.lines,
@@ -1735,18 +1719,10 @@ private fun LyricLineItem(
         lineHeight = targetLineHeight,
         letterSpacing = if (isActive) (-0.2).sp else 0.sp,
         fontWeight = when {
-            isActive -> FontWeight.Bold
+            isActive -> FontWeight.SemiBold
             !isSynced -> FontWeight.Normal
             indexDistance == 1 -> FontWeight.Medium
             else -> FontWeight.Normal
-        },
-        shadow = if (isActive && isSynced) {
-            Shadow(
-                color = highlightColor.copy(alpha = 0.38f),
-                blurRadius = 18f,
-            )
-        } else {
-            null
         },
     )
 
@@ -1768,7 +1744,7 @@ private fun LyricLineItem(
                 indication = null,
                 onClick = { onClick?.invoke() },
             )
-            .padding(vertical = 6.dp),
+            .padding(vertical = 8.dp),
     ) {
         Text(
             text = text,

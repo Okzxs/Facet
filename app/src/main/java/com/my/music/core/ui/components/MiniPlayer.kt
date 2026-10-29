@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -122,8 +123,8 @@ internal fun FloatingMiniPlayer(
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val shape = RoundedCornerShape(30.dp)
-    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val shape = MaterialTheme.shapes.extraLarge
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
@@ -152,8 +153,8 @@ internal fun FloatingMiniPlayer(
         modifier = modifier
             .fillMaxWidth()
             .height(MiniPlayerIslandHeight)
-            // Тень рисуется до клипа, поэтому не обрезается по контуру островка.
-            .shadow(elevation = 8.dp, shape = shape, clip = false)
+            // Отделение от контента — тоном и волосяной обводкой, без тени.
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), shape)
             .background(surfaceColor, shape)
             .clip(shape)
             .pointerInput(track.id) {
@@ -212,7 +213,7 @@ internal fun FloatingMiniPlayer(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Обложка и подписи едут за пальцем; кнопка Play остаётся на месте.
@@ -231,7 +232,7 @@ internal fun FloatingMiniPlayer(
                     modifier = Modifier
                         .size(48.dp)
                         .then(coverModifier),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = MaterialTheme.shapes.large,
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
                     if (!track.artworkUrl.isNullOrBlank()) {
@@ -249,7 +250,7 @@ internal fun FloatingMiniPlayer(
                             error = notePainter,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(14.dp)),
+                                .clip(MaterialTheme.shapes.large),
                         )
                     } else {
                         Box(
@@ -266,7 +267,7 @@ internal fun FloatingMiniPlayer(
                     }
                 }
 
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(14.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

@@ -4,7 +4,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -51,7 +50,6 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -64,7 +62,8 @@ import kotlin.math.sin
 
 /**
  * Переиспользуемая карточка трека — горизонтальный layout.
- * Используется в поиске, главной, библиотеке.
+ * Используется в поиске, главной, библиотеке. В покое фон прозрачный:
+ * список держится на воздухе и отступах, а не на плашках.
  */
 @Composable
 fun TrackCard(
@@ -80,22 +79,22 @@ fun TrackCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val shape = RoundedCornerShape(20.dp)
+    val shape = MaterialTheme.shapes.large
 
     val containerColor by animateColorAsState(
         targetValue = when {
-            pressed -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.62f)
+            pressed -> MaterialTheme.colorScheme.surfaceContainerHigh
             // Играющий трек подсвечен в списке: строка тонирована контейнером акцента.
-            isPlaying -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            isPlaying -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
             else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 180),
         label = "trackCardContainer",
     )
     val pressedScale by animateFloatAsState(
-        targetValue = if (pressed) 0.975f else 1f,
+        targetValue = if (pressed) 0.985f else 1f,
         animationSpec = spring(
-            dampingRatio = 0.55f,
+            dampingRatio = 0.7f,
             stiffness = Spring.StiffnessMedium,
         ),
         label = "trackCardScale",
@@ -103,7 +102,7 @@ fun TrackCard(
 
     Surface(
         modifier = modifier
-            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
             .graphicsLayer {
                 scaleX = pressedScale
                 scaleY = pressedScale
@@ -126,11 +125,9 @@ fun TrackCard(
                         text = track.title,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                        ),
+                        style = MaterialTheme.typography.titleMedium,
                     )
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = buildString {
                             append(track.artist)
@@ -177,11 +174,11 @@ fun TrackCard(
                         if (isPlaying) {
                             if (isPaused) {
                                 PausedEqualizerDots(
-                                    modifier = Modifier.padding(end = 10.dp),
+                                    modifier = Modifier.padding(end = 12.dp),
                                 )
                             } else {
                                 PlayingEqualizerIcon(
-                                    modifier = Modifier.padding(end = 10.dp),
+                                    modifier = Modifier.padding(end = 12.dp),
                                 )
                             }
                         }

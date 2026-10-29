@@ -121,11 +121,7 @@ fun SettingsScreen(
 
         Text(
             text = "ГЕОПОЗИЦИЯ",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            ),
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
@@ -140,13 +136,13 @@ fun SettingsScreen(
                 // не споря с заливкой surfaceContainerLow.
                 .border(
                     width = 1.dp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
-                    shape = RoundedCornerShape(30.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                    shape = MaterialTheme.shapes.extraLarge,
                 ),
-            shape = RoundedCornerShape(30.dp),
+            shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
-            Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = if (hasLocationPermission) {
@@ -196,8 +192,8 @@ fun SettingsScreen(
                             LocationPermissions.openAppSettings(context)
                         }
                     },
-                    modifier = Modifier.height(44.dp),
-                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.height(48.dp),
+                    shape = MaterialTheme.shapes.large,
                 ) {
                     Text("Проверить разрешения")
                 }
@@ -213,15 +209,11 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(40.dp))
 
         Text(
             text = "ОФОРМЛЕНИЕ",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            ),
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
@@ -236,10 +228,10 @@ fun SettingsScreen(
                 // не споря с заливкой surfaceContainerLow.
                 .border(
                     width = 1.dp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
-                    shape = RoundedCornerShape(30.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                    shape = MaterialTheme.shapes.extraLarge,
                 ),
-            shape = RoundedCornerShape(30.dp),
+            shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Column {
@@ -247,7 +239,7 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
                 ) {
                     Text(
                         text = "Тема приложения",
@@ -295,7 +287,7 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -409,15 +401,11 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(40.dp))
 
         Text(
             text = "МОЯ ВОЛНА",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            ),
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(horizontal = 20.dp),
         )
@@ -432,16 +420,16 @@ fun SettingsScreen(
                 // не споря с заливкой surfaceContainerLow.
                 .border(
                     width = 1.dp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
-                    shape = RoundedCornerShape(30.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                    shape = MaterialTheme.shapes.extraLarge,
                 ),
-            shape = RoundedCornerShape(30.dp),
+            shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -474,7 +462,7 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(40.dp))
 
         // Футер с версией сборки: читается как подпись экрана, а не как элемент списка.
         Text(
@@ -509,13 +497,13 @@ private fun SettingsHeader(onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 12.dp),
+            .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FilledTonalIconButton(
             onClick = onBack,
             modifier = Modifier.size(44.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = MaterialTheme.shapes.large,
         ) {
             Icon(
                 imageVector = Icons.Filled.ArrowBackIosNew,
@@ -528,10 +516,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Настройки",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = (-0.5).sp,
-                ),
+                style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(2.dp))
@@ -649,12 +634,12 @@ private fun CustomColorDialog(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(MaterialTheme.shapes.large)
                             .background(preview)
                             .border(
                                 width = 1.dp,
                                 color = MaterialTheme.colorScheme.outlineVariant,
-                                shape = RoundedCornerShape(16.dp),
+                                shape = MaterialTheme.shapes.large,
                             ),
                     )
                     Spacer(Modifier.width(14.dp))
@@ -686,7 +671,7 @@ private fun CustomColorDialog(
                                 },
                             )
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = MaterialTheme.shapes.large,
                     )
                 }
                 Spacer(Modifier.height(18.dp))

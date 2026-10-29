@@ -203,14 +203,11 @@ fun SearchScreen(
 @Composable
 private fun SearchHeader() {
     Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 16.dp),
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 20.dp),
     ) {
         Text(
             text = "Поиск",
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.5).sp,
-            ),
+            style = MaterialTheme.typography.headlineLarge,
         )
         Spacer(Modifier.height(2.dp))
         Text(
@@ -318,7 +315,7 @@ private fun ServiceSourceChip(
         modifier = modifier
             .height(46.dp)
             .scale(scale),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         color = containerColor,
         contentColor = contentColor,
         border = BorderStroke(
@@ -435,7 +432,7 @@ private fun ServiceStatusButton(
             onDismissRequest = { expanded = false },
             modifier = Modifier.width(304.dp),
             offset = DpOffset(x = 0.dp, y = 6.dp),
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.extraLarge,
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 4.dp,
             shadowElevation = 12.dp,
@@ -449,9 +446,7 @@ private fun ServiceStatusButton(
             ) {
                 Text(
                     text = "Статусы сервисов",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                    ),
+                    style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -481,7 +476,7 @@ private fun ServiceStatusButton(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = MaterialTheme.shapes.large,
                     contentPadding = PaddingValues(horizontal = 12.dp),
                 ) {
                     if (anyChecking) {
@@ -531,7 +526,7 @@ private fun ServiceStatusRow(
     ) {
         Surface(
             modifier = Modifier.size(36.dp),
-            shape = RoundedCornerShape(12.dp),
+            shape = MaterialTheme.shapes.medium,
             color = if (isUnavailable) {
                 MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f)
             } else {
@@ -610,7 +605,7 @@ private fun UnavailableServiceWarning(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp),
-            shape = RoundedCornerShape(14.dp),
+            shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
             border = BorderStroke(
                 1.dp,
@@ -656,7 +651,7 @@ private fun ExpressiveSearchField(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
-    val shape = RoundedCornerShape(28.dp)
+    val shape = MaterialTheme.shapes.extraLarge
 
     val containerColor by animateColorAsState(
         targetValue = if (focused) MaterialTheme.colorScheme.surfaceContainerHighest
@@ -682,20 +677,10 @@ private fun ExpressiveSearchField(
         animationSpec = tween(240),
         label = "searchIconTint",
     )
-    val elevation by animateDpAsState(
-        targetValue = if (focused) 10.dp else 3.dp,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "searchElevation",
-    )
-
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .shadow(elevation = elevation, shape = shape, clip = false),
+            .height(64.dp),
         shape = shape,
         color = containerColor,
         border = BorderStroke(1.dp, borderColor),
@@ -782,7 +767,6 @@ private fun SuggestionChips(onSuggestion: (String) -> Unit) {
         Text(
             text = "ПОПРОБУЙ",
             style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
                 letterSpacing = 1.4.sp,
             ),
             color = MaterialTheme.colorScheme.primary,
@@ -802,7 +786,7 @@ private fun SuggestionChips(onSuggestion: (String) -> Unit) {
                             fontWeight = FontWeight.Medium,
                         )
                     },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = MaterialTheme.shapes.large,
                     colors = androidx.compose.material3.SuggestionChipDefaults.suggestionChipColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -832,7 +816,7 @@ private fun IdleState(
         Box(
             modifier = Modifier
                 .size(104.dp)
-                .clip(RoundedCornerShape(32.dp))
+                .clip(MaterialTheme.shapes.extraLarge)
                 .background(
                     Brush.linearGradient(
                         listOf(
@@ -853,7 +837,7 @@ private fun IdleState(
         Spacer(Modifier.height(22.dp))
         Text(
             text = "Найди свой саунд",
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleLarge,
         )
         Spacer(Modifier.height(8.dp))
         Text(
@@ -883,7 +867,7 @@ private fun EmptyResultsState(
     ) {
         Surface(
             modifier = Modifier.size(88.dp),
-            shape = RoundedCornerShape(28.dp),
+            shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -898,7 +882,7 @@ private fun EmptyResultsState(
         Spacer(Modifier.height(20.dp))
         Text(
             text = "Ничего не найдено",
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleLarge,
         )
         Spacer(Modifier.height(6.dp))
         Text(
@@ -927,7 +911,7 @@ private fun ErrorState(
     ) {
         Surface(
             modifier = Modifier.size(88.dp),
-            shape = RoundedCornerShape(28.dp),
+            shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.errorContainer,
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -942,7 +926,7 @@ private fun ErrorState(
         Spacer(Modifier.height(20.dp))
         Text(
             text = "Не удалось выполнить поиск",
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleLarge,
         )
         Spacer(Modifier.height(6.dp))
         Text(
@@ -980,13 +964,12 @@ private fun ResultsList(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 22.dp, end = 22.dp, top = 10.dp, bottom = 4.dp),
+                .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = "РЕЗУЛЬТАТЫ · ${serviceName.uppercase()}",
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp,
                 ),
                 color = MaterialTheme.colorScheme.primary,
@@ -998,7 +981,7 @@ private fun ResultsList(
             ) {
                 Text(
                     text = "${tracks.size}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                 )
@@ -1039,7 +1022,7 @@ private fun SearchSkeletonList() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(MaterialTheme.shapes.large)
                     .background(MaterialTheme.colorScheme.surfaceContainerLow)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1047,7 +1030,7 @@ private fun SearchSkeletonList() {
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(MaterialTheme.shapes.medium)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 )
 
@@ -1058,7 +1041,7 @@ private fun SearchSkeletonList() {
                         modifier = Modifier
                             .fillMaxWidth(0.68f)
                             .height(15.dp)
-                            .clip(RoundedCornerShape(5.dp))
+                            .clip(MaterialTheme.shapes.extraSmall)
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                     )
                     Spacer(Modifier.height(8.dp))
@@ -1066,7 +1049,7 @@ private fun SearchSkeletonList() {
                         modifier = Modifier
                             .fillMaxWidth(0.42f)
                             .height(11.dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(MaterialTheme.shapes.extraSmall)
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)),
                     )
                 }

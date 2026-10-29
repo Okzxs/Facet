@@ -78,7 +78,6 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.my.music.core.ui.components.formatDuration
 import com.my.music.core.ui.theme.PillShape
-import com.my.music.core.ui.theme.SquircleShape
 import com.my.music.core.util.SeasonProvider
 import com.my.music.data.model.SeasonMemory
 import com.my.music.data.model.Track
@@ -89,8 +88,8 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private val ScreenPadding = 20.dp
-private val BlockGap = 32.dp
+private val ScreenPadding = 24.dp
+private val BlockGap = 40.dp
 private const val MEMORY_PREVIEW_LIMIT = 3
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,9 +121,9 @@ fun HomeScreen(
             contentPadding = PaddingValues(
                 start = ScreenPadding,
                 end = ScreenPadding,
-                top = 10.dp,
+                top = 20.dp,
                 // Запас снизу под плавающий док (его больше нет в слоте Scaffold).
-                bottom = 30.dp + LocalBottomDockHeight.current,
+                bottom = 24.dp + LocalBottomDockHeight.current,
             ),
             verticalArrangement = Arrangement.spacedBy(BlockGap),
         ) {
@@ -261,15 +260,12 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = dateLabel,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp,
-                ),
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 text = greeting,
                 style = MaterialTheme.typography.headlineMedium,
@@ -282,7 +278,7 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         FilledTonalIconButton(
             onClick = onSettingsClick,
             modifier = Modifier.size(42.dp),
-            shape = RoundedCornerShape(14.dp),
+            shape = MaterialTheme.shapes.large,
         ) {
             Icon(
                 imageVector = Icons.Rounded.Settings,
@@ -302,23 +298,20 @@ private fun HomeSectionHeader(eyebrow: String, title: String) {
     Column {
         Text(
             text = eyebrow,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-            ),
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
             color = MaterialTheme.colorScheme.primary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(18.dp))
     }
 }
 
@@ -339,13 +332,13 @@ private fun ContinueListeningCard(
         label = "heroScale",
     )
 
-    val heroShape = RoundedCornerShape(30.dp)
+    val heroShape = MaterialTheme.shapes.extraLarge
     // Единственная цветная поверхность Home: мягкий тон primaryContainer,
-    // уходящий в нейтральный surfaceContainerHigh.
+    // уходящий в нейтральный surfaceContainerLow.
     val heroBrush = Brush.linearGradient(
         colors = listOf(
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-            MaterialTheme.colorScheme.surfaceContainerHigh,
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
+            MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     )
 
@@ -372,16 +365,16 @@ private fun ContinueListeningCard(
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Artwork(
                 url = track.artworkUrl,
                 contentDescription = null,
                 modifier = Modifier.size(96.dp),
-                shape = SquircleShape,
+                shape = MaterialTheme.shapes.extraLarge,
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(16.dp))
             // Автор идёт сразу за названием: колонка центрируется по высоте
             // обложки, а не растягивается с пустотой между строками.
             Column(
@@ -390,10 +383,7 @@ private fun ContinueListeningCard(
             ) {
                 Text(
                     text = "ПРОДОЛЖИТЬ",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.2.sp,
-                    ),
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -468,7 +458,7 @@ private fun RecommendationsRow(
     LazyRow(
         state = listState,
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(
             items = tracks,
@@ -498,15 +488,15 @@ private fun RecommendationCard(
         label = "recommendationScale",
     )
 
-    Column(modifier = Modifier.width(140.dp)) {
+    Column(modifier = Modifier.width(148.dp)) {
         Box(
             modifier = Modifier
-                .size(140.dp)
+                .size(148.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                 }
-                .clip(SquircleShape)
+                .clip(MaterialTheme.shapes.extraLarge)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = LocalIndication.current,
@@ -521,7 +511,7 @@ private fun RecommendationCard(
                 url = track.artworkUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                shape = SquircleShape,
+                shape = MaterialTheme.shapes.extraLarge,
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -555,11 +545,11 @@ private fun RecommendationsSkeleton() {
     ) {
         repeat(4) {
             item {
-                Column(modifier = Modifier.width(140.dp)) {
+                Column(modifier = Modifier.width(148.dp)) {
                     Box(
                         modifier = Modifier
-                            .size(140.dp)
-                            .clip(SquircleShape)
+                            .size(148.dp)
+                            .clip(MaterialTheme.shapes.extraLarge)
                             .background(placeholder),
                     )
                     Spacer(Modifier.height(10.dp))
@@ -626,7 +616,7 @@ private fun RecentBlock(
         HomeSectionHeader(eyebrow = "ИСТОРИЯ", title = "Недавнее")
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(
                 items = tracks.take(10),
@@ -657,12 +647,12 @@ private fun RecentCover(
         label = "recentScale",
     )
 
-    val coverShape = RoundedCornerShape(22.dp)
+    val coverShape = MaterialTheme.shapes.extraLarge
 
-    Column(modifier = Modifier.width(132.dp)) {
+    Column(modifier = Modifier.width(138.dp)) {
         Box(
             modifier = Modifier
-                .size(132.dp)
+                .size(138.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -725,17 +715,17 @@ private fun MemoryCard(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(30.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = containerColor,
         contentColor = contentColor,
     ) {
         Column {
             Row(
                 modifier = Modifier.padding(
-                    start = 16.dp,
-                    top = 14.dp,
-                    end = 14.dp,
-                    bottom = 12.dp,
+                    start = 20.dp,
+                    top = 18.dp,
+                    end = 18.dp,
+                    bottom = 16.dp,
                 ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -783,7 +773,7 @@ private fun MemoryCard(
                 color = contentColor.copy(alpha = 0.16f),
             )
 
-            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 preview.forEach { memory ->
                     MemoryTrackRow(
                         track = memory.track,
@@ -816,16 +806,16 @@ private fun MemoryTrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(MaterialTheme.shapes.medium)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 7.dp),
+            .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Artwork(
             url = track.artworkUrl,
             contentDescription = null,
             modifier = Modifier.size(40.dp),
-            shape = RoundedCornerShape(10.dp),
+            shape = MaterialTheme.shapes.small,
         )
         Spacer(Modifier.width(10.dp))
         Text(
@@ -887,12 +877,12 @@ private fun LikedCard(
                 role = Role.Button,
                 onClick = { onTrackClick(tracks.first(), tracks) },
             ),
-        shape = RoundedCornerShape(22.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = containerColor,
         contentColor = contentColor,
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -957,7 +947,7 @@ private fun Artwork(
     url: String?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    shape: Shape = SquircleShape,
+    shape: Shape = MaterialTheme.shapes.extraLarge,
 ) {
     val context = LocalContext.current
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant

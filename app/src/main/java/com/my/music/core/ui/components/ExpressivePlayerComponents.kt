@@ -98,27 +98,19 @@ fun PlayerControlIsland(
 
     Box(modifier = modifier) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .shadow(
-                    elevation = 26.dp,
-                    shape = islandShape,
-                    clip = false,
-                    ambientColor = accentColor.copy(alpha = 0.45f),
-                    spotColor = accentColor.copy(alpha = 0.35f),
-                ),
+            modifier = Modifier.fillMaxWidth(),
             shape = islandShape,
             color = containerColor,
             border = BorderStroke(1.dp, borderColor),
         ) {
             Column(
-                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 30.dp, bottom = 16.dp),
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 34.dp, bottom = 18.dp),
             ) {
                 progressContent()
 
                 // Запас между волной и рядом кнопок: палец, целящийся в Play/Pause,
                 // не должен задевать зону перемотки
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -144,7 +136,7 @@ fun PlayerControlIsland(
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = if (playbackSpeed == 1.0f) "1×" else "${playbackSpeed}×",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                             )
                         }
                     }
@@ -346,7 +338,7 @@ private fun LyricsTab(
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "Текст",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             )
         }
     }

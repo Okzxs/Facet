@@ -33,7 +33,7 @@ fun ExpressiveBottomDock(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.97f),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
         border = BorderStroke(
             width = 1.dp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
