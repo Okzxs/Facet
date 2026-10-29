@@ -317,6 +317,26 @@ fun PlayerScreen(
     val onCoverAccent = if (coverAccent.luminance() > 0.5f) Color.Black else Color.White
     val themeBackground = MaterialTheme.colorScheme.background
 
+    // Кнопки-сквирклы под обложкой (скачать/лайк/дизлайк) живут в той же палитре,
+    // что фон и кнопка Play: при динамических цветах контейнер — оттенок обложки,
+    // иначе — контейнер темы. Цвета анимируются вместе с акцентом (420 мс),
+    // чтобы при смене трека кнопки перетекали, а не переключались рывком.
+    val heroActionContainer by animateColorAsState(
+        targetValue = if (dynamicColorsEnabled) playerColors.primaryContainer else defaultPrimaryContainer,
+        animationSpec = tween(durationMillis = 420),
+        label = "heroActionContainer",
+    )
+    // Спокойное состояние: лёгкий тон обложки вместо серой подложки onSurface.
+    val heroActionIdleContainer by animateColorAsState(
+        targetValue = if (dynamicColorsEnabled) {
+            coverAccent.copy(alpha = 0.14f)
+        } else {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        },
+        animationSpec = tween(durationMillis = 420),
+        label = "heroActionIdleContainer",
+    )
+
     // Фон: при включённых динамических цветах — заметная тонировка цветом обложки
     // (28% сверху, 14% в середине), при выключенных — строго чистый background.
     val backgroundBrush = remember(dynamicColorsEnabled, coverAccent, themeBackground) {
@@ -564,6 +584,9 @@ fun PlayerScreen(
                         lyricsError = uiState.lyricsError,
                         lyricsListState = lyricsListState,
                         palette = playerColors,
+                        actionAccent = coverAccent,
+                        actionContainer = heroActionContainer,
+                        actionIdleContainer = heroActionIdleContainer,
                         notePainter = notePainter,
                         placeholderPainter = placeholderPainter,
                         currentPositionMs = { viewModel.currentPositionMs() },
@@ -677,6 +700,9 @@ fun PlayerScreen(
                                 viewModel.loadLyricsIfNeeded(track)
                             }
                         },
+                        // Подпись режима тоже в палитре плеера: coverAccent совпадает
+                        // с primary темы, когда динамические цвета обложки выключены.
+                        colors = ButtonDefaults.textButtonColors(contentColor = coverAccent),
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     ) {
                         Text(if (isLyricsMode) "Обложка" else "Текст песни")
@@ -783,6 +809,10 @@ private fun ExpressiveHeroZone(
     lyricsError: String?,
     lyricsListState: LazyListState,
     palette: PlayerDynamicColors,
+    // Цвета кнопок под обложкой: акцент обложки/темы, его контейнер и подложка покоя.
+    actionAccent: Color,
+    actionContainer: Color,
+    actionIdleContainer: Color,
     notePainter: Painter,
     placeholderPainter: Painter,
     currentPositionMs: () -> Long,
@@ -911,8 +941,9 @@ private fun ExpressiveHeroZone(
                         if (canDownload) {
                             DownloadSquircle(
                                 state = downloadState,
-                                primaryColor = MaterialTheme.colorScheme.primary,
-                                primaryContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                primaryColor = actionAccent,
+                                primaryContainerColor = actionContainer,
+                                idleContainerColor = actionIdleContainer,
                                 onClick = onDownloadClick,
                             )
                         } else {
@@ -920,12 +951,14 @@ private fun ExpressiveHeroZone(
                         }
                         LikeSquircle(
                             isLiked = isLiked,
-                            primaryColor = MaterialTheme.colorScheme.primary,
-                            primaryContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            primaryColor = actionAccent,
+                            primaryContainerColor = actionContainer,
+                            idleContainerColor = actionIdleContainer,
                             onToggleLike = onToggleLike,
                         )
                         DislikeSquircle(
                             isDisliked = isDisliked,
+                            idleContainerColor = actionIdleContainer,
                             onToggleDislike = onToggleDislike,
                         )
                     }
@@ -1149,6 +1182,7 @@ private fun DownloadSquircle(
     state: DownloadState,
     primaryColor: Color,
     primaryContainerColor: Color,
+    idleContainerColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
     onClick: () -> Unit,
 ) {
     val kind = state.toButtonKind()
@@ -1163,8 +1197,7 @@ private fun DownloadSquircle(
         DownloadButtonKind.Done -> primaryContainerColor
         DownloadButtonKind.Error ->
             MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
-        DownloadButtonKind.Download, DownloadButtonKind.Progress ->
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        DownloadButtonKind.Download, DownloadButtonKind.Progress -> idleContainerColor
     }
 
     FilledTonalIconButton(
@@ -1223,12 +1256,13 @@ private fun DownloadSquircle(
     }
 }
 
-/** Лайк-сквиркл 46dp с тональным контейнером. */
+/** Лайк-сквиркл 46dp с тональным контейнером в цветах плеера. */
 @Composable
 private fun LikeSquircle(
     isLiked: Boolean,
     primaryColor: Color,
     primaryContainerColor: Color,
+    idleContainerColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
     onToggleLike: () -> Unit,
 ) {
     FilledTonalIconButton(
@@ -1236,8 +1270,7 @@ private fun LikeSquircle(
         modifier = Modifier.size(48.dp),
         shape = CircleShape,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = if (isLiked) primaryContainerColor
-            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+            containerColor = if (isLiked) primaryContainerColor else idleContainerColor,
             contentColor = if (isLiked) primaryColor else MaterialTheme.colorScheme.onSurface,
         ),
     ) {
@@ -1253,6 +1286,7 @@ private fun LikeSquircle(
 @Composable
 private fun DislikeSquircle(
     isDisliked: Boolean,
+    idleContainerColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
     onToggleDislike: () -> Unit,
 ) {
     val error = MaterialTheme.colorScheme.error
@@ -1264,7 +1298,7 @@ private fun DislikeSquircle(
             containerColor = if (isDisliked) {
                 MaterialTheme.colorScheme.errorContainer
             } else {
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                idleContainerColor
             },
             contentColor = if (isDisliked) error else MaterialTheme.colorScheme.onSurface,
         ),
