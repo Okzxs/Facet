@@ -1,6 +1,14 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 28.10.2026 (сессия 44)
+## Последнее обновление: 28.10.2026 (сессия 45)
+
+## Удаление motion blur — сессия 45
+- Фича motion blur удалена из проекта полностью по решению пользователя: `core/ui/MotionBlur.kt` стёрт (`git rm`), других потребителей `Modifier.motionBlur` не было.
+- `PlayerSwipeState.kt`: убраны свойство `blurRadius`, константа `MAX_BLUR_RADIUS = 15f` и упоминание блюра в KDoc. Логика свайпа (`offsetPx` через `mutableFloatStateOf`, `progress`, пружина `settle()` в `settleJob`, `beginDrag/dragTo/dismiss/reset`) сохранена без изменений — на ней держится плавность 120 Гц.
+- `AppNavGraph.kt`: с `SharedTransitionLayout` снят `.motionBlur { maxOf(playerSwipe.blurRadius, playerBlur.value) }` (остался чистый `Modifier.fillMaxSize()`); удалены `playerVisibility`/`playerTransitionBlur`/`playerBlur` и импорты `animateFloat`, `rememberTransition`, `motionBlur`. `MutableTransitionState` + `SideEffect` сохранены — `playerVisibleState` по-прежнему передаётся в `AnimatedVisibility(visibleState = ...)` плеера.
+- `PlayerScreen.kt` не менялся: `blurRadius = 8f/18f` там — параметры `Shadow` (свечение имени артиста и активной строки текста), к motion blur отношения не имеют.
+- Оптимизации не тронуты: отложенное подключение `PlayerController` (`delay(600)` + `ensureConnected()`), асинхронный `SettingsRepositoryImpl` (lazy prefs, IO, `loaded.await()`), свайп только через `graphicsLayer` (translationY/scale/alpha), морф обложки через `SharedTransitionLayout`/`sharedElement` — всё работает без слоя размытия.
+- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL (3m 23s), APK 27 611 487 байт. `adb install -r` на 192.168.1.106:45609 — Success. Живой прогон не выполнялся по просьбе пользователя.
 
 ## Cold start, 120 Гц и починка motion blur — сессия 44
 - Motion blur (`core/ui/MotionBlur.kt`): в `graphicsLayer` добавлен `CompositingStrategy.Offscreen`, пока эффект активен (без собственного offscreen-слоя `RenderEffect` на части устройств игнорируется), и сброс в `Auto` при радиусе ≤ 0.1f. Появилась лямбда-перегрузка `motionBlur(() -> Float)`: радиус читается в layer-блоке, поэтому анимация не вызывает рекомпозицию; старая `motionBlur(Float)` осталась тонкой обёрткой.

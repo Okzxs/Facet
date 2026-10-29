@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 /**
  * Состояние свайпа полноэкранного плеера, поднятое в AppNavGraph.
  *
- * Нужно, чтобы блюр и смещение обложки можно было читать внутри
+ * Нужно, чтобы смещение обложки можно было читать внутри
  * `graphicsLayer { }` в навигационном графе и в плеере без рекомпозиции:
  * анимация обновляет только слой на RenderThread, а не пересобирает
  * тяжёлые панели с текстом и кнопками.
@@ -55,10 +55,6 @@ class PlayerSwipeState(private val scope: CoroutineScope) {
                 0f
             }
         }
-
-    /** Радиус motion blur: до [MAX_BLUR_RADIUS] на полном свайпе. */
-    val blurRadius: Float
-        get() = progress * MAX_BLUR_RADIUS
 
     fun onSizeChanged(width: Int, height: Int) {
         screenWidthPx = width.toFloat()
@@ -113,9 +109,5 @@ class PlayerSwipeState(private val scope: CoroutineScope) {
         isDragging = false
         isDismissed = false
         offsetPx = 0f
-    }
-
-    companion object {
-        const val MAX_BLUR_RADIUS = 15f
     }
 }

@@ -9,8 +9,6 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -58,7 +56,6 @@ import com.my.music.core.ui.components.FloatingMiniPlayer
 import com.my.music.core.ui.components.MiniPlayerGap
 import com.my.music.core.ui.components.MiniPlayerHorizontalMargin
 import com.my.music.core.ui.components.MiniPlayerIslandHeight
-import com.my.music.core.ui.motionBlur
 import com.my.music.core.ui.theme.prewarmPlayerPalette
 import com.my.music.data.model.Track
 import com.my.music.feature.home.HomeScreen
@@ -133,30 +130,14 @@ fun AppNavGraph() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Состояние свайпа живёт здесь, а не в PlayerScreen: блюр применяется
-    // к контейнеру SharedTransitionLayout, и его радиус читается внутри
-    // graphicsLayer без рекомпозиции на каждый кадр.
+    // Состояние свайпа живёт здесь, а не в PlayerScreen: смещение читается
+    // внутри graphicsLayer без рекомпозиции на каждый кадр.
     val playerSwipe = remember { PlayerSwipeState(scope) }
 
-    // Blur enter/exit считаем от MutableTransitionState, чтобы им можно было
-    // управлять снаружи AnimatedVisibility (на контейнере shared-перехода).
+    // Видимость плеера держим в MutableTransitionState, чтобы управлять
+    // enter/exit-переходом снаружи AnimatedVisibility (в общем оверлее).
     val playerVisibleState = remember { MutableTransitionState(false) }
     SideEffect { playerVisibleState.targetState = isPlayerOpen }
-    val playerVisibility = rememberTransition(playerVisibleState, label = "playerVisibility")
-    val playerTransitionBlur = playerVisibility.animateFloat(
-        transitionSpec = { tween(PlayerSlideMillis) },
-        targetValueByState = { visible ->
-            if (visible) 0f else PlayerSwipeState.MAX_BLUR_RADIUS
-        },
-        label = "playerTransitionBlur",
-    )
-    // В покое (плеер открыт или закрыт) радиус нулевой: иначе мини-плеер
-    // оставался бы размытым, пока полноэкранный плеер не виден.
-    val playerBlur = remember {
-        derivedStateOf {
-            if (playerVisibleState.isIdle) 0f else playerTransitionBlur.value
-        }
-    }
 
     // Открыть плеер и загрузить трек с очередью
     fun openPlayer(track: Track, queue: List<Track> = listOf(track)) {
@@ -264,17 +245,8 @@ fun AppNavGraph() {
         // Общий SharedTransitionLayout для морфа обложки между мини-плеером
         // и полноэкранным плеером. Слой прозрачный: NavHost и бар остаются
         // под ним, а обложка летит в общем оверлее.
-        //
-        // Motion blur навешен на сам SharedTransitionLayout: его слой
-        // захватывает и контент, и оверлей shared-элементов (панели, которые
-        // летят в мини-плеер). Радиус читается в layer-блоке, поэтому drag
-        // не вызывает рекомпозицию графа.
         SharedTransitionLayout(
-            modifier = Modifier
-                .fillMaxSize()
-                .motionBlur {
-                    maxOf(playerSwipe.blurRadius, playerBlur.value)
-                },
+            modifier = Modifier.fillMaxSize(),
         ) {
             val sharedScope = this
             Box(modifier = Modifier.fillMaxSize()) {
