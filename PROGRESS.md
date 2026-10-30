@@ -1,6 +1,31 @@
 # PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
 
-## Последнее обновление: 30.10.2026 (сессия 60)
+## Последнее обновление: 30.10.2026 (сессия 61)
+
+## Переезд на Facet, release-подпись и R8 — сессия 61
+
+### 1. Переименование
+- Пакет `com.my.music` → `com.facet.music` в main/test и в `app/schemas` (`com.facet.music.data.local.AppDatabase`), `namespace` и `applicationId` — `com.facet.music`, `rootProject.name` — `Facet`.
+- Классы: `MyMusicApp` → `FacetApp`, `MyMusicTheme` → `FacetTheme`, `Theme.MyMusic` → `Theme.Facet`; SharedPreferences `mymusic_settings` → `facet_settings`, БД `mymusic.db` → `facet.db`.
+- Deep link Spotify: `mymusic://spotify-auth` → `facet://spotify-auth` (манифест, `SPOTIFY_REDIRECT_URI`, тест PKCE). **В Spotify Dashboard Redirect URI нужно заменить на `facet://spotify-auth`.**
+- Название: `app_name` = Facet в `values/` и `values-ru/`, лейбл манифеста — `@string/app_name`, `settings_version` → «Facet · version …», User-Agent `Facet/1.0`.
+- `versionName` = `1.0.0`, `versionCode` = 1. Старая установка `com.my.music` остаётся отдельным приложением, данные не переносятся — релиза ещё не было.
+
+### 2. Release-подпись
+- Сгенерирован `keystore.jks` (RSA 4096, alias `facet`, срок 10 000 дней) и `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Оба файла в `.gitignore` (`*.jks` и `/keystore.properties`), в репозиторий не попадают.
+- `app/build.gradle.kts`: `signingConfigs.release` читает `keystore.properties`; `buildTypes.release` — `isMinifyEnabled = true`, `isShrinkResources = true`, `signingConfig` подключается только при наличии файла (на чистой машине release соберётся неподписанным, но не упадёт).
+- Проверка `apksigner`: CN=Facet Music, SHA-256 `636d280cd3156f4bd1fe19ba36dc997d21d4ab3ab37b0a93419926a2eb7404c3`.
+
+### 3. R8
+- `app/proguard-rules.pro`: `-dontwarn java.beans.**` и `javax.script.**` (Rhino из NewPipe), keep `org.schabi.newpipe.extractor.**` и `com.grack.nanojson.**`, правила kotlinx.serialization (`**$$serializer`, `Companion`, `KSerializer serializer(...)`), Room (`RoomDatabase`, `@Entity`), сохранение имён enum-констант (иначе Room-конвертеры и `valueOf` ломаются на обфускации), `-dontwarn` для OkHttp/Okio TLS-провайдеров, Media3, Coil, Hilt, `SourceFile`/`LineNumberTable` для читаемых стектрейсов.
+- `assembleRelease` — BUILD SUCCESSFUL (9m33s), `lintVitalRelease` прошёл.
+
+### Проверки
+- `clean assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL (6m23s), 33 suites / 233 теста, 0 failures/errors/skipped.
+- Debug APK — 27 939 639 байт; release APK — 6 354 929 байт (`app/build/outputs/apk/release/app-release.apk`).
+- `aapt dump badging`: package `com.facet.music`, versionName `1.0.0`, label `Facet`, minSdk 26 / targetSdk 35.
+- Установлено на SM-A266B (`192.168.1.106:42099`): `Success`, в системе `com.facet.music` 1.0.0.
+- Вживую не проверялось (телефон занят): первый запуск release-сборки после R8, Spotify-вход с новым Redirect URI.
 
 ## Медиатека, карточка артиста, вход в Spotify и кнопка текста — сессия 60
 
@@ -20,9 +45,9 @@
 
 ### 3. Вход в Spotify (OAuth 2.0 + PKCE)
 - `core/spotify/SpotifyPkce.kt`: verifier 64 символа, `challenge` = BASE64URL(SHA-256) без паддинга, `state`; в тестах сверяется с вектором RFC 7636.
-- `core/spotify/SpotifyAuth.kt`: `SPOTIFY_REDIRECT_URI = mymusic://spotify-auth`, scopes (`user-read-private user-read-email playlist-read-private playlist-read-collaborative`), сборка URL согласия.
+- `core/spotify/SpotifyAuth.kt`: `SPOTIFY_REDIRECT_URI = facet://spotify-auth`, scopes (`user-read-private user-read-email playlist-read-private playlist-read-collaborative`), сборка URL согласия.
 - `SpotifyAuthRepositoryImpl`: обмен кода на токены, refresh при истечении, профиль `/v1/me`, `/v1/me/playlists`, токены в SharedPreferences `spotify_auth`, `accessToken(forceRefresh)` под `Mutex`.
-- `MainActivity`: `launchMode="singleTop"`, intent-filter на `mymusic://spotify-auth`, обработка в `onCreate` и `onNewIntent`, тост об успехе/ошибке. Deep link проверен: приложение открывается, при неверном `state` показывает «Не удалось войти в Spotify».
+- `MainActivity`: `launchMode="singleTop"`, intent-filter на `facet://spotify-auth`, обработка в `onCreate` и `onNewIntent`, тост об успехе/ошибке. Deep link проверен: приложение открывается, при неверном `state` показывает «Не удалось войти в Spotify».
 - `SpotifyProvider`: пользовательский токен приоритетнее Client Credentials, на 401 — refresh и один повтор; `isConfigured` учитывает вход. С входом поиск и личные плейлисты работают без `client_secret`.
 - Настройки: карточка Spotify с кнопкой «Инструкция», статусом, полями ключей, кнопкой входа/выхода, подсказкой Redirect URI и предупреждением о квоте. `SpotifyGuideDialog` — четыре шага (создать приложение, заполнить форму, скопировать ключи, вставить), кнопка «Открыть Dashboard» и пояснение про DRM.
 - Медиатека: после входа появляется секция «Плейлисты Spotify» (карусель обложек), тап открывает превью импорта — переиспользуется обычный разбор ссылки, сохранение идёт тем же путём.
@@ -83,7 +108,7 @@
 ## Последнее обновление: 30.10.2026 (сессия 56)
 
 ## Кэш поиска, лимитер 1 rps и миграция 10→11 — сессия 56
-- **Room v11**: новая таблица `search_cache` (PK `query`, колонки `source`, `jsonResponse`, `timestamp`), сущность `SearchCacheEntity`, DAO `SearchCacheDao` (`get(query, source)`, `upsert` через REPLACE, `deleteOlderThan`, точечный `delete`, `clearAll`), абстрактный `searchCacheDao()` в `AppDatabase`. Схема экспортируется в `app/schemas/com.my.music.data.local.AppDatabase/11.json`; `createSql` из 11.json совпадает с `MIGRATION_10_11` один-в-один.
+- **Room v11**: новая таблица `search_cache` (PK `query`, колонки `source`, `jsonResponse`, `timestamp`), сущность `SearchCacheEntity`, DAO `SearchCacheDao` (`get(query, source)`, `upsert` через REPLACE, `deleteOlderThan`, точечный `delete`, `clearAll`), абстрактный `searchCacheDao()` в `AppDatabase`. Схема экспортируется в `app/schemas/com.facet.music.data.local.AppDatabase/11.json`; `createSql` из 11.json совпадает с `MIGRATION_10_11` один-в-один.
 - **Миграция 10→11**: `DatabaseMigrations.kt` создаёт `search_cache` и добавлена в `ALL_MIGRATIONS`. Изолированный тест 10→11 проверяет таблицу, колонки и первичный ключ, сквозной тест 1→11 пишет и читает кэш после всех миграций, отдельный тест сверяет состав колонок и PK с `11.json`; саму схему при открытии мигрированной базы валидирует Room.
 - **Репозиторий кэша**: интерфейс `SearchCacheRepository` (`get` с TTL по умолчанию 24 ч, `put`, `clear`) и `SearchCacheRepositoryImpl` в `data/local`; просроченная запись удаляется при чтении, каждая запись подметает строки старше суток через `deleteOlderThan`. Биндинг — в `RepositoryModule`, DAO — в `DatabaseModule`. Кэш лежит в Room, поэтому переживает перезапуск приложения.
 - **Провайдеры**: Deezer/Apple/Spotify перед сетью смотрят кэш по `query` + `source`, после успешного разбора сохраняют сырой JSON; разбор вынесен в `parseTracks(body: String)` и одинаков для свежего и закэшированного ответа. Битый кэш молча игнорируется и заменяется сетевым ответом, ошибки сети не кэшируются (запись идёт только после успешного разбора). Apple кэширует тело удачного фолбэка без `country`; Spotify отдаёт кэш до проверки ключей; `resolve()` у Deezer/Apple кэш не использует (ссылки превью одноразовые), но проходит лимитер.
@@ -283,7 +308,7 @@
 - `LibraryScreen`: С€Р°РїРєР° СЃ eyebrow В«РљРћР›Р›Р•РљР¦РРЇВ» (11sp Bold primary, С‚СЂРµРєРёРЅРі 1.4), Р·Р°РіРѕР»РѕРІРѕРє В«РњРµРґРёР°С‚РµРєР°В» 34sp ExtraBold (С‚СЂРµРєРёРЅРі в€’0.5), РїРѕРґРїРёСЃСЊ СЃ СЂСѓСЃСЃРєРѕР№ РїР»СЋСЂР°Р»РёР·Р°С†РёРµР№ В«X С‚СЂРµРє/С‚СЂРµРєР°/С‚СЂРµРєРѕРІ В· Y С‡ Z РјРёРЅВ»; РґР»СЏ РїСѓСЃС‚РѕР№ РєРѕР»Р»РµРєС†РёРё РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ РЅРµ РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ. Р‘С‹СЃС‚СЂС‹Рµ РґРµР№СЃС‚РІРёСЏ В«РЎР»СѓС€Р°С‚СЊ РІСЃС‘В» Рё В«РџРµСЂРµРјРµС€Р°С‚СЊВ» РІС‹СЃРѕС‚РѕР№ 52dp РІ РїСЂРѕРїРѕСЂС†РёРё 1.6:1, `CircleShape`. РЎРїРёСЃРѕРє вЂ” `TrackCard` СЃ РѕР±Р»РѕР¶РєРѕР№ 60dp Рё СЂР°РґРёСѓСЃРѕРј 16dp, РїРѕРґСЃРІРµС‚РєРѕР№ РёРіСЂР°СЋС‰РµРіРѕ С‚СЂРµРєР° (`primaryContainer` 35%) Рё Р°РЅРёРјРёСЂРѕРІР°РЅРЅС‹Рј СЌРєРІР°Р»Р°Р№Р·РµСЂРѕРј. Empty state: squircle-РїР»Р°С€РєР° 96dp СЃ СЃРµСЂРґРµС‡РєРѕРј, Р·Р°РіРѕР»РѕРІРѕРє 22sp, РїРѕСЏСЃРЅРµРЅРёРµ Рё РєРЅРѕРїРєР° В«РќР°Р№С‚Рё РјСѓР·С‹РєСѓВ» (РЅРѕРІС‹Р№ `onOpenSearch` РІ `AppNavGraph`, РїРµСЂРµС…РѕРґ РєР°Рє Сѓ РІРєР»Р°РґРєРё Search СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј СЃРѕСЃС‚РѕСЏРЅРёСЏ).
 - `TrackCard`: РЅРѕРІС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ `isPlaying`, `artworkSize`, `artworkCornerDp` (РґРµС„РѕР»С‚С‹ 56/12 СЃРѕС…СЂР°РЅСЏСЋС‚ РІРёРґ Home/Search/Wave); `PlayingEqualizerIcon` РЅР° Canvas СЃ `rememberInfiniteTransition` (С‚СЂРё РїРѕР»РѕСЃРєРё, sin-РІРѕР»РЅР°, Р±РµР· СЂРµРєРѕРјРїРѕР·РёС†РёР№).
 - `LibraryViewModel`: `currentTrackId` РёР· `PlayerController.state` С‡РµСЂРµР· `map` + `distinctUntilChanged` + `stateIn(WhileSubscribed(5000))` вЂ” СЃС‚СЂРѕРєР° РёРіСЂР°СЋС‰РµРіРѕ С‚СЂРµРєР° РїРѕРґСЃРІРµС‡РёРІР°РµС‚СЃСЏ Р±РµР· Р»РёС€РЅРёС… СЌРјРёСЃСЃРёР№.
-- `SettingsScreen`: РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ РѕС‚СЃС‚СѓРїС‹ РјРµР¶РґСѓ СЃРµРєС†РёСЏРјРё 32dp, Р·Р°РіРѕР»РѕРІРєРё СЃРµРєС†РёР№ 12sp Bold primary, РєР°СЂС‚РѕС‡РєРё 30dp СЃ С‚РѕРЅРєРёРј border 1dp (`onSurface` 4%), РєРЅРѕРїРєР° РїСЂРѕРІРµСЂРєРё СЂР°Р·СЂРµС€РµРЅРёР№ 44dp, С„СѓС‚РµСЂ В«MyMusic В· РІРµСЂСЃРёСЏ XВ» РёР· `BuildConfig.VERSION_NAME`. Р“РѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Рµ РѕС‚СЃС‚СѓРїС‹ 20dp СЃРѕС…СЂР°РЅРµРЅС‹ вЂ” РєР°Рє Сѓ Home Рё РєР°СЂС‚РѕС‡РµРє.
+- `SettingsScreen`: РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ РѕС‚СЃС‚СѓРїС‹ РјРµР¶РґСѓ СЃРµРєС†РёСЏРјРё 32dp, Р·Р°РіРѕР»РѕРІРєРё СЃРµРєС†РёР№ 12sp Bold primary, РєР°СЂС‚РѕС‡РєРё 30dp СЃ С‚РѕРЅРєРёРј border 1dp (`onSurface` 4%), РєРЅРѕРїРєР° РїСЂРѕРІРµСЂРєРё СЂР°Р·СЂРµС€РµРЅРёР№ 44dp, С„СѓС‚РµСЂ В«Facet В· РІРµСЂСЃРёСЏ XВ» РёР· `BuildConfig.VERSION_NAME`. Р“РѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Рµ РѕС‚СЃС‚СѓРїС‹ 20dp СЃРѕС…СЂР°РЅРµРЅС‹ вЂ” РєР°Рє Сѓ Home Рё РєР°СЂС‚РѕС‡РµРє.
 - `PlayerScreen`: СЃРІР°Р№Рї РІРЅРёР· РґР»СЏ Р·Р°РєСЂС‹С‚РёСЏ. Р–РµСЃС‚ Р¶РёРІС‘С‚ С‚РѕР»СЊРєРѕ РІ РІРµСЂС…РЅРµР№ Р·РѕРЅРµ вЂ” `TopAppBar` Рё hero-Р·РѕРЅР° РІ СЂРµР¶РёРјРµ РѕР±Р»РѕР¶РєРё; РІ СЂРµР¶РёРјРµ С‚РµРєСЃС‚РѕРІ СЃРїРёСЃРѕРє СЃРѕС…СЂР°РЅСЏРµС‚ СЃРІРѕР№ СЃРєСЂРѕР»Р», РїСЂРё РѕС‚РєСЂС‹С‚РѕР№ С€С‚РѕСЂРєРµ РѕС‡РµСЂРµРґРё Р¶РµСЃС‚ РѕС‚РєР»СЋС‡С‘РЅ. `detectVerticalDragGestures`, РїРѕСЂРѕРі 20% РІС‹СЃРѕС‚С‹ СЌРєСЂР°РЅР° РёР»Рё СЃРєРѕСЂРѕСЃС‚СЊ >1200 px/s (`VelocityTracker` РїРѕ РїРѕСЃР»РµРґРЅРёРј СЃРѕР±С‹С‚РёСЏРј, Р° РЅРµ РїРѕ РѕРґРЅРѕРјСѓ РєР°РґСЂСѓ). РџСЂРё РїРµСЂРµС‚Р°СЃРєРёРІР°РЅРёРё РєРѕРЅС‚РµРЅС‚ (С€Р°РїРєР° + hero/РєРѕРЅС‚СЂРѕР»С‹) СѓРµР·Р¶Р°РµС‚ РІРЅРёР· С‡РµСЂРµР· `graphicsLayer.translationY` Рё С‚РµСЂСЏРµС‚ РґРѕ 30% Р°Р»СЊС„С‹; РіСЂР°РґРёРµРЅС‚РЅС‹Р№ С„РѕРЅ РѕСЃС‚Р°С‘С‚СЃСЏ РЅР° РјРµСЃС‚Рµ, С‡С‚РѕР±С‹ РЅРµ РїСЂРѕРіР»СЏРґС‹РІР°Р»Рѕ РїСѓСЃС‚РѕРµ РѕРєРЅРѕ. РќРёР¶Рµ РїРѕСЂРѕРіР° вЂ” РІРѕР·РІСЂР°С‚ РїСЂСѓР¶РёРЅРѕР№ `NoBouncy`/`MediumLow` (РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Р№ РІРѕР·РІСЂР°С‚ РѕС‚РјРµРЅСЏРµС‚СЃСЏ РЅРѕРІС‹Рј РєР°СЃР°РЅРёРµРј), РІС‹С€Рµ РїРѕСЂРѕРіР° вЂ” `onBack`, РґР°Р»СЊС€Рµ СЌРєСЂР°РЅ СѓРµР·Р¶Р°РµС‚ С€С‚Р°С‚РЅС‹Рј `popExit`-СЃР»Р°Р№РґРѕРј NavHost, Р±РµР· РІС‚РѕСЂРѕР№ Р°РЅРёРјР°С†РёРё Рё РїСѓСЃС‚РѕР№ РїР°СѓР·С‹. `BackHandler` Рё guard `isDismissing` Р·Р°С‰РёС‰Р°СЋС‚ РѕС‚ РґРІРѕР№РЅРѕРіРѕ pop.
 - РўРµСЃС‚С‹: 22 suites / 146 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 633 153 Р±Р°Р№С‚Р°. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 - РђСЂС…РёС‚РµРєС‚СѓСЂРЅС‹Рµ С„РёРєСЃС‹ СЃРµСЃСЃРёР№ 31вЂ“34 (Room v9 Рё РјРёРіСЂР°С†РёРё, `PlayerController`, Р·Р°РіСЂСѓР·РєРё, С‚РµРєСЃС‚С‹) РЅРµ С‚СЂРѕРЅСѓС‚С‹.
@@ -310,10 +335,10 @@
 - РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 645 526 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
 ## РљРѕРјРїР»РµРєСЃРЅРѕРµ СЂРµРІСЊСЋ: Р°СѓРґРёС‚, СЂРµРіСЂРµСЃСЃРёРё UI Рё Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹Рµ РїСЂР°РІРєРё вЂ” СЃРµСЃСЃРёСЏ 31
-- Р­РўРђРџ 1 (Р°СѓРґРёС‚, РѕС‚С‡С‘С‚ РІС‹РґР°РЅ РґРѕ РїСЂР°РІРѕРє): РєСЂРёС‚РёС‡РЅРѕ вЂ” СЃРёРЅРіР»С‚РѕРЅ `PlayerController` РЅРµ РїРµСЂРµРїРѕРґРєР»СЋС‡Р°Р»СЃСЏ Рє РїРµСЂРµСЃРѕР·РґР°РЅРЅРѕРјСѓ `MusicService` (РјС‘СЂС‚РІС‹Р№ binder РґРѕ РїРµСЂРµР·Р°РїСѓСЃРєР° РїСЂРѕС†РµСЃСЃР°, `release()` вЂ” РјС‘СЂС‚РІС‹Р№ РєРѕРґ); РїСЂРѕРІР°Р» `buildAsync()` Р·Р°РІРµСЂС€Р°Р» Deferred РЅР°РІСЃРµРіРґР°; `LocalContentColor` РІРѕ РІСЃС‘Рј РїСЂРёР»РѕР¶РµРЅРёРё = `Color.Black` РїРѕСЃР»Рµ СѓРґР°Р»РµРЅРёСЏ РєРѕСЂРЅРµРІРѕРіРѕ Scaffold (СЃРµСЃСЃРёСЏ 29) вЂ” РїРµСЂРІРѕРїСЂРёС‡РёРЅР° В«С‡С‘СЂРЅС‹С… Р·Р°РіРѕР»РѕРІРєРѕРІВ»; `Theme.MyMusic` Р±РµР· values-night в†’ Р±РµР»РѕРµ РѕРєРЅРѕ; РёРЅС‚РµСЂСЃРµРїС‚РѕСЂ OkHttp РїРµСЂРµР·Р°РїРёСЃС‹РІР°Р» User-Agent РІСЃРµС… Р·Р°РїСЂРѕСЃРѕРІ NewPipe; РІ Р·Р°РіСЂСѓР·РєР°С… РЅРµ Р±С‹Р»Рѕ `Result.retry()`/backoff. Р§РёСЃС‚Рѕ: GlobalScope/runBlocking/main-thread IO, Activity-РєРѕРЅС‚РµРєСЃС‚ РІ Hilt, С†РёРєР»С‹ РІ DI-РіСЂР°С„Рµ, N+1, fallbackToDestructiveMigration, РєСЌС€ РїСЂРѕС‚СѓС…С€РёС… stream-URL, СѓС‚РµС‡РєРё РїРѕС‚РѕРєРѕРІ.
+- Р­РўРђРџ 1 (Р°СѓРґРёС‚, РѕС‚С‡С‘С‚ РІС‹РґР°РЅ РґРѕ РїСЂР°РІРѕРє): РєСЂРёС‚РёС‡РЅРѕ вЂ” СЃРёРЅРіР»С‚РѕРЅ `PlayerController` РЅРµ РїРµСЂРµРїРѕРґРєР»СЋС‡Р°Р»СЃСЏ Рє РїРµСЂРµСЃРѕР·РґР°РЅРЅРѕРјСѓ `MusicService` (РјС‘СЂС‚РІС‹Р№ binder РґРѕ РїРµСЂРµР·Р°РїСѓСЃРєР° РїСЂРѕС†РµСЃСЃР°, `release()` вЂ” РјС‘СЂС‚РІС‹Р№ РєРѕРґ); РїСЂРѕРІР°Р» `buildAsync()` Р·Р°РІРµСЂС€Р°Р» Deferred РЅР°РІСЃРµРіРґР°; `LocalContentColor` РІРѕ РІСЃС‘Рј РїСЂРёР»РѕР¶РµРЅРёРё = `Color.Black` РїРѕСЃР»Рµ СѓРґР°Р»РµРЅРёСЏ РєРѕСЂРЅРµРІРѕРіРѕ Scaffold (СЃРµСЃСЃРёСЏ 29) вЂ” РїРµСЂРІРѕРїСЂРёС‡РёРЅР° В«С‡С‘СЂРЅС‹С… Р·Р°РіРѕР»РѕРІРєРѕРІВ»; `Theme.Facet` Р±РµР· values-night в†’ Р±РµР»РѕРµ РѕРєРЅРѕ; РёРЅС‚РµСЂСЃРµРїС‚РѕСЂ OkHttp РїРµСЂРµР·Р°РїРёСЃС‹РІР°Р» User-Agent РІСЃРµС… Р·Р°РїСЂРѕСЃРѕРІ NewPipe; РІ Р·Р°РіСЂСѓР·РєР°С… РЅРµ Р±С‹Р»Рѕ `Result.retry()`/backoff. Р§РёСЃС‚Рѕ: GlobalScope/runBlocking/main-thread IO, Activity-РєРѕРЅС‚РµРєСЃС‚ РІ Hilt, С†РёРєР»С‹ РІ DI-РіСЂР°С„Рµ, N+1, fallbackToDestructiveMigration, РєСЌС€ РїСЂРѕС‚СѓС…С€РёС… stream-URL, СѓС‚РµС‡РєРё РїРѕС‚РѕРєРѕРІ.
 - Р‘РµР»Р°СЏ РІСЃРїС‹С€РєР°: РЅРµРїСЂРѕР·СЂР°С‡РЅС‹Р№ `background` РЅР° РєРѕСЂРЅРµРІРѕРј Box РІ `AppNavGraph`; РЅРѕРІС‹Р№ `values-night/themes.xml` Рё СЏРІРЅС‹Р№ `android:windowBackground` (#FFF8F5 / #171210, СЃРѕРІРїР°РґР°РµС‚ СЃ Color.kt) вЂ” РѕРєРЅРѕ Р±РѕР»СЊС€Рµ РЅРµ Р±РµР»РѕРµ РЅРё РЅР° С…РѕР»РѕРґРЅРѕРј СЃС‚Р°СЂС‚Рµ, РЅРё РІ РїРµСЂРµС…РѕРґР°С… РІРєР»Р°РґРѕРє.
 - Р РµР¶РёРј В«РўРµРєСЃС‚В»: СѓР±СЂР°РЅ РІС‚РѕСЂРѕР№ `Spacer(weight(1f))` вЂ” РІ СЂРµР¶РёРјРµ С‚РµРєСЃС‚РѕРІ РґРІР° СЂР°РІРЅС‹С… РІРµСЃР° РґРµР»РёР»Рё РѕСЃС‚Р°С‚РѕРє РїРѕРїРѕР»Р°Рј, РѕСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ СѓРµР·Р¶Р°Р» РІ СЃРµСЂРµРґРёРЅСѓ, СЃРЅРёР·Сѓ РѕСЃС‚Р°РІР°Р»Р°СЃСЊ РґС‹СЂР°. РўРµРїРµСЂСЊ СЃРїРёСЃРѕРє Р·Р°РЅРёРјР°РµС‚ `weight(1f)`, РѕСЃС‚СЂРѕРІ РїСЂРёР¶Р°С‚ Рє РЅРёР·Сѓ (`wrapContentHeight`); РІ СЂРµР¶РёРјРµ РѕР±Р»РѕР¶РєРё РїРѕРІРµРґРµРЅРёРµ СЃРµСЃСЃРёРё 30 СЃРѕС…СЂР°РЅРµРЅРѕ.
-- Р§С‘СЂРЅС‹Рµ Р·Р°РіРѕР»РѕРІРєРё: `MyMusicTheme` РїСЂРѕРІР°Р№РґРёС‚ `LocalContentColor = onBackground` (С‚Рѕ, С‡С‚Рѕ РґР°РІР°Р» СѓРґР°Р»С‘РЅРЅС‹Р№ Scaffold); СЏРІРЅС‹Р№ `onSurface` РЅР° В«РќР°СЃС‚СЂРѕР№РєРёВ» Рё РЅР°Р·РІР°РЅРёСЏ СЃРµРєС†РёР№; `contentColor = onSurface` РІ Scaffold РїР»РµРµСЂР°, РёРЅР°С‡Рµ `contentColorFor(Color.Transparent)` = Unspecified.
+- Р§С‘СЂРЅС‹Рµ Р·Р°РіРѕР»РѕРІРєРё: `FacetTheme` РїСЂРѕРІР°Р№РґРёС‚ `LocalContentColor = onBackground` (С‚Рѕ, С‡С‚Рѕ РґР°РІР°Р» СѓРґР°Р»С‘РЅРЅС‹Р№ Scaffold); СЏРІРЅС‹Р№ `onSurface` РЅР° В«РќР°СЃС‚СЂРѕР№РєРёВ» Рё РЅР°Р·РІР°РЅРёСЏ СЃРµРєС†РёР№; `contentColor = onSurface` РІ Scaffold РїР»РµРµСЂР°, РёРЅР°С‡Рµ `contentColorFor(Color.Transparent)` = Unspecified.
 - РђРєС†РµРЅС‚РЅС‹Р№ С†РІРµС‚: РєСЂСѓР¶РєРё РїР°Р»РёС‚СЂС‹ Р±С‹Р»Рё С„РёР·РёС‡РµСЃРєРё РІС‹РєР»СЋС‡РµРЅС‹ РЅР° Android 12+ (`enabled = !supportsDynamicColors`), С‚Р°Рї РЅРµ РґРѕС…РѕРґРёР» РґРѕ ViewModel. РўРµРїРµСЂСЊ РІРєР»СЋС‡РµРЅС‹ РІСЃРµРіРґР° Рё РїРёС€СѓС‚ РІ `customAccentColor` вЂ” РѕРЅ РёРјРµРµС‚ РІС‹СЃС€РёР№ РїСЂРёРѕСЂРёС‚РµС‚ РІ С‚РµРјРµ Рё РїРµСЂРµРєСЂС‹РІР°РµС‚ Dynamic Color; `accentColorArgb` РѕСЃС‚Р°Р»СЃСЏ legacy РґР»СЏ <12. РљРѕР»СЊС†Рѕ В«РІС‹Р±СЂР°РЅВ» РѕРґРЅРѕ: РїСЂРµСЃРµС‚ РёР»Рё В«РЎРІРѕР№ С†РІРµС‚В».
 - РџР°Р»РёС‚СЂР° РїР»РµРµСЂР°: СѓР±СЂР°РЅ Р±СѓСЃС‚ РЅР°СЃС‹С‰РµРЅРЅРѕСЃС‚Рё Г—1.4 (РєРёСЃР»РѕС‚РЅС‹Рµ С†РІРµС‚Р° РЅР° СЃРµСЂС‹С… РѕР±Р»РѕР¶РєР°С…) вЂ” Г—1.15 СЃ РєР»Р°РјРїРѕРј 0.20вЂ“0.58, СЃРІРµС‚Р»РѕС‚Р° 0.38вЂ“0.62; `onPrimaryContainer`/`onSecondaryContainer` Р±РѕР»СЊС€Рµ РЅРµ СЂР°РІРЅС‹ СЃР°РјРѕРјСѓ С‚РёРЅС‚Сѓ (С‚РµРєСЃС‚ СЃР»РёРІР°Р»СЃСЏ СЃ РєРѕРЅС‚РµР№РЅРµСЂРѕРј) вЂ” РєРѕРЅС‚СЂР°СЃС‚РЅР°СЏ РїР°СЂР° РѕС‚ СЃРІРµС‚Р»РѕС‚С‹; СЂР°РјРїР° С„РѕРЅР° СЃРіР»Р°Р¶РµРЅР° (0.58/0.26 РІРјРµСЃС‚Рѕ 0.88/0.40) Рё РїРѕР»СѓС‡РёР»Р° СЏРІРЅС‹Рµ colorStops 0/0.55/1; `blendPaletteWithAccent` РїРµСЂРµСЃС‡РёС‚С‹РІР°РµС‚ РєРѕРЅС‚СЂР°СЃС‚РЅС‹Рµ СЂРѕР»Рё РїРѕСЃР»Рµ СЃРјРµС€РёРІР°РЅРёСЏ; `CancellationException` РІ `computePlayerColors` СЂРµР±СЂРѕСѓР·РёС‚СЃСЏ.
 - РђСЂС…РёС‚РµРєС‚СѓСЂР° 1 (`PlayerController`): `MediaController.Builder.setListener` + `onDisconnected` в†’ СЃРЅСЏС‚СЊ СЃР»СѓС€Р°С‚РµР»РµР№, РѕСЃРІРѕР±РѕРґРёС‚СЊ РјС‘СЂС‚РІС‹Р№ РєРѕРЅС‚СЂРѕР»Р»РµСЂ, РїРµСЂРµСЃРѕР·РґР°С‚СЊ Deferred Рё РїРµСЂРµРїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ; РїСЂРѕРІР°Р» РїРѕРґРєР»СЋС‡РµРЅРёСЏ вЂ” СЂРµС‚СЂР°Р№ СЃ СЌРєСЃРїРѕРЅРµРЅС†РёР°Р»СЊРЅРѕР№ Р·Р°РґРµСЂР¶РєРѕР№ (РґРѕ 5 РїРѕРїС‹С‚РѕРє) Рё РѕС€РёР±РєРѕР№ РІ state РІРјРµСЃС‚Рѕ РІРµС‡РЅРѕРіРѕ РјРѕР»С‡Р°РЅРёСЏ; `release()` СЂРµР°Р»СЊРЅРѕ СЃРЅРёРјР°РµС‚ СЃР»СѓС€Р°С‚РµР»РµР№. `MusicService.onTaskRemoved`: stopSelf С‚РѕР»СЊРєРѕ РµСЃР»Рё РЅРёС‡РµРіРѕ РЅРµ РёРіСЂР°РµС‚.
@@ -327,7 +352,7 @@
 - РџР»РµРµСЂ, С‡С‘СЂРЅС‹Р№ Р·Р°РіРѕР»РѕРІРѕРє: РЅР°Р·РІР°РЅРёРµ С‚СЂРµРєР° РІ СЃС‚РµРєР»СЏРЅРЅРѕР№ РєР°СЂС‚РѕС‡РєРµ СЃС‚Р°Р»Рѕ С‡С‘СЂРЅС‹Рј вЂ” `contentColorFor` РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅРѕРіРѕ РєРѕРЅС‚РµР№РЅРµСЂР° (РїР°Р»РёС‚СЂР° СЃРІРµС‚Р»РѕР№ РѕР±Р»РѕР¶РєРё) РґР°РІР°Р» С‡С‘СЂРЅС‹Р№ С‚РµРєСЃС‚ РЅР° С‚С‘РјРЅРѕРј С„РѕРЅРµ. Р¦РІРµС‚ Р·Р°РґР°РЅ СЏРІРЅРѕ: `onSurface` РІ `TrackGlassCard` Рё РІ РІР°СЂРёР°РЅС‚Рµ 3 (РЅР°Р·РІР°РЅРёРµ РЅР° РѕР±Р»РѕР¶РєРµ).
 - РџР»РµРµСЂ, В«РґС‹СЂР°В»: hero-Р·РѕРЅР° Р±РѕР»СЊС€Рµ РЅРµ СЂР°СЃС‚СЏРіРёРІР°РµС‚СЃСЏ РЅР° РІРµСЃСЊ СЃРІРѕР±РѕРґРЅС‹Р№ СЌРєСЂР°РЅ РІ СЂРµР¶РёРјРµ РѕР±Р»РѕР¶РєРё вЂ” `weight(1f)` РѕСЃС‚Р°РІР»РµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ СЂРµР¶РёРјР° С‚РµРєСЃС‚РѕРІ (СЃРїРёСЃРєСѓ РЅСѓР¶РЅР° РѕРіСЂР°РЅРёС‡РµРЅРЅР°СЏ РІС‹СЃРѕС‚Р°), `AnimatedContent` Рё `CoverForeground` РѕР±РѕСЂР°С‡РёРІР°СЋС‚ РєРѕРЅС‚РµРЅС‚ РїРѕ РІС‹СЃРѕС‚Рµ, Р° РѕСЃС‚Р°С‚РѕРє РІС‹СЃРѕС‚С‹ СѓС…РѕРґРёС‚ РІ `Spacer(weight(1f))` РїРѕРґ РѕСЃС‚СЂРѕРІ. РљР°СЂС‚РѕС‡РєР° С‚СЂРµРєР° Рё РѕСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ РёРґСѓС‚ РїР»РѕС‚РЅРѕ, Р±РµР· РїСѓСЃС‚РѕРіРѕ Р·Р°Р·РѕСЂР° РјРµР¶РґСѓ РЅРёРјРё.
 - РўРµРјС‹: РІ `AppSettings` РґРѕР±Р°РІР»РµРЅС‹ `themeMode` (LIGHT/DARK/SYSTEM, РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ SYSTEM) Рё `customAccentColor` (Int?, null РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ); РІ `SettingsRepository` вЂ” `setThemeMode`/`setCustomAccentColor`, С…СЂР°РЅРµРЅРёРµ РІ SharedPreferences (`theme_mode`, `custom_accent_color`).
-- `MyMusicTheme`: darkTheme РІС‹Р±РёСЂР°РµС‚СЃСЏ РїРѕ `ThemeMode` (isSystemInDarkTheme С‚РѕР»СЊРєРѕ РґР»СЏ SYSTEM); РїСЂРёРѕСЂРёС‚РµС‚ С†РІРµС‚Р° вЂ” СЃРѕР±СЃС‚РІРµРЅРЅС‹Р№ Р°РєС†РµРЅС‚ (РІСЃРµ РІРµСЂСЃРёРё Android) в†’ Dynamic Color (12+) в†’ СЂСѓС‡РЅР°СЏ РїР°Р»РёС‚СЂР° (<12) в†’ fallback.
+- `FacetTheme`: darkTheme РІС‹Р±РёСЂР°РµС‚СЃСЏ РїРѕ `ThemeMode` (isSystemInDarkTheme С‚РѕР»СЊРєРѕ РґР»СЏ SYSTEM); РїСЂРёРѕСЂРёС‚РµС‚ С†РІРµС‚Р° вЂ” СЃРѕР±СЃС‚РІРµРЅРЅС‹Р№ Р°РєС†РµРЅС‚ (РІСЃРµ РІРµСЂСЃРёРё Android) в†’ Dynamic Color (12+) в†’ СЂСѓС‡РЅР°СЏ РїР°Р»РёС‚СЂР° (<12) в†’ fallback.
 - РќР°СЃС‚СЂРѕР№РєРё: РІ В«РћС„РѕСЂРјР»РµРЅРёРёВ» вЂ” `SingleChoiceSegmentedButtonRow` В«РЎРІРµС‚Р»Р°СЏ/РўС‘РјРЅР°СЏ/РЎРёСЃС‚РµРјР°В» Рё РєСЂСѓР¶РѕРє В«РЎРІРѕР№ С†РІРµС‚В», РѕС‚РєСЂС‹РІР°СЋС‰РёР№ РґРёР°Р»РѕРі СЃ С‚СЂРµРјСЏ RGB-СЃР»Р°Р№РґРµСЂР°РјРё, Р¶РёРІС‹Рј РїСЂРµРІСЊСЋ + HEX, РєРЅРѕРїРєР°РјРё В«РџСЂРёРјРµРЅРёС‚СЊВ»/В«РћС‚РјРµРЅР°В»/В«РЎР±СЂРѕСЃРёС‚СЊВ». РЎРѕР±СЃС‚РІРµРЅРЅС‹Р№ С†РІРµС‚ СЂР°Р±РѕС‚Р°РµС‚ РЅР° РІСЃРµС… РІРµСЂСЃРёСЏС… Android Рё РїРµСЂРµРєСЂС‹РІР°РµС‚ СЃРёСЃС‚РµРјРЅС‹Рµ С†РІРµС‚Р°.
 - РџР°Р»РёС‚СЂР° РїР»РµРµСЂР°: РїСЂРё Р·Р°РґР°РЅРЅРѕРј `customAccentColor` РїР°Р»РёС‚СЂР° РѕР±Р»РѕР¶РєРё СЃРјРµС€РёРІР°РµС‚СЃСЏ СЃ РЅРёРј РЅР° 40% (`blendPaletteWithAccent`), РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅС‹Рµ СЂРѕР»Рё СЃРѕС…СЂР°РЅСЏСЋС‚ Р°Р»СЊС„Сѓ вЂ” РіСЂР°РґРёРµРЅС‚С‹ Рё РїРѕРґСЃРІРµС‚РєРё РЅРµ РєРѕРЅС„Р»РёРєС‚СѓСЋС‚ СЃ С‚РµРјРѕР№.
 - РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 517 791 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
@@ -412,7 +437,7 @@
 - `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 406 945 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
 ## РљР°Р»РёР±СЂРѕРІРєР° Р·Р°РґРµСЂР¶РєРё РІРѕР»РЅС‹ вЂ” СЃРµСЃСЃРёСЏ 20
-- `AppSettings.visualizerDelayMs` (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ 0, РґРёР°РїР°Р·РѕРЅ -200..+200) С…СЂР°РЅРёС‚СЃСЏ РІ SharedPreferences `mymusic_settings` РїРѕРґ РєР»СЋС‡РѕРј `visualizer_delay_ms`; РїСЂРё Р·Р°РіСЂСѓР·РєРµ Р·РЅР°С‡РµРЅРёРµ РѕРіСЂР°РЅРёС‡РёРІР°РµС‚СЃСЏ РґРёР°РїР°Р·РѕРЅРѕРј, `SettingsRepository.setVisualizerDelayMs` РїРёС€РµС‚ РµРіРѕ РІ IO-РґРёСЃРїРµС‚С‡РµСЂРµ.
+- `AppSettings.visualizerDelayMs` (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ 0, РґРёР°РїР°Р·РѕРЅ -200..+200) С…СЂР°РЅРёС‚СЃСЏ РІ SharedPreferences `facet_settings` РїРѕРґ РєР»СЋС‡РѕРј `visualizer_delay_ms`; РїСЂРё Р·Р°РіСЂСѓР·РєРµ Р·РЅР°С‡РµРЅРёРµ РѕРіСЂР°РЅРёС‡РёРІР°РµС‚СЃСЏ РґРёР°РїР°Р·РѕРЅРѕРј, `SettingsRepository.setVisualizerDelayMs` РїРёС€РµС‚ РµРіРѕ РІ IO-РґРёСЃРїРµС‚С‡РµСЂРµ.
 - `SettingsScreen`: РЅРѕРІР°СЏ СЃРµРєС†РёСЏ В«Р’РР—РЈРђР›РР—РђР¦РРЇВ» СЃРѕ СЃР»Р°Р№РґРµСЂРѕРј В«Р—Р°РґРµСЂР¶РєР° РІРёР·СѓР°Р»РёР·Р°С†РёРёВ» -200..+200 РјСЃ, Р¶РёРІРѕР№ РїРѕРґРїРёСЃСЊСЋ Рё Р»РѕРєР°Р»СЊРЅС‹Рј draft вЂ” РІ РЅР°СЃС‚СЂРѕР№РєРё Р·РЅР°С‡РµРЅРёРµ РїРёС€РµС‚СЃСЏ РїРѕ РѕС‚РїСѓСЃРєР°РЅРёСЋ РїРѕР»Р·СѓРЅРєР°.
 - `AudioDsp.EnergyDelayBuffer`: РєРѕР»СЊС†РµРІРѕР№ Р±СѓС„РµСЂ РЅР° 500 РјСЃ (64 СЃР»РѕС‚Р°) СЃ РјРѕРЅРѕС‚РѕРЅРЅС‹РјРё С‚Р°Р№РјСЃС‚Р°РјРїР°РјРё; `push` РІС‹С‚РµСЃРЅСЏРµС‚ СЃС‚Р°СЂС‹Рµ РєР°РґСЂС‹, `valueAt(now, delayMs)` РѕС‚РґР°С‘С‚ СЃР°РјС‹Р№ СЃРІРµР¶РёР№ РєР°РґСЂ РЅРµ РїРѕР·Р¶Рµ `now - delay`; РїСѓСЃС‚РѕР№ Р±СѓС„РµСЂ Рё Р·Р°РґРµСЂР¶РєР° Р±РѕР»СЊС€Рµ РѕРєРЅР° вЂ” 0; РѕС‚СЂРёС†Р°С‚РµР»СЊРЅР°СЏ Р·Р°РґРµСЂР¶РєР° С‡РёС‚Р°РµС‚ СЃР°РјС‹Р№ СЃРІРµР¶РёР№ РєР°РґСЂ.
 - `AudioEnergy`: РєР°Р¶РґС‹Р№ FFT-РєР°РґСЂ РїРёС€РµС‚СЃСЏ РІ Р±СѓС„РµСЂ СЃ `SystemClock.elapsedRealtimeNanos`; РїСЂРё РѕС‚СЂРёСЃРѕРІРєРµ С‡РёС‚Р°РµС‚СЃСЏ `sampler.energyAt(now, visualizerDelayMs)`. Р•СЃР»Рё FFT РЅРµ РїСЂРёС…РѕРґРёР» РґРѕР»СЊС€Рµ 120 РјСЃ вЂ” 0. Р‘СѓС„РµСЂ РѕС‡РёС‰Р°РµС‚СЃСЏ РІ `start()`/`release()` (РїР°СѓР·Р°, СЃРјРµРЅР° С‚СЂРµРєР°, РїРѕС‚РµСЂСЏ СЂР°Р·СЂРµС€РµРЅРёСЏ, lifecycle).
@@ -475,7 +500,7 @@
 - РћРіСЂР°РЅРёС‡РµРЅРёРµ: РЅРµРёР·РјРµРЅС‘РЅРЅС‹Р№ `PlaybackAudioSession` РЅРµ РїСѓР±Р»РёРєСѓРµС‚ Flow, РЅРµ СЃР»СѓС€Р°РµС‚ audio-session callback Рё РЅРµ СЃР±СЂР°СЃС‹РІР°РµС‚ id РІ 0. UI РѕРїСЂР°С€РёРІР°РµС‚ С‚РѕР»СЊРєРѕ РѕРїСѓР±Р»РёРєРѕРІР°РЅРЅС‹Р№ С„Р°РєС‚РёС‡РµСЃРєРёР№ id Рё РёСЃРїРѕР»СЊР·СѓРµС‚ РµРіРѕ РєР°Рє РєР»СЋС‡ СЂРµСЃСѓСЂСЃР°; СЃРјРµРЅСѓ СЃРµСЃСЃРёРё, РєРѕС‚РѕСЂСѓСЋ provider РЅРµ РѕРїСѓР±Р»РёРєРѕРІР°Р», РіР°СЂР°РЅС‚РёСЂРѕРІР°С‚СЊ РЅРµР»СЊР·СЏ. Р”РІРёР¶РѕРє, service/provider, РїРѕРёСЃРє, СЃРєР°С‡РёРІР°РЅРёРµ Рё Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РЅРµ РјРµРЅСЏР»РёСЃСЊ.
 - РџСЂРѕРІРµСЂРєР°: JDK 17 `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`, `gradlew.bat :app:tasks --all` вЂ” exit 0. Р’СЃРµ Р·Р°РїСѓСЃРєРё СЃ `--console=plain --max-workers=1 -Dorg.gradle.jvmargs="-Xmx2048m -Dfile.encoding=UTF-8"`.
 - `gradlew.bat testDebugUnitTest assembleDebug lintDebug`: JVM-С‚РµСЃС‚С‹ Рё APK СЂРµР°Р»СЊРЅРѕ РІС‹РїРѕР»РЅРµРЅС‹; РѕР±С‰РёР№ exit 1 С‚РѕР»СЊРєРѕ РёР·-Р·Р° lint. XML: 133 testcase / 133 executed, 0 failures, 0 errors, 0 skipped (24 РЅРѕРІС‹С… DSP/state/RTL-С‚РµСЃС‚Р°). `lintDebug`: 2 UnsafeOptInUsageError РІ РЅРµРёР·РјРµРЅС‘РЅРЅС‹С… `PlaybackAudioSession.kt:30` Рё `PlayerController.kt:153`, 25 warnings; РїСЂР°РІРёР»Р° РЅРµ РѕСЃР»Р°Р±Р»СЏР»РёСЃСЊ, Р·Р°РїСЂРµС‰С‘РЅРЅС‹Р№ РґРІРёР¶РѕРє РЅРµ РїСЂР°РІРёР»СЃСЏ. РћС‚РґРµР»СЊРЅРѕРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ `gradlew.bat testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, exit 0, 5 СЃРµРєСѓРЅРґ, 53 up-to-date (РЅРµ РїРѕРІС‚РѕСЂРЅРѕРµ РёСЃРїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚РѕРІ).
-- APK РїСЂРѕРІРµСЂРµРЅ: `D:\MyMusic\app\build\outputs\apk\debug\app-debug.apk`, 27 502 042 Р±Р°Р№С‚, СЃРѕР·РґР°РЅ 26.10.2026 18:28:28 +03:00. `git diff --check` Р±РµР· РѕС€РёР±РѕРє. РџРµСЂРІР°СЏ РїРѕРїС‹С‚РєР° tasks РёСЃРїРѕР»СЊР·РѕРІР°Р»Р° СЃРёСЃС‚РµРјРЅСѓСЋ Java 11 Рё СѓРїР°Р»Р°; РёСЃРїСЂР°РІР»РµРЅРѕ С‚РѕР»СЊРєРѕ РѕРєСЂСѓР¶РµРЅРёРµ. РћРґРЅР° РїСЂРѕРјРµР¶СѓС‚РѕС‡РЅР°СЏ СЃР±РѕСЂРєР° СѓРїР°Р»Р° РЅР° РµС‰С‘ РЅРµ РѕР±СЉСЏРІР»РµРЅРЅРѕРј SliderFinishInteraction; РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ РїСЂР°РІРєРё РєРѕРјРїРёР»СЏС†РёСЏ РїСЂРѕС€Р»Р°. Р›РёРјРёС‚ РїРѕРІС‚РѕСЂРЅС‹С… РѕРґРёРЅР°РєРѕРІС‹С… РѕС€РёР±РѕРє РЅРµ РґРѕСЃС‚РёРіРЅСѓС‚.
+- APK РїСЂРѕРІРµСЂРµРЅ: `D:\Facet\app\build\outputs\apk\debug\app-debug.apk`, 27 502 042 Р±Р°Р№С‚, СЃРѕР·РґР°РЅ 26.10.2026 18:28:28 +03:00. `git diff --check` Р±РµР· РѕС€РёР±РѕРє. РџРµСЂРІР°СЏ РїРѕРїС‹С‚РєР° tasks РёСЃРїРѕР»СЊР·РѕРІР°Р»Р° СЃРёСЃС‚РµРјРЅСѓСЋ Java 11 Рё СѓРїР°Р»Р°; РёСЃРїСЂР°РІР»РµРЅРѕ С‚РѕР»СЊРєРѕ РѕРєСЂСѓР¶РµРЅРёРµ. РћРґРЅР° РїСЂРѕРјРµР¶СѓС‚РѕС‡РЅР°СЏ СЃР±РѕСЂРєР° СѓРїР°Р»Р° РЅР° РµС‰С‘ РЅРµ РѕР±СЉСЏРІР»РµРЅРЅРѕРј SliderFinishInteraction; РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ РїСЂР°РІРєРё РєРѕРјРїРёР»СЏС†РёСЏ РїСЂРѕС€Р»Р°. Р›РёРјРёС‚ РїРѕРІС‚РѕСЂРЅС‹С… РѕРґРёРЅР°РєРѕРІС‹С… РѕС€РёР±РѕРє РЅРµ РґРѕСЃС‚РёРіРЅСѓС‚.
 - Compose UI-С‚РµСЃС‚С‹ РЅРµ РґРѕР±Р°РІР»СЏР»РёСЃСЊ: РІ РїСЂРѕРµРєС‚Рµ РЅРµС‚ androidTest Рё compose-ui-test Р·Р°РІРёСЃРёРјРѕСЃС‚Рё; РЅРѕРІС‹Рµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё Р·Р°РїСЂРµС‰РµРЅС‹. РќР° С‚РµР»РµС„РѕРЅРµ РѕСЃС‚Р°СЋС‚СЃСЏ Cancel/РїРµСЂРµС…РІР°С‚ Р¶РµСЃС‚Р°, СЃРјРµРЅР° С‚СЂРµРєР° РґРѕ release, TalkBack/РєР»Р°РІРёР°С‚СѓСЂР°, RTL/disabled, СЃРѕСЃРµРґРЅРёРµ РєРЅРѕРїРєРё, pause/background/resume, РѕС‚Р·С‹РІ СЂР°Р·СЂРµС€РµРЅРёСЏ, СЂРµР°Р»СЊРЅС‹Рµ FFT/ROM Рё СЃРјРµРЅР° session. РЈСЃРїРµС€РЅС‹Рµ JVM-С‚РµСЃС‚С‹ РЅРµ Р·Р°РјРµРЅСЏСЋС‚ СЌС‚Рё РїСЂРѕРІРµСЂРєРё.
 - Р’РµС‚РєР° `main`; Р±РµР· commit/push. РџРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ `.opencode/`, `.postman/`, `postman/` РЅРµ Р·Р°С‚СЂРѕРЅСѓС‚С‹; РїРѕСЏРІРёРІС€Р°СЏСЃСЏ РІ status `.kotlin/` СЃРѕРґРµСЂР¶РёС‚ Р»РѕРєР°Р»СЊРЅС‹Рµ СЃР»СѓР¶РµР±РЅС‹Рµ С„Р°Р№Р»С‹ РєРѕРјРїРёР»СЏС‚РѕСЂР° Рё РЅРµ РІРєР»СЋС‡Р°РµС‚СЃСЏ РІ РїСѓР±Р»РёРєР°С†РёСЋ.
 
@@ -495,12 +520,12 @@
 - РЎРѕР·РґР°РЅР° С‚РµРјР° Material 3 СЃ Dynamic Color (Android 12+) Рё violet-purple РїР°Р»РёС‚СЂРѕР№ РґР»СЏ СЃС‚Р°СЂС‹С… РІРµСЂСЃРёР№
 - Р РµР°Р»РёР·РѕРІР°РЅР° РЅР°РІРёРіР°С†РёСЏ: `BottomNavigationBar` (4 РІРєР»Р°РґРєРё) + full-screen РїР»РµРµСЂ СЃРѕ slide-up Р°РЅРёРјР°С†РёРµР№
 - РЎРѕР·РґР°РЅС‹ Р·Р°РіР»СѓС€РєРё РІСЃРµС… СЌРєСЂР°РЅРѕРІ: Home, Search, Library, Wave, Player
-- `MyMusicApp` (`@HiltAndroidApp`) РёРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ NewPipe
+- `FacetApp` (`@HiltAndroidApp`) РёРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ NewPipe
 - РќР°СЃС‚СЂРѕРµРЅ edge-to-edge СЂРµР¶РёРј
 
 ### Р¤Р°Р№Р»С‹
 ```
-MyMusicApp.kt, MainActivity.kt
+FacetApp.kt, MainActivity.kt
 navigation/Screen.kt, navigation/AppNavGraph.kt
 core/ui/theme/Color.kt, Type.kt, Theme.kt
 feature/home/HomeScreen.kt
@@ -613,7 +638,7 @@ navigation/AppNavGraph.kt
 
 ## вњ… РЎРµСЃСЃРёСЏ 7 вЂ” РїР»РµРµСЂ Рё С‚РµРєСЃС‚С‹ РїРѕ СЂРµС„РµСЂРµРЅСЃСѓ exteraless (16.10.2026)
 
-Р’С‹Р¶РёРјРєР° Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹С… СЂРµС€РµРЅРёР№, РјРµС‚СЂРёРє, С†РІРµС‚РѕРІС‹С… СЂРѕР»РµР№ Рё Р°Р»РіРѕСЂРёС‚РјРѕРІ Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅР° РІ [reference-notes.md](file:///D:/MyMusic/docs/reference-notes.md).
+Р’С‹Р¶РёРјРєР° Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹С… СЂРµС€РµРЅРёР№, РјРµС‚СЂРёРє, С†РІРµС‚РѕРІС‹С… СЂРѕР»РµР№ Рё Р°Р»РіРѕСЂРёС‚РјРѕРІ Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅР° РІ [reference-notes.md](file:///D:/Facet/docs/reference-notes.md).
 
 ### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
 1. **РР·СѓС‡РµРЅРёРµ СЂРµС„РµСЂРµРЅСЃР°**:
@@ -693,7 +718,7 @@ navigation/AppNavGraph.kt
 4. **РћС‚СЃСѓС‚СЃС‚РІРёРµ retry/Р»РµРЅРёРІРѕР№ РїРѕРґРіСЂСѓР·РєРё**: РµСЃР»Рё РїР»РµРµСЂ РѕС‚РєСЂС‹РІР°Р»СЃСЏ РёР· РјРёРЅРё-РїР»РµРµСЂР° РёР»Рё РїРµСЂРІС‹Р№ Р·Р°РїСЂРѕСЃ РїР°РґР°Р», РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РјРѕРі РїРѕРІС‚РѕСЂРёС‚СЊ РїРѕРёСЃРє С‚РµРєСЃС‚Р° Р±РµР· РїРµСЂРµР·Р°РїСѓСЃРєР° С‚СЂРµРєР°.
 
 ### РљР°Рє РїРѕС‡РёРЅРµРЅРѕ
-1. **РЎРµС‚РµРІРѕР№ СЃР»РѕР№ (`NetworkModule.kt`)**: РґРѕР±Р°РІР»РµРЅ РёРЅС‚РµСЂС†РµРїС‚РѕСЂ СЃ РєР°СЃС‚РѕРјРЅС‹Рј `User-Agent: MyMusicApp/1.0 (https://github.com/souler/mymusic)` Рё Р·Р°РіРѕР»РѕРІРєРѕРј `Accept: application/json`.
+1. **РЎРµС‚РµРІРѕР№ СЃР»РѕР№ (`NetworkModule.kt`)**: РґРѕР±Р°РІР»РµРЅ РёРЅС‚РµСЂС†РµРїС‚РѕСЂ СЃ РєР°СЃС‚РѕРјРЅС‹Рј `User-Agent: FacetApp/1.0 (https://github.com/souler/facet)` Рё Р·Р°РіРѕР»РѕРІРєРѕРј `Accept: application/json`.
 2. **Retrofit API (`LrclibApi.kt`)**: СЌРЅРґРїРѕРёРЅС‚С‹ РѕР±С‘СЂРЅСѓС‚С‹ РІ `Response<...>`, РґРѕР±Р°РІР»РµРЅ РїР°СЂР°РјРµС‚СЂ `q` РґР»СЏ РїРѕР»РЅРѕС‚РµРєСЃС‚РѕРІРѕРіРѕ РїРѕРёСЃРєР°.
 3. **РћС‡РёСЃС‚РєР° РјРµС‚Р°РґР°РЅРЅС‹С… Рё РєР°СЃРєР°РґРЅС‹Р№ РїРѕРёСЃРє (`LyricsRepositoryImpl.kt`)**:
    - `cleanTrackMetadata`: РёР·РІР»РµС‡РµРЅРёРµ РёСЃРїРѕР»РЅРёС‚РµР»СЏ РёР· С„РѕСЂРјР°С‚Р° `"Artist - Title"`, СѓРґР°Р»РµРЅРёРµ РјСѓСЃРѕСЂРЅС‹С… СЃСѓС„С„РёРєСЃРѕРІ `(Official Video)`, `(Audio)`, `(Remastered)` Рё СЃСѓС„С„РёРєСЃР° `"Official"` Сѓ Р°СЂС‚РёСЃС‚Р°.
@@ -771,7 +796,7 @@ docs/design-spec.md
 
 ### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
 1. **Р‘Р°Р·Р° РґР°РЅРЅС‹С… Room 2.6.1 (`AppDatabase.kt`)**:
-   - РЎРѕР·РґР°РЅР° Р±Р°Р·Р° РґР°РЅРЅС‹С… `mymusic.db` СЃ fallback-РјРёРіСЂР°С†РёРµР№.
+   - РЎРѕР·РґР°РЅР° Р±Р°Р·Р° РґР°РЅРЅС‹С… `facet.db` СЃ fallback-РјРёРіСЂР°С†РёРµР№.
    - РўР°Р±Р»РёС†Р° `liked_tracks` (`LikedTrackEntity`): СЃРѕС…СЂР°РЅРµРЅРёРµ ID, РёСЃС‚РѕС‡РЅРёРєР°, РЅР°Р·РІР°РЅРёСЏ, Р°СЂС‚РёСЃС‚Р°, РѕР±Р»РѕР¶РєРё, РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё, Р¶Р°РЅСЂР°, URL С‚СЂР°РЅСЃРєРѕРґРёРЅРіР° Рё timestamp Р»Р°Р№РєР° `likedAt`.
    - РўР°Р±Р»РёС†Р° `play_history` (`PlayHistoryEntity`): СЃРѕС…СЂР°РЅРµРЅРёРµ РёСЃС‚РѕСЂРёРё РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ СЃ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРёРј С‚СЂРёРјРјРёРЅРіРѕРј РґРѕ РїРѕСЃР»РµРґРЅРёС… 50 Р·Р°РїРёСЃРµР№ С‡РµСЂРµР· `@Transaction` РІ `PlayHistoryDao`.
 2. **РЎР»РѕР№ РґРѕСЃС‚СѓРїР° Рє РґР°РЅРЅС‹Рј (DAO)**:
@@ -1010,13 +1035,13 @@ navigation/AppNavGraph.kt
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/ui/components/ExpressiveNavigationBar.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/ui/components/TrackCard.kt
-app/src/main/java/com/my/music/core/ui/theme/Type.kt
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/main/java/com/my/music/feature/search/SearchScreen.kt
-app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
-app/src/main/java/com/my/music/navigation/AppNavGraph.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressiveNavigationBar.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/ui/components/TrackCard.kt
+app/src/main/java/com/facet/music/core/ui/theme/Type.kt
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt
+app/src/main/java/com/facet/music/feature/search/SearchScreen.kt
+app/src/main/java/com/facet/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/facet/music/navigation/AppNavGraph.kt
 ```
 
 ---
@@ -1034,10 +1059,10 @@ app/src/main/java/com/my/music/navigation/AppNavGraph.kt
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/main/java/com/my/music/core/ui/theme/PlayerPalette.kt
-app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/core/ui/theme/PlayerPalette.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1067,9 +1092,9 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/player/PlaybackErrorMessages.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/player/PlayerController.kt
-app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/facet/music/core/player/PlaybackErrorMessages.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1099,8 +1124,8 @@ MEMORY.md
 app/build.gradle.kts
 app/src/main/res/font/google_sans_flex.ttf (РЅРѕРІС‹Р№)
 app/src/main/assets/licenses/OFL_GoogleSansFlex.txt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/ui/theme/Type.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/core/ui/theme/Type.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1120,7 +1145,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1142,7 +1167,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1174,8 +1199,8 @@ MEMORY.md
 ### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/src/main/java/com/my/music/core/ui/components/PlayerSlider.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/core/ui/components/PlayerSlider.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1208,10 +1233,10 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerComponents.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/ui/components/PlayerSlider.kt (СѓРґР°Р»С‘РЅ)
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerSlider.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerComponents.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/ui/components/PlayerSlider.kt (СѓРґР°Р»С‘РЅ)
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1228,9 +1253,9 @@ MEMORY.md
 2. **РЎР»Р°Р№РґРµСЂ вЂ” СЃРїР»РѕС€РЅР°СЏ РІРѕР»РЅР°**: `ExpressivePlayerSlider` РїРµСЂРµРІРµРґС‘РЅ СЃ В«С†РµРїРѕС‡РєРё С‚РѕС‡РµРєВ» РЅР° СЃРїР»РѕС€РЅСѓСЋ СЃРєСЂСѓРіР»С‘РЅРЅСѓСЋ РґРѕСЂРѕР¶РєСѓ 8dp (С‚СЂРµРє в†’ Р±СѓС„РµСЂ `activeColor` alpha 0.28 в†’ РїСЂРѕРёРіСЂР°РЅРЅР°СЏ С‡Р°СЃС‚СЊ), РїРѕР»Р·СѓРЅРѕРє-РїРёР»СЋР»СЏ 10Г—30dp СЃ РїСЂСѓР¶РёРЅРЅС‹Рј СѓРІРµР»РёС‡РµРЅРёРµРј Рё РѕСЂРµРѕР»РѕРј РїСЂРё Р·Р°С…РІР°С‚Рµ (РєР°Рє РІ СЂР°Р±РѕС‡РµР№ РІРµСЂСЃРёРё Р¤Р°Р·С‹ 4.6, РЅРѕ РІ Expressive-РѕС„РѕСЂРјР»РµРЅРёРё).
 3. **РЎР»РѕР№ РЅР°СЃС‚СЂРѕРµРє**:
    - `AppSettings` (`dynamicCoverColors`, `accentColorArgb`) Рё РёРЅС‚РµСЂС„РµР№СЃ `SettingsRepository`.
-   - `SettingsRepositoryImpl` РЅР° SharedPreferences (`mymusic_settings`), Р·Р°РїРёСЃСЊ РІ IO-РґРёСЃРїРµС‚С‡РµСЂРµ, `@Binds` РІ `RepositoryModule`.
+   - `SettingsRepositoryImpl` РЅР° SharedPreferences (`facet_settings`), Р·Р°РїРёСЃСЊ РІ IO-РґРёСЃРїРµС‚С‡РµСЂРµ, `@Binds` РІ `RepositoryModule`.
 4. **РўРµРјР° РѕС‚ Р°РєС†РµРЅС‚РЅРѕРіРѕ С†РІРµС‚Р°**:
-   - `Theme.kt`: С„СѓРЅРєС†РёСЏ `accentColorScheme(accent, darkTheme)` РіРµРЅРµСЂРёСЂСѓРµС‚ primary-РіСЂСѓРїРїСѓ РёР· seed С‡РµСЂРµР· HSL (secondary/tertiary СЃРѕ СЃРґРІРёРіРѕРј РѕС‚С‚РµРЅРєР° 40В°, РЅРµР№С‚СЂР°Р»СЊРЅС‹Рµ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё вЂ” РёР· С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹С… СЃС…РµРј); `MyMusicTheme` РїРѕР»СѓС‡РёР» РїР°СЂР°РјРµС‚СЂ `accentColor: Color?` СЃ РїСЂРёРѕСЂРёС‚РµС‚РѕРј РЅР°Рґ Dynamic Color.
+   - `Theme.kt`: С„СѓРЅРєС†РёСЏ `accentColorScheme(accent, darkTheme)` РіРµРЅРµСЂРёСЂСѓРµС‚ primary-РіСЂСѓРїРїСѓ РёР· seed С‡РµСЂРµР· HSL (secondary/tertiary СЃРѕ СЃРґРІРёРіРѕРј РѕС‚С‚РµРЅРєР° 40В°, РЅРµР№С‚СЂР°Р»СЊРЅС‹Рµ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё вЂ” РёР· С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹С… СЃС…РµРј); `FacetTheme` РїРѕР»СѓС‡РёР» РїР°СЂР°РјРµС‚СЂ `accentColor: Color?` СЃ РїСЂРёРѕСЂРёС‚РµС‚РѕРј РЅР°Рґ Dynamic Color.
    - `MainActivity` РІРЅРµРґСЂСЏРµС‚ `SettingsRepository` Рё РїРµСЂРµРґР°С‘С‚ Р°РєС†РµРЅС‚ РІ С‚РµРјСѓ, РєРѕРіРґР° РґРёРЅР°РјРёС‡РµСЃРєРёРµ С†РІРµС‚Р° РѕР±Р»РѕР¶РєРё РІС‹РєР»СЋС‡РµРЅС‹.
 5. **РџР»РµРµСЂ Рё РЅР°СЃС‚СЂРѕР№РєРё РґРёРЅР°РјРёРєРё**:
    - `PlayerViewModel.appSettings` (StateFlow РёР· СЂРµРїРѕР·РёС‚РѕСЂРёСЏ).
@@ -1242,20 +1267,20 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
-app/src/main/java/com/my/music/data/repository/SettingsRepository.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/SettingsRepositoryImpl.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/di/RepositoryModule.kt
-app/src/main/java/com/my/music/core/ui/theme/Theme.kt
-app/src/main/java/com/my/music/core/ui/theme/AccentPalette.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/MainActivity.kt
-app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/feature/settings/SettingsViewModel.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/main/java/com/my/music/navigation/Screen.kt
-app/src/main/java/com/my/music/navigation/AppNavGraph.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/facet/music/data/repository/SettingsRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/SettingsRepositoryImpl.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/di/RepositoryModule.kt
+app/src/main/java/com/facet/music/core/ui/theme/Theme.kt
+app/src/main/java/com/facet/music/core/ui/theme/AccentPalette.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/MainActivity.kt
+app/src/main/java/com/facet/music/feature/settings/SettingsScreen.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/feature/settings/SettingsViewModel.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt
+app/src/main/java/com/facet/music/navigation/Screen.kt
+app/src/main/java/com/facet/music/navigation/AppNavGraph.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1285,7 +1310,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1310,7 +1335,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1331,8 +1356,8 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1353,7 +1378,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1375,7 +1400,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1396,7 +1421,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1414,7 +1439,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1427,19 +1452,19 @@ MEMORY.md
 1. **Thumb РЅР° РІРѕР»РЅРµ**: РІ `ExpressivePlayerSlider` Y-РєРѕРѕСЂРґРёРЅР°С‚Р° Р±РµРіСѓРЅРєР° Рё РѕСЂРµРѕР»Р° СЃС‡РёС‚Р°РµС‚СЃСЏ РїРѕ С‚РѕР№ Р¶Рµ СЃРёРЅСѓСЃРѕРёРґРµ, С‡С‚Рѕ Рё Path: `centerY в€’ amp Г— sin(ПЂu) Г— sin(2ПЂВ·spanВ·u/wavelength + phase)`. РљСЂСѓР¶РѕРє РµРґРµС‚ РїРѕ РіСЂРµР±РЅСЏРј, Р° РЅР° РїР°СѓР·Рµ (Р°РјРїР»РёС‚СѓРґР° 0) РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ РЅР° С†РµРЅС‚СЂР°Р»СЊРЅСѓСЋ Р»РёРЅРёСЋ.
 2. **Р¤РёРѕР»РµС‚РѕРІР°СЏ С‚РµРјР° РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ**:
    - `AppSettings.dynamicCoverColors` Рё С‡С‚РµРЅРёРµ РёР· SharedPreferences вЂ” РґРµС„РѕР»С‚ `false`;
-   - `MyMusicTheme.dynamicColor` вЂ” РґРµС„РѕР»С‚ `false` (С„РёРєСЃРёСЂРѕРІР°РЅРЅР°СЏ С„РёРѕР»РµС‚РѕРІР°СЏ РїР°Р»РёС‚СЂР° РІРјРµСЃС‚Рѕ СЃРёСЃС‚РµРјРЅРѕРіРѕ Material You);
+   - `FacetTheme.dynamicColor` вЂ” РґРµС„РѕР»С‚ `false` (С„РёРєСЃРёСЂРѕРІР°РЅРЅР°СЏ С„РёРѕР»РµС‚РѕРІР°СЏ РїР°Р»РёС‚СЂР° РІРјРµСЃС‚Рѕ СЃРёСЃС‚РµРјРЅРѕРіРѕ Material You);
    - РІС‹РєР»СЋС‡РµРЅРЅС‹Р№ РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ в†’ Р°РєС†РµРЅС‚ РёР· РЅР°СЃС‚СЂРѕРµРє (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ С„РёРѕР»РµС‚РѕРІС‹Р№), РІРєР»СЋС‡С‘РЅРЅС‹Р№ в†’ РїР°Р»РёС‚СЂР° РѕР±Р»РѕР¶РєРё РІ РїР»РµРµСЂРµ.
 3. **РЁР°РїРєР° РїР»РµРµСЂР°**: РІРµСЂС…РЅСЏСЏ РїР°РЅРµР»СЊ С‚РµРїРµСЂСЊ РґРІСѓС…СЃС‚СЂРѕС‡РЅР°СЏ вЂ” В«РЎР•Р™Р§РђРЎ РР“Р РђР•РўВ» (labelSmall, alpha 0.6) Рё РёРјСЏ Р°СЂС‚РёСЃС‚Р° (titleLarge, Bold) СЃ РјСЏРіРєРёРј СЃРІРµС‡РµРЅРёРµРј `Shadow(blurRadius = 8f, color = primary alpha 0.55)`; РґР»РёРЅРЅС‹Рµ РёРјРµРЅР° РѕР±СЂРµР·Р°СЋС‚СЃСЏ ellipsis.
 4. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
-app/src/main/java/com/my/music/data/repository/SettingsRepository.kt
-app/src/main/java/com/my/music/data/local/SettingsRepositoryImpl.kt
-app/src/main/java/com/my/music/core/ui/theme/Theme.kt
-app/src/main/java/com/my/music/MainActivity.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/facet/music/data/repository/SettingsRepository.kt
+app/src/main/java/com/facet/music/data/local/SettingsRepositoryImpl.kt
+app/src/main/java/com/facet/music/core/ui/theme/Theme.kt
+app/src/main/java/com/facet/music/MainActivity.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1473,21 +1498,21 @@ MEMORY.md
 ### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/src/test/java/com/my/music/testutil/MainDispatcherRule.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/data/source/lyrics/LrcParserTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/util/ResultExt.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/player/PlayerController.kt
-app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
-app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
-app/src/main/java/com/my/music/data/source/lyrics/LyricsRepositoryImpl.kt
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/core/ui/theme/PlayerPalette.kt
-app/src/main/java/com/my/music/core/ui/components/PlayerQueueSheet.kt
-app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt
+app/src/test/java/com/facet/music/testutil/MainDispatcherRule.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/data/source/lyrics/LrcParserTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/core/player/PlayerControllerQueueTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/feature/home/HomeViewModelGenreTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/data/local/LikedTracksRepositoryTest.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/util/ResultExt.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/lyrics/LyricsRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/core/ui/theme/PlayerPalette.kt
+app/src/main/java/com/facet/music/core/ui/components/PlayerQueueSheet.kt
+app/src/main/java/com/facet/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1523,28 +1548,28 @@ MEMORY.md
 ```
 app/build.gradle.kts
 app/src/main/AndroidManifest.xml
-app/src/main/java/com/my/music/core/di/RepositoryModule.kt
-app/src/main/java/com/my/music/core/location/LocationProvider.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/location/FusedLocationProvider.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/util/SeasonProvider.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/AppDatabase.kt
-app/src/main/java/com/my/music/data/local/dao/LikedTracksDao.kt
-app/src/main/java/com/my/music/data/local/entity/LikedTrackEntity.kt
-app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
-app/src/main/java/com/my/music/data/repository/LikedTracksRepository.kt
-app/src/main/java/com/my/music/data/repository/WaveRepository.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/source/wave/WaveRepositoryImpl.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/main/java/com/my/music/feature/wave/WaveViewModel.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
-app/src/main/java/com/my/music/data/repository/SoundCloudChartsRepository.kt
-app/src/main/java/com/my/music/data/local/entity/ChartCacheEntity.kt
-app/src/test/java/com/my/music/core/util/SeasonProviderTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/data/source/wave/WaveRepositoryTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
+app/src/main/java/com/facet/music/core/di/RepositoryModule.kt
+app/src/main/java/com/facet/music/core/location/LocationProvider.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/location/FusedLocationProvider.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/util/SeasonProvider.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/AppDatabase.kt
+app/src/main/java/com/facet/music/data/local/dao/LikedTracksDao.kt
+app/src/main/java/com/facet/music/data/local/entity/LikedTrackEntity.kt
+app/src/main/java/com/facet/music/data/local/LikedTracksRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/repository/LikedTracksRepository.kt
+app/src/main/java/com/facet/music/data/repository/WaveRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/source/wave/WaveRepositoryImpl.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt
+app/src/main/java/com/facet/music/feature/wave/WaveViewModel.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/facet/music/data/repository/SoundCloudChartsRepository.kt
+app/src/main/java/com/facet/music/data/local/entity/ChartCacheEntity.kt
+app/src/test/java/com/facet/music/core/util/SeasonProviderTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/data/source/wave/WaveRepositoryTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/data/local/LikedTracksRepositoryTest.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelGenreTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1572,11 +1597,11 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/location/LocationPermissions.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/location/FusedLocationProvider.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
-app/src/test/java/com/my/music/core/location/LocationPermissionsTest.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/location/LocationPermissions.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/location/FusedLocationProvider.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/settings/SettingsScreen.kt
+app/src/test/java/com/facet/music/core/location/LocationPermissionsTest.kt (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
@@ -1609,7 +1634,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1653,17 +1678,17 @@ MEMORY.md
 ```
 app/build.gradle.kts
 app/src/main/AndroidManifest.xml
-app/src/main/java/com/my/music/core/player/MusicService.kt
-app/src/main/java/com/my/music/core/player/PlayerController.kt
-app/src/main/java/com/my/music/core/player/PlayerModule.kt (СѓРґР°Р»С‘РЅ)
-app/src/main/java/com/my/music/data/local/AppDatabase.kt
-app/src/main/java/com/my/music/data/local/DatabaseModule.kt
-app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/dao/LikedTracksDao.kt
-app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
-app/schemas/com.my.music.data.local.AppDatabase/4.json (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
-app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/player/MusicService.kt
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/core/player/PlayerModule.kt (СѓРґР°Р»С‘РЅ)
+app/src/main/java/com/facet/music/data/local/AppDatabase.kt
+app/src/main/java/com/facet/music/data/local/DatabaseModule.kt
+app/src/main/java/com/facet/music/data/local/DatabaseMigrations.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/dao/LikedTracksDao.kt
+app/src/main/java/com/facet/music/data/local/LikedTracksRepositoryImpl.kt
+app/schemas/com.facet.music.data.local.AppDatabase/4.json (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/core/player/PlayerControllerQueueTest.kt
+app/src/test/java/com/facet/music/data/local/DatabaseMigrationTest.kt (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
@@ -1708,31 +1733,31 @@ MEMORY.md
 ### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/schemas/com.my.music.data.local.AppDatabase/5.json (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/di/RepositoryModule.kt
-app/src/main/java/com/my/music/core/network/NetworkModule.kt
-app/src/main/java/com/my/music/core/player/PlayerController.kt
-app/src/main/java/com/my/music/data/local/AppDatabase.kt
-app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt
-app/src/main/java/com/my/music/data/local/DatabaseModule.kt
-app/src/main/java/com/my/music/data/local/TasteRepositoryImpl.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/dao/TasteDao.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/entity/TasteEntities.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/repository/LastFmRepository.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/repository/TasteRepository.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/repository/WaveRepository.kt
-app/src/main/java/com/my/music/data/source/lastfm/LastFmApi.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/source/lastfm/LastFmRepositoryImpl.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/source/wave/WaveRepositoryImpl.kt
-app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
-app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
-app/src/main/java/com/my/music/feature/settings/SettingsViewModel.kt
-app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
-app/src/main/java/com/my/music/feature/wave/WaveViewModel.kt
-app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
-app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
-app/src/test/java/com/my/music/data/local/TasteRepositoryTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/data/source/wave/WaveRepositoryTest.kt
+app/schemas/com.facet.music.data.local.AppDatabase/5.json (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/di/RepositoryModule.kt
+app/src/main/java/com/facet/music/core/network/NetworkModule.kt
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/data/local/AppDatabase.kt
+app/src/main/java/com/facet/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/facet/music/data/local/DatabaseModule.kt
+app/src/main/java/com/facet/music/data/local/TasteRepositoryImpl.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/dao/TasteDao.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/entity/TasteEntities.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/repository/LastFmRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/repository/TasteRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/repository/WaveRepository.kt
+app/src/main/java/com/facet/music/data/source/lastfm/LastFmApi.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/source/lastfm/LastFmRepositoryImpl.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/source/wave/WaveRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/facet/music/feature/settings/SettingsScreen.kt
+app/src/main/java/com/facet/music/feature/settings/SettingsViewModel.kt
+app/src/main/java/com/facet/music/feature/wave/WaveScreen.kt
+app/src/main/java/com/facet/music/feature/wave/WaveViewModel.kt
+app/src/test/java/com/facet/music/core/player/PlayerControllerQueueTest.kt
+app/src/test/java/com/facet/music/data/local/DatabaseMigrationTest.kt
+app/src/test/java/com/facet/music/data/local/TasteRepositoryTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/data/source/wave/WaveRepositoryTest.kt
 README.md
 PROGRESS.md
 MEMORY.md
@@ -1758,11 +1783,11 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerComponents.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/main/java/com/my/music/data/source/wave/WaveRepositoryImpl.kt
-app/src/test/java/com/my/music/data/source/wave/WaveRepositoryTest.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerComponents.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/data/source/wave/WaveRepositoryImpl.kt
+app/src/test/java/com/facet/music/data/source/wave/WaveRepositoryTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -1775,7 +1800,7 @@ MEMORY.md
 1. **Room v6 вЂ” С‚Р°Р±Р»РёС†Р° СЃРєР°С‡Р°РЅРЅС‹С… С‚СЂРµРєРѕРІ**:
    - `DownloadedTrackEntity` (`downloaded_tracks`): `id`, `title`, `artist`, `artworkUrl`, `durationMs`, `localFilePath`, `downloadedAt`.
    - `DownloadedTracksDao`: `insert` (REPLACE), `delete`, `getById`, `isDownloaded(): Flow<Boolean>`, `getDownloadedIds(): Flow<List<String>>`, `getAll(): Flow<List<DownloadedTrackEntity>>`.
-   - `AppDatabase` в†’ РІРµСЂСЃРёСЏ 6; `MIGRATION_5_6` СЃРѕР·РґР°С‘С‚ С‚Р°Р±Р»РёС†Сѓ; СЃС…РµРјР° `app/schemas/com.my.music.data.local.AppDatabase/6.json` СЌРєСЃРїРѕСЂС‚РёСЂРѕРІР°РЅР°.
+   - `AppDatabase` в†’ РІРµСЂСЃРёСЏ 6; `MIGRATION_5_6` СЃРѕР·РґР°С‘С‚ С‚Р°Р±Р»РёС†Сѓ; СЃС…РµРјР° `app/schemas/com.facet.music.data.local.AppDatabase/6.json` СЌРєСЃРїРѕСЂС‚РёСЂРѕРІР°РЅР°.
    - Р”РѕРјРµРЅРЅР°СЏ РјРѕРґРµР»СЊ `DownloadedTrack` + РјР°РїРїРµСЂС‹; `DownloadRepository` / `DownloadRepositoryImpl`: РїСЂРѕРІРµСЂРєР° СЃСѓС‰РµСЃС‚РІРѕРІР°РЅРёСЏ С„Р°Р№Р»Р°, Р°РІС‚РѕРѕС‡РёСЃС‚РєР° Р±РёС‚С‹С… Р·Р°РїРёСЃРµР№, СѓРґР°Р»РµРЅРёРµ С„Р°Р№Р»Р° РІРјРµСЃС‚Рµ СЃ Р·Р°РїРёСЃСЊСЋ; Hilt-Р±РёРЅРґРёРЅРіРё РІ `RepositoryModule` Рё `DatabaseModule`.
 2. **WorkManager вЂ” С„РѕРЅРѕРІРѕРµ СЃРєР°С‡РёРІР°РЅРёРµ**:
    - Р”РѕР±Р°РІР»РµРЅР° Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ `androidx.work:work-runtime-ktx:2.9.1` (РµРґРёРЅСЃС‚РІРµРЅРЅР°СЏ РЅРѕРІР°СЏ РІРµСЂСЃРёСЏ РІ РїСЂРѕРµРєС‚Рµ).
@@ -1826,8 +1851,8 @@ feature/library/LibraryViewModel.kt
 feature/library/LibraryScreen.kt
 feature/search/SearchViewModel.kt
 feature/search/SearchScreen.kt
-app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
-app/schemas/com.my.music.data.local.AppDatabase/6.json (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/data/local/DatabaseMigrationTest.kt
+app/schemas/com.facet.music.data.local.AppDatabase/6.json (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
@@ -1842,7 +1867,7 @@ MEMORY.md
 ### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
 1. **Р—Р°РІРёСЃРёРјРѕСЃС‚Рё**: СЏРІРЅРѕ РґРѕР±Р°РІР»РµРЅС‹ `androidx.media3:media3-datasource:1.5.0` Рё `androidx.media3:media3-database:1.5.0` (exoplayer Рё exoplayer-hls СѓР¶Рµ Р±С‹Р»Рё).
 2. **РљСЌС€ Рё DownloadManager**:
-   - `OfflineMediaModule` (Hilt, `@Singleton`): `StandaloneDatabaseProvider` (РІ Media3 СЌС‚Рѕ Р·Р°РјРµРЅР° `ExoDatabaseProvider`), `SimpleCache(filesDir/media_cache, NoOpCacheEvictor)`, `CacheDataSource.Factory` РґР»СЏ РїР»РµРµСЂР° Рё Media3 `DownloadManager` СЃ upstream `DefaultDataSource`/`DefaultHttpDataSource` (UA `MyMusicApp/1.0`).
+   - `OfflineMediaModule` (Hilt, `@Singleton`): `StandaloneDatabaseProvider` (РІ Media3 СЌС‚Рѕ Р·Р°РјРµРЅР° `ExoDatabaseProvider`), `SimpleCache(filesDir/media_cache, NoOpCacheEvictor)`, `CacheDataSource.Factory` РґР»СЏ РїР»РµРµСЂР° Рё Media3 `DownloadManager` СЃ upstream `DefaultDataSource`/`DefaultHttpDataSource` (UA `FacetApp/1.0`).
    - РљСЌС€ РѕРґРёРЅ РЅР° РїСЂРѕС†РµСЃСЃ: Рё Р·Р°РіСЂСѓР·С‡РёРє, Рё `MusicService` РёСЃРїРѕР»СЊР·СѓСЋС‚ РѕРґРёРЅ `SimpleCache`.
 3. **`OfflineDownloadManager`**:
    - `enqueue(track, stream)`: `DownloadRequest.Builder(track.id, uri).setMimeType(...)`; HLS в†’ `MimeTypes.APPLICATION_M3U8`, MP3 в†’ `AUDIO_MPEG`; РїРѕРІС‚РѕСЂРЅР°СЏ РїРѕСЃС‚Р°РЅРѕРІРєР° Р°РєС‚РёРІРЅРѕР№/РіРѕС‚РѕРІРѕР№ Р·Р°РіСЂСѓР·РєРё РїСЂРѕРїСѓСЃРєР°РµС‚СЃСЏ.
@@ -1871,23 +1896,23 @@ MEMORY.md
 ### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/src/main/java/com/my/music/core/download/OfflineMediaModule.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/download/MediaDownloadState.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
-app/src/main/java/com/my/music/core/download/DownloadManager.kt
-app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
-app/src/main/java/com/my/music/core/player/MusicService.kt
-app/src/main/java/com/my/music/core/player/PlayerController.kt
-app/src/main/java/com/my/music/data/local/AppDatabase.kt
-app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt
-app/src/main/java/com/my/music/data/local/DownloadRepositoryImpl.kt
-app/src/main/java/com/my/music/data/local/entity/DownloadedTrackEntity.kt
-app/src/main/java/com/my/music/data/model/DownloadedTrack.kt
-app/src/main/java/com/my/music/data/repository/DownloadRepository.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
-app/schemas/com.my.music.data.local.AppDatabase/7.json (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/download/OfflineMediaModule.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/download/OfflineDownloadManager.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/download/MediaDownloadState.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/facet/music/core/download/DownloadManager.kt
+app/src/main/java/com/facet/music/core/download/DownloadWorkerEntryPoint.kt
+app/src/main/java/com/facet/music/core/player/MusicService.kt
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/data/local/AppDatabase.kt
+app/src/main/java/com/facet/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/facet/music/data/local/DownloadRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/local/entity/DownloadedTrackEntity.kt
+app/src/main/java/com/facet/music/data/model/DownloadedTrack.kt
+app/src/main/java/com/facet/music/data/repository/DownloadRepository.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/test/java/com/facet/music/data/local/DatabaseMigrationTest.kt
+app/schemas/com.facet.music.data.local.AppDatabase/7.json (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
@@ -1920,7 +1945,7 @@ MEMORY.md
 ### РџСЂРѕРІРµСЂРєРё
 - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 - `.\gradlew testDebugUnitTest` вЂ” 64/64, 0 failures, 0 errors.
-- APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
+- APK: `C:\Users\souler\Downloads\Facet-debug.apk`.
 - Р”РёР°РіРЅРѕСЃС‚РёРєР° РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ: `adb logcat -s DownloadWorker DownloadFlow OfflineDownload`.
 
 ### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
@@ -1928,13 +1953,13 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/download/DownloadState.kt
-app/src/main/java/com/my/music/core/download/DownloadManager.kt
-app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt
-app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
-app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/test/java/com/my/music/core/download/DownloadStateResolutionTest.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/download/DownloadState.kt
+app/src/main/java/com/facet/music/core/download/DownloadManager.kt
+app/src/main/java/com/facet/music/core/download/OfflineDownloadManager.kt
+app/src/main/java/com/facet/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/test/java/com/facet/music/core/download/DownloadStateResolutionTest.kt (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
@@ -1965,25 +1990,25 @@ MEMORY.md
 ### РџСЂРѕРІРµСЂРєРё
 - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 - `.\gradlew testDebugUnitTest` вЂ” 64/64, 0 failures, 0 errors.
-- APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
+- APK: `C:\Users\souler\Downloads\Facet-debug.apk`.
 - Р”РёР°РіРЅРѕСЃС‚РёРєР° РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ: `adb logcat -s DownloadWorker DownloadFlow`.
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/download/DownloadManager.kt
-app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
-app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
-app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt (СѓРґР°Р»С‘РЅ)
-app/src/main/java/com/my/music/core/download/OfflineMediaModule.kt (СѓРґР°Р»С‘РЅ)
-app/src/main/java/com/my/music/core/download/MediaDownloadState.kt (СѓРґР°Р»С‘РЅ)
-app/src/main/java/com/my/music/core/player/MusicService.kt
-app/src/main/java/com/my/music/data/local/DownloadRepositoryImpl.kt
-app/src/main/java/com/my/music/data/local/entity/DownloadedTrackEntity.kt
-app/src/main/java/com/my/music/data/model/DownloadedTrack.kt
-app/src/main/java/com/my/music/data/repository/DownloadRepository.kt
-app/src/main/java/com/my/music/data/repository/SoundCloudRepository.kt
-app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
-app/src/test/java/com/my/music/core/download/DownloadStateResolutionTest.kt
+app/src/main/java/com/facet/music/core/download/DownloadManager.kt
+app/src/main/java/com/facet/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/facet/music/core/download/DownloadWorkerEntryPoint.kt
+app/src/main/java/com/facet/music/core/download/OfflineDownloadManager.kt (СѓРґР°Р»С‘РЅ)
+app/src/main/java/com/facet/music/core/download/OfflineMediaModule.kt (СѓРґР°Р»С‘РЅ)
+app/src/main/java/com/facet/music/core/download/MediaDownloadState.kt (СѓРґР°Р»С‘РЅ)
+app/src/main/java/com/facet/music/core/player/MusicService.kt
+app/src/main/java/com/facet/music/data/local/DownloadRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/local/entity/DownloadedTrackEntity.kt
+app/src/main/java/com/facet/music/data/model/DownloadedTrack.kt
+app/src/main/java/com/facet/music/data/repository/DownloadRepository.kt
+app/src/main/java/com/facet/music/data/repository/SoundCloudRepository.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/test/java/com/facet/music/core/download/DownloadStateResolutionTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -2030,7 +2055,7 @@ MEMORY.md
 - `ServiceStatusManager` (Singleton):
   - `ServiceType { SOUNDCLOUD, YOUTUBE }`, `ServiceHealth(isAvailable, isChecking)`;
   - `StateFlow<Map<ServiceType, ServiceHealth>>`, РїР°СЂР°Р»Р»РµР»СЊРЅР°СЏ РїСЂРѕРІРµСЂРєР° РїРѕРёСЃРєРѕРј `"test"` СЃ Р»РёРјРёС‚РѕРј 1;
-  - `checkAllServices()` РїСЂРё СЃС‚Р°СЂС‚Рµ (`MyMusicApp` РїРѕСЃР»Рµ `NewPipe.init`) Рё РїРѕСЃР»Рµ РѕС€РёР±РѕРє РїРѕРёСЃРєР°;
+  - `checkAllServices()` РїСЂРё СЃС‚Р°СЂС‚Рµ (`FacetApp` РїРѕСЃР»Рµ `NewPipe.init`) Рё РїРѕСЃР»Рµ РѕС€РёР±РѕРє РїРѕРёСЃРєР°;
   - `refreshStatus()` РёР· РјРµРЅСЋ, Р·Р°С‰РёС‚Р° РѕС‚ РїР°СЂР°Р»Р»РµР»СЊРЅС‹С… РїСЂРѕРІРµСЂРѕРє, `markAvailable()` РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕРіРѕ РїРѕРёСЃРєР°;
   - 5 JVM-С‚РµСЃС‚РѕРІ РЅР° СѓСЃРїРµС…/failure/exception/РЅР°С‡Р°Р»СЊРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ.
 - `SearchViewModel`:
@@ -2086,23 +2111,23 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/navigation/NavigationEvents.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/player/PlayerController.kt
-app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
-app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
-app/src/main/java/com/my/music/data/model/AudioStreamResult.kt
-app/src/main/java/com/my/music/data/model/DownloadedTrack.kt
-app/src/main/java/com/my/music/data/local/DownloadRepositoryImpl.kt
-app/src/main/java/com/my/music/data/local/entity/DownloadedTrackEntity.kt
-app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
-app/src/main/java/com/my/music/data/source/youtube/YouTubeRepositoryImpl.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
-app/src/main/java/com/my/music/feature/search/SearchViewModel.kt
-app/src/main/java/com/my/music/navigation/AppNavGraph.kt
-app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
-app/src/test/java/com/my/music/core/download/DownloadWorkerFormatTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/feature/search/SearchViewModelExternalRequestTest.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/navigation/NavigationEvents.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/facet/music/core/download/DownloadWorkerEntryPoint.kt
+app/src/main/java/com/facet/music/data/model/AudioStreamResult.kt
+app/src/main/java/com/facet/music/data/model/DownloadedTrack.kt
+app/src/main/java/com/facet/music/data/local/DownloadRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/local/entity/DownloadedTrackEntity.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/facet/music/feature/search/SearchViewModel.kt
+app/src/main/java/com/facet/music/navigation/AppNavGraph.kt
+app/src/test/java/com/facet/music/core/player/PlayerControllerQueueTest.kt
+app/src/test/java/com/facet/music/core/download/DownloadWorkerFormatTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/feature/search/SearchViewModelExternalRequestTest.kt (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
@@ -2110,7 +2135,7 @@ MEMORY.md
 ### РџСЂРѕРІРµСЂРєР°
 - `.\gradlew assembleDebug testDebugUnitTest` вЂ” BUILD SUCCESSFUL.
 - 78 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 errors.
-- APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
+- APK: `C:\Users\souler\Downloads\Facet-debug.apk`.
 
 ---
 
@@ -2118,7 +2143,7 @@ MEMORY.md
 
 ### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
 1. **Р¤СѓРЅРґР°РјРµРЅС‚ С‚РµРјС‹**:
-   - РЅР° Android 12+ `MyMusicTheme` РІСЃРµРіРґР° РёСЃРїРѕР»СЊР·СѓРµС‚ `dynamicDarkColorScheme` / `dynamicLightColorScheme` РѕС‚ СЃРёСЃС‚РµРјС‹;
+   - РЅР° Android 12+ `FacetTheme` РІСЃРµРіРґР° РёСЃРїРѕР»СЊР·СѓРµС‚ `dynamicDarkColorScheme` / `dynamicLightColorScheme` РѕС‚ СЃРёСЃС‚РµРјС‹;
    - СЂСѓС‡РЅРѕР№ Р°РєС†РµРЅС‚ РёР· РЅР°СЃС‚СЂРѕРµРє РїСЂРёРјРµРЅСЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РЅР° Android РЅРёР¶Рµ 12;
    - fallback-РїР°Р»РёС‚СЂР° РїРµСЂРµРІРµРґРµРЅР° СЃ С„РёРѕР»РµС‚РѕРІРѕР№ РЅР° С‚С‘РїР»С‹Р№ РіР»СѓР±РѕРєРёР№ С„РѕРЅ + РєРѕСЂР°Р»Р»РѕРІС‹Р№ Р°РєС†РµРЅС‚, РґРѕР±Р°РІР»РµРЅС‹ РІСЃРµ `surfaceContainer*`, `surfaceDim/Bright`, `outlineVariant` Рё inverse-СЂРѕР»Рё;
    - СЃРѕР·РґР°РЅ `Shape.kt`: РЅР°СЃС‚РѕСЏС‰Р°СЏ squircle-С„РѕСЂРјР° С‡РµСЂРµР· СЃСѓРїРµСЂСЌР»Р»РёРїСЃ, РєСЂСѓРїРЅС‹Рµ M3-СЃРєСЂСѓРіР»РµРЅРёСЏ, Pill Рё Bento-С‚РѕРєРµРЅС‹; `shapes` РїРѕРґРєР»СЋС‡РµРЅС‹ Рє `MaterialTheme`;
@@ -2146,23 +2171,23 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/ui/theme/Color.kt
-app/src/main/java/com/my/music/core/ui/theme/Theme.kt
-app/src/main/java/com/my/music/core/ui/theme/Type.kt
-app/src/main/java/com/my/music/core/ui/theme/Shape.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/core/ui/theme/AccentPalette.kt
-app/src/main/java/com/my/music/MainActivity.kt
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt (РїРѕР»РЅРѕСЃС‚СЊСЋ РїРµСЂРµРїРёСЃР°РЅ)
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
-app/src/main/java/com/my/music/data/model/SeasonMemory.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/entity/LikedTrackEntity.kt
-app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
-app/src/main/java/com/my/music/data/repository/LikedTracksRepository.kt
-app/src/main/java/com/my/music/data/repository/SettingsRepository.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelChartsTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt
+app/src/main/java/com/facet/music/core/ui/theme/Color.kt
+app/src/main/java/com/facet/music/core/ui/theme/Theme.kt
+app/src/main/java/com/facet/music/core/ui/theme/Type.kt
+app/src/main/java/com/facet/music/core/ui/theme/Shape.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/core/ui/theme/AccentPalette.kt
+app/src/main/java/com/facet/music/MainActivity.kt
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt (РїРѕР»РЅРѕСЃС‚СЊСЋ РїРµСЂРµРїРёСЃР°РЅ)
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/feature/settings/SettingsScreen.kt
+app/src/main/java/com/facet/music/data/model/SeasonMemory.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/entity/LikedTrackEntity.kt
+app/src/main/java/com/facet/music/data/local/LikedTracksRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/repository/LikedTracksRepository.kt
+app/src/main/java/com/facet/music/data/repository/SettingsRepository.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelGenreTest.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelChartsTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/data/local/LikedTracksRepositoryTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -2189,7 +2214,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt (РїРѕР»РЅРѕСЃС‚СЊСЋ РїРµСЂРµРїРёСЃР°РЅ)
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt (РїРѕР»РЅРѕСЃС‚СЊСЋ РїРµСЂРµРїРёСЃР°РЅ)
 PROGRESS.md
 MEMORY.md
 ```
@@ -2219,10 +2244,10 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/feature/home/HomeViewModelChartsTest.kt (СѓРґР°Р»С‘РЅ)
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelRecommendationsTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/feature/home/HomeViewModelChartsTest.kt (СѓРґР°Р»С‘РЅ)
 PROGRESS.md
 MEMORY.md
 ```
@@ -2249,9 +2274,9 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelRecommendationsTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -2282,22 +2307,22 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/home/RecommendationPlanner.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/data/local/entity/RecentlyShownEntity.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/dao/RecentlyShownDao.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/repository/RecentlyShownRepository.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/RecentlyShownRepositoryImpl.kt (РЅРѕРІС‹Р№)
-app/src/main/java/com/my/music/data/local/AppDatabase.kt
-app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt
-app/src/main/java/com/my/music/data/local/DatabaseModule.kt
-app/src/main/java/com/my/music/core/di/RepositoryModule.kt
-app/schemas/com.my.music.data.local.AppDatabase/8.json (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/feature/home/RecommendationPlannerTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
-app/src/test/java/com/my/music/data/local/RecentlyShownRepositoryTest.kt (РЅРѕРІС‹Р№)
-app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
+app/src/main/java/com/facet/music/feature/home/RecommendationPlanner.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/data/local/entity/RecentlyShownEntity.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/dao/RecentlyShownDao.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/repository/RecentlyShownRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/RecentlyShownRepositoryImpl.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/facet/music/data/local/AppDatabase.kt
+app/src/main/java/com/facet/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/facet/music/data/local/DatabaseModule.kt
+app/src/main/java/com/facet/music/core/di/RepositoryModule.kt
+app/schemas/com.facet.music.data.local.AppDatabase/8.json (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/feature/home/RecommendationPlannerTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/feature/home/HomeViewModelRecommendationsTest.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelGenreTest.kt
+app/src/test/java/com/facet/music/data/local/RecentlyShownRepositoryTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/facet/music/data/local/DatabaseMigrationTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -2352,15 +2377,15 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/data/repository/YouTubeRepository.kt
-app/src/main/java/com/my/music/data/repository/SoundCloudRepository.kt
-app/src/main/java/com/my/music/data/source/youtube/YouTubeRepositoryImpl.kt
-app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/feature/home/RecommendationPlanner.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
-app/src/test/java/com/my/music/feature/home/RecommendationPlannerTest.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
+app/src/main/java/com/facet/music/data/repository/YouTubeRepository.kt
+app/src/main/java/com/facet/music/data/repository/SoundCloudRepository.kt
+app/src/main/java/com/facet/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/feature/home/RecommendationPlanner.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelRecommendationsTest.kt
+app/src/test/java/com/facet/music/feature/home/RecommendationPlannerTest.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelGenreTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -2405,30 +2430,30 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/download/DownloadCapability.kt
-app/src/main/java/com/my/music/core/download/DownloadSource.kt
-app/src/main/java/com/my/music/core/download/DownloadSourceResolver.kt
-app/src/main/java/com/my/music/core/download/RecentlyFailedSources.kt
-app/src/main/java/com/my/music/core/download/YouTubeDownloadSource.kt
-app/src/main/java/com/my/music/core/download/SoundCloudDownloadSource.kt
-app/src/main/java/com/my/music/core/download/DownloadMessages.kt
-app/src/main/java/com/my/music/core/download/DownloadManager.kt
-app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
-app/src/main/java/com/my/music/core/di/DownloadSourceModule.kt
-app/src/main/java/com/my/music/core/ui/components/TrackDownloadButton.kt
-app/src/main/java/com/my/music/data/repository/SoundCloudRepository.kt
-app/src/main/java/com/my/music/data/repository/YouTubeRepository.kt
-app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
-app/src/main/java/com/my/music/data/source/youtube/YouTubeRepositoryImpl.kt
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/feature/library/LibraryScreen.kt
-app/src/main/java/com/my/music/feature/library/LibraryViewModel.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
-app/src/test/java/com/my/music/core/download/DownloadSourceResolverTest.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
+app/src/main/java/com/facet/music/core/download/DownloadCapability.kt
+app/src/main/java/com/facet/music/core/download/DownloadSource.kt
+app/src/main/java/com/facet/music/core/download/DownloadSourceResolver.kt
+app/src/main/java/com/facet/music/core/download/RecentlyFailedSources.kt
+app/src/main/java/com/facet/music/core/download/YouTubeDownloadSource.kt
+app/src/main/java/com/facet/music/core/download/SoundCloudDownloadSource.kt
+app/src/main/java/com/facet/music/core/download/DownloadMessages.kt
+app/src/main/java/com/facet/music/core/download/DownloadManager.kt
+app/src/main/java/com/facet/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/facet/music/core/di/DownloadSourceModule.kt
+app/src/main/java/com/facet/music/core/ui/components/TrackDownloadButton.kt
+app/src/main/java/com/facet/music/data/repository/SoundCloudRepository.kt
+app/src/main/java/com/facet/music/data/repository/YouTubeRepository.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/feature/library/LibraryScreen.kt
+app/src/main/java/com/facet/music/feature/library/LibraryViewModel.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
+app/src/test/java/com/facet/music/core/download/DownloadSourceResolverTest.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelGenreTest.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelRecommendationsTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -2458,10 +2483,10 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
+app/src/main/java/com/facet/music/feature/home/HomeScreen.kt
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelGenreTest.kt
+app/src/test/java/com/facet/music/feature/home/HomeViewModelRecommendationsTest.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -2515,7 +2540,7 @@ MEMORY.md
 
 ### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
@@ -2560,12 +2585,12 @@ MEMORY.md
 ### Р¤Р°Р№Р»С‹
 ```
 app/src/main/AndroidManifest.xml
-app/src/main/java/com/my/music/core/player/MusicService.kt
-app/src/main/java/com/my/music/core/player/PlaybackAudioSession.kt
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
-app/src/main/java/com/my/music/core/ui/components/PlaybackPhase.kt
-app/src/main/java/com/my/music/core/ui/components/SinePulseBar.kt
-app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/core/player/MusicService.kt
+app/src/main/java/com/facet/music/core/player/PlaybackAudioSession.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerSlider.kt
+app/src/main/java/com/facet/music/core/ui/components/PlaybackPhase.kt
+app/src/main/java/com/facet/music/core/ui/components/SinePulseBar.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```

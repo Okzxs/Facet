@@ -6,6 +6,9 @@
 -->
 <resources>
 
+    <!-- Название приложения: одинаково во всех локалях, меняется только здесь -->
+    <string name="app_name">Facet</string>
+
     <!-- Нижняя навигация -->
     <string name="nav_home">Home</string>
     <string name="nav_search">Search</string>
@@ -106,7 +109,7 @@
     <string name="settings_location_denied_hint">Without location, like coordinates are not saved and “Memories” are not tied to a place</string>
     <string name="settings_check_permissions">Check permissions</string>
     <string name="settings_location_footer">If access is denied, the button opens app settings</string>
-    <string name="settings_version">MyMusic · version %1$s</string>
+    <string name="settings_version">Facet · version %1$s</string>
 
     <!-- Медиатека -->
     <string name="library_title">Library</string>
@@ -328,7 +331,7 @@
     <string name="spotify_guide_step1_title">Create an app in the Spotify Developer Dashboard</string>
     <string name="spotify_guide_step1_body">Open developer.spotify.com/dashboard, sign in with your Spotify account and press «Create app».</string>
     <string name="spotify_guide_step2_title">Fill in the form</string>
-    <string name="spotify_guide_step2_body">Any name and description will do. In Redirect URI paste exactly: mymusic://spotify-auth — and select «Web API».</string>
+    <string name="spotify_guide_step2_body">Any name and description will do. In Redirect URI paste exactly: facet://spotify-auth — and select «Web API».</string>
     <string name="spotify_guide_step3_title">Copy the keys</string>
     <string name="spotify_guide_step3_body">Open the app settings: Client ID and Client Secret are on the same page. A secret is only needed for search without sign-in.</string>
     <string name="spotify_guide_step4_title">Paste the keys below</string>
@@ -340,7 +343,7 @@
     <string name="spotify_signed_in_as">Signed in as %1$s</string>
     <string name="spotify_sign_in_failed">Spotify sign-in failed</string>
     <string name="spotify_auth_cancelled">Sign-in cancelled</string>
-    <string name="spotify_redirect_uri">Redirect URI for the Dashboard: mymusic://spotify-auth</string>
+    <string name="spotify_redirect_uri">Redirect URI for the Dashboard: facet://spotify-auth</string>
     <string name="spotify_import_row">Spotify playlists</string>
     <string name="spotify_import_loading">Loading Spotify playlists…</string>
     <string name="spotify_import_failed">Couldn’t load Spotify playlists</string>

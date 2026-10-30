@@ -13,16 +13,16 @@
 
 | Артефакт | Путь / значение |
 |---|---|
-| APK | `D:\MyMusic\reverse\yandex\yandex-music-2026.09.5.apk` |
+| APK | `D:\Facet\reverse\yandex\yandex-music-2026.09.5.apk` |
 | Пакет | `ru.yandex.music` |
 | Версия | `2026.09.5 #167.2rur` |
 | versionCode | `24026503` |
 | minSdk / targetSdk | `24 / 36` |
 | Размер APK | `46 804 627` байт |
 | SHA-256 | `840b1653df3c329ca70f2315e4cb1048af3e369f73ba5ee23052820e3e1fdfe5` |
-| Распакованные dex | `D:\MyMusic\reverse\yandex\unpacked\classes*.dex` |
-| Строки dex | `D:\MyMusic\reverse\yandex\dex-strings.txt` |
-| JADX single-class | `D:\MyMusic\reverse\yandex\single\*.java` |
+| Распакованные dex | `D:\Facet\reverse\yandex\unpacked\classes*.dex` |
+| Строки dex | `D:\Facet\reverse\yandex\dex-strings.txt` |
+| JADX single-class | `D:\Facet\reverse\yandex\single\*.java` |
 
 APK получен через RuStore API, потому что APKPure, APKMirror и Uptodown заблокировали прямое скачивание:
 

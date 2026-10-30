@@ -49,3 +49,4 @@ postman/
 /shot*.png
 /crop*.png
 /ui.xml
+/keystore.properties

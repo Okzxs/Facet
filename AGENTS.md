@@ -7,7 +7,7 @@
 
 ## Описание проекта
 
-**MyMusic** — кастомный музыкальный агрегатор в стиле Material 3.  
+**Facet** — кастомный музыкальный агрегатор в стиле Material 3.  
 Агрегирует стриминговый контент с разных платформ в одном приложении.
 
 **Распространение:** APK через GitHub/Telegram.  
@@ -39,7 +39,7 @@
 **Паттерн:** MVVM + Clean Architecture (Feature / Domain / Data)
 
 ```
-com.my.music
+com.facet.music
 ├── core/
 │   ├── di/              # Hilt модули (RepositoryModule)
 │   ├── network/         # OkHttp, NewPipeDownloader
@@ -59,7 +59,7 @@ com.my.music
 │   └── wave/            # WaveScreen + WaveViewModel (Моя волна)
 ├── navigation/          # Screen.kt, AppNavGraph.kt
 ├── MainActivity.kt
-└── MyMusicApp.kt        # @HiltAndroidApp, NewPipe.init()
+└── FacetApp.kt        # @HiltAndroidApp, NewPipe.init()
 ```
 
 **БД:** Room v12, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
@@ -82,16 +82,16 @@ com.my.music
 
 ## Настройки оформления
 
-- `ThemeMode` (LIGHT/DARK/SYSTEM, по умолчанию SYSTEM), `customAccentColor` (ARGB или null) и `accentEnabled` (включён ли собственный акцент; по умолчанию false — цвета обоев) живут в `AppSettings` (SharedPreferences `mymusic_settings`, ключи `theme_mode`, `custom_accent_color`, `accent_enabled`).
-- Приоритет цвета в `MyMusicTheme`: собственный акцент (только при `accentEnabled`, работает на **всех** версиях Android, перекрывает Dynamic Color) → Dynamic Color (Android 12+) → ручная палитра кружочков (только ниже 12) → fallback-палитра. Кружки палитры и RGB-пикер пишут в `customAccentColor` и автоматически включают `accentEnabled`; `accentColorArgb` — legacy-фолбэк для Android ниже 12.
+- `ThemeMode` (LIGHT/DARK/SYSTEM, по умолчанию SYSTEM), `customAccentColor` (ARGB или null) и `accentEnabled` (включён ли собственный акцент; по умолчанию false — цвета обоев) живут в `AppSettings` (SharedPreferences `facet_settings`, ключи `theme_mode`, `custom_accent_color`, `accent_enabled`).
+- Приоритет цвета в `FacetTheme`: собственный акцент (только при `accentEnabled`, работает на **всех** версиях Android, перекрывает Dynamic Color) → Dynamic Color (Android 12+) → ручная палитра кружочков (только ниже 12) → fallback-палитра. Кружки палитры и RGB-пикер пишут в `customAccentColor` и автоматически включают `accentEnabled`; `accentColorArgb` — legacy-фолбэк для Android ниже 12.
 - Ряд акцентов в настройках — горизонтально скроллируемый `Row` (`horizontalScroll`) с отступами по краям: 6 пресетов, а в конце `CustomColorDot` — круг с замкнутым радужным sweep-градиентом и иконкой палитры (вход в RGB-диалог); выбранный свой цвет заливает этот круг и даёт галочку. Непрокручиваемый `Row` на узких экранах сплющивал последний элемент (сессия 32).
 - Ахроматический акцент (насыщенность HSL < `ACHROMATIC_SATURATION_THRESHOLD` = 0.05: чёрный, белый, серый) даёт строго монохромную палитру: `accentColorScheme` обнуляет насыщенность ролей, иначе hue=0 (красный) и принудительная насыщенность красили такой акцент в бордовый; та же защита в `PlayerPalette.computePlayerColors` для серых обложек (сессия 33).
 - Недавние акценты: `AppSettings.recentAccentColors` (SharedPreferences `recent_accent_colors`, строка через запятую, LIFO, дедупликация, максимум 5 через `SettingsRepository.addRecentAccentColor`); в настройках ряд «Недавние» над основной палитрой, тап применяет цвет. В RGB-диалоге — HEX-поле с двусторонней связью со слайдерами и валидацией 6 hex-цифр (сессия 33).
-- `MainActivity` читает `SettingsRepository.settings` и передаёт в `MyMusicTheme` параметры `themeMode`, `accentColor`, `customAccentColor`.
+- `MainActivity` читает `SettingsRepository.settings` и передаёт в `FacetTheme` параметры `themeMode`, `accentColor`, `customAccentColor`.
 - Палитра плеера при заданном `customAccentColor` смешивается с ним на 40% (`blendPaletteWithAccent` в PlayerScreen), чтобы цвета обложки не конфликтовали с темой. Контрастные роли (`onPrimary`, `on*Container`) после смешивания пересчитываются от светлоты, а не лерпаются.
 - `dynamicCoverColors` (тумблер «Динамические цвета обложки»): включён — `PlayerScreen` берёт `playerColors.primary` для тонировки фона (28% → 14%), подкраски панели, слайдера и кнопки Play; выключен — строго `background` и акцент темы. Смена трека анимируется `AnimatedContent` по `TrackDisplay`, морф обложки остаётся только на актуальном треке.
 - Экраны-вкладки сами ставят себе фон (`Modifier.background(MaterialTheme.colorScheme.background)`) и инсеты: корневого Scaffold в `AppNavGraph` больше нет (док — оверлей, высота через `LocalBottomDockHeight`). Корневой Box навграфа тоже непрозрачный — иначе в переходах вкладок проглядывает окно.
-- `MyMusicTheme` провайдит `LocalContentColor = colorScheme.onBackground`: MaterialTheme его не ставит, дефолт — `Color.Black`, и после удаления корневого Scaffold любой Text без явного цвета чернел на тёмном фоне. Scaffold плеера с `containerColor = Transparent` обязан задавать `contentColor` явно (`contentColorFor(Transparent)` = Unspecified).
+- `FacetTheme` провайдит `LocalContentColor = colorScheme.onBackground`: MaterialTheme его не ставит, дефолт — `Color.Black`, и после удаления корневого Scaffold любой Text без явного цвета чернел на тёмном фоне. Scaffold плеера с `containerColor = Transparent` обязан задавать `contentColor` явно (`contentColorFor(Transparent)` = Unspecified).
 - `windowBackground` задан в `values/themes.xml` и `values-night/themes.xml` (#FAFAFA / #121212, совпадает с Color.kt) — без ночного варианта окно оставалось белым и давало вспышку на холодном старте.
 - Текст песни (`LyricLineItem` в `PlayerScreen.kt`): у строк списка **нет** `Modifier.animateItem()` — на каждый `animateScrollToItem` (смена активной строки) он запускает анимацию появления у уже видимых строк, и весь текст гаснет в ноль и проявляется ~250 мс. Полоска прогресса живёт в постоянном слоте `LyricBarSlot = 12.dp` и не меняет высоту строки — иначе список прыгает при каждой смене строки (сессия 51).
 - Кнопки под обложкой (`DownloadSquircle`/`LikeSquircle`/`DislikeSquircle`) получают цвета палитры плеера через `ExpressiveHeroZone` (`actionAccent`, `actionContainer`, `actionIdleContainer`): акцент `coverAccent`, контейнер `playerColors.primaryContainer`, подложка покоя `coverAccent.copy(alpha = 0.14f)`; всё анимируется 420 мс. При выключенных динамических цветах — акцент и контейнер темы, серая подложка `onSurface 8%`. Подпись режима («Текст песни»/«Обложка») красится `coverAccent` (сессия 52).
@@ -131,6 +131,11 @@ com.my.music
 - Придерживаться MVVM + Clean: UI → ViewModel → Repository → DataSource
 - Не класть бизнес-логику в `@Composable`-функции
 - Репозитории работают с доменными моделями (`Track`), не с DTO
+
+### Релиз и подпись
+- `keystore.jks` и `keystore.properties` лежат в корне и **никогда** не коммитятся (`.gitignore`: `*.jks`, `/keystore.properties`). Без этого ключа обновления установленного приложения невозможны.
+- Release: `applicationId com.facet.music`, `versionName` вида `1.0.0`, `isMinifyEnabled` + `isShrinkResources`, правила — `app/proguard-rules.pro` (NewPipe/Rhino, kotlinx.serialization, Room, enum-константы).
+- Deep link Spotify `facet://spotify-auth` должен совпадать с Redirect URI в Spotify Dashboard; при смене схемы обновляются манифест, `SPOTIFY_REDIRECT_URI` и `SpotifyPkceTest`.
 
 ### Отправка отчётов в Telegram
 После того как ты выполнил сборку, тесты, коммит и пуш, ты ОБЯЗАН отправить свой подробный отчёт мне в Telegram.
@@ -191,5 +196,5 @@ data class Track(
 - **Медиатека — один экран без вкладок** (`LibraryScreen`): шапка с `CollectionSummary`, чипс «Любимые треки» (`CollectionChipCard`), секция «Плейлисты» (сетка `PlaylistTile` в две колонки, создание и импорт), секция «Скачанное». Лайки живут на отдельном маршруте `Screen.LikedTracks` (`liked`, док скрыт) в `LikedTracksScreen`. Общие компоненты коллекций — `core/ui/components/CollectionComponents.kt` (`SectionHeader`, `EmptyState`, `CollectionChipCard`, `PlaylistCover`, `PlaylistTile`); новые экраны коллекций собираются из них, а не из локальных копий.
 - **Обложка плейлиста** — `Playlist.coverUrl` из подзапроса `PlaylistWithCount` (первый трек с картинкой). Схема Room не менялась; при отсутствии обложки `PlaylistCover` рисует детерминированный градиент от названия.
 - **Экран артиста** — Deezer: `fetchArtist`, `fetchArtistAlbums` (год из `release_date`, `nb_tracks` в ответе нет), `fetchRelatedArtists`, `fetchAlbumTracks`. Топ Deezer может содержать один трек — список дополняется поиском по имени с фильтром по исполнителю (`artist:"…"` публичный API не поддерживает). Горизонтальные карусели — `Row` + `horizontalScroll`, не `LazyRow` (внутри `LazyColumn` он обрезал подпись под обложкой).
-- **Spotify-вход (OAuth PKCE)** — `core/spotify/SpotifyPkce.kt`, `SpotifyAuth.kt` (`mymusic://spotify-auth`), `SpotifyAuthRepositoryImpl` (токены в SharedPreferences `spotify_auth`, refresh, профиль, `/v1/me/playlists`). Redirect URI **обязан** совпадать с Dashboard; вход не требует `client_secret`, секрет нужен только поиску без входа. `SpotifyProvider` предпочитает пользовательский токен Client Credentials и на 401 обновляет его.
+- **Spotify-вход (OAuth PKCE)** — `core/spotify/SpotifyPkce.kt`, `SpotifyAuth.kt` (`facet://spotify-auth`), `SpotifyAuthRepositoryImpl` (токены в SharedPreferences `spotify_auth`, refresh, профиль, `/v1/me/playlists`). Redirect URI **обязан** совпадать с Dashboard; вход не требует `client_secret`, секрет нужен только поиску без входа. `SpotifyProvider` предпочитает пользовательский токен Client Credentials и на 401 обновляет его.
 - **Кнопка «Текст песни»** — в шапке плеера (`FilledTonalButton` 40dp), активный режим — `primaryContainer`; нижней подписи под островом и мёртвого `LyricsTab` больше нет.

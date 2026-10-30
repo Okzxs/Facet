@@ -19,7 +19,7 @@
 - REA CLI: `npx -y rea-agents@6.7.0`
 - Android-провайдер REA: `C:\Users\souler\.local\share\rea\android\jadx-headless-mcp-0.7.1-all.jar`
 - SHA-256 JAR: `6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75`
-- JADX CLI 1.5.6: `D:\MyMusic\reverse\yandex\jadx\bin\jadx.bat`
+- JADX CLI 1.5.6: `D:\Facet\reverse\yandex\jadx\bin\jadx.bat`
 - JDK 17: `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`
 - `apktool` установить не удалось: `choco install apktool` упал из-за non-elevated shell и lock-файла `jre8`. Для анализа хватает JADX.
 
@@ -42,7 +42,7 @@ POST https://backapi.rustore.ru/applicationData/download-link
 Body: {"appId":303463871,"firstInstall":true}
 ```
 
-Скачан zip `D:\MyMusic\reverse\yandex\rustore-yandex-music.zip`, внутри — APK. APK переименован в `yandex-music-2026.09.5.apk`.
+Скачан zip `D:\Facet\reverse\yandex\rustore-yandex-music.zip`, внутри — APK. APK переименован в `yandex-music-2026.09.5.apk`.
 
 Проверка:
 
@@ -55,10 +55,10 @@ Body: {"appId":303463871,"firstInstall":true}
 
 ### 4. Распаковка и инвентаризация
 
-- APK распакован в `D:\MyMusic\reverse\yandex\unpacked`.
+- APK распакован в `D:\Facet\reverse\yandex\unpacked`.
 - 6 dex-файлов: `classes.dex` … `classes6.dex`.
 - `inspect-android-package` показал `50 743` класса.
-- Сохранён отчёт `D:\MyMusic\reverse\yandex\rea-inspect.json`.
+- Сохранён отчёт `D:\Facet\reverse\yandex\rea-inspect.json`.
 
 ### 5. Поиск классов
 
@@ -79,7 +79,7 @@ Body: {"appId":303463871,"firstInstall":true}
 
 ### 6. Декомпиляция
 
-Через JADX `--single-class` декомпилированы и сохранены в `D:\MyMusic\reverse\yandex\single`:
+Через JADX `--single-class` декомпилированы и сохранены в `D:\Facet\reverse\yandex\single`:
 
 - `TrackRotorApi.java`
 - `RotorApi.java`
@@ -110,7 +110,7 @@ Body: {"appId":303463871,"firstInstall":true}
 
 ### 7. Строки dex
 
-Скриптом извлечены печатные строки из всех dex в `D:\MyMusic\reverse\yandex\dex-strings.txt` (`8 020 677` байт).
+Скриптом извлечены печатные строки из всех dex в `D:\Facet\reverse\yandex\dex-strings.txt` (`8 020 677` байт).
 
 Найдены:
 

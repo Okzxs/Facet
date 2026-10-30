@@ -5,6 +5,9 @@
 -->
 <resources>
 
+    <!-- Название приложения: одинаково во всех локалях, меняется только здесь -->
+    <string name="app_name">Facet</string>
+
     <!-- Нижняя навигация -->
     <string name="nav_home">Главная</string>
     <string name="nav_search">Поиск</string>
@@ -105,7 +108,7 @@
     <string name="settings_location_denied_hint">Без доступа координаты лайков не сохраняются, а «Воспоминания» не привязываются к месту</string>
     <string name="settings_check_permissions">Проверить разрешения</string>
     <string name="settings_location_footer">Если доступ запрещён, кнопка откроет настройки приложения</string>
-    <string name="settings_version">MyMusic · версия %1$s</string>
+    <string name="settings_version">Facet · версия %1$s</string>
 
     <!-- Медиатека -->
     <string name="library_title">Медиатека</string>
@@ -333,7 +336,7 @@
     <string name="spotify_guide_step1_title">Создайте приложение в Spotify Developer Dashboard</string>
     <string name="spotify_guide_step1_body">Откройте developer.spotify.com/dashboard, войдите под своим аккаунтом Spotify и нажмите «Create app».</string>
     <string name="spotify_guide_step2_title">Заполните форму</string>
-    <string name="spotify_guide_step2_body">Название и описание — любые. В поле Redirect URI вставьте ровно: mymusic://spotify-auth — и отметьте «Web API».</string>
+    <string name="spotify_guide_step2_body">Название и описание — любые. В поле Redirect URI вставьте ровно: facet://spotify-auth — и отметьте «Web API».</string>
     <string name="spotify_guide_step3_title">Скопируйте ключи</string>
     <string name="spotify_guide_step3_body">В настройках приложения лежат Client ID и Client Secret. Секрет нужен только для поиска без входа.</string>
     <string name="spotify_guide_step4_title">Вставьте ключи ниже</string>
@@ -345,7 +348,7 @@
     <string name="spotify_signed_in_as">Вы вошли как %1$s</string>
     <string name="spotify_sign_in_failed">Не удалось войти в Spotify</string>
     <string name="spotify_auth_cancelled">Вход отменён</string>
-    <string name="spotify_redirect_uri">Redirect URI для Dashboard: mymusic://spotify-auth</string>
+    <string name="spotify_redirect_uri">Redirect URI для Dashboard: facet://spotify-auth</string>
     <string name="spotify_import_row">Плейлисты Spotify</string>
     <string name="spotify_import_loading">Загружаем плейлисты Spotify…</string>
     <string name="spotify_import_failed">Не удалось загрузить плейлисты Spotify</string>

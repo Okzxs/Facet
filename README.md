@@ -1,4 +1,4 @@
-# MyMusic
+# Facet
 
 Кастомный музыкальный агрегатор в стиле Material 3 для Android.  
 Воспроизводит треки с разных стриминговых платформ в одном приложении.
@@ -22,9 +22,23 @@
 # Debug APK
 .\gradlew.bat assembleDebug
 
-# Release APK (требует настройки подписи)
+# Release APK (подписанный, с R8)
 .\gradlew.bat assembleRelease
 ```
+
+### Релизная подпись
+
+Для подписи нужны `keystore.jks` и `keystore.properties` в корне проекта. Оба файла в `.gitignore` — в репозиторий они не попадают, сделайте резервную копию: без ключа обновления установленного приложения невозможны.
+
+```properties
+# keystore.properties
+storeFile=keystore.jks
+storePassword=…
+keyAlias=facet
+keyPassword=…
+```
+
+Если файла нет, `assembleRelease` соберёт неподписанный APK, но не упадёт. Правила R8 — в `app/proguard-rules.pro`.
 
 ### Ключ Last.fm для «Моей волны»
 
@@ -54,13 +68,13 @@ adb install app\build\outputs\apk\debug\app-debug.apk
 ## Структура проекта
 
 ```
-app/src/main/java/com/my/music/
+app/src/main/java/com/facet/music/
 ├── core/            # Сеть, DI, UI-компоненты, тема
 ├── data/            # Модели, репозитории, источники данных
 ├── feature/         # Экраны: home, search, player, library, wave
 ├── navigation/      # NavGraph, Screen
 ├── MainActivity.kt
-└── MyMusicApp.kt
+└── FacetApp.kt
 ```
 
 Подробнее — см. [AGENTS.md](AGENTS.md) и [PROGRESS.md](PROGRESS.md).
@@ -77,6 +91,8 @@ app/src/main/java/com/my/music/
 | Spotify | 📋 v2 |
 | Яндекс Музыка | 📋 v2 |
 | ВК Музыка | 📋 v2 |
+
+> Spotify-вход (OAuth PKCE) требует Redirect URI `facet://spotify-auth` в настройках приложения на [Spotify Dashboard](https://developer.spotify.com/dashboard).
 
 ---
 

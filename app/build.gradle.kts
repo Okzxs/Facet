@@ -11,6 +11,15 @@ val lastFmApiKey: String = providers.gradleProperty("LASTFM_API_KEY")
     .orElse(providers.environmentVariable("LASTFM_API_KEY"))
     .getOrElse(localLastFmApiKey)
 
+// Параметры релизной подписи. Файл и сам keystore в .gitignore:
+// их нельзя коммитить, но без них release-сборка остаётся неподписанной.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -21,15 +30,15 @@ plugins {
 }
 
 android {
-    namespace = "com.my.music"
+    namespace = "com.facet.music"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.my.music"
+        applicationId = "com.facet.music"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1"
+        versionName = "1.0.0"
 
         val escapedLastFmKey = lastFmApiKey
             .replace("\\", "\\\\")
@@ -37,10 +46,27 @@ android {
         buildConfigField("String", "LASTFM_API_KEY", "\"$escapedLastFmKey\"")
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Подписываем только когда есть keystore: на чистой машине
+            // release-сборка останется неподписанной, но не упадёт.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {

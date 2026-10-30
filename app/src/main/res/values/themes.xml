@@ -5,7 +5,7 @@
       Color.kt): до первого кадра Compose и в переходах вкладок окно не должно
       быть белым. Ночной вариант — в values-night/themes.xml.
     -->
-    <style name="Theme.MyMusic" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.Facet" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
     </style>
 </resources>
