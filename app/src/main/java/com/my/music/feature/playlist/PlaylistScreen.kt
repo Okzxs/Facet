@@ -61,6 +61,7 @@ import com.my.music.data.model.Track
 fun PlaylistScreen(
     onBack: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
+    onArtistClick: (String) -> Unit,
     viewModel: PlaylistViewModel = hiltViewModel(),
 ) {
     val playlist by viewModel.playlist.collectAsState()
@@ -147,6 +148,7 @@ fun PlaylistScreen(
                             artworkSize = 60,
                             artworkCornerDp = 16,
                             onClick = { onTrackClick(track, tracks) },
+                            onArtistClick = { onArtistClick(track.artist) },
                             trailingContent = {
                                 IconButton(onClick = { viewModel.removeTrack(track.id) }) {
                                     Icon(

@@ -1,5 +1,20 @@
 # PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
 
+## Последнее обновление: 30.10.2026 (сессия 58)
+
+## Импорт плейлистов по ссылке и экран артиста — сессия 58
+- **Парсер ссылок** `core/import/PlaylistLinkParser.kt` + модели `core/import/PlaylistImportModels.kt` (`ImportService`, `ImportError`, `PlaylistLinkParseResult`, `ImportedPlaylist`): Spotify (`open.spotify.com`/`spotify.com` + `/playlist/<id>`), Яндекс (`users/<user>/playlists/<id>` и `/playlists/<id>`), Apple (`music.apple.com/.../playlist/.../pl.<uuid>`; `?i=<numeric>` — отдельный трек), Deezer (`/playlist/<id>`, `/ru/playlist/<id>`). Ссылку можно вставлять без схемы; query-параметры (`?si=`, `utm_*`) игнорируются. Ошибки — `ImportError`, локализованный текст выбирает UI (`import_error_*`).
+- **Загрузчик** `data/source/imports/PlaylistImportService.kt`: интерфейс + `PlaylistImportServiceImpl` (`@Singleton`, биндинг в `RepositoryModule`), `load(link): PlaylistImportResult`. Пакет называется `imports`, а не `import`: `import` — зарезервированное слово, Java-фабрики Hilt с таким пакетом не компилируются.
+- **Spotify**: в `SpotifyProvider` добавлены `fetchPlaylist(id): Result<SpotifyPlaylist>` (`/v1/playlists/{id}` — название, `/v1/playlists/{id}/tracks?limit=100` — треки) и `fetchPlaylistTracks(id)`. Токен Client Credentials и лимитер общие с поиском; без ключей — `SPOTIFY_NOT_CONFIGURED` («Добавьте ключи Spotify в настройках»), сеть не вызывается.
+- **Deezer**: `GET api.deezer.com/playlist/{id}`, разбор `PlaylistPayloadParser.deezerPlaylist` (название, `tracks.data`: title, artist.name, album.cover_big, duration, preview → `Track(source=DEEZER, streamUrl=preview, previewSeconds=30)`), объект `error` превращается в понятную ошибку. Лимитер `@SourceRateLimiter(RateLimiterKeys.DEEZER)`.
+- **Apple/iTunes**: трек по `i=` через `itunes.apple.com/lookup?id={id}&entity=song` (`PlaylistPayloadParser.appleLookupTracks`, только `wrapperType=track`, обложка 600×600, preview 30 с), лимитер Apple. Плейлист Apple (`pl.…`) без Apple Music API — `APPLE_PLAYLIST_UNSUPPORTED`; Яндекс — `YANDEX_UNSUPPORTED` (закрытый API).
+- **UI импорта** (`LibraryScreen` + `LibraryViewModel`): на вкладке «Плейлисты» кнопка «Импортировать по ссылке» (`Icons.Rounded.AddLink`) → `AlertDialog` с `OutlinedTextField` и кнопками «Отмена/Продолжить»; загрузка → диалог превью (название, `N треков`, первые 10 строк «название — артист»), «Импортировать/Отмена» → сохранение (`LinearProgressIndicator`) через `PlaylistRepository.createPlaylist/addTrack`; ошибки и успех — Snackbar. Состояния — `PlaylistImportState` в ViewModel.
+- **Экран артиста**: `feature/artist/ArtistScreen.kt` + `ArtistViewModel`, маршрут `Screen.Artist(name)` (`ARTIST_NAME_ARG`, `Uri.encode`) и регистрация в `AppNavGraph` (нижний док скрыт). Контент: круглая обложка первого трека, имя, «Слушать всё», популярные треки. `DeezerProvider.fetchArtistTopTracks(name, limit=20)` — `search/artist` → `artist/{id}/top?limit=20`; при пустом ответе — `YouTubeRepository.search("<artist> official audio")`.
+- **Переходы**: имя артиста под названием в `PlayerScreen` (кликабельно только при наличии трека; оверлей плеера закрывается, воспроизведение не прерывается) и долгий тап по `TrackCard` (новый `onArtistClick: (() -> Unit)? = null`, `combinedClickable` только при переданном колбэке) в поиске, медиатеке (обе вкладки) и плейлисте. Короткий тап и свайпы не менялись.
+- **Строки**: добавлены `import_*`, `artist_*`, `artist_open_cd` в `values/strings.xml` и `values-ru/strings.xml` — по 246 ключей, наборы совпадают, дублей нет.
+- **Тесты**: `PlaylistLinkParserTest` (14), `PlaylistPayloadParserTest` (6), `PlaylistImportServiceTest` (5). Итог: 30 suites / 212 тестов, 0 failures/errors/skipped.
+- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 846 020 байт; `testDebugUnitTest` — BUILD SUCCESSFUL. Установка не выполнена: `adb devices` пуст, `adb mdns services` пуст, Android-устройств в системе нет.
+
 ## Последнее обновление: 30.10.2026 (сессия 57)
 
 ## Плейлисты (Room v12) — сессия 57

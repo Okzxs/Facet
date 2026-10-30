@@ -160,6 +160,7 @@ private val OnlineGreenDark = Color(0xFF81C995)
 @Composable
 fun SearchScreen(
     onTrackClick: (track: Track, queue: List<Track>) -> Unit,
+    onArtistClick: (String) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -271,6 +272,7 @@ fun SearchScreen(
                         serviceName = state.selectedService.displayName,
                         onTrackClick = onTrackClick,
                         onAddToPlaylist = { track -> playlistTrack = track },
+                        onArtistClick = onArtistClick,
                     )
                 }
             }
@@ -1131,6 +1133,7 @@ private fun ResultsList(
     serviceName: String,
     onTrackClick: (Track, List<Track>) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
+    onArtistClick: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -1172,6 +1175,7 @@ private fun ResultsList(
                     isDownloaded = track.id in downloadedIds,
                     onClick = { onTrackClick(track, tracks) },
                     onAddToPlaylist = { onAddToPlaylist(track) },
+                    onArtistClick = { onArtistClick(track.artist) },
                 )
             }
         }

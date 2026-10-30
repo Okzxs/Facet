@@ -159,6 +159,7 @@ private fun heroStyle(variant: Int): HeroStyle = when (variant) {
 fun PlayerScreen(
     onBack: () -> Unit,
     onFindOnYouTube: (Track) -> Unit,
+    onArtistClick: (String) -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
     coverModifier: Modifier = Modifier,
     foregroundModifier: Modifier = Modifier,
@@ -624,6 +625,9 @@ fun PlayerScreen(
                         onToggleLike = { toggleLikeWithPermission() },
                         onToggleDislike = { viewModel.toggleDislike() },
                         onDownloadClick = { viewModel.toggleDownload() },
+                        // Подпись артиста под названием ведёт на его экран.
+                        // Без трека (плейсхолдер «—») она некликабельна.
+                        onArtistClick = if (track != null) onArtistClick else null,
                         // Общий shared-element модификатор для морфа обложки
                         // в мини-плеер при закрытии экрана. На время drag его
                         // отключаем: SharedTransitionLayout тяжёлый для 120 Гц,
@@ -879,6 +883,8 @@ private fun ExpressiveHeroZone(
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
+    /** Тап по имени артиста; null — подпись не кликабельна. */
+    onArtistClick: ((String) -> Unit)? = null,
     coverModifier: Modifier = Modifier,
     coverSwipeModifier: Modifier = Modifier,
     panelModifier: Modifier = Modifier,
@@ -979,6 +985,15 @@ private fun ExpressiveHeroZone(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(4.dp))
+                            // Имя артиста — точка входа на его экран.
+                            val artistClick = onArtistClick
+                            val artistModifier = if (artistClick != null) {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { artistClick(state.artist) }
+                            } else {
+                                Modifier.fillMaxWidth()
+                            }
                             Text(
                                 text = state.artist,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -986,7 +1001,7 @@ private fun ExpressiveHeroZone(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = artistModifier,
                             )
                         }
                     }

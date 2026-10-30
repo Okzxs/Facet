@@ -67,6 +67,39 @@ class DeezerProvider @Inject constructor(
         }
 
     /**
+     * Популярные треки артиста для экрана артиста: сначала поиск артиста
+     * (`/search/artist`), затем его топ (`/artist/{id}/top`).
+     *
+     * Оба запроса проходят через лимитер источника. Пустой список — артист
+     * не найден (или у него нет топа), это не ошибка: экран уйдёт в фолбэк.
+     */
+    suspend fun fetchArtistTopTracks(
+        artistName: String,
+        limit: Int = ARTIST_TOP_LIMIT,
+    ): Result<List<Track>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val searchUrl = "$BASE_URL/search/artist?q=${encode(artistName)}" +
+                    "&limit=$ARTIST_SEARCH_LIMIT"
+                val searchRoot = rateLimiter.acquire { requestJson(searchUrl) }
+                val artistId = searchRoot["data"]?.jsonArray
+                    ?.firstOrNull()
+                    ?.jsonObject
+                    ?.get("id")?.jsonPrimitive?.longOrNull
+                    ?: return@runCatching emptyList()
+
+                val topUrl = "$BASE_URL/artist/$artistId/top" +
+                    "?limit=${limit.coerceIn(1, MAX_ARTIST_TOP)}"
+                val topRoot = rateLimiter.acquire { requestJson(topUrl) }
+                topRoot["data"]?.jsonArray
+                    ?.mapNotNull { element -> parseTrack(element.jsonObject) }
+                    .orEmpty()
+            }.onFailure { error ->
+                Log.w(TAG, "Загрузка артиста Deezer не удалась: ${error.message}")
+            }
+        }
+
+    /**
      * Превью Deezer живёт ограниченное время. Если ссылка протухла, ищем трек
      * заново по ISRC (точнее всего) или по «артист — название».
      */
@@ -166,6 +199,9 @@ class DeezerProvider @Inject constructor(
         const val ID_PREFIX = "deezer:"
         const val MAX_LIMIT = 50
         const val RESOLVE_LIMIT = 10
+        const val ARTIST_SEARCH_LIMIT = 1
+        const val ARTIST_TOP_LIMIT = 20
+        const val MAX_ARTIST_TOP = 50
         const val PREVIEW_SECONDS = 30
         const val MIME_MP3 = "audio/mpeg"
         const val UNKNOWN_ARTIST = "Неизвестный исполнитель"

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Waves
 import androidx.compose.ui.graphics.vector.ImageVector
+import android.net.Uri
 import com.my.music.R
 
 sealed class Screen(val route: String) {
@@ -31,10 +32,24 @@ sealed class Screen(val route: String) {
         /** Собирает конкретный маршрут для навигации. */
         fun createRoute(playlistId: Long): String = "playlist/$playlistId"
     }
+
+    /**
+     * Экран артиста: имя приходит аргументом и кодируется в URL,
+     * иначе пробелы и «/» ломают маршрут.
+     */
+    object Artist : Screen("artist/{$ARTIST_NAME_ARG}") {
+        const val ARG_NAME = ARTIST_NAME_ARG
+
+        /** Собирает маршрут артиста с экранированием имени. */
+        fun createRoute(artistName: String): String = "artist/${Uri.encode(artistName)}"
+    }
 }
 
 /** Имя аргумента маршрута плейлиста — общее для [Screen.Playlist] и навграфа. */
 const val PLAYLIST_ID_ARG = "playlistId"
+
+/** Имя аргумента маршрута артиста — общее для [Screen.Artist] и навграфа. */
+const val ARTIST_NAME_ARG = "artistName"
 
 /**
  * Подпись вкладки хранится ссылкой на строковый ресурс: язык интерфейса

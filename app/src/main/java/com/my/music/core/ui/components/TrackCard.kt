@@ -11,7 +11,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +71,7 @@ import kotlin.math.sin
  * Используется в поиске, главной, библиотеке. В покое фон прозрачный:
  * список держится на воздухе и отступах, а не на плашках.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackCard(
     track: Track,
@@ -85,6 +88,11 @@ fun TrackCard(
      * появляется компактная иконка 40dp; экраны без плейлистов её не показывают.
      */
     onAddToPlaylist: (() -> Unit)? = null,
+    /**
+     * Необязательный переход к артисту по долгому тапу на карточке.
+     * Если не передан, карточка ведёт себя как раньше — только короткий тап.
+     */
+    onArtistClick: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -113,6 +121,24 @@ fun TrackCard(
         label = "trackCardScale",
     )
 
+    // Долгий тап подключаем только когда экран его передал: у остальных
+    // списков не должно появляться невидимых жестов.
+    val clickModifier = if (onArtistClick != null) {
+        Modifier.combinedClickable(
+            interactionSource = interactionSource,
+            indication = ripple(color = MaterialTheme.colorScheme.primary),
+            onLongClickLabel = stringResource(R.string.artist_open_cd),
+            onLongClick = onArtistClick,
+            onClick = onClick,
+        )
+    } else {
+        Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = ripple(color = MaterialTheme.colorScheme.primary),
+            onClick = onClick,
+        )
+    }
+
     Surface(
         modifier = modifier
             .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -125,11 +151,7 @@ fun TrackCard(
         tonalElevation = 0.dp,
     ) {
         ListItem(
-            modifier = Modifier.clickable(
-                interactionSource = interactionSource,
-                indication = ripple(color = MaterialTheme.colorScheme.primary),
-                onClick = onClick,
-            ),
+            modifier = clickModifier,
             headlineContent = {
                 // Название и автор живут в одной колонке без supporting-слота:
                 // ListItem иначе разводит их по высоте, и у коротких названий

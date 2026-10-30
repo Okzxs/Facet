@@ -258,4 +258,36 @@
         <item quantity="other">%d playlists</item>
     </plurals>
 
+
+    <!-- Импорт плейлиста по ссылке -->
+    <string name="import_link_button">Import from link</string>
+    <string name="import_link_title">Import from link</string>
+    <string name="import_link_label">Link</string>
+    <string name="import_link_hint">Paste a playlist link</string>
+    <string name="import_link_continue">Continue</string>
+    <string name="import_link_cancel">Cancel</string>
+    <string name="import_link_loading">Loading playlist…</string>
+    <string name="import_link_saving">Saving tracks…</string>
+    <string name="import_preview_title">Import playlist</string>
+    <string name="import_confirm">Import</string>
+    <string name="import_track_line">%1$s — %2$s</string>
+    <string name="import_success">Playlist «%1$s» imported</string>
+    <string name="import_error_empty">Paste a playlist link</string>
+    <string name="import_error_unsupported">Couldn’t recognize the link. Spotify, Deezer, Yandex Music and Apple Music links are supported</string>
+    <string name="import_error_yandex">Yandex Music import is not available yet</string>
+    <string name="import_error_apple">Importing Apple Music playlists is unavailable without the Apple Music API</string>
+    <string name="import_error_spotify_keys">Add Spotify keys in settings</string>
+    <string name="import_error_empty_playlist">The playlist has no tracks</string>
+    <string name="import_error_network">Couldn’t load the playlist. Check the link and your connection</string>
+    <string name="import_error_save">Couldn’t save the playlist</string>
+
+    <!-- Экран артиста -->
+    <string name="artist_title">Artist</string>
+    <string name="artist_play_all">Play all</string>
+    <string name="artist_top_tracks">Popular tracks</string>
+    <string name="artist_load_failed">Couldn’t load the artist’s tracks</string>
+    <string name="artist_retry">Retry</string>
+    <string name="artist_avatar_cd">%1$s avatar</string>
+    <string name="artist_open_cd">Open artist</string>
+
 </resources>

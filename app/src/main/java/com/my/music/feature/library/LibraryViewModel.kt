@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.my.music.core.download.DownloadManager
 import com.my.music.core.download.DownloadMessages
 import com.my.music.core.download.DownloadState
+import com.my.music.core.import.ImportError
+import com.my.music.core.import.ImportedPlaylist
 import com.my.music.core.player.PlayerController
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.DownloadedTrack
@@ -14,8 +16,11 @@ import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlaylistRepository
+import com.my.music.data.source.imports.PlaylistImportResult
+import com.my.music.data.source.imports.PlaylistImportService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,12 +32,24 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Состояние импорта по ссылке: диалог ссылки → загрузка → превью → сохранение.
+ * Ошибки живут отдельным потоком, чтобы Snackbar не сбивал диалог превью.
+ */
+sealed interface PlaylistImportState {
+    data object Idle : PlaylistImportState
+    data object Loading : PlaylistImportState
+    data class Preview(val playlist: ImportedPlaylist) : PlaylistImportState
+    data object Saving : PlaylistImportState
+}
+
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val likedTracksRepository: LikedTracksRepository,
     private val downloadRepository: DownloadRepository,
     private val downloadManager: DownloadManager,
     private val playlistRepository: PlaylistRepository,
+    private val playlistImportService: PlaylistImportService,
     playerController: PlayerController,
 ) : ViewModel() {
 
@@ -111,6 +128,20 @@ class LibraryViewModel @Inject constructor(
     private val _playlistError = MutableStateFlow<String?>(null)
     val playlistError: StateFlow<String?> = _playlistError.asStateFlow()
 
+    /** Текущий шаг импорта по ссылке. */
+    private val _importState = MutableStateFlow<PlaylistImportState>(PlaylistImportState.Idle)
+    val importState: StateFlow<PlaylistImportState> = _importState.asStateFlow()
+
+    /** Причина ошибки импорта: текст подбирает UI из строковых ресурсов. */
+    private val _importError = MutableStateFlow<ImportError?>(null)
+    val importError: StateFlow<ImportError?> = _importError.asStateFlow()
+
+    /** Имя успешно сохранённого плейлиста — для Snackbar об успехе. */
+    private val _importSuccess = MutableStateFlow<String?>(null)
+    val importSuccess: StateFlow<String?> = _importSuccess.asStateFlow()
+
+    private var importJob: Job? = null
+
     fun removeLike(track: Track) {
         viewModelScope.launch {
             runCatching { likedTracksRepository.toggleLike(track) }
@@ -167,6 +198,68 @@ class LibraryViewModel @Inject constructor(
                     _playlistError.value = PLAYLIST_DELETE_FAILED_MESSAGE
                 }
         }
+    }
+
+    /**
+     * Загрузка плейлиста по ссылке: разбор и сеть делает сервис, здесь только
+     * состояния для UI. Повторный запуск отменяет предыдущую загрузку.
+     */
+    fun startImport(link: String) {
+        importJob?.cancel()
+        _importError.value = null
+        _importState.value = PlaylistImportState.Loading
+        importJob = viewModelScope.launch {
+            when (val result = playlistImportService.load(link)) {
+                is PlaylistImportResult.Success -> {
+                    _importState.value = PlaylistImportState.Preview(result.playlist)
+                }
+                is PlaylistImportResult.Failure -> {
+                    _importState.value = PlaylistImportState.Idle
+                    _importError.value = result.error
+                }
+            }
+        }
+    }
+
+    /**
+     * Сохранение превью: создаём плейлист и добавляем треки по одному.
+     * Ошибка БД не крашит экран — показываем Snackbar и возвращаемся в Idle.
+     */
+    fun confirmImport() {
+        val playlist = (_importState.value as? PlaylistImportState.Preview)?.playlist ?: return
+        _importState.value = PlaylistImportState.Saving
+        viewModelScope.launch {
+            runCatching {
+                val playlistId = playlistRepository.createPlaylist(playlist.name)
+                playlist.tracks.forEach { track ->
+                    playlistRepository.addTrack(playlistId, track)
+                }
+            }.rethrowCancellation()
+                .onSuccess {
+                    _importState.value = PlaylistImportState.Idle
+                    _importSuccess.value = playlist.name
+                }
+                .onFailure { error ->
+                    Log.e(TAG, "Не удалось сохранить импортированный плейлист", error)
+                    _importState.value = PlaylistImportState.Idle
+                    _importError.value = ImportError.SAVE_FAILED
+                }
+        }
+    }
+
+    /** Отмена на любом шаге: незавершённая загрузка тоже прекращается. */
+    fun cancelImport() {
+        importJob?.cancel()
+        importJob = null
+        _importState.value = PlaylistImportState.Idle
+    }
+
+    fun consumeImportError() {
+        _importError.value = null
+    }
+
+    fun consumeImportSuccess() {
+        _importSuccess.value = null
     }
 
     private companion object {

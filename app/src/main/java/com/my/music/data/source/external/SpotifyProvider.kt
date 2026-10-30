@@ -33,6 +33,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * Плейлист Spotify: название и треки.
+ *
+ * Стрима нет (DRM), поэтому `streamUrl` у треков пуст — ссылку найдёт
+ * [com.my.music.core.source.StreamResolver] на YouTube.
+ */
+data class SpotifyPlaylist(
+    val name: String,
+    val tracks: List<Track>,
+)
+
+/**
  * Spotify — только метаданные и поиск, без стрима.
  *
  * Авторизация — Client Credentials Flow: приложение пользователя обменивает
@@ -89,6 +100,60 @@ class SpotifyProvider @Inject constructor(
                 loadTracks(query = query, limit = limit, useCache = useCache)
             }.onFailure { error -> Log.w(TAG, "Поиск Spotify не удался: ${error.message}") }
         }
+
+    /**
+     * Плейлист по id: `/v1/playlists/{id}` даёт название, `/v1/playlists/{id}/tracks`
+     * — треки. Оба запроса идут через общий лимитер (квота Spotify общая).
+     */
+    suspend fun fetchPlaylist(playlistId: String): Result<SpotifyPlaylist> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val credentials = credentials() ?: error(NOT_CONFIGURED_MESSAGE)
+                val id = playlistId.removePrefix(ID_PREFIX)
+                val detailsBody = rateLimiter.acquire {
+                    authorizedBody("$API_URL/playlists/$id", credentials)
+                }
+                val name = json.parseToJsonElement(detailsBody).jsonObject["name"]
+                    ?.jsonPrimitive?.contentOrNull
+                    ?.trim()
+                    .orEmpty()
+                val tracksBody = rateLimiter.acquire {
+                    authorizedBody(
+                        "$API_URL/playlists/$id/tracks?limit=$MAX_PLAYLIST_TRACKS",
+                        credentials,
+                    )
+                }
+                SpotifyPlaylist(
+                    name = name.ifBlank { DEFAULT_PLAYLIST_NAME },
+                    tracks = parsePlaylistTracks(tracksBody),
+                )
+            }.onFailure { error ->
+                Log.w(TAG, "Загрузка плейлиста Spotify не удалась: ${error.message}")
+            }
+        }
+
+    /**
+     * Треки плейлиста без названия — удобный вход для импорта.
+     * Название берётся тем же запросом внутри [fetchPlaylist].
+     */
+    suspend fun fetchPlaylistTracks(playlistId: String): Result<List<Track>> =
+        fetchPlaylist(playlistId).map { playlist -> playlist.tracks }
+
+    /**
+     * Разбор `/v1/playlists/{id}/tracks`: элемент `track` может быть null
+     * (удалённый трек) или эпизодом подкаста — такие строки пропускаем.
+     */
+    private fun parsePlaylistTracks(body: String): List<Track> =
+        json.parseToJsonElement(body).jsonObject["items"]?.jsonArray
+            ?.mapNotNull { element ->
+                val item = element.jsonObject
+                val track = item["track"]?.jsonObject ?: return@mapNotNull null
+                if (track["type"]?.jsonPrimitive?.contentOrNull == EPISODE_TYPE) {
+                    return@mapNotNull null
+                }
+                parseTrack(track)
+            }
+            .orEmpty()
 
     /** Кэш → сеть. В кэш попадает только успешно разобранный ответ. */
     private suspend fun loadTracks(query: String, limit: Int, useCache: Boolean): List<Track> {
@@ -263,6 +328,9 @@ class SpotifyProvider @Inject constructor(
         const val GRANT_TYPE = "client_credentials"
         const val FORM_CONTENT_TYPE = "application/x-www-form-urlencoded"
         const val MAX_LIMIT = 20
+        const val MAX_PLAYLIST_TRACKS = 100
+        const val DEFAULT_PLAYLIST_NAME = "Плейлист Spotify"
+        const val EPISODE_TYPE = "episode"
         const val HTTP_UNAUTHORIZED = 401
         val HTTP_OK_RANGE = 200..299
         const val DEFAULT_TOKEN_TTL_SECONDS = 3600L

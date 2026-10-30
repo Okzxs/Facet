@@ -105,5 +105,11 @@ abstract class RepositoryModule {
     abstract fun bindPlaylistRepository(
         impl: com.my.music.data.local.PlaylistRepositoryImpl,
     ): com.my.music.data.repository.PlaylistRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPlaylistImportService(
+        impl: com.my.music.data.source.imports.PlaylistImportServiceImpl,
+    ): com.my.music.data.source.imports.PlaylistImportService
 }
 

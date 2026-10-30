@@ -60,6 +60,7 @@ import com.my.music.core.ui.components.MiniPlayerHorizontalMargin
 import com.my.music.core.ui.components.MiniPlayerIslandHeight
 import com.my.music.core.ui.theme.prewarmPlayerPalette
 import com.my.music.data.model.Track
+import com.my.music.feature.artist.ArtistScreen
 import com.my.music.feature.home.HomeScreen
 import com.my.music.feature.library.LibraryScreen
 import com.my.music.feature.player.PlayerSwipeState
@@ -81,13 +82,14 @@ fun AppNavGraph() {
     // остаётся скомпонованной под ним и реально проглядывает при свайпе вниз.
     var isPlayerOpen by rememberSaveable { mutableStateOf(false) }
 
-    // Скрываем BottomBar на полноэкранных экранах (плеер, настройки, плейлист).
+    // Скрываем BottomBar на полноэкранных экранах (плеер, настройки, плейлист, артист).
     val showBottomBar by remember {
         derivedStateOf {
             val route = navBackStackEntry?.destination?.route
             !isPlayerOpen &&
                 route != Screen.Settings.route &&
-                route != Screen.Playlist.route
+                route != Screen.Playlist.route &&
+                route != Screen.Artist.route
         }
     }
 
@@ -198,7 +200,12 @@ fun AppNavGraph() {
                     )
                 }
                 composable(Screen.Search.route) {
-                    SearchScreen(onTrackClick = { track, queue -> openPlayer(track, queue) })
+                    SearchScreen(
+                        onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        onArtistClick = { artist ->
+                            navController.navigate(Screen.Artist.createRoute(artist))
+                        },
+                    )
                 }
                 composable(Screen.Library.route) {
                     LibraryScreen(
@@ -216,6 +223,9 @@ fun AppNavGraph() {
                         onPlaylistClick = { playlistId ->
                             navController.navigate(Screen.Playlist.createRoute(playlistId))
                         },
+                        onArtistClick = { artist ->
+                            navController.navigate(Screen.Artist.createRoute(artist))
+                        },
                     )
                 }
                 // Экран плейлиста — отдельный маршрут с id. Нижний док скрыт:
@@ -227,6 +237,21 @@ fun AppNavGraph() {
                     ),
                 ) {
                     PlaylistScreen(
+                        onBack = { navController.popBackStack() },
+                        onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        onArtistClick = { artist ->
+                            navController.navigate(Screen.Artist.createRoute(artist))
+                        },
+                    )
+                }
+                // Экран артиста: имя в пути, нижний док скрыт как у деталей.
+                composable(
+                    route = Screen.Artist.route,
+                    arguments = listOf(
+                        navArgument(Screen.Artist.ARG_NAME) { type = NavType.StringType },
+                    ),
+                ) {
+                    ArtistScreen(
                         onBack = { navController.popBackStack() },
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
                     )
@@ -375,6 +400,12 @@ fun AppNavGraph() {
                                 launchSingleTop = true
                                 restoreState = true
                             }
+                        },
+                        onArtistClick = { artist ->
+                            // Плеер — оверлей: закрываем его и открываем экран артиста.
+                            // Воспроизведение не прерывается, PlayerController общий.
+                            isPlayerOpen = false
+                            navController.navigate(Screen.Artist.createRoute(artist))
                         },
                         viewModel = playerViewModel,
                         coverModifier = coverModifier,
