@@ -316,4 +316,38 @@
     <string name="artist_avatar_cd">%1$s аватар</string>
     <string name="artist_open_cd">Открыть артиста</string>
 
+    <!-- Медиатека, артист и Spotify (сессия 60) -->
+    <string name="library_favorites">Любимые треки</string>
+    <string name="library_import_short">Импорт</string>
+    <string name="playlist_delete_action">Удалить плейлист</string>
+    <string name="artist_followers">%1$s слушателей</string>
+    <string name="artist_albums">%1$s альбомов</string>
+    <string name="artist_albums_title">Альбомы</string>
+    <string name="artist_similar_title">Похожие артисты</string>
+    <string name="artist_shuffle">Перемешать</string>
+    <string name="artist_about">Об артисте</string>
+    <string name="artist_play_album_cd">Слушать альбом %1$s</string>
+    <string name="artist_album_tracks_failed">Не удалось загрузить альбом</string>
+    <string name="spotify_guide_title">Как настроить Spotify</string>
+    <string name="spotify_guide_open">Инструкция</string>
+    <string name="spotify_guide_step1_title">Создайте приложение в Spotify Developer Dashboard</string>
+    <string name="spotify_guide_step1_body">Откройте developer.spotify.com/dashboard, войдите под своим аккаунтом Spotify и нажмите «Create app».</string>
+    <string name="spotify_guide_step2_title">Заполните форму</string>
+    <string name="spotify_guide_step2_body">Название и описание — любые. В поле Redirect URI вставьте ровно: mymusic://spotify-auth — и отметьте «Web API».</string>
+    <string name="spotify_guide_step3_title">Скопируйте ключи</string>
+    <string name="spotify_guide_step3_body">В настройках приложения лежат Client ID и Client Secret. Секрет нужен только для поиска без входа.</string>
+    <string name="spotify_guide_step4_title">Вставьте ключи ниже</string>
+    <string name="spotify_guide_step4_body">Сохраните их и нажмите «Войти через Spotify» — откроется браузер, приложение вернётся само.</string>
+    <string name="spotify_guide_open_dashboard">Открыть Dashboard</string>
+    <string name="spotify_guide_note">Звук Spotify защищён DRM: приложение использует его для поиска и плейлистов, а поток подбирается на YouTube.</string>
+    <string name="spotify_sign_in">Войти через Spotify</string>
+    <string name="spotify_sign_out">Выйти</string>
+    <string name="spotify_signed_in_as">Вы вошли как %1$s</string>
+    <string name="spotify_sign_in_failed">Не удалось войти в Spotify</string>
+    <string name="spotify_auth_cancelled">Вход отменён</string>
+    <string name="spotify_redirect_uri">Redirect URI для Dashboard: mymusic://spotify-auth</string>
+    <string name="spotify_import_row">Плейлисты Spotify</string>
+    <string name="spotify_import_loading">Загружаем плейлисты Spotify…</string>
+    <string name="spotify_import_failed">Не удалось загрузить плейлисты Spotify</string>
+
 </resources>

@@ -23,11 +23,14 @@ interface PlaylistDao {
     @Query("SELECT * FROM `playlists` ORDER BY `createdAt` ASC")
     fun observeAll(): Flow<List<PlaylistEntity>>
 
-    /** Плейлисты с числом треков — основной запрос списков в UI. */
+    /** Плейлисты с числом треков и обложкой — основной запрос списков в UI. */
     @Query(
         """
         SELECT p.`id` AS id, p.`name` AS name, p.`createdAt` AS createdAt,
-               COUNT(t.`trackId`) AS trackCount
+               COUNT(t.`trackId`) AS trackCount,
+               (SELECT c.`artworkUrl` FROM `playlist_tracks` c
+                WHERE c.`playlistId` = p.`id` AND c.`artworkUrl` IS NOT NULL
+                ORDER BY c.`addedAt` ASC LIMIT 1) AS coverUrl
         FROM `playlists` p
         LEFT JOIN `playlist_tracks` t ON t.`playlistId` = p.`id`
         GROUP BY p.`id`
@@ -40,7 +43,10 @@ interface PlaylistDao {
     @Query(
         """
         SELECT p.`id` AS id, p.`name` AS name, p.`createdAt` AS createdAt,
-               COUNT(t.`trackId`) AS trackCount
+               COUNT(t.`trackId`) AS trackCount,
+               (SELECT c.`artworkUrl` FROM `playlist_tracks` c
+                WHERE c.`playlistId` = p.`id` AND c.`artworkUrl` IS NOT NULL
+                ORDER BY c.`addedAt` ASC LIMIT 1) AS coverUrl
         FROM `playlists` p
         LEFT JOIN `playlist_tracks` t ON t.`playlistId` = p.`id`
         WHERE p.`id` = :playlistId

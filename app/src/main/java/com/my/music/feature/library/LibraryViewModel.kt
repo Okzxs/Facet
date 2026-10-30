@@ -186,6 +186,22 @@ class LibraryViewModel @Inject constructor(
     }
 
     /**
+     * Создание пустого плейлиста из медиатеки. Имя обрезается репозиторием;
+     * ошибка БД не крашит экран — показываем Snackbar через общий поток.
+     */
+    fun createPlaylist(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            runCatching { playlistRepository.createPlaylist(name) }
+                .rethrowCancellation()
+                .onFailure { error ->
+                    Log.e(TAG, "Не удалось создать плейлист", error)
+                    _playlistError.value = PLAYLIST_CREATE_FAILED_MESSAGE
+                }
+        }
+    }
+
+    /**
      * Удаление плейлиста: его треки уходят каскадом внешнего ключа.
      * Сбой БД не крашит экран — показываем Snackbar.
      */
@@ -267,5 +283,6 @@ class LibraryViewModel @Inject constructor(
         const val LIKE_FAILED_MESSAGE = "Не удалось обновить лайк: база данных недоступна"
         const val DELETE_FAILED_MESSAGE = "Не удалось удалить трек с устройства"
         const val PLAYLIST_DELETE_FAILED_MESSAGE = "Не удалось удалить плейлист: база данных недоступна"
+        const val PLAYLIST_CREATE_FAILED_MESSAGE = "Не удалось создать плейлист: база данных недоступна"
     }
 }

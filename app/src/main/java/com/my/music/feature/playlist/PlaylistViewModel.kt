@@ -75,12 +75,29 @@ class PlaylistViewModel @Inject constructor(
     private val _failed = MutableStateFlow(false)
     val failed: StateFlow<Boolean> = _failed.asStateFlow()
 
+    /** Плейлист удалён: экран закрывается, возвращаться в него некуда. */
+    private val _deleted = MutableStateFlow(false)
+    val deleted: StateFlow<Boolean> = _deleted.asStateFlow()
+
     fun removeTrack(trackId: String) {
         viewModelScope.launch {
             runCatching { repository.removeTrack(playlistId, trackId) }
                 .rethrowCancellation()
                 .onFailure { error ->
                     Log.e(TAG, "Не удалось удалить трек из плейлиста", error)
+                    _failed.value = true
+                }
+        }
+    }
+
+    /** Удаление плейлиста вместе с треками (каскад внешнего ключа). */
+    fun deletePlaylist() {
+        viewModelScope.launch {
+            runCatching { repository.deletePlaylist(playlistId) }
+                .rethrowCancellation()
+                .onSuccess { _deleted.value = true }
+                .onFailure { error ->
+                    Log.e(TAG, "Не удалось удалить плейлист", error)
                     _failed.value = true
                 }
         }

@@ -1,96 +1,89 @@
 package com.my.music.feature.library
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import com.my.music.data.model.DownloadedTrack
-import com.my.music.data.model.toTrack
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.rounded.AddLink
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.my.music.R
 import com.my.music.core.download.DownloadState
+import com.my.music.core.import.ImportError
+import com.my.music.core.import.ImportedPlaylist
 import com.my.music.core.ui.components.AddToPlaylistSheet
+import com.my.music.core.ui.components.CollectionChipCard
+import com.my.music.core.ui.components.CollectionSummary
+import com.my.music.core.ui.components.PlaylistTile
+import com.my.music.core.ui.components.SectionHeader
 import com.my.music.core.ui.components.TrackCard
 import com.my.music.core.ui.components.TrackDownloadButton
 import com.my.music.data.model.Playlist
 import com.my.music.data.model.Track
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.rounded.AddLink
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import com.my.music.core.import.ImportError
-import com.my.music.core.import.ImportedPlaylist
+import com.my.music.data.model.toTrack
 import com.my.music.navigation.LocalBottomDockHeight
 import kotlinx.coroutines.launch
 
 /**
- * Экран медиатеки: любимые треки с быстрыми действиями,
- * подсветкой играющего трека и пустым состоянием с переходом в поиск.
+ * Медиатека — единый экран коллекции без вкладок.
+ *
+ * Сверху крупный чипс «Любимые треки» (открывает отдельный экран), ниже
+ * секция «Плейлисты» с сеткой сохранённых плейлистов и секция «Скачанное».
+ * Раньше это были три сегмента одной вкладки, и содержимое каждого
+ * начиналось с собственного заголовка — теперь один заголовок и общий ритм.
  */
 @Composable
 fun LibraryScreen(
@@ -98,6 +91,7 @@ fun LibraryScreen(
     onOpenSearch: () -> Unit,
     onPlaylistClick: (Long) -> Unit,
     onArtistClick: (String) -> Unit,
+    onLikedTracksClick: () -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
     viewModel: LibraryViewModel = hiltViewModel(),
@@ -108,8 +102,6 @@ fun LibraryScreen(
     val downloadError by viewModel.downloadError.collectAsState()
     val likeError by viewModel.likeError.collectAsState()
     val playlistError by viewModel.playlistError.collectAsState()
-    val currentTrackId by viewModel.currentTrackId.collectAsState()
-    val isPlayerPlaying by viewModel.isPlaying.collectAsState()
     val downloadedTracks by viewModel.downloadedTracks.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
     val importState by viewModel.importState.collectAsState()
@@ -118,14 +110,15 @@ fun LibraryScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var tab by rememberSaveable { mutableStateOf(LibraryTab.MEDIA) }
     var pendingDelete by remember { mutableStateOf<Track?>(null) }
-    var pendingPlaylistDelete by remember { mutableStateOf<Playlist?>(null) }
     // Трек, для которого открыта шторка «Добавить в плейлист».
     var playlistTrack by remember { mutableStateOf<Track?>(null) }
     // Диалог ввода ссылки для импорта и сам текст ссылки.
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var importLink by rememberSaveable { mutableStateOf("") }
+    // Диалог создания плейлиста прямо из медиатеки.
+    var showCreateDialog by rememberSaveable { mutableStateOf(false) }
+    var newPlaylistName by rememberSaveable { mutableStateOf("") }
 
     // Очередь живёт в плеере: подтверждение действий — Snackbar.
     val handlePlayNext: (Track) -> Unit = { track ->
@@ -153,28 +146,19 @@ fun LibraryScreen(
 
     LaunchedEffect(downloadError) {
         val message = downloadError ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(
-            message = message,
-            duration = SnackbarDuration.Short,
-        )
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
         viewModel.consumeDownloadError()
     }
 
     LaunchedEffect(likeError) {
         val message = likeError ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(
-            message = message,
-            duration = SnackbarDuration.Short,
-        )
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
         viewModel.consumeLikeError()
     }
 
     LaunchedEffect(playlistError) {
         val message = playlistError ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(
-            message = message,
-            duration = SnackbarDuration.Short,
-        )
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
         viewModel.consumePlaylistError()
     }
 
@@ -183,10 +167,7 @@ fun LibraryScreen(
     val importErrorMessage = importError?.let { error -> stringResource(importErrorRes(error)) }
     LaunchedEffect(importErrorMessage) {
         val message = importErrorMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(
-            message = message,
-            duration = SnackbarDuration.Short,
-        )
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
         viewModel.consumeImportError()
     }
 
@@ -195,10 +176,7 @@ fun LibraryScreen(
     }
     LaunchedEffect(importSuccessMessage) {
         val message = importSuccessMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(
-            message = message,
-            duration = SnackbarDuration.Short,
-        )
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
         viewModel.consumeImportSuccess()
     }
 
@@ -207,177 +185,127 @@ fun LibraryScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
-        // Статус-бар обеспечивает сам экран (корневого Scaffold больше нет);
-        // низ — через contentPadding списка с запасом под плавающий док.
         contentWindowInsets = WindowInsets.statusBars,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
+            contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
         ) {
-            LibraryHeader(
-                trackCount = when (tab) {
-                    LibraryTab.MEDIA -> likedTracks.size
-                    LibraryTab.DOWNLOADED -> downloadedTracks.size
-                    LibraryTab.PLAYLISTS -> playlists.size
-                },
-                totalMs = when (tab) {
-                    LibraryTab.MEDIA -> likedTracks.sumOf { it.durationMs }
-                    LibraryTab.DOWNLOADED -> downloadedTracks.sumOf { it.durationMs }
-                    LibraryTab.PLAYLISTS -> 0L
-                },
-                playlistsMode = tab == LibraryTab.PLAYLISTS,
-            )
-
-            LibraryTabs(
-                selected = tab,
-                onSelect = { tab = it },
-            )
-
-            // Подтверждение удаления скачанного файла с устройства.
-            pendingDelete?.let { track ->
-                DeleteDownloadDialog(
-                    title = track.title,
-                    onConfirm = {
-                        viewModel.removeDownload(track.id)
-                        pendingDelete = null
-                    },
-                    onDismiss = { pendingDelete = null },
+            item(key = "library_header") {
+                LibraryHeader(
+                    trackCount = likedTracks.size,
+                    playlistCount = playlists.size,
                 )
             }
 
-            // Подтверждение удаления плейлиста: треки уходят каскадом.
-            pendingPlaylistDelete?.let { playlist ->
-                DeletePlaylistDialog(
-                    name = playlist.name,
-                    onConfirm = {
-                        viewModel.deletePlaylist(playlist.id)
-                        pendingPlaylistDelete = null
-                    },
-                    onDismiss = { pendingPlaylistDelete = null },
+            // ─── Любимые треки: большой чипс на всю ширину ────────────────
+            item(key = "library_favorites") {
+                CollectionChipCard(
+                    title = stringResource(R.string.library_favorites),
+                    subtitle = likedTracksSubtitle(likedTracks),
+                    icon = Icons.Filled.Favorite,
+                    onClick = onLikedTracksClick,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
 
-            when (tab) {
-                LibraryTab.MEDIA -> if (likedTracks.isEmpty()) {
-                LibraryEmptyState(
-                    onOpenSearch = onOpenSearch,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+            // ─── Плейлисты ───────────────────────────────────────────────
+            item(key = "library_playlists_header") {
+                SectionHeader(
+                    title = stringResource(R.string.library_tab_playlists),
+                    actionLabel = stringResource(R.string.library_import_short),
+                    actionIcon = Icons.Rounded.AddLink,
+                    onAction = { showImportDialog = true },
                 )
+            }
+            if (playlists.isEmpty()) {
+                item(key = "library_playlists_empty") {
+                    PlaylistsEmptyCard(
+                        onCreate = {
+                            newPlaylistName = ""
+                            showCreateDialog = true
+                        },
+                        onImport = { showImportDialog = true },
+                    )
+                }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // Быстрые кнопки: «Слушать всё» шире «Перемешать» (1.6 к 1.0)
-                    item(key = "library_actions") {
+                playlists.chunked(PLAYLIST_GRID_COLUMNS).forEachIndexed { index, row ->
+                    item(key = "library_playlists_row_$index") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 16.dp),
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Button(
-                                onClick = {
-                                    onTrackClick(likedTracks.first(), likedTracks)
-                                },
-                                modifier = Modifier
-                                    .weight(1.6f)
-                                    .height(52.dp),
-                                shape = CircleShape,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.PlayArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
+                            row.forEach { playlist ->
+                                PlaylistTile(
+                                    playlistName = playlist.name,
+                                    coverUrl = playlist.coverUrl,
+                                    trackCount = playlist.trackCount,
+                                    onClick = { onPlaylistClick(playlist.id) },
+                                    modifier = Modifier.weight(1f),
                                 )
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.library_play_all))
                             }
-
-                            FilledTonalButton(
-                                onClick = {
-                                    val shuffled = likedTracks.shuffled()
-                                    onTrackClick(shuffled.first(), shuffled)
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(52.dp),
-                                shape = CircleShape,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Shuffle,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.library_shuffle))
+                            // Нечётное число плиток: пустая колонка держит ширину.
+                            if (row.size < PLAYLIST_GRID_COLUMNS) {
+                                Spacer(Modifier.weight(1f))
                             }
                         }
                     }
-
-                    items(
-                        items = likedTracks,
-                        key = { it.id },
-                    ) { track ->
-                        TrackCard(
-                            track = track,
-                            isDownloaded = track.id in downloadedIds,
-                            isPlaying = track.id == currentTrackId,
-                            isPaused = track.id == currentTrackId && !isPlayerPlaying,
-                            artworkSize = 60,
-                            artworkCornerDp = 16,
-                            onClick = { onTrackClick(track, likedTracks) },
-                            onAddToPlaylist = { playlistTrack = track },
-                            // Долгий тап по карточке открывает экран артиста.
-                            onArtistClick = { onArtistClick(track.artist) },
-                            onPlayNext = { handlePlayNext(track) },
-                            onAddToQueue = { handleAddToQueue(track) },
-                            trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TrackDownloadButton(
-                                        state = downloadStates[track.id]
-                                            ?: DownloadState.NotDownloaded,
-                                        onClick = { viewModel.downloadTrack(track) },
-                                    )
-                                    IconButton(onClick = { viewModel.removeLike(track) }) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Favorite,
-                                            contentDescription = stringResource(R.string.library_remove_like),
-                                            tint = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                }
-                            },
-                        )
-                    }
                 }
-                }
-
-                LibraryTab.DOWNLOADED -> DownloadedContent(
-                    downloaded = downloadedTracks,
-                    currentTrackId = currentTrackId,
-                    onTrackClick = onTrackClick,
-                    onDelete = { track -> pendingDelete = track },
-                    onOpenSearch = onOpenSearch,
-                    onAddToPlaylist = { track -> playlistTrack = track },
-                    onArtistClick = onArtistClick,
-                    onPlayNext = handlePlayNext,
-                    onAddToQueue = handleAddToQueue,
-                )
-
-                LibraryTab.PLAYLISTS -> PlaylistsContent(
-                    playlists = playlists,
-                    onPlaylistClick = onPlaylistClick,
-                    onDelete = { playlist -> pendingPlaylistDelete = playlist },
-                    onImportClick = { showImportDialog = true },
-                )
             }
+
+            // ─── Скачанное ───────────────────────────────────────────────
+            item(key = "library_downloaded_header") {
+                SectionHeader(title = stringResource(R.string.library_tab_downloaded))
+            }
+            if (downloadedTracks.isEmpty()) {
+                item(key = "library_downloaded_empty") {
+                    DownloadsEmptyCard(onOpenSearch = onOpenSearch)
+                }
+            } else {
+                items(items = downloadedTracks.map { it.toTrack() }, key = { it.id }) { track ->
+                    TrackCard(
+                        track = track,
+                        isDownloaded = true,
+                        artworkSize = 60,
+                        artworkCornerDp = 16,
+                        onClick = {
+                            onTrackClick(track, downloadedTracks.map { it.toTrack() })
+                        },
+                        onAddToPlaylist = { playlistTrack = track },
+                        onArtistClick = { onArtistClick(track.artist) },
+                        onPlayNext = { handlePlayNext(track) },
+                        onAddToQueue = { handleAddToQueue(track) },
+                        trailingContent = {
+                            IconButton(onClick = { pendingDelete = track }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Delete,
+                                    contentDescription = stringResource(
+                                        R.string.library_downloaded_menu,
+                                    ),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        // Подтверждение удаления скачанного файла с устройства.
+        pendingDelete?.let { track ->
+            DeleteDownloadDialog(
+                title = track.title,
+                onConfirm = {
+                    viewModel.removeDownload(track.id)
+                    pendingDelete = null
+                },
+                onDismiss = { pendingDelete = null },
+            )
         }
     }
 
@@ -391,6 +319,18 @@ fun LibraryScreen(
                 viewModel.startImport(importLink)
             },
             onDismiss = { showImportDialog = false },
+        )
+    }
+
+    if (showCreateDialog) {
+        CreatePlaylistDialog(
+            name = newPlaylistName,
+            onNameChange = { newPlaylistName = it },
+            onConfirm = {
+                viewModel.createPlaylist(newPlaylistName)
+                showCreateDialog = false
+            },
+            onDismiss = { showCreateDialog = false },
         )
     }
 
@@ -428,20 +368,11 @@ fun LibraryScreen(
     }
 }
 
-/**
- * Шапка медиатеки: крупный заголовок и подпись с количеством треков
- * и суммарной длительностью. Плюрализация — через ресурсы `track_count`
- * и `playlist_count`, поэтому форма слова верная в любом языке.
- */
+/** Шапка медиатеки: крупный заголовок и общая подпись коллекции. */
 @Composable
-private fun LibraryHeader(trackCount: Int, totalMs: Long, playlistsMode: Boolean) {
-    val label = if (playlistsMode) {
-        pluralStringResource(R.plurals.playlist_count, trackCount, trackCount)
-    } else {
-        pluralStringResource(R.plurals.track_count, trackCount, trackCount)
-    }
+private fun LibraryHeader(trackCount: Int, playlistCount: Int) {
     Column(
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
     ) {
         Text(
             text = stringResource(R.string.library_title),
@@ -450,71 +381,19 @@ private fun LibraryHeader(trackCount: Int, totalMs: Long, playlistsMode: Boolean
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            // Для пустой коллекции не показываем «0 мин» — только количество.
-            text = if (!playlistsMode && totalMs > 0L) {
-                "$label · ${formatTotalDuration(totalMs)}"
-            } else {
-                label
-            },
+            text = CollectionSummary(trackCount = trackCount, playlistCount = playlistCount),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
-/** Пустое состояние: squircle-плашка, заголовок, подсказка и выход в поиск. */
+/** Подпись чипса «Любимые треки»: количество и суммарная длительность. */
 @Composable
-private fun LibraryEmptyState(
-    onOpenSearch: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier.padding(horizontal = 32.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(
-                modifier = Modifier.size(96.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.FavoriteBorder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(40.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(20.dp))
-            Text(
-                text = stringResource(R.string.library_empty_title),
-                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(24.dp))
-            Text(
-                text = stringResource(R.string.library_empty_message),
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(20.dp))
-            FilledTonalButton(
-                onClick = onOpenSearch,
-                shape = CircleShape,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.library_find_music))
-            }
-        }
-    }
+private fun likedTracksSubtitle(tracks: List<Track>): String {
+    val count = pluralStringResource(R.plurals.track_count, tracks.size, tracks.size)
+    val totalMs = tracks.sumOf { it.durationMs }
+    return if (totalMs > 0L) "$count · ${formatTotalDuration(totalMs)}" else count
 }
 
 /** Суммарная длительность коллекции: «1 ч 5 мин» или «42 мин». */
@@ -530,33 +409,91 @@ private fun formatTotalDuration(ms: Long): String {
     }
 }
 
-/**
- * Вкладки медиатеки: коллекция лайков, офлайн-файлы и плейлисты.
- */
-private enum class LibraryTab { MEDIA, DOWNLOADED, PLAYLISTS }
-
+/** Пустая секция «Плейлисты»: создание и импорт прямо из медиатеки. */
 @Composable
-private fun LibraryTabs(
-    selected: LibraryTab,
-    onSelect: (LibraryTab) -> Unit,
+private fun PlaylistsEmptyCard(
+    onCreate: () -> Unit,
+    onImport: () -> Unit,
 ) {
-    SingleChoiceSegmentedButtonRow(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        val tabs = listOf(
-            LibraryTab.MEDIA to stringResource(R.string.library_tab_library),
-            LibraryTab.DOWNLOADED to stringResource(R.string.library_tab_downloaded),
-            LibraryTab.PLAYLISTS to stringResource(R.string.library_tab_playlists),
-        )
-        tabs.forEachIndexed { index, (tab, label) ->
-            SegmentedButton(
-                selected = selected == tab,
-                onClick = { onSelect(tab) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size),
-            ) {
-                Text(label)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = stringResource(R.string.playlist_empty_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.playlist_empty_message),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = onCreate, shape = CircleShape) {
+                    Text(stringResource(R.string.playlist_create))
+                }
+                TextButton(onClick = onImport) {
+                    Text(stringResource(R.string.library_import_short))
+                }
+            }
+        }
+    }
+}
+
+/** Пустая секция «Скачанное»: объясняем, как сохранить музыку офлайн. */
+@Composable
+private fun DownloadsEmptyCard(onOpenSearch: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.DownloadDone,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = stringResource(R.string.library_downloaded_empty_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.library_downloaded_empty_message),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            FilledTonalButton(onClick = onOpenSearch, shape = CircleShape) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.library_find_music))
             }
         }
     }
@@ -582,275 +519,38 @@ private fun DeleteDownloadDialog(
     )
 }
 
-/** Диалог удаления плейлиста: треки удаляются вместе с ним. */
+/** Диалог создания плейлиста из медиатеки. */
 @Composable
-private fun DeletePlaylistDialog(
+private fun CreatePlaylistDialog(
     name: String,
+    onNameChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.playlist_delete_title)) },
-        text = { Text(stringResource(R.string.playlist_delete_message, name)) },
+        title = { Text(stringResource(R.string.playlist_create_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = onNameChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text(stringResource(R.string.playlist_create_name)) },
+                placeholder = { Text(stringResource(R.string.playlist_default_name)) },
+            )
+        },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.playlist_delete_confirm)) }
+            TextButton(onClick = onConfirm, enabled = name.isNotBlank()) {
+                Text(stringResource(R.string.playlist_create_confirm))
+            }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.playlist_delete_cancel)) }
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.playlist_create_cancel))
+            }
         },
     )
-}
-
-/**
- * Вкладка «Плейлисты»: кнопка импорта по ссылке, затем список плейлистов.
- * Тап по строке открывает экран плейлиста.
- */
-@Composable
-private fun PlaylistsContent(
-    playlists: List<Playlist>,
-    onPlaylistClick: (Long) -> Unit,
-    onDelete: (Playlist) -> Unit,
-    onImportClick: () -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Кнопка над списком: импорт доступен и на пустой вкладке.
-        FilledTonalButton(
-            onClick = onImportClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .height(48.dp),
-            shape = CircleShape,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.AddLink,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.import_link_button))
-        }
-
-        if (playlists.isEmpty()) {
-            PlaylistsEmptyState(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    top = 8.dp,
-                    bottom = 24.dp + LocalBottomDockHeight.current,
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(items = playlists, key = { it.id }) { playlist ->
-                    Surface(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    ) {
-                        ListItem(
-                            modifier = Modifier.clickable { onPlaylistClick(playlist.id) },
-                            leadingContent = {
-                                Surface(
-                                    modifier = Modifier.size(48.dp),
-                                    shape = MaterialTheme.shapes.medium,
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                    }
-                                }
-                            },
-                            headlineContent = {
-                                Text(
-                                    text = playlist.name,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                            },
-                            supportingContent = {
-                                Text(
-                                    text = pluralStringResource(
-                                        R.plurals.track_count,
-                                        playlist.trackCount,
-                                        playlist.trackCount,
-                                    ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            },
-                            trailingContent = {
-                                IconButton(onClick = { onDelete(playlist) }) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Delete,
-                                        contentDescription = stringResource(
-                                            R.string.playlist_delete_cd,
-                                        ),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            },
-                            colors = ListItemDefaults.colors(
-                                containerColor = Color.Transparent,
-                            ),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** Пустое состояние «Плейлисты»: подсказываем, откуда их брать. */
-@Composable
-private fun PlaylistsEmptyState(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(
-                modifier = Modifier.size(96.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(40.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(20.dp))
-            Text(
-                text = stringResource(R.string.playlist_empty_title),
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = stringResource(R.string.playlist_empty_message),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
-
-/** Вкладка «Скачанное»: офлайн-файлы с удалением по кнопке. */
-@Composable
-private fun DownloadedContent(
-    downloaded: List<DownloadedTrack>,
-    currentTrackId: String?,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    onDelete: (Track) -> Unit,
-    onOpenSearch: () -> Unit,
-    onAddToPlaylist: (Track) -> Unit,
-    onArtistClick: (String) -> Unit,
-    onPlayNext: (Track) -> Unit,
-    onAddToQueue: (Track) -> Unit,
-) {
-    if (downloaded.isEmpty()) {
-        DownloadedEmptyState(onOpenSearch = onOpenSearch)
-        return
-    }
-    val tracks = downloaded.map { it.toTrack() }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(items = tracks, key = { it.id }) { track ->
-            TrackCard(
-                track = track,
-                isDownloaded = true,
-                isPlaying = track.id == currentTrackId,
-                artworkSize = 60,
-                artworkCornerDp = 16,
-                onClick = { onTrackClick(track, tracks) },
-                onAddToPlaylist = { onAddToPlaylist(track) },
-                onArtistClick = { onArtistClick(track.artist) },
-                onPlayNext = { onPlayNext(track) },
-                onAddToQueue = { onAddToQueue(track) },
-                trailingContent = {
-                    IconButton(onClick = { onDelete(track) }) {
-                        Icon(
-                            imageVector = Icons.Filled.Delete,
-                            contentDescription = stringResource(R.string.library_downloaded_menu),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-            )
-        }
-    }
-}
-
-/** Пустое состояние «Скачанное». */
-@Composable
-private fun DownloadedEmptyState(onOpenSearch: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(
-                modifier = Modifier.size(96.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(40.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(20.dp))
-            Text(
-                text = stringResource(R.string.library_downloaded_empty_title),
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = stringResource(R.string.library_downloaded_empty_message),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(20.dp))
-            FilledTonalButton(onClick = onOpenSearch, shape = CircleShape) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.library_find_music))
-            }
-        }
-    }
 }
 
 /** Диалог ввода ссылки на плейлист. */
@@ -970,3 +670,6 @@ private fun importErrorRes(error: ImportError): Int = when (error) {
 
 /** Сколько треков показываем в превью до подтверждения импорта. */
 private const val PREVIEW_TRACK_COUNT = 10
+
+/** Сколько плиток плейлистов в строке сетки медиатеки. */
+private const val PLAYLIST_GRID_COLUMNS = 2

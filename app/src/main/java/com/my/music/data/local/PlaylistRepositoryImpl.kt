@@ -72,6 +72,7 @@ private fun PlaylistWithCount.toPlaylist(): Playlist = Playlist(
     name = name,
     createdAt = createdAt,
     trackCount = trackCount,
+    coverUrl = coverUrl,
 )
 
 /**

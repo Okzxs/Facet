@@ -25,6 +25,9 @@ sealed class Screen(val route: String) {
     object Player : Screen("player")
     object Settings : Screen("settings")
 
+    /** Коллекция любимых треков — открывается из чипса медиатеки. */
+    object LikedTracks : Screen("liked")
+
     /** Экран одного плейлиста: маршрут с аргументом-id. */
     object Playlist : Screen("playlist/{$PLAYLIST_ID_ARG}") {
         const val ARG_ID = PLAYLIST_ID_ARG

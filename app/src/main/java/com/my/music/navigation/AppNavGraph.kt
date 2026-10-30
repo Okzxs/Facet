@@ -63,6 +63,7 @@ import com.my.music.data.model.Track
 import com.my.music.feature.artist.ArtistScreen
 import com.my.music.feature.home.HomeScreen
 import com.my.music.feature.library.LibraryScreen
+import com.my.music.feature.library.LikedTracksScreen
 import com.my.music.feature.player.PlayerSwipeState
 import com.my.music.feature.player.PlayerViewModel
 import com.my.music.feature.player.PlayerScreen
@@ -88,6 +89,7 @@ fun AppNavGraph() {
             val route = navBackStackEntry?.destination?.route
             !isPlayerOpen &&
                 route != Screen.Settings.route &&
+                route != Screen.LikedTracks.route &&
                 route != Screen.Playlist.route &&
                 route != Screen.Artist.route
         }
@@ -224,6 +226,31 @@ fun AppNavGraph() {
                         },
                         onPlaylistClick = { playlistId ->
                             navController.navigate(Screen.Playlist.createRoute(playlistId))
+                        },
+                        onLikedTracksClick = {
+                            navController.navigate(Screen.LikedTracks.route)
+                        },
+                        onArtistClick = { artist ->
+                            navController.navigate(Screen.Artist.createRoute(artist))
+                        },
+                        onPlayNext = { track -> playerViewModel.playNext(track) },
+                        onAddToQueue = { track -> playerViewModel.addToQueue(track) },
+                    )
+                }
+                // Любимые треки — отдельный экран коллекции: в медиатеке от них
+                // остался только крупный чипс.
+                composable(Screen.LikedTracks.route) {
+                    LikedTracksScreen(
+                        onBack = { navController.popBackStack() },
+                        onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        onOpenSearch = {
+                            navController.navigate(Screen.Search.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         },
                         onArtistClick = { artist ->
                             navController.navigate(Screen.Artist.createRoute(artist))
