@@ -1,13 +1,11 @@
 package com.my.music.core.ui.components
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -30,7 +28,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
-import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -74,20 +71,16 @@ fun PlayerControlIsland(
     isPlaying: Boolean,
     isBuffering: Boolean,
     playbackSpeed: Float,
-    isLyricsActive: Boolean,
     containerColor: Color,
     contentColor: Color,
     accentColor: Color,
     onAccentColor: Color,
-    lyricsActiveContainer: Color,
-    lyricsActiveContent: Color,
     borderColor: Color,
     onPlayPause: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onSpeedClick: () -> Unit,
     onQueueClick: () -> Unit,
-    onLyricsClick: () -> Unit,
     modifier: Modifier = Modifier,
     progressContent: @Composable () -> Unit,
 ) {
@@ -270,61 +263,6 @@ private fun PlayMorphButton(
                     stringResource(R.string.common_play_cd)
                 },
                 modifier = Modifier.size(30.dp),
-            )
-        }
-    }
-}
-
-/** Язычок-переключатель режима текста: свешивается с верхней кромки острова. */
-@Composable
-private fun LyricsTab(
-    isActive: Boolean,
-    activeContainer: Color,
-    activeContent: Color,
-    inactiveContainer: Color,
-    inactiveContent: Color,
-    borderColor: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val container by animateColorAsState(
-        targetValue = if (isActive) activeContainer else inactiveContainer,
-        animationSpec = tween(durationMillis = 220),
-        label = "lyricsTabContainer",
-    )
-    val content by animateColorAsState(
-        targetValue = if (isActive) activeContent else inactiveContent,
-        animationSpec = tween(durationMillis = 220),
-        label = "lyricsTabContent",
-    )
-    val interaction = remember { MutableInteractionSource() }
-    val scale = rememberPressScale(interaction)
-
-    Surface(
-        onClick = onClick,
-        interactionSource = interaction,
-        modifier = modifier.graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        },
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 6.dp, bottomStart = 6.dp),
-        color = container,
-        contentColor = content,
-        border = BorderStroke(1.dp, borderColor),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Lyrics,
-                contentDescription = null,
-                modifier = Modifier.size(17.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.player_lyrics),
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             )
         }
     }

@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
@@ -568,6 +570,50 @@ fun PlayerScreen(
                         )
                     },
                     actions = {
+                        // Режим «Текст песни» — заметная кнопка в шапке, а не
+                        // подпись под островом управления: раньше её не находили.
+                        FilledTonalButton(
+                            onClick = {
+                                val nextMode = !isLyricsMode
+                                isLyricsMode = nextMode
+                                if (nextMode) {
+                                    viewModel.loadLyricsIfNeeded(track)
+                                }
+                            },
+                            modifier = Modifier
+                                .height(40.dp)
+                                .padding(end = 4.dp),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            colors = if (isLyricsMode) {
+                                ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            } else {
+                                ButtonDefaults.filledTonalButtonColors()
+                            },
+                        ) {
+                            Icon(
+                                imageVector = if (isLyricsMode) {
+                                    Icons.Rounded.Album
+                                } else {
+                                    Icons.Rounded.Lyrics
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = if (isLyricsMode) {
+                                    stringResource(R.string.player_cover)
+                                } else {
+                                    stringResource(R.string.player_lyrics)
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                            )
+                        }
                         Box {
                             IconButton(onClick = { showMenu = true }) {
                                 Icon(
@@ -710,7 +756,6 @@ fun PlayerScreen(
                         isPlaying = playerState.isPlaying,
                         isBuffering = isBuffering,
                         playbackSpeed = playerState.playbackSpeed,
-                        isLyricsActive = isLyricsMode,
                         containerColor = if (dynamicColorsEnabled) {
                             lerpColor(
                                 MaterialTheme.colorScheme.surfaceContainerLow,
@@ -723,21 +768,12 @@ fun PlayerScreen(
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         accentColor = coverAccent,
                         onAccentColor = onCoverAccent,
-                        lyricsActiveContainer = MaterialTheme.colorScheme.primaryContainer,
-                        lyricsActiveContent = MaterialTheme.colorScheme.onPrimaryContainer,
                         borderColor = Color.Transparent,
                         onPlayPause = { viewModel.togglePlayPause() },
                         onPrev = { viewModel.playPrevious() },
                         onNext = { viewModel.playNext() },
                         onSpeedClick = { viewModel.cyclePlaybackSpeed() },
                         onQueueClick = { showQueueSheet = true },
-                        onLyricsClick = {
-                            val nextMode = !isLyricsMode
-                            isLyricsMode = nextMode
-                            if (nextMode) {
-                                viewModel.loadLyricsIfNeeded(track)
-                            }
-                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(panelModifier)
@@ -757,28 +793,6 @@ fun PlayerScreen(
                             currentPositionMs = { viewModel.currentPositionMs() },
                             bufferedFraction = { viewModel.bufferedFraction() },
                             onSeek = { fraction -> viewModel.seekTo(fraction) },
-                        )
-                    }
-
-                    TextButton(
-                        onClick = {
-                            val nextMode = !isLyricsMode
-                            isLyricsMode = nextMode
-                            if (nextMode) {
-                                viewModel.loadLyricsIfNeeded(track)
-                            }
-                        },
-                        // Подпись режима тоже в палитре плеера: coverAccent совпадает
-                        // с primary темы, когда динамические цвета обложки выключены.
-                        colors = ButtonDefaults.textButtonColors(contentColor = coverAccent),
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    ) {
-                        Text(
-                            if (isLyricsMode) {
-                                stringResource(R.string.player_cover)
-                            } else {
-                                stringResource(R.string.player_lyrics)
-                            },
                         )
                     }
                 }
