@@ -10,6 +10,7 @@ import com.facet.music.core.download.DownloadState
 import com.facet.music.core.location.LocationProvider
 import com.facet.music.core.navigation.NavigationEvents
 import com.facet.music.core.player.ERROR_LYRICS
+import com.facet.music.core.player.PlaybackVariation
 import com.facet.music.core.player.PlayerController
 import com.facet.music.core.player.PlayerState
 import com.facet.music.core.player.SleepTimerState
@@ -347,7 +348,7 @@ class PlayerViewModel @Inject constructor(
     /**
      * Запустить трек в контексте списка-источника (очереди).
      */
-    fun playTrackWithQueue(track: Track, queue: List<Track>) {
+    fun playTrackWithQueue(track: Track, queue: List<Track>, resetWave: Boolean = true) {
         val targetQueue = if (queue.isNotEmpty()) queue else listOf(track)
         val startIndex = targetQueue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
 
@@ -367,13 +368,43 @@ class PlayerViewModel @Inject constructor(
             loadLyrics(track)
         }
 
-        // Ручной запуск из поиска/медиатеки завершает текущую волну
-        waveRefillJob?.cancel()
-        viewModelScope.launch {
-            waveRepository.reset()
+        // Ручной запуск из поиска/медиатеки завершает текущую волну.
+        // Радио от трека (resetWave = false), наоборот, оставляет сессию живой,
+        // чтобы observeWaveRefill подкачивал следующие пачки.
+        if (resetWave) {
+            waveRefillJob?.cancel()
+            viewModelScope.launch {
+                waveRepository.reset()
+            }
         }
 
         playerController.setQueueAndPlay(targetQueue, startIndex)
+    }
+
+    /**
+     * Радио от трека: строим сессию волны на похожих артистах и сразу играем
+     * первую пачку. Дальше очередь пополняется через [observeWaveRefill].
+     */
+    fun startWaveFromTrack(track: Track) {
+        if (_uiState.value.isRadioLoading) return
+        _uiState.update { it.copy(isRadioLoading = true) }
+        viewModelScope.launch {
+            val result = waveRepository.startRadio(track)
+                .mapCatching { waveRepository.nextBatch(size = RADIO_BATCH).getOrThrow() }
+            _uiState.update { it.copy(isRadioLoading = false) }
+            result
+                .onSuccess { batch ->
+                    if (batch.tracks.isEmpty()) return@onSuccess
+                    playTrackWithQueue(
+                        track = batch.tracks.first(),
+                        queue = batch.tracks,
+                        resetWave = false,
+                    )
+                }
+                .onFailure { error ->
+                    Log.e(tag, "Не удалось запустить волну от трека", error)
+                }
+        }
     }
 
     /**
@@ -497,6 +528,16 @@ class PlayerViewModel @Inject constructor(
         playerController.setPlaybackSpeed(nextSpeed)
     }
 
+    /** Детюн: сдвиг строя через PlaybackParameters, 440 Гц — стандарт. */
+    fun setTuning(frequencyHz: Int) {
+        playerController.setTuning(frequencyHz)
+    }
+
+    /** Вариация трека: Speed Up, Slowed, Nightcore. */
+    fun setVariation(variation: PlaybackVariation) {
+        playerController.setVariation(variation)
+    }
+
     /** Текущая позиция [0..1] для слайдера. */
     fun currentFraction(): Float {
         val duration = playerController.durationMs()
@@ -587,6 +628,9 @@ class PlayerViewModel @Inject constructor(
         const val WAVE_REFILL_THRESHOLD = 3
         const val WAVE_REFILL_BATCH = 12
 
+        /** Размер первой пачки радио от трека. */
+        const val RADIO_BATCH = 20
+
         /** Сколько держать крестик ошибки/отмены перед возвратом иконки скачивания. */
         const val ERROR_ICON_DURATION_MS = 1_000L
 
@@ -610,5 +654,7 @@ data class PlayerUiState(
     val isLyricsLoading: Boolean = false,
     val lyricsError: String? = null,
     val downloadError: String? = null,
+    /** Идёт сборка первой пачки радио от трека. */
+    val isRadioLoading: Boolean = false,
 )
 

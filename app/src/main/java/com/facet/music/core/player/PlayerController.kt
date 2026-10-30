@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -272,6 +273,9 @@ class PlayerController private constructor(
         if (!controllerReady.isCompleted) {
             controllerReady.complete(controller)
         }
+        // Новый контроллер не знает про детюн и вариацию: возвращаем ему
+        // актуальные параметры, иначе после переподключения строй сбрасывался бы.
+        applyPlaybackParameters()
     }
 
     /** Снимает слушатели и освобождает мёртвый контроллер перед переподключением. */
@@ -859,8 +863,33 @@ class PlayerController private constructor(
     }
 
     fun setPlaybackSpeed(speed: Float) {
-        mediaController?.setPlaybackSpeed(speed)
         _state.update { it.copy(playbackSpeed = speed) }
+        applyPlaybackParameters()
+    }
+
+    /** Сменить строй (детюн): 428…453 Гц, 440 — стандарт. */
+    fun setTuning(frequencyHz: Int) {
+        if (frequencyHz !in PlaybackTuning.FREQUENCIES) return
+        _state.update { it.copy(tuningHz = frequencyHz) }
+        applyPlaybackParameters()
+    }
+
+    /** Включить вариацию трека (Speed Up, Slowed, Nightcore). */
+    fun setVariation(variation: PlaybackVariation) {
+        _state.update { it.copy(variation = variation) }
+        applyPlaybackParameters()
+    }
+
+    /**
+     * Отправляет в ExoPlayer итоговые параметры:
+     * скорость — базовая × скорость вариации, питч — питч вариации × детюн.
+     */
+    private fun applyPlaybackParameters() {
+        val state = _state.value
+        val speed = (state.playbackSpeed * state.variation.speed).coerceIn(0.25f, 4f)
+        val pitch = (state.variation.pitch * PlaybackTuning.pitchFactor(state.tuningHz.toFloat()))
+            .coerceIn(0.25f, 4f)
+        mediaController?.setPlaybackParameters(PlaybackParameters(speed, pitch))
     }
 
     fun currentPositionMs(): Long = mediaController?.currentPosition ?: 0L
@@ -907,6 +936,10 @@ data class PlayerState(
     val isBuffering: Boolean = false,
     val playbackState: Int = Player.STATE_IDLE,
     val playbackSpeed: Float = 1.0f,
+    /** Строй в герцах: 440 — стандарт, остальные значения — детюн. */
+    val tuningHz: Int = 440,
+    /** Вариация трека: скорость и питч поверх базовой скорости. */
+    val variation: PlaybackVariation = PlaybackVariation.NORMAL,
     val queue: List<Track> = emptyList(),
     val currentIndex: Int = -1,
     val repeatMode: RepeatMode = RepeatMode.OFF,

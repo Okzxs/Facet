@@ -29,6 +29,8 @@ data class WaveSession(
     val batchNumber: Int = 0,
     val isRussianPriority: Boolean = true,
     val isTerminated: Boolean = false,
+    /** Радио от трека: очередь строится только от похожих артистов, без вкусов. */
+    val radioMode: Boolean = false,
     val fromLikes: Int = 0,
     val fromHistory: Int = 0,
     val fromGenres: Int = 0,
@@ -56,6 +58,12 @@ interface WaveRepository {
      * [seeds] — уже показанные треки, которые нужно исключить из выдачи.
      */
     suspend fun startSession(seeds: List<String> = emptyList()): Result<WaveSession>
+
+    /**
+     * Запустить радио от конкретного трека: похожие артисты Last.fm и жанр
+     * трека, без вклада лайков и истории. Дальше работает обычный refill.
+     */
+    suspend fun startRadio(seed: Track): Result<WaveSession>
 
     /**
      * Собрать следующую пачку треков с учётом накопленных вкусов

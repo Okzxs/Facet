@@ -1,6 +1,37 @@
 # PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
 
-## Последнее обновление: 30.10.2026 (сессия 62)
+## Последнее обновление: 30.10.2026 (сессия 63)
+
+## Этап 3, часть 1: аудио-фичи, сводный поиск и иконка «Призма» — сессия 63
+
+### 1. Аудио-фичи
+- `core/player/PlaybackTuning.kt`: список строёв 428/430/432/440/448/450/453 Гц, `cents()` = 1200·log2(f/440), `pitchFactor()` = 2^(cents/1200); `PlaybackVariation` — NORMAL, SPEED_UP (1.25×/1.2), SLOWED (0.8×/0.85), NIGHTCORE (1.3×/1.3). Reverb в SLOWED не реализован: PlaybackParameters умеет только скорость и питч.
+- `PlayerController`: `setTuning(hz)` и `setVariation(v)`; итоговые параметры — `speed = playbackSpeed × variation.speed`, `pitch = variation.pitch × pitchFactor(tuning)`; отправляются через `PlaybackParameters` и повторно применяются при переподключении контроллера.
+- `PlayerState`: поля `tuningHz` и `variation`; меню плеера — «Детюн» (диалог со списком частот) и «Вариации» (`ModalBottomSheet`).
+- «Волна от трека»: `WaveRepository.startRadio(seed)` создаёт сессию с `radioMode = true` — семена только от артиста/жанра трека плюс похожие артисты Last.fm, без квот лайков и истории; `PlayerViewModel.startWaveFromTrack()` играет первую пачку из 20 треков, дальше работает существующий `observeWaveRefill`.
+- Под артистом в плеере — строка «Источник: …» (SoundCloud/YouTube/Deezer/Apple Music/Spotify/Local).
+- Кнопка «Текст песни» вернулась на панель управления: `PlayerControlIsland` получил `isLyricsMode` и `onLyricsClick`, пилюля с иконкой и подписью стоит над рядом транспорта.
+
+### 2. Сводный поиск
+- `core/search/TrackMerger.kt`: дедуп по нормализованным артисту и названию (регистр, пунктуация, скобочные пометки), «лучший» вариант — с полным потоком, а не 30-секундным превью; `Track.sourceCount` хранит число источников.
+- `SearchViewModel`: флаг `allSources`, параллельные запросы по всем `ServiceType` через `async/awaitAll`, ошибка одного источника не рушит выдачу; статусы доступности обновляются по успешным ответам.
+- UI: чипс «Все источники» над рядом иконок, бейдж «+N» у трека в `TrackCard`, когда он нашёлся в нескольких местах.
+
+### 3. Иконка
+- Заменена на «Призму»: внешний треугольник + вложенная грань (`ic_launcher_foreground.xml`, `ic_launcher_monochrome.xml`), сетка и safe zone прежние.
+
+### Проверки
+- `assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL, 35 suites / 246 тестов, 0 failures: +6 `PlaybackTuningTest`, +5 `TrackMergerTest`.
+- `assembleRelease` — BUILD SUCCESSFUL (5m46s), release APK 6 387 633 байт, подпись прежняя.
+- Установлено на SM-A266B: Success.
+- Не проверено вживую (телефон занят): детюн и вариации на слух, волна от трека, бейджи сводного поиска.
+
+### Осталось из Этапа 3
+- Импорт любимых Spotify (`/v1/me/tracks`) с неактивной кнопкой без ключей.
+- `audio_cache` + WorkManager + лимит 500 МБ + LRU + экран кэша.
+- Персистентность очереди и секции «Сейчас играет / Далее / Проиграно».
+- Импорт плейлистов YouTube/SoundCloud через NewPipe.
+- Качество 128/256/320 и ID3-теги с обложками при скачивании.
 
 ## Иконка, сплэш, онбординг и лицензии — сессия 62
 

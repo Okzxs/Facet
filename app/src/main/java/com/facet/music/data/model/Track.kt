@@ -27,6 +27,11 @@ data class Track(
      * null — трек играет целиком.
      */
     val previewSeconds: Int? = null,
+    /**
+     * Сколько источников нашли этот трек при сводном поиске (1 — только один).
+     * В обычной выдаче всегда 1, бейдж «+N» показывается при N > 1.
+     */
+    val sourceCount: Int = 1,
 )
 
 enum class Source { SOUNDCLOUD, YOUTUBE, SPOTIFY, YANDEX, VK, DEEZER, APPLE, LOCAL }

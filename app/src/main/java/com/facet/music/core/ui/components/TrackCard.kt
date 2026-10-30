@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -188,17 +189,38 @@ fun TrackCard(
                     // ListItem иначе разводит их по высоте, и у коротких названий
                     // между строками появляется пустая дыра.
                     Column(verticalArrangement = Arrangement.Center) {
-                        Text(
-                            text = track.title,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (isPlaying) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = track.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (isPlaying) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            // Сводный поиск: «+N» — трек нашёлся ещё в N источниках.
+                            if (track.sourceCount > 1) {
+                                Spacer(Modifier.width(6.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                ) {
+                                    Text(
+                                        text = "+${track.sourceCount - 1}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(
+                                            horizontal = 6.dp,
+                                            vertical = 1.dp,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(4.dp))
                         Text(
                             text = buildString {

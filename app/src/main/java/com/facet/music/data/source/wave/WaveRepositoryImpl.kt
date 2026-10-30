@@ -75,6 +75,34 @@ class WaveRepositoryImpl @Inject constructor(
             }.rethrowCancellation()
         }
 
+    override suspend fun startRadio(seed: Track): Result<WaveSession> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                sessionMutex.withLock {
+                    val similar = lastFmRepository
+                        .getSimilarArtists(seed.artist, limit = RADIO_SIMILAR_ARTISTS)
+                        .getOrNull()
+                        .orEmpty()
+                    val session = WaveSession(
+                        sessionId = UUID.randomUUID().toString(),
+                        seedTrackIds = listOf(seed.id),
+                        seedArtists = (listOf(seed.artist) + similar)
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                            .take(SEED_ARTIST_LIMIT),
+                        seedGenres = listOfNotNull(
+                            seed.genre?.takeIf { isUsefulGenre(it) },
+                        ),
+                        shownTrackIds = setOf(seed.id),
+                        isRussianPriority = tasteRepository.isRussianPriority(),
+                        radioMode = true,
+                    )
+                    _activeSession.value = session
+                    session
+                }
+            }.rethrowCancellation()
+        }
+
     override suspend fun nextBatch(size: Int): Result<WaveBatch> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -118,14 +146,24 @@ class WaveRepositoryImpl @Inject constructor(
         val liked = likedTracksRepository.getLikedTracks().first()
         val history = playHistoryRepository.getPlayHistory().first()
 
-        val seedArtists = mergeDistinct(
-            session.seedArtists,
-            buildSeedArtists(liked, history),
-        ).take(SEED_ARTIST_LIMIT)
-        val seedGenres = mergeDistinct(
-            session.seedGenres,
-            buildSeedGenres(liked, history),
-        ).take(SEED_GENRE_LIMIT)
+        // В режиме радио семена не разбавляются вкусами: иначе в очередь
+        // от конкретного трека попадали бы случайные лайки и история.
+        val seedArtists = if (session.radioMode) {
+            session.seedArtists.take(SEED_ARTIST_LIMIT)
+        } else {
+            mergeDistinct(
+                session.seedArtists,
+                buildSeedArtists(liked, history),
+            ).take(SEED_ARTIST_LIMIT)
+        }
+        val seedGenres = if (session.radioMode) {
+            session.seedGenres.take(SEED_GENRE_LIMIT)
+        } else {
+            mergeDistinct(
+                session.seedGenres,
+                buildSeedGenres(liked, history),
+            ).take(SEED_GENRE_LIMIT)
+        }
 
         val knownIds = session.shownTrackIds.toMutableSet()
         val entries = LinkedHashMap<String, WavePick>()
@@ -161,9 +199,9 @@ class WaveRepositoryImpl @Inject constructor(
         val likedPool = splitByLanguage(liked, russianPriority)
         val historyPool = splitByLanguage(history, russianPriority)
 
-        val likesQuota = (target * LIKES_SHARE).roundToInt()
-        val historyQuota = (target * HISTORY_SHARE).roundToInt()
-        val genresQuota = (target * GENRES_SHARE).roundToInt()
+        val likesQuota = if (session.radioMode) 0 else (target * LIKES_SHARE).roundToInt()
+        val historyQuota = if (session.radioMode) 0 else (target * HISTORY_SHARE).roundToInt()
+        val genresQuota = if (session.radioMode) 0 else (target * GENRES_SHARE).roundToInt()
         val similarQuota = target - likesQuota - historyQuota - genresQuota
 
         // ── Фаза 1: строгие треки в пределах квот ────────────────────────
@@ -174,18 +212,22 @@ class WaveRepositoryImpl @Inject constructor(
 
         // ── Фаза 2: строгие сверх квот — если какой-то источник пуст ─────
         take(similar.strict, target - entries.size, WaveOrigin.SIMILAR)
-        take(likedPool.strict, target - entries.size, WaveOrigin.LIKES)
-        take(historyPool.strict, target - entries.size, WaveOrigin.HISTORY)
-        take(genres.strict, target - entries.size, WaveOrigin.GENRES)
+        if (!session.radioMode) {
+            take(likedPool.strict, target - entries.size, WaveOrigin.LIKES)
+            take(historyPool.strict, target - entries.size, WaveOrigin.HISTORY)
+            take(genres.strict, target - entries.size, WaveOrigin.GENRES)
+        }
 
         // ── Фаза 3: запасные (другой язык / жанр не подтверждён) ─────────
         take(similar.loose, target - entries.size, WaveOrigin.SIMILAR)
-        take(likedPool.loose, target - entries.size, WaveOrigin.LIKES)
-        take(historyPool.loose, target - entries.size, WaveOrigin.HISTORY)
-        take(genres.loose, target - entries.size, WaveOrigin.GENRES)
+        if (!session.radioMode) {
+            take(likedPool.loose, target - entries.size, WaveOrigin.LIKES)
+            take(historyPool.loose, target - entries.size, WaveOrigin.HISTORY)
+            take(genres.loose, target - entries.size, WaveOrigin.GENRES)
+        }
 
         // ── Фаза 4: чарты — последний фолбэк ────────────────────────────
-        if (entries.size < target) {
+        if (entries.size < target && !session.radioMode) {
             val charts = splitByLanguage(
                 chartsRepository.getTop50().getOrNull().orEmpty(),
                 russianPriority,
@@ -512,6 +554,9 @@ class WaveRepositoryImpl @Inject constructor(
         const val SIMILAR_SEARCH_LIMIT = 5
         const val SIMILAR_TRACKS_PER_ARTIST = 2
         const val SIMILAR_BUFFER_LIMIT = 12
+
+        /** Сколько похожих артистов берём для радио от трека. */
+        const val RADIO_SIMILAR_ARTISTS = 6
 
         const val GENRE_SEEDS_TO_SEARCH = 2
         const val GENRE_SEARCH_LIMIT = 6

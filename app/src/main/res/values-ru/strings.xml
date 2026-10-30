@@ -25,6 +25,7 @@
     <string name="nav_wave">Моя волна</string>
 
     <!-- Поиск -->
+    <string name="search_all_sources">Все источники</string>
     <string name="search_title">Поиск</string>
     <string name="search_subtitle">Найди свой саунд на всех платформах</string>
     <string name="search_hint">Треки, артисты, жанры…</string>
@@ -215,6 +216,18 @@
     <string name="player_no_track">Нет трека</string>
     <string name="player_permission_settings">Настройки</string>
     <string name="player_permission_allow">Разрешить</string>
+    <string name="player_source">Источник: %1$s</string>
+    <string name="player_radio_start">Волна от трека</string>
+    <string name="player_tuning">Детюн</string>
+    <string name="player_variations">Вариации</string>
+    <string name="tuning_title">Детюн</string>
+    <string name="tuning_hint">Сдвигает питч, не меняя скорость. 440 Гц — стандарт.</string>
+    <string name="tuning_standard">%1$d Гц (стандарт)</string>
+    <string name="variations_title">Вариации трека</string>
+    <string name="variation_normal">Обычный</string>
+    <string name="variation_speed_up">Speed Up</string>
+    <string name="variation_slowed">Slowed</string>
+    <string name="variation_nightcore">Nightcore</string>
     <string name="player_cover">Обложка</string>
     <string name="player_lyrics">Текст песни</string>
     <string name="player_location_off">Геопозиция выключена</string>

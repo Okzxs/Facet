@@ -44,6 +44,9 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Lyrics
@@ -118,6 +121,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import com.facet.music.core.ui.theme.PlayerDynamicColors
 import com.facet.music.core.ui.theme.rememberPlayerDynamicColors
+import com.facet.music.core.player.PlaybackTuning
+import com.facet.music.core.player.PlaybackVariation
 import com.facet.music.data.model.LyricsResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
@@ -186,6 +191,8 @@ fun PlayerScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
     var showSleepTimer by remember { mutableStateOf(false) }
+    var showTuning by remember { mutableStateOf(false) }
+    var showVariations by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // ─── Разрешение на геопозицию ────────────────────────────────────────
@@ -639,6 +646,61 @@ fun PlayerScreen(
                                         showAddToPlaylist = true
                                     },
                                 )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_radio_start)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Radio,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    enabled = track != null && !uiState.isRadioLoading,
+                                    onClick = {
+                                        showMenu = false
+                                        track?.let { viewModel.startWaveFromTrack(it) }
+                                    },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_tuning)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.GraphicEq,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        Text(
+                                            text = "${playerState.tuningHz} Hz",
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        showTuning = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_variations)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Speed,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        Text(
+                                            text = stringResource(
+                                                variationLabelRes(playerState.variation),
+                                            ),
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        showVariations = true
+                                    },
+                                )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = {
@@ -679,6 +741,7 @@ fun PlayerScreen(
                         variant = PLAYER_LAYOUT_VARIANT,
                         title = track?.title ?: stringResource(R.string.player_no_track),
                         artist = track?.artist ?: "—",
+                        source = track?.source,
                         artworkUrl = track?.artworkUrl,
                         isLiked = isLiked,
                         isDisliked = isDisliked,
@@ -774,6 +837,14 @@ fun PlayerScreen(
                         onNext = { viewModel.playNext() },
                         onSpeedClick = { viewModel.cyclePlaybackSpeed() },
                         onQueueClick = { showQueueSheet = true },
+                        isLyricsMode = isLyricsMode,
+                        onLyricsClick = {
+                            val nextMode = !isLyricsMode
+                            isLyricsMode = nextMode
+                            if (nextMode) {
+                                viewModel.loadLyricsIfNeeded(track)
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(panelModifier)
@@ -802,6 +873,28 @@ fun PlayerScreen(
     // Шторка закрывается только мгновенным удалением из композиции (snap),
     // без hide-анимации: анимированное скрытие во время выхода из плеера
     // оставляло бы промежуточные кадры «полуплеера» без контролов.
+    if (showTuning) {
+        TuningDialog(
+            selectedHz = playerState.tuningHz,
+            onSelect = { hz ->
+                viewModel.setTuning(hz)
+                showTuning = false
+            },
+            onDismiss = { showTuning = false },
+        )
+    }
+
+    if (showVariations) {
+        VariationsSheet(
+            selected = playerState.variation,
+            onSelect = { variation ->
+                viewModel.setVariation(variation)
+                showVariations = false
+            },
+            onDismiss = { showVariations = false },
+        )
+    }
+
     if (showQueueSheet) {
         PlayerQueueSheet(
             queue = playerState.queue,
@@ -934,6 +1027,7 @@ private fun ExpressiveHeroZone(
     trackKey: String?,
     title: String,
     artist: String,
+    source: Source?,
     artworkUrl: String?,
     isLiked: Boolean,
     isDisliked: Boolean,
@@ -1078,6 +1172,17 @@ private fun ExpressiveHeroZone(
                                 textAlign = TextAlign.Center,
                                 modifier = artistModifier,
                             )
+                            if (source != null) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = stringResource(R.string.player_source, sourceLabel(source)),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                    maxLines = 1,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(16.dp))
@@ -2126,4 +2231,129 @@ private fun blendPaletteWithAccent(
         secondaryContainer = tinted(palette.secondaryContainer),
         onSecondaryContainer = onTint,
     )
+}
+
+/** Название источника для строки «Источник» под артистом. */
+private fun sourceLabel(source: Source): String = when (source) {
+    Source.SOUNDCLOUD -> "SoundCloud"
+    Source.YOUTUBE -> "YouTube"
+    Source.DEEZER -> "Deezer"
+    Source.APPLE -> "Apple Music"
+    Source.SPOTIFY -> "Spotify"
+    Source.LOCAL -> "Local"
+    else -> source.name
+}
+
+/** Строковый ресурс названия вариации. */
+private fun variationLabelRes(variation: PlaybackVariation): Int = when (variation) {
+    PlaybackVariation.NORMAL -> R.string.variation_normal
+    PlaybackVariation.SPEED_UP -> R.string.variation_speed_up
+    PlaybackVariation.SLOWED -> R.string.variation_slowed
+    PlaybackVariation.NIGHTCORE -> R.string.variation_nightcore
+}
+
+/**
+ * Детюн: выбор строя. 440 Гц — стандарт, остальные сдвигают питч
+ * через PlaybackParameters, скорость не меняется.
+ */
+@Composable
+private fun TuningDialog(
+    selectedHz: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.tuning_title)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.tuning_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                PlaybackTuning.FREQUENCIES.forEach { hz ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(hz) }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = hz == selectedHz,
+                            onClick = { onSelect(hz) },
+                        )
+                        Text(
+                            text = if (hz == PlaybackTuning.REFERENCE_HZ.toInt()) {
+                                stringResource(R.string.tuning_standard, hz)
+                            } else {
+                                "$hz Hz"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_close))
+            }
+        },
+    )
+}
+
+/** Вариации трека: скорость и питч одной настройкой. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VariationsSheet(
+    selected: PlaybackVariation,
+    onSelect: (PlaybackVariation) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 28.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.variations_title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(10.dp))
+            PlaybackVariation.entries.forEach { variation ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(variation) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = variation == selected,
+                        onClick = { onSelect(variation) },
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(variationLabelRes(variation)),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "×${variation.speed} · pitch ${variation.pitch}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

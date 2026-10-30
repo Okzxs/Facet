@@ -18,6 +18,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
@@ -233,8 +234,10 @@ fun SearchScreen(
 
             SourceSwitcher(
                 selected = state.selectedService,
+                allSources = state.allSources,
                 statuses = serviceStatuses,
                 onSelect = viewModel::onServiceSelected,
+                onAllSourcesSelect = viewModel::onAllSourcesSelected,
                 onRefreshStatuses = viewModel::refreshStatuses,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp),
             )
@@ -348,14 +351,50 @@ private fun SearchHeader() {
 @Composable
 private fun SourceSwitcher(
     selected: ServiceType,
+    allSources: Boolean,
     statuses: Map<ServiceType, ServiceHealth>,
     onSelect: (ServiceType) -> Unit,
+    onAllSourcesSelect: () -> Unit,
     onRefreshStatuses: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val selectedHealth = statuses[selected] ?: ServiceHealth(isChecking = true)
 
     Column(modifier = modifier) {
+        AssistChip(
+            onClick = onAllSourcesSelect,
+            label = { Text(stringResource(R.string.search_all_sources)) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = if (allSources) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                )
+            },
+            colors = AssistChipDefaults.assistChipColors(
+                containerColor = if (allSources) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    Color.Transparent
+                },
+                labelColor = if (allSources) {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            ),
+            border = if (allSources) {
+                null
+            } else {
+                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            },
+            modifier = Modifier.padding(bottom = 10.dp),
+        )
         // 5 кнопок по 48dp, 4 промежутка по 10dp и кнопка статусов справа:
         // 280 + 46 + отступы = 326dp — помещается в 411dp без прокрутки.
         // На узких экранах (360dp) промежуток сжимается до 4dp, кнопки не сплющиваются.

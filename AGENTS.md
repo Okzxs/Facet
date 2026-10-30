@@ -206,3 +206,11 @@ data class Track(
 - Онбординг — `feature/onboarding/OnboardingScreen.kt`, показывается один раз по флагу `AppSettings.onboardingCompleted` (SharedPreferences `onboarding_completed`). `MainActivity` ждёт первого чтения настроек, поэтому при старте возможен короткий фон без UI. Кнопка «Начать» пишет флаг, поток настроек сам переключает на навграф.
 - `POST_NOTIFICATIONS` запрашивается в `MainActivity` на Android 13+ после онбординга. `android:allowBackup="false"`.
 - Лицензия — `LICENSE` (GPLv3, требование NewPipe Extractor), в настройках под версией кнопка «Лицензии» с диалогом компонентов.
+
+## Аудио-фичи и сводный поиск (сессия 63)
+
+- Детюн: `core/player/PlaybackTuning.kt` — частоты 428/430/432/440/448/450/453 Гц, `cents(f) = 1200·log2(f/440)`, `pitchFactor(f) = 2^(cents/1200)`. `PlaybackVariation` — NORMAL, SPEED_UP (1.25×/1.2), SLOWED (0.8×/0.85), NIGHTCORE (1.3×/1.3). Reverb в SLOWED не реализован: `PlaybackParameters` умеет только скорость и питч.
+- `PlayerController.setTuning/setVariation` пересобирают параметры: `speed = playbackSpeed × variation.speed`, `pitch = variation.pitch × pitchFactor(tuningHz)`; `applyPlaybackParameters()` вызывается и при переподключении MediaController. В `PlayerState` — `tuningHz` и `variation`.
+- Радио от трека: `WaveRepository.startRadio(seed)` создаёт сессию с `radioMode = true` (семена — артист/жанр трека + похожие артисты Last.fm, без квот лайков и истории); `PlayerViewModel.startWaveFromTrack()` играет первую пачку, дальше работает `observeWaveRefill`.
+- UI плеера: меню «Детюн» (AlertDialog со списком частот) и «Вариации» (ModalBottomSheet); под артистом строка «Источник: …»; кнопка «Текст песни» на `PlayerControlIsland` (параметры `isLyricsMode`/`onLyricsClick`).
+- Сводный поиск: `core/search/TrackMerger.kt` — дедуп по нормализованным артисту/названию (скобочные пометки вырезаются), приоритет полного потока над превью, `Track.sourceCount`; `SearchViewModel.allSources` запускает параллельные запросы по всем `ServiceType` через `async/awaitAll`, ошибка одного источника не рушит выдачу. Чипс «Все источники» в `SearchScreen`, бейдж «+N» в `TrackCard`.

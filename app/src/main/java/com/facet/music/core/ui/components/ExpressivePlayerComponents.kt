@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,8 +29,12 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -81,6 +86,8 @@ fun PlayerControlIsland(
     onNext: () -> Unit,
     onSpeedClick: () -> Unit,
     onQueueClick: () -> Unit,
+    isLyricsMode: Boolean = false,
+    onLyricsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     progressContent: @Composable () -> Unit,
 ) {
@@ -97,6 +104,48 @@ fun PlayerControlIsland(
                 modifier = Modifier.padding(16.dp),
             ) {
                 progressContent()
+
+                // Кнопка текста прямо на панели управления: режим переключается
+                // и из шапки, но под большим пальцем она ближе к Play/Pause.
+                if (onLyricsClick != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        FilledTonalButton(
+                            onClick = onLyricsClick,
+                            modifier = Modifier.height(34.dp),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            colors = if (isLyricsMode) {
+                                ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            } else {
+                                ButtonDefaults.filledTonalButtonColors()
+                            },
+                        ) {
+                            Icon(
+                                imageVector = if (isLyricsMode) {
+                                    Icons.Rounded.Album
+                                } else {
+                                    Icons.Rounded.Lyrics
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(
+                                    if (isLyricsMode) R.string.player_cover else R.string.player_lyrics,
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
+                }
 
                 // Запас между волной и рядом кнопок: палец, целящийся в Play/Pause,
                 // не должен задевать зону перемотки
