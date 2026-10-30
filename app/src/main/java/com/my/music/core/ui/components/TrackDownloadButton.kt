@@ -17,8 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.my.music.R
 import com.my.music.core.download.DownloadState
 
 /**
@@ -60,7 +62,7 @@ fun TrackDownloadButton(
             when (state) {
                 is DownloadState.Downloaded -> Icon(
                     imageVector = Icons.Rounded.DownloadDone,
-                    contentDescription = "Трек скачан",
+                    contentDescription = stringResource(R.string.track_downloaded_cd),
                     tint = tint,
                     modifier = Modifier.size(20.dp),
                 )
@@ -83,14 +85,14 @@ fun TrackDownloadButton(
 
                 is DownloadState.Error -> Icon(
                     imageVector = Icons.Rounded.Close,
-                    contentDescription = "Не удалось скачать",
+                    contentDescription = stringResource(R.string.track_download_failed_cd),
                     tint = tint,
                     modifier = Modifier.size(20.dp),
                 )
 
                 DownloadState.NotDownloaded -> Icon(
                     imageVector = Icons.Rounded.Download,
-                    contentDescription = "Скачать трек",
+                    contentDescription = stringResource(R.string.track_download_cd),
                     tint = tint,
                     modifier = Modifier.size(20.dp),
                 )

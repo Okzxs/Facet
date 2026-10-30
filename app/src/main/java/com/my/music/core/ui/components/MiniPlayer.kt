@@ -49,6 +49,7 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.R
 import com.my.music.core.ui.theme.PillShape
 import com.my.music.data.model.Track
 import kotlinx.coroutines.delay
@@ -312,7 +314,11 @@ internal fun FloatingMiniPlayer(
                             } else {
                                 Icons.Filled.PlayArrow
                             },
-                            contentDescription = if (isPlaying) "Пауза" else "Играть",
+                            contentDescription = if (isPlaying) {
+                                stringResource(R.string.common_pause_cd)
+                            } else {
+                                stringResource(R.string.common_play_cd)
+                            },
                             modifier = Modifier.size(22.dp),
                         )
                     }

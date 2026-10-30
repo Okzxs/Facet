@@ -17,8 +17,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -33,6 +31,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -88,6 +87,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -127,13 +127,13 @@ private val DeezerPurple = Color(0xFFA238FF)
 private val ApplePink = Color(0xFFFA243C)
 private val SpotifyGreen = Color(0xFF1DB954)
 
-/** Аббревиатура бренда внутри квадратной кнопки источника. */
-private fun ServiceType.brandAbbreviation(): String = when (this) {
-    ServiceType.YOUTUBE -> "YT"
-    ServiceType.SOUNDCLOUD -> "SC"
-    ServiceType.DEEZER -> "DZ"
-    ServiceType.APPLE -> "AM"
-    ServiceType.SPOTIFY -> "SP"
+/** Векторная иконка бренда внутри квадратной кнопки источника. */
+private fun ServiceType.brandIconRes(): Int = when (this) {
+    ServiceType.YOUTUBE -> R.drawable.ic_brand_youtube
+    ServiceType.SOUNDCLOUD -> R.drawable.ic_brand_soundcloud
+    ServiceType.DEEZER -> R.drawable.ic_brand_deezer
+    ServiceType.APPLE -> R.drawable.ic_brand_apple
+    ServiceType.SPOTIFY -> R.drawable.ic_brand_spotify
 }
 
 /** Фирменный цвет бренда. */
@@ -293,34 +293,39 @@ private fun SourceSwitcher(
     val selectedHealth = statuses[selected] ?: ServiceHealth(isChecking = true)
 
     Column(modifier = modifier) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Квадратные кнопки брендов: 5×64 + отступы не влезают в 360dp,
-            // поэтому ряд скроллится по горизонтали, а не сплющивает кнопки.
+        // 5 кнопок по 48dp, 4 промежутка по 10dp и кнопка статусов справа:
+        // 280 + 46 + отступы = 326dp — помещается в 411dp без прокрутки.
+        // На узких экранах (360dp) промежуток сжимается до 4dp, кнопки не сплющиваются.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val buttonSize = 48.dp
+            val statusButtonSize = 46.dp
+            val maxGap = 10.dp
+            val minGap = 4.dp
+            // Остаток ширины после кнопок и статуса делим на 4 промежутка.
+            val gap = ((maxWidth - buttonSize * sourceButtonOrder.size - statusButtonSize) / 4)
+                .coerceIn(minGap, maxGap)
+
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                sourceButtonOrder.forEach { service ->
-                    SourceButton(
-                        service = service,
-                        selected = service == selected,
-                        health = statuses[service] ?: ServiceHealth(),
-                        onClick = { onSelect(service) },
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    sourceButtonOrder.forEach { service ->
+                        SourceButton(
+                            service = service,
+                            selected = service == selected,
+                            health = statuses[service] ?: ServiceHealth(),
+                            onClick = { onSelect(service) },
+                        )
+                    }
                 }
+
+                ServiceStatusButton(
+                    statuses = statuses,
+                    onRefresh = onRefreshStatuses,
+                )
             }
-
-            Spacer(Modifier.width(12.dp))
-
-            ServiceStatusButton(
-                statuses = statuses,
-                onRefresh = onRefreshStatuses,
-            )
         }
 
         UnavailableServiceWarning(
@@ -331,10 +336,10 @@ private fun SourceSwitcher(
 }
 
 /**
- * Квадратная кнопка источника 64×64: фон — фирменный цвет с альфой 0.18,
- * внутри аббревиатура бренда. Выбранный источник получает рамку 2dp цвета
- * бренда и более плотный фон; недоступный — приглушается, но при выборе
- * подсвечивается рамкой error.
+ * Квадратная кнопка источника 48×48: фон — фирменный цвет с альфой 0.15,
+ * внутри векторная иконка бренда в полный цвет. Выбранный источник получает
+ * более плотный фон 0.25 и рамку 2dp цвета бренда; недоступный — приглушённую
+ * иконку (alpha 0.4), но остаётся нажимаемым.
  */
 @Composable
 private fun SourceButton(
@@ -346,38 +351,37 @@ private fun SourceButton(
 ) {
     val brand = service.brandColor()
     val unavailable = !health.isAvailable && !health.isChecking
+    val sourceName = service.displayName
+    val contentDescription = stringResource(R.string.search_source_cd, sourceName)
 
     val containerColor by animateColorAsState(
-        targetValue = brand.copy(alpha = if (selected) 0.28f else 0.18f),
+        targetValue = brand.copy(alpha = if (selected) 0.25f else 0.15f),
         animationSpec = tween(180),
         label = "sourceButtonContainer",
     )
     val borderColor by animateColorAsState(
-        targetValue = when {
-            selected && unavailable -> MaterialTheme.colorScheme.error
-            selected -> brand
-            else -> Color.Transparent
-        },
+        targetValue = if (selected) brand else Color.Transparent,
         animationSpec = tween(180),
         label = "sourceButtonBorder",
     )
 
     Surface(
         onClick = onClick,
-        modifier = modifier
-            .size(64.dp)
-            .alpha(if (unavailable) 0.5f else 1f),
+        modifier = modifier.size(48.dp),
         shape = MaterialTheme.shapes.medium,
         color = containerColor,
         contentColor = brand,
         border = BorderStroke(2.dp, borderColor),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = service.brandAbbreviation(),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = brand,
+            Icon(
+                painter = painterResource(service.brandIconRes()),
+                contentDescription = contentDescription,
+                tint = brand,
+                // Недоступный сервис виден по приглушённой иконке, а не по всей кнопке.
+                modifier = Modifier
+                    .size(26.dp)
+                    .alpha(if (unavailable) 0.4f else 1f),
             )
         }
     }
@@ -435,9 +439,9 @@ private fun ServiceStatusButton(
                 Icon(
                     imageVector = Icons.Rounded.Radar,
                     contentDescription = when {
-                        anyChecking -> "Проверка статусов сервисов"
-                        anyUnavailable -> "Есть недоступные сервисы"
-                        else -> "Все сервисы онлайн"
+                        anyChecking -> stringResource(R.string.search_status_cd_checking)
+                        anyUnavailable -> stringResource(R.string.search_status_cd_unavailable)
+                        else -> stringResource(R.string.search_status_cd_online)
                     },
                     tint = iconTint,
                     modifier = Modifier.size(23.dp),
@@ -471,12 +475,12 @@ private fun ServiceStatusButton(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
                 Text(
-                    text = "Статусы сервисов",
+                    text = stringResource(R.string.search_status_title),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Проверка доступности в реальном времени",
+                    text = stringResource(R.string.search_status_subtitle),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -519,7 +523,7 @@ private fun ServiceStatusButton(
                         )
                     }
                     Spacer(Modifier.width(8.dp))
-                    Text("Обновить статусы")
+                    Text(stringResource(R.string.search_status_refresh))
                 }
             }
         }
@@ -539,9 +543,9 @@ private fun ServiceStatusRow(
         else -> MaterialTheme.colorScheme.error
     }
     val statusLabel = when {
-        health.isChecking -> "Проверка"
-        health.isAvailable -> "Онлайн"
-        else -> "Ошибка"
+        health.isChecking -> stringResource(R.string.search_status_checking)
+        health.isAvailable -> stringResource(R.string.search_status_online)
+        else -> stringResource(R.string.search_status_error)
     }
 
     Row(
@@ -650,8 +654,7 @@ private fun UnavailableServiceWarning(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "${service.displayName} сейчас недоступен. " +
-                        "Проверь подключение или обнови статусы.",
+                    text = stringResource(R.string.search_service_unavailable, service.displayName),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
@@ -742,7 +745,7 @@ private fun ExpressiveSearchField(
             ) {
                 if (query.isEmpty()) {
                     Text(
-                        text = "Треки, артисты, жанры…",
+                        text = stringResource(R.string.search_hint),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
                         maxLines = 1,
@@ -777,7 +780,7 @@ private fun ExpressiveSearchField(
                 IconButton(onClick = { onQueryChange("") }) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
-                        contentDescription = "Очистить",
+                        contentDescription = stringResource(R.string.search_clear_input),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -793,7 +796,7 @@ private fun SuggestionChips(onSuggestion: (String) -> Unit) {
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
     ) {
         Text(
-            text = "Попробуйте",
+            text = stringResource(R.string.search_try),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -846,7 +849,7 @@ private fun RecentQueriesRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Недавние",
+                text = stringResource(R.string.search_recent),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
@@ -856,7 +859,7 @@ private fun RecentQueriesRow(
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
             ) {
                 Text(
-                    text = "Очистить",
+                    text = stringResource(R.string.search_clear),
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
@@ -931,15 +934,15 @@ private fun IdleState(
         }
         Spacer(Modifier.height(22.dp))
         Text(
-            text = "Найди свой саунд",
+            text = stringResource(R.string.search_idle_title),
             style = MaterialTheme.typography.titleLarge,
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = if (query.isEmpty()) {
-                "Введи название трека или имя артиста — мы поищем на $serviceName"
+                stringResource(R.string.search_idle_hint, serviceName)
             } else {
-                "Ещё чуть-чуть — введи минимум 2 символа"
+                stringResource(R.string.search_idle_hint_short)
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -980,13 +983,12 @@ private fun EmptyResultsState(
         }
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "Ничего не найдено",
+            text = stringResource(R.string.search_empty_title),
             style = MaterialTheme.typography.titleLarge,
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "По запросу «$query» на $serviceName пусто. " +
-                "Попробуй изменить запрос или выбрать другой источник.",
+            text = stringResource(R.string.search_empty_message, query, serviceName),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -996,7 +998,7 @@ private fun EmptyResultsState(
         if (query.length >= 2) {
             Spacer(Modifier.height(18.dp))
             Text(
-                text = "Поискать в другом источнике",
+                text = stringResource(R.string.search_other_source),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1062,7 +1064,7 @@ private fun ErrorState(
         }
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "Не удалось выполнить поиск",
+            text = stringResource(R.string.search_error_title),
             style = MaterialTheme.typography.titleLarge,
         )
         Spacer(Modifier.height(6.dp))
@@ -1085,7 +1087,7 @@ private fun ErrorState(
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Text("Повторить")
+            Text(stringResource(R.string.search_retry))
         }
     }
 }
@@ -1105,7 +1107,7 @@ private fun ResultsList(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Результаты · $serviceName",
+                text = stringResource(R.string.search_results, serviceName),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

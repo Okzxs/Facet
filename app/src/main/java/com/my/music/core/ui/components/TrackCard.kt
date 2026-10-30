@@ -50,11 +50,13 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.R
 import com.my.music.data.model.Track
 import kotlin.math.PI
 import kotlin.math.abs
@@ -80,6 +82,10 @@ fun TrackCard(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val shape = MaterialTheme.shapes.medium
+    // Превью-источники (Deezer, Apple) играют только отрывок — это честно видно
+    // в карточке, а не выясняется на середине. Строку считаем здесь: buildString
+    // ниже — не @Composable, stringResource внутри него вызвать нельзя.
+    val previewLabel = track.previewSeconds?.let { stringResource(R.string.track_preview, it) }
 
     val containerColor by animateColorAsState(
         targetValue = when {
@@ -139,9 +145,7 @@ fun TrackCard(
                             append(track.artist)
                             if (!track.genre.isNullOrBlank()) append(" · ${track.genre}")
                             if (track.durationMs > 0) append(" · ${formatDuration(track.durationMs)}")
-                            // Превью-источники (Deezer, Apple) играют только отрывок —
-                            // это честно видно в карточке, а не выясняется на середине.
-                            track.previewSeconds?.let { append(" · превью $it с") }
+                            previewLabel?.let { append(" · $it") }
                         },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -154,7 +158,7 @@ fun TrackCard(
                 Box {
                     TrackArtwork(
                         url = track.artworkUrl,
-                        contentDescription = "${track.title} обложка",
+                        contentDescription = stringResource(R.string.track_artwork_cd, track.title),
                         size = artworkSize,
                         cornerDp = artworkCornerDp,
                     )
@@ -169,7 +173,7 @@ fun TrackCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.DownloadDone,
-                                contentDescription = "Трек скачан",
+                                contentDescription = stringResource(R.string.track_downloaded_cd),
                                 tint = MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier.padding(2.dp),
                             )

@@ -73,12 +73,15 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.my.music.R
 import com.my.music.core.ui.components.TrackArtwork
 import com.my.music.data.model.Track
 import com.my.music.navigation.LocalBottomDockHeight
@@ -174,7 +177,7 @@ fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
                 if (uiState.isExhausted) {
                     item(key = "wave_exhausted") {
                         Text(
-                            text = "Волна закончилась — запустите новую, чтобы продолжить.",
+                            text = stringResource(R.string.wave_ended),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(
@@ -194,12 +197,16 @@ fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "В волне",
+                            text = stringResource(R.string.wave_in_wave),
                             style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.weight(1f),
                         )
                         Text(
-                            text = "${uiState.tracks.size} треков",
+                            text = pluralStringResource(
+                                R.plurals.track_count,
+                                uiState.tracks.size,
+                                uiState.tracks.size,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -233,12 +240,12 @@ private fun WaveHeader() {
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
     ) {
         Text(
-            text = "Моя волна",
+            text = stringResource(R.string.wave_title),
             style = MaterialTheme.typography.headlineLarge,
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "Бесконечный поток из ваших вкусов, похожих артистов и находок",
+            text = stringResource(R.string.wave_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -504,9 +511,9 @@ private fun WaveActionButton(
             Spacer(Modifier.width(12.dp))
             Text(
                 text = when {
-                    isGenerating -> "Собираем волну…"
-                    hasTracks -> "Новая волна"
-                    else -> "Включить волну"
+                    isGenerating -> stringResource(R.string.wave_generating)
+                    hasTracks -> stringResource(R.string.wave_new)
+                    else -> stringResource(R.string.wave_start)
                 },
                 style = MaterialTheme.typography.titleMedium.copy(
                     letterSpacing = 0.2.sp,
@@ -529,7 +536,11 @@ private fun WaveMetaBadges(
         item(key = "meta_language") {
             BreakdownChip(
                 icon = Icons.Rounded.Language,
-                label = if (isRussianPriority) "RU в приоритете" else "Все языки",
+                label = if (isRussianPriority) {
+                    stringResource(R.string.wave_priority_ru)
+                } else {
+                    stringResource(R.string.wave_priority_all)
+                },
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface,
             )
@@ -562,7 +573,7 @@ private fun WaveMetaBadges(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "Сбросить",
+                        text = stringResource(R.string.wave_reset),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -587,7 +598,7 @@ private fun WaveBreakdown(
             item(key = "breakdown_similar") {
                 BreakdownChip(
                     icon = Icons.Rounded.Waves,
-                    label = "$fromSimilar похожих",
+                    label = stringResource(R.string.wave_from_similar, fromSimilar),
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                 )
@@ -597,7 +608,7 @@ private fun WaveBreakdown(
             item(key = "breakdown_likes") {
                 BreakdownChip(
                     icon = Icons.Rounded.Favorite,
-                    label = "$fromLikes любимых",
+                    label = stringResource(R.string.wave_from_likes, fromLikes),
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
@@ -607,7 +618,7 @@ private fun WaveBreakdown(
             item(key = "breakdown_history") {
                 BreakdownChip(
                     icon = Icons.Rounded.History,
-                    label = "$fromHistory из истории",
+                    label = stringResource(R.string.wave_from_history, fromHistory),
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
@@ -617,7 +628,7 @@ private fun WaveBreakdown(
             item(key = "breakdown_genres") {
                 BreakdownChip(
                     icon = Icons.Rounded.AutoAwesome,
-                    label = "$fromGenres находок",
+                    label = stringResource(R.string.wave_from_genres, fromGenres),
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -713,7 +724,7 @@ private fun WaveTrackRow(
             )
             TrackArtwork(
                 url = track.artworkUrl,
-                contentDescription = "${track.title} обложка",
+                contentDescription = stringResource(R.string.track_artwork_cd, track.title),
                 size = 52,
             )
             Spacer(Modifier.width(12.dp))
@@ -736,7 +747,7 @@ private fun WaveTrackRow(
             }
             Icon(
                 imageVector = Icons.Rounded.PlayArrow,
-                contentDescription = "Играть",
+                contentDescription = stringResource(R.string.common_play_cd),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(28.dp),
             )
@@ -780,8 +791,7 @@ private fun WaveHintCard(modifier: Modifier = Modifier) {
             Spacer(Modifier.width(14.dp))
 
             Text(
-                text = "Нажмите «Включить волну» — соберём бесконечный поток " +
-                    "из ваших вкусов, похожих артистов и свежих находок.",
+                text = stringResource(R.string.wave_empty_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

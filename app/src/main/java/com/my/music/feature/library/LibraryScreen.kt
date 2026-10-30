@@ -53,11 +53,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.my.music.R
 import com.my.music.core.download.DownloadState
 import com.my.music.core.ui.components.TrackCard
 import com.my.music.core.ui.components.TrackDownloadButton
@@ -182,7 +185,7 @@ fun LibraryScreen(
                                     modifier = Modifier.size(20.dp),
                                 )
                                 Spacer(Modifier.width(8.dp))
-                                Text("Слушать всё")
+                                Text(stringResource(R.string.library_play_all))
                             }
 
                             FilledTonalButton(
@@ -201,7 +204,7 @@ fun LibraryScreen(
                                     modifier = Modifier.size(20.dp),
                                 )
                                 Spacer(Modifier.width(8.dp))
-                                Text("Перемешать")
+                                Text(stringResource(R.string.library_shuffle))
                             }
                         }
                     }
@@ -228,7 +231,7 @@ fun LibraryScreen(
                                     IconButton(onClick = { viewModel.removeLike(track) }) {
                                         Icon(
                                             imageVector = Icons.Filled.Favorite,
-                                            contentDescription = "Удалить из любимых",
+                                            contentDescription = stringResource(R.string.library_remove_like),
                                             tint = MaterialTheme.colorScheme.primary,
                                         )
                                     }
@@ -252,16 +255,18 @@ fun LibraryScreen(
 }
 
 /**
- * Шапка медиатеки: eyebrow «КОЛЛЕКЦИЯ», крупный заголовок и подпись
- * с количеством треков и суммарной длительностью (плюрализация русская).
+ * Шапка медиатеки: крупный заголовок и подпись с количеством треков
+ * и суммарной длительностью. Плюрализация — через ресурс `track_count`,
+ * поэтому форма слова верная в любом языке.
  */
 @Composable
 private fun LibraryHeader(trackCount: Int, totalMs: Long) {
+    val tracksLabel = pluralStringResource(R.plurals.track_count, trackCount, trackCount)
     Column(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
     ) {
         Text(
-            text = "Медиатека",
+            text = stringResource(R.string.library_title),
             style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -269,9 +274,9 @@ private fun LibraryHeader(trackCount: Int, totalMs: Long) {
         Text(
             // Для пустой коллекции не показываем «0 мин» — только количество.
             text = if (totalMs > 0L) {
-                "${pluralTracks(trackCount)} · ${formatTotalDuration(totalMs)}"
+                "$tracksLabel · ${formatTotalDuration(totalMs)}"
             } else {
-                pluralTracks(trackCount)
+                tracksLabel
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -306,14 +311,13 @@ private fun LibraryEmptyState(
             }
             Spacer(Modifier.height(20.dp))
             Text(
-                text = "В медиатеке пока пусто",
+                text = stringResource(R.string.library_empty_title),
                 style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(24.dp))
             Text(
-                text = "Нажимайте сердечко в плеере или в списках треков, " +
-                    "чтобы собирать свою коллекцию любимой музыки",
+                text = stringResource(R.string.library_empty_message),
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -329,30 +333,23 @@ private fun LibraryEmptyState(
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Найти музыку")
+                Text(stringResource(R.string.library_find_music))
             }
         }
     }
 }
 
-/** Русская плюрализация: 1 трек, 2 трека, 5 треков. */
-private fun pluralTracks(count: Int): String {
-    val mod10 = count % 10
-    val mod100 = count % 100
-    val word = when {
-        mod10 == 1 && mod100 != 11 -> "трек"
-        mod10 in 2..4 && (mod100 < 12 || mod100 > 14) -> "трека"
-        else -> "треков"
-    }
-    return "$count $word"
-}
-
 /** Суммарная длительность коллекции: «1 ч 5 мин» или «42 мин». */
+@Composable
 private fun formatTotalDuration(ms: Long): String {
     val totalMinutes = ms / 60_000L
-    val hours = totalMinutes / 60
-    val minutes = totalMinutes % 60
-    return if (hours > 0) "$hours ч $minutes мин" else "$minutes мин"
+    val hours = (totalMinutes / 60).toInt()
+    val minutes = (totalMinutes % 60).toInt()
+    return if (hours > 0) {
+        stringResource(R.string.duration_hours_minutes, hours, minutes)
+    } else {
+        stringResource(R.string.duration_minutes, minutes)
+    }
 }
 
 /**
@@ -371,8 +368,8 @@ private fun LibraryTabs(
             .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         val tabs = listOf(
-            LibraryTab.MEDIA to "Медиатека",
-            LibraryTab.DOWNLOADED to "Скачанное",
+            LibraryTab.MEDIA to stringResource(R.string.library_tab_library),
+            LibraryTab.DOWNLOADED to stringResource(R.string.library_tab_downloaded),
         )
         tabs.forEachIndexed { index, (tab, label) ->
             SegmentedButton(
@@ -395,13 +392,13 @@ private fun DeleteDownloadDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Удалить с устройства?") },
-        text = { Text("Файл «$title» будет удалён, трек останется в медиатеке как онлайн.") },
+        title = { Text(stringResource(R.string.library_delete_title)) },
+        text = { Text(stringResource(R.string.library_delete_message, title)) },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Удалить") }
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.library_delete_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Отмена") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.library_delete_cancel)) }
         },
     )
 }
@@ -437,7 +434,7 @@ private fun DownloadedContent(
                     IconButton(onClick = { onDelete(track) }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
-                            contentDescription = "Удалить с устройства",
+                            contentDescription = stringResource(R.string.library_downloaded_menu),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -473,14 +470,13 @@ private fun DownloadedEmptyState(onOpenSearch: () -> Unit) {
             }
             Spacer(Modifier.height(20.dp))
             Text(
-                text = "Пока пусто",
+                text = stringResource(R.string.library_downloaded_empty_title),
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "У вас пока нет скачанных треков. Нажмите на стрелочку в плеере, " +
-                    "чтобы сохранить музыку",
+                text = stringResource(R.string.library_downloaded_empty_message),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -493,7 +489,7 @@ private fun DownloadedEmptyState(onOpenSearch: () -> Unit) {
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Найти музыку")
+                Text(stringResource(R.string.library_find_music))
             }
         }
     }

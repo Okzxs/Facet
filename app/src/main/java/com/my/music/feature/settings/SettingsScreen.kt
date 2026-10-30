@@ -1,5 +1,8 @@
 package com.my.music.feature.settings
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -45,6 +48,10 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -56,6 +63,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +73,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -75,12 +84,25 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.my.music.BuildConfig
+import com.my.music.R
+import com.my.music.core.i18n.AppLocale
 import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.theme.AccentOption
 import com.my.music.core.ui.theme.AccentOptions
 import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.ThemeMode
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+
+/**
+ * Находит Activity в цепочке ContextWrapper: `LocalContext` может быть
+ * обёрнут темой или конфигурацией локали, и прямой cast тогда не сработает.
+ */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 /**
  * Экран настроек: секция «Оформление» —
@@ -100,6 +122,26 @@ fun SettingsScreen(
         mutableStateOf(LocationPermissions.hasPermission(context))
     }
     var showCustomColorDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Смена языка уже пересоздаёт Activity через MainActivity, но если по какой-то
+    // причине этого не случилось — пользователь может перезапустить экран вручную.
+    val languageChangedMessage = stringResource(R.string.settings_language_changed)
+    val restartLabel = stringResource(R.string.settings_language_restart)
+    val onLanguageSelect: (String) -> Unit = { language ->
+        viewModel.setAppLanguage(language)
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = languageChangedMessage,
+                actionLabel = restartLabel,
+                duration = SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                context.findActivity()?.recreate()
+            }
+        }
+    }
 
     // Статус мог измениться в системных настройках — перечитываем при возврате
     DisposableEffect(lifecycleOwner) {
@@ -112,6 +154,7 @@ fun SettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -125,7 +168,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = "Оформление",
+            text = stringResource(R.string.settings_appearance),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
@@ -148,7 +191,7 @@ fun SettingsScreen(
                         .padding(horizontal = 16.dp, vertical = 18.dp),
                 ) {
                     Text(
-                        text = "Тема приложения",
+                        text = stringResource(R.string.settings_theme),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                         ),
@@ -156,7 +199,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        text = "Светлая, тёмная или как в системе",
+                        text = stringResource(R.string.settings_theme_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -173,9 +216,9 @@ fun SettingsScreen(
                             ) {
                                 Text(
                                     text = when (mode) {
-                                        ThemeMode.LIGHT -> "Светлая"
-                                        ThemeMode.DARK -> "Тёмная"
-                                        ThemeMode.SYSTEM -> "Система"
+                                        ThemeMode.LIGHT -> stringResource(R.string.settings_theme_light)
+                                        ThemeMode.DARK -> stringResource(R.string.settings_theme_dark)
+                                        ThemeMode.SYSTEM -> stringResource(R.string.settings_theme_system)
                                     },
                                     style = MaterialTheme.typography.labelLarge,
                                 )
@@ -198,7 +241,7 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Динамические цвета обложки",
+                            text = stringResource(R.string.settings_dynamic_cover),
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                             ),
@@ -206,7 +249,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(
-                            text = "Фон плеера мягко тонируется цветом обложки текущего трека",
+                            text = stringResource(R.string.settings_dynamic_cover_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -232,16 +275,16 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Акцентный цвет",
+                            text = stringResource(R.string.settings_accent),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(
                             text = if (settings.accentEnabled) {
-                                "Свой цвет вместо цветов обоев"
+                                stringResource(R.string.settings_accent_on)
                             } else {
-                                "Выключено — берутся цвета обоев"
+                                stringResource(R.string.settings_accent_off)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -280,7 +323,7 @@ fun SettingsScreen(
                                 .padding(horizontal = 18.dp),
                         ) {
                             Text(
-                                text = "Недавние",
+                                text = stringResource(R.string.settings_recent),
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.SemiBold,
                                 ),
@@ -330,7 +373,7 @@ fun SettingsScreen(
 
         // ─── Язык интерфейса ─────────────────────────────────────────────
         Text(
-            text = "Язык",
+            text = stringResource(R.string.settings_language_section),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
@@ -345,20 +388,20 @@ fun SettingsScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Язык интерфейса",
+                    text = stringResource(R.string.settings_language),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    text = "Применяется сразу, без перезапуска приложения",
+                    text = stringResource(R.string.settings_language_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(14.dp))
                 SegmentedButtonRow(
                     selected = settings.appLanguage,
-                    onSelect = viewModel::setAppLanguage,
+                    onSelect = onLanguageSelect,
                 )
             }
         }
@@ -367,7 +410,7 @@ fun SettingsScreen(
 
         // ─── Интеграции: Spotify ─────────────────────────────────────────
         Text(
-            text = "Интеграции",
+            text = stringResource(R.string.settings_integrations),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
@@ -381,7 +424,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(40.dp))
 
         Text(
-            text = "Моя волна",
+            text = stringResource(R.string.settings_wave),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
@@ -411,7 +454,7 @@ fun SettingsScreen(
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Русская музыка в приоритете",
+                        text = stringResource(R.string.settings_russian_first),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold,
                         ),
@@ -419,7 +462,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        text = "Волна чаще ставит треки с кириллицей в названии или имени артиста",
+                        text = stringResource(R.string.settings_russian_first_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -435,7 +478,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(32.dp))
 
         Text(
-            text = "Разрешения",
+            text = stringResource(R.string.settings_permissions),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp),
@@ -470,9 +513,9 @@ fun SettingsScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (hasLocationPermission) {
-                                "Геопозиция разрешена"
+                                stringResource(R.string.settings_location_allowed)
                             } else {
-                                "Геопозиция запрещена"
+                                stringResource(R.string.settings_location_denied)
                             },
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -480,10 +523,9 @@ fun SettingsScreen(
                         Spacer(Modifier.height(3.dp))
                         Text(
                             text = if (hasLocationPermission) {
-                                "Координаты сохраняются при лайке и питают «Воспоминания»"
+                                stringResource(R.string.settings_location_allowed_hint)
                             } else {
-                                "Без доступа координаты лайков не сохраняются, а «Воспоминания» " +
-                                    "не привязываются к месту"
+                                stringResource(R.string.settings_location_denied_hint)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -503,13 +545,13 @@ fun SettingsScreen(
                     modifier = Modifier.height(48.dp),
                     shape = CircleShape,
                 ) {
-                    Text("Проверить разрешения")
+                    Text(stringResource(R.string.settings_check_permissions))
                 }
 
                 if (!hasLocationPermission) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Если доступ запрещён, кнопка откроет настройки приложения",
+                        text = stringResource(R.string.settings_location_footer),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -521,13 +563,23 @@ fun SettingsScreen(
 
         // Футер с версией сборки: читается как подпись экрана, а не как элемент списка.
         Text(
-            text = "MyMusic · версия ${BuildConfig.VERSION_NAME}",
+            text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 24.dp),
+        )
+    }
+
+        // Снекбар смены языка живёт над прокручиваемым содержимым, но внутри
+        // того же Box, поэтому виден на любой позиции скролла.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .systemBarsPadding(),
         )
     }
 
@@ -562,7 +614,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Назад",
+                contentDescription = stringResource(R.string.settings_back),
             )
         }
 
@@ -570,13 +622,13 @@ private fun SettingsHeader(onBack: () -> Unit) {
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Настройки",
+                text = stringResource(R.string.settings_title),
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "Внешний вид, волна и разрешения",
+                text = stringResource(R.string.settings_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -648,9 +700,9 @@ private fun CustomColorDot(
             Icon(
                 imageVector = if (selected) Icons.Rounded.Check else Icons.Rounded.Palette,
                 contentDescription = if (selected) {
-                    "Свой цвет выбран, изменить"
+                    stringResource(R.string.settings_custom_color_cd_selected)
                 } else {
-                    "Задать свой RGB-цвет"
+                    stringResource(R.string.settings_custom_color_cd)
                 },
                 tint = Color.White,
                 modifier = Modifier.size(18.dp),
@@ -682,7 +734,7 @@ private fun CustomColorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Свой цвет") },
+        title = { Text(stringResource(R.string.settings_custom_color)) },
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -714,15 +766,15 @@ private fun CustomColorDialog(
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        label = { Text("HEX-код") },
+                        label = { Text(stringResource(R.string.settings_hex_label)) },
                         singleLine = true,
                         isError = hexError,
                         supportingText = {
                             Text(
                                 if (hexError) {
-                                    "Некорректный код: нужно 6 hex-цифр, например #FF5733"
+                                    stringResource(R.string.settings_hex_error)
                                 } else {
-                                    "6 цифр, например #FF5733"
+                                    stringResource(R.string.settings_hex_hint)
                                 },
                             )
                         },
@@ -731,7 +783,7 @@ private fun CustomColorDialog(
                 }
                 Spacer(Modifier.height(18.dp))
                 RgbSlider(
-                    label = "Красный",
+                    label = stringResource(R.string.settings_red),
                     value = red,
                     accent = Color(0xFFE5484D),
                     onValueChange = { v ->
@@ -741,7 +793,7 @@ private fun CustomColorDialog(
                     },
                 )
                 RgbSlider(
-                    label = "Зелёный",
+                    label = stringResource(R.string.settings_green),
                     value = green,
                     accent = Color(0xFF43A047),
                     onValueChange = { v ->
@@ -751,7 +803,7 @@ private fun CustomColorDialog(
                     },
                 )
                 RgbSlider(
-                    label = "Синий",
+                    label = stringResource(R.string.settings_blue),
                     value = blue,
                     accent = Color(0xFF3F6BD8),
                     onValueChange = { v ->
@@ -766,19 +818,19 @@ private fun CustomColorDialog(
                         onClick = onReset,
                         modifier = Modifier.align(Alignment.End),
                     ) {
-                        Text("Сбросить")
+                        Text(stringResource(R.string.settings_reset))
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = { onApply(preview) }) {
-                Text("Применить")
+                Text(stringResource(R.string.settings_apply))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Отмена")
+                Text(stringResource(R.string.settings_cancel))
             }
         },
     )
@@ -890,7 +942,7 @@ private fun RecentColorDot(
             if (selected) {
                 Icon(
                     imageVector = Icons.Rounded.Check,
-                    contentDescription = "Недавний цвет выбран",
+                    contentDescription = stringResource(R.string.settings_recent_color_cd),
                     tint = Color.White,
                     modifier = Modifier.size(14.dp),
                 )
@@ -945,7 +997,7 @@ private fun AccentDot(
             if (selected) {
                 Icon(
                     imageVector = Icons.Rounded.Check,
-                    contentDescription = option.name,
+                    contentDescription = stringResource(option.nameRes),
                     tint = Color.White,
                     modifier = Modifier.size(18.dp),
                 )
@@ -958,9 +1010,9 @@ private fun AccentDot(
 @Composable
 private fun SegmentedButtonRow(selected: String, onSelect: (String) -> Unit) {
     val options = listOf(
-        "system" to "Система",
-        "ru" to "Русский",
-        "en" to "English",
+        AppLocale.LANGUAGE_SYSTEM to stringResource(R.string.settings_language_system),
+        AppLocale.LANGUAGE_RU to stringResource(R.string.settings_language_ru),
+        AppLocale.LANGUAGE_EN to stringResource(R.string.settings_language_en),
     )
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         options.forEachIndexed { index, (value, label) ->
@@ -1003,7 +1055,7 @@ private fun SpotifyIntegrationCard(
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                text = "Ключи нужны только для поиска: стрим идёт через YouTube",
+                text = stringResource(R.string.settings_spotify_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1011,7 +1063,7 @@ private fun SpotifyIntegrationCard(
             OutlinedTextField(
                 value = clientId,
                 onValueChange = { clientId = it },
-                label = { Text("Client ID") },
+                label = { Text(stringResource(R.string.settings_spotify_client_id)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -1019,7 +1071,7 @@ private fun SpotifyIntegrationCard(
             OutlinedTextField(
                 value = clientSecret,
                 onValueChange = { clientSecret = it },
-                label = { Text("Client Secret") },
+                label = { Text(stringResource(R.string.settings_spotify_client_secret)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
@@ -1031,7 +1083,11 @@ private fun SpotifyIntegrationCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (settings.isSpotifyConfigured) "Подключено" else "Не подключено",
+                    text = if (settings.isSpotifyConfigured) {
+                        stringResource(R.string.settings_spotify_connected)
+                    } else {
+                        stringResource(R.string.settings_spotify_not_connected)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = if (settings.isSpotifyConfigured) {
                         MaterialTheme.colorScheme.primary
@@ -1041,7 +1097,7 @@ private fun SpotifyIntegrationCard(
                     modifier = Modifier.weight(1f),
                 )
                 FilledTonalButton(onClick = { onSave(clientId, clientSecret) }) {
-                    Text("Сохранить")
+                    Text(stringResource(R.string.settings_save))
                 }
             }
         }

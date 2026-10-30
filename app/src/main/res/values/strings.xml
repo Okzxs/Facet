@@ -29,6 +29,7 @@
     <string name="search_error_title">Search failed</string>
     <string name="search_retry">Retry</string>
     <string name="search_results">Results · %1$s</string>
+    <string name="search_source_cd">Source: %1$s</string>
     <string name="search_status_title">Service statuses</string>
     <string name="search_status_subtitle">Real-time availability check</string>
     <string name="search_status_refresh">Refresh statuses</string>
@@ -50,17 +51,13 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_system">System</string>
-    <string name="settings_language">Interface language</string>
-    <string name="settings_language_hint">System, Russian or English</string>
-    <string name="settings_language_system">System</string>
-    <string name="settings_language_ru">Русский</string>
-    <string name="settings_language_en">English</string>
     <string name="settings_dynamic_cover">Dynamic cover colors</string>
     <string name="settings_dynamic_cover_hint">The player background is softly tinted with the current cover</string>
     <string name="settings_accent">Accent color</string>
     <string name="settings_accent_on">Custom color instead of wallpaper colors</string>
     <string name="settings_accent_off">Off — wallpaper colors are used</string>
     <string name="settings_recent">Recent</string>
+    <string name="settings_recent_color_cd">Recent color selected</string>
     <string name="settings_custom_color">Custom color</string>
     <string name="settings_custom_color_cd_selected">Custom color selected, change</string>
     <string name="settings_custom_color_cd">Pick a custom RGB color</string>
@@ -73,17 +70,34 @@
     <string name="settings_reset">Reset</string>
     <string name="settings_apply">Apply</string>
     <string name="settings_cancel">Cancel</string>
-    <string name="settings_wave">My Wave</string>
-    <string name="settings_russian_first">Russian music first</string>
-    <string name="settings_russian_first_hint">The wave plays tracks with Cyrillic titles or artist names more often</string>
+    <string name="settings_accent_coral">Coral</string>
+    <string name="settings_accent_purple">Purple</string>
+    <string name="settings_accent_blue">Blue</string>
+    <string name="settings_accent_teal">Teal</string>
+    <string name="settings_accent_green">Green</string>
+    <string name="settings_accent_orange">Orange</string>
+    <string name="settings_accent_red">Red</string>
+    <string name="settings_language_section">Language</string>
+    <string name="settings_language">Interface language</string>
+    <string name="settings_language_hint">Applies immediately, no restart needed</string>
+    <string name="settings_language_system">System</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_changed">Language changed</string>
+    <string name="settings_language_restart">Restart</string>
     <string name="settings_integrations">Integrations</string>
     <string name="settings_spotify">Spotify</string>
-    <string name="settings_spotify_hint">Streaming goes through YouTube; keys are only needed to search in Spotify</string>
+    <string name="settings_spotify_hint">Keys are only needed to search in Spotify; streaming goes through YouTube</string>
     <string name="settings_spotify_where">Create an app in the Spotify developer dashboard and copy its Client ID and Client Secret</string>
     <string name="settings_spotify_client_id">Client ID</string>
     <string name="settings_spotify_client_secret">Client secret</string>
+    <string name="settings_spotify_connected">Connected</string>
+    <string name="settings_spotify_not_connected">Not connected</string>
     <string name="settings_save">Save</string>
     <string name="settings_saved">Saved</string>
+    <string name="settings_wave">My Wave</string>
+    <string name="settings_russian_first">Russian music first</string>
+    <string name="settings_russian_first_hint">The wave plays tracks with Cyrillic titles or artist names more often</string>
     <string name="settings_permissions">Permissions</string>
     <string name="settings_location_allowed">Location allowed</string>
     <string name="settings_location_denied">Location denied</string>
@@ -107,7 +121,7 @@
     <string name="library_downloaded_empty_message">You have no downloaded tracks yet. Tap the arrow in the player to save music</string>
     <string name="library_downloaded_open_search">Go to search</string>
     <string name="library_delete_title">Delete track from device?</string>
-    <string name="library_delete_message">The file «%1$s» will be deleted from this device.</string>
+    <string name="library_delete_message">The file «%1$s» will be deleted from the device. The track stays in your library as an online one.</string>
     <string name="library_delete_confirm">Delete</string>
     <string name="library_delete_cancel">Cancel</string>
     <string name="library_downloaded_menu">Remove download</string>
@@ -120,7 +134,6 @@
     <string name="home_settings_cd">Settings</string>
     <string name="home_continue">Continue</string>
     <string name="home_continue_cd">Continue listening to %1$s</string>
-    <string name="home_play_cd">Play</string>
     <string name="home_for_you">For you</string>
     <string name="home_recent">Recent</string>
     <string name="home_memories">Memories</string>
@@ -139,11 +152,73 @@
     <string name="home_season_spring">Spring</string>
     <string name="home_season_summer">Summer</string>
     <string name="home_season_autumn">Autumn</string>
+    <plurals name="home_memories_subtitle">
+        <item quantity="one">%1$s · %2$d track</item>
+        <item quantity="other">%1$s · %2$d tracks</item>
+    </plurals>
 
     <!-- Карточка трека -->
     <string name="track_preview">preview %1$d s</string>
     <string name="track_downloaded_cd">Track downloaded</string>
+    <string name="track_download_cd">Download track</string>
+    <string name="track_download_failed_cd">Download failed</string>
     <string name="track_artwork_cd">%1$s cover</string>
+
+    <!-- Плеер -->
+    <string name="player_now_playing">Now playing</string>
+    <string name="player_menu_cd">Menu</string>
+    <string name="player_no_track">No track</string>
+    <string name="player_permission_settings">Settings</string>
+    <string name="player_permission_allow">Allow</string>
+    <string name="player_cover">Cover</string>
+    <string name="player_lyrics">Lyrics</string>
+    <string name="player_location_off">Location is off</string>
+    <string name="player_location_off_hint">“Memories” won’t save the place of your like</string>
+    <string name="player_download_cd">Download track</string>
+    <string name="player_download_done_cd">Track downloaded</string>
+    <string name="player_download_cancelled_cd">Download cancelled</string>
+    <string name="player_like_cd">Like</string>
+    <string name="player_dislike_cd">Dislike</string>
+    <string name="player_undislike_cd">Remove dislike</string>
+    <string name="player_cover_cd">Artwork</string>
+    <string name="player_lyrics_searching">Searching lyrics on LRCLIB…</string>
+    <string name="player_lyrics_instrumental">Instrumental track</string>
+    <string name="player_lyrics_not_found">Lyrics not found</string>
+    <string name="player_lyrics_retry">Search lyrics again</string>
+    <string name="player_download_failed">Couldn’t download the track (online only)</string>
+    <string name="player_find_on_youtube">Find</string>
+
+    <!-- Очередь -->
+    <string name="queue_title">Queue</string>
+    <string name="queue_empty">Queue is empty</string>
+    <string name="queue_remove_cd">Remove from queue</string>
+    <string name="queue_playing_cd">Playing</string>
+    <string name="queue_repeat_cd">Repeat</string>
+    <string name="queue_shuffle_cd">Shuffle</string>
+
+    <!-- Волна -->
+    <string name="wave_title">My Wave</string>
+    <string name="wave_subtitle">An endless stream from your taste, similar artists and discoveries</string>
+    <string name="wave_in_wave">In the wave</string>
+    <string name="wave_generating">Building the wave…</string>
+    <string name="wave_new">New wave</string>
+    <string name="wave_start">Start the wave</string>
+    <string name="wave_priority_ru">RU first</string>
+    <string name="wave_priority_all">All languages</string>
+    <string name="wave_reset">Reset</string>
+    <string name="wave_from_similar">%1$d similar</string>
+    <string name="wave_from_likes">%1$d favourites</string>
+    <string name="wave_from_history">%1$d from history</string>
+    <string name="wave_from_genres">%1$d discoveries</string>
+    <string name="wave_ended">The wave is over — start a new one to keep going.</string>
+    <string name="wave_empty_hint">Tap “Start the wave” — we’ll build an endless stream from your taste, similar artists and fresh discoveries.</string>
+
+    <!-- Общее -->
+    <string name="common_play_cd">Play</string>
+    <string name="common_pause_cd">Pause</string>
+    <string name="common_previous_cd">Previous</string>
+    <string name="common_next_cd">Next</string>
+    <string name="common_back">Back</string>
 
     <!-- Длительность и количество -->
     <string name="duration_hours_minutes">%1$d h %2$d min</string>

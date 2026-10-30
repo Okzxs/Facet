@@ -28,6 +28,7 @@
     <string name="search_error_title">Не удалось выполнить поиск</string>
     <string name="search_retry">Повторить</string>
     <string name="search_results">Результаты · %1$s</string>
+    <string name="search_source_cd">Источник: %1$s</string>
     <string name="search_status_title">Статусы сервисов</string>
     <string name="search_status_subtitle">Проверка доступности в реальном времени</string>
     <string name="search_status_refresh">Обновить статусы</string>
@@ -49,17 +50,13 @@
     <string name="settings_theme_light">Светлая</string>
     <string name="settings_theme_dark">Тёмная</string>
     <string name="settings_theme_system">Система</string>
-    <string name="settings_language">Язык интерфейса</string>
-    <string name="settings_language_hint">Система, русский или английский</string>
-    <string name="settings_language_system">Система</string>
-    <string name="settings_language_ru">Русский</string>
-    <string name="settings_language_en">English</string>
     <string name="settings_dynamic_cover">Динамические цвета обложки</string>
     <string name="settings_dynamic_cover_hint">Фон плеера мягко тонируется цветом обложки текущего трека</string>
     <string name="settings_accent">Акцентный цвет</string>
     <string name="settings_accent_on">Свой цвет вместо цветов обоев</string>
     <string name="settings_accent_off">Выключено — берутся цвета обоев</string>
     <string name="settings_recent">Недавние</string>
+    <string name="settings_recent_color_cd">Недавний цвет выбран</string>
     <string name="settings_custom_color">Свой цвет</string>
     <string name="settings_custom_color_cd_selected">Свой цвет выбран, изменить</string>
     <string name="settings_custom_color_cd">Задать свой RGB-цвет</string>
@@ -72,17 +69,34 @@
     <string name="settings_reset">Сбросить</string>
     <string name="settings_apply">Применить</string>
     <string name="settings_cancel">Отмена</string>
-    <string name="settings_wave">Моя волна</string>
-    <string name="settings_russian_first">Русская музыка в приоритете</string>
-    <string name="settings_russian_first_hint">Волна чаще ставит треки с кириллицей в названии или имени артиста</string>
+    <string name="settings_accent_coral">Коралловый</string>
+    <string name="settings_accent_purple">Фиолетовый</string>
+    <string name="settings_accent_blue">Синий</string>
+    <string name="settings_accent_teal">Бирюзовый</string>
+    <string name="settings_accent_green">Зелёный</string>
+    <string name="settings_accent_orange">Оранжевый</string>
+    <string name="settings_accent_red">Красный</string>
+    <string name="settings_language_section">Язык</string>
+    <string name="settings_language">Язык интерфейса</string>
+    <string name="settings_language_hint">Применяется сразу, без перезапуска приложения</string>
+    <string name="settings_language_system">Система</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_changed">Язык изменён</string>
+    <string name="settings_language_restart">Перезапустить</string>
     <string name="settings_integrations">Интеграции</string>
     <string name="settings_spotify">Spotify</string>
-    <string name="settings_spotify_hint">Стрим идёт через YouTube; ключи нужны только для поиска в Spotify</string>
+    <string name="settings_spotify_hint">Ключи нужны только для поиска: стрим идёт через YouTube</string>
     <string name="settings_spotify_where">Создайте приложение в кабинете Spotify for Developers и скопируйте Client ID и Client Secret</string>
     <string name="settings_spotify_client_id">Client ID</string>
     <string name="settings_spotify_client_secret">Client secret</string>
+    <string name="settings_spotify_connected">Подключено</string>
+    <string name="settings_spotify_not_connected">Не подключено</string>
     <string name="settings_save">Сохранить</string>
     <string name="settings_saved">Сохранено</string>
+    <string name="settings_wave">Моя волна</string>
+    <string name="settings_russian_first">Русская музыка в приоритете</string>
+    <string name="settings_russian_first_hint">Волна чаще ставит треки с кириллицей в названии или имени артиста</string>
     <string name="settings_permissions">Разрешения</string>
     <string name="settings_location_allowed">Геопозиция разрешена</string>
     <string name="settings_location_denied">Геопозиция запрещена</string>
@@ -105,8 +119,8 @@
     <string name="library_downloaded_empty_title">Пока пусто</string>
     <string name="library_downloaded_empty_message">У вас пока нет скачанных треков. Нажмите на стрелочку в плеере, чтобы сохранить музыку</string>
     <string name="library_downloaded_open_search">Перейти в поиск</string>
-    <string name="library_delete_title">Удалить трек с устройства?</string>
-    <string name="library_delete_message">Файл «%1$s» будет удалён с устройства.</string>
+    <string name="library_delete_title">Удалить с устройства?</string>
+    <string name="library_delete_message">Файл «%1$s» будет удалён с устройства. Трек останется в медиатеке как онлайн.</string>
     <string name="library_delete_confirm">Удалить</string>
     <string name="library_delete_cancel">Отмена</string>
     <string name="library_downloaded_menu">Удалить скачанное</string>
@@ -119,7 +133,6 @@
     <string name="home_settings_cd">Настройки</string>
     <string name="home_continue">Продолжить</string>
     <string name="home_continue_cd">Продолжить слушать %1$s</string>
-    <string name="home_play_cd">Слушать</string>
     <string name="home_for_you">Для вас</string>
     <string name="home_recent">Недавнее</string>
     <string name="home_memories">Воспоминания</string>
@@ -138,11 +151,75 @@
     <string name="home_season_spring">Весна</string>
     <string name="home_season_summer">Лето</string>
     <string name="home_season_autumn">Осень</string>
+    <plurals name="home_memories_subtitle">
+        <item quantity="one">%1$s · %2$d трек</item>
+        <item quantity="few">%1$s · %2$d трека</item>
+        <item quantity="many">%1$s · %2$d треков</item>
+        <item quantity="other">%1$s · %2$d трека</item>
+    </plurals>
 
     <!-- Карточка трека -->
     <string name="track_preview">превью %1$d с</string>
     <string name="track_downloaded_cd">Трек скачан</string>
+    <string name="track_download_cd">Скачать трек</string>
+    <string name="track_download_failed_cd">Не удалось скачать</string>
     <string name="track_artwork_cd">%1$s обложка</string>
+
+    <!-- Плеер -->
+    <string name="player_now_playing">Сейчас играет</string>
+    <string name="player_menu_cd">Меню</string>
+    <string name="player_no_track">Нет трека</string>
+    <string name="player_permission_settings">Настройки</string>
+    <string name="player_permission_allow">Разрешить</string>
+    <string name="player_cover">Обложка</string>
+    <string name="player_lyrics">Текст песни</string>
+    <string name="player_location_off">Геопозиция выключена</string>
+    <string name="player_location_off_hint">«Воспоминания» не сохранят место лайка</string>
+    <string name="player_download_cd">Скачать трек</string>
+    <string name="player_download_done_cd">Трек скачан</string>
+    <string name="player_download_cancelled_cd">Скачивание отменено</string>
+    <string name="player_like_cd">Лайк</string>
+    <string name="player_dislike_cd">Дизлайк</string>
+    <string name="player_undislike_cd">Убрать дизлайк</string>
+    <string name="player_cover_cd">Обложка</string>
+    <string name="player_lyrics_searching">Поиск текста в LRCLIB…</string>
+    <string name="player_lyrics_instrumental">Инструментальный трек</string>
+    <string name="player_lyrics_not_found">Текст не найден</string>
+    <string name="player_lyrics_retry">Повторить поиск текста</string>
+    <string name="player_download_failed">Не удалось скачать трек (доступен только онлайн)</string>
+    <string name="player_find_on_youtube">Найти</string>
+
+    <!-- Очередь -->
+    <string name="queue_title">Очередь</string>
+    <string name="queue_empty">Очередь пуста</string>
+    <string name="queue_remove_cd">Удалить из очереди</string>
+    <string name="queue_playing_cd">Играет</string>
+    <string name="queue_repeat_cd">Повтор</string>
+    <string name="queue_shuffle_cd">Перемешать</string>
+
+    <!-- Волна -->
+    <string name="wave_title">Моя волна</string>
+    <string name="wave_subtitle">Бесконечный поток из ваших вкусов, похожих артистов и находок</string>
+    <string name="wave_in_wave">В волне</string>
+    <string name="wave_generating">Собираем волну…</string>
+    <string name="wave_new">Новая волна</string>
+    <string name="wave_start">Включить волну</string>
+    <string name="wave_priority_ru">RU в приоритете</string>
+    <string name="wave_priority_all">Все языки</string>
+    <string name="wave_reset">Сбросить</string>
+    <string name="wave_from_similar">%1$d похожих</string>
+    <string name="wave_from_likes">%1$d любимых</string>
+    <string name="wave_from_history">%1$d из истории</string>
+    <string name="wave_from_genres">%1$d находок</string>
+    <string name="wave_ended">Волна закончилась — запустите новую, чтобы продолжить.</string>
+    <string name="wave_empty_hint">Нажмите «Включить волну» — соберём бесконечный поток из ваших вкусов, похожих артистов и свежих находок.</string>
+
+    <!-- Общее -->
+    <string name="common_play_cd">Воспроизвести</string>
+    <string name="common_pause_cd">Пауза</string>
+    <string name="common_previous_cd">Предыдущий</string>
+    <string name="common_next_cd">Следующий</string>
+    <string name="common_back">Назад</string>
 
     <!-- Длительность и количество -->
     <string name="duration_hours_minutes">%1$d ч %2$d мин</string>

@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.R
 import com.my.music.core.player.RepeatMode
 import com.my.music.data.model.Track
 
@@ -102,11 +105,11 @@ fun PlayerQueueSheet(
             ) {
                 Column {
                     Text(
-                        text = "Очередь",
+                        text = stringResource(R.string.queue_title),
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Text(
-                        text = "${queue.size} треков",
+                        text = pluralStringResource(R.plurals.track_count, queue.size, queue.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -125,7 +128,7 @@ fun PlayerQueueSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Shuffle,
-                            contentDescription = "Перемешать",
+                            contentDescription = stringResource(R.string.queue_shuffle_cd),
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -149,7 +152,7 @@ fun PlayerQueueSheet(
                         val icon = if (repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat
                         Icon(
                             imageVector = icon,
-                            contentDescription = "Повтор",
+                            contentDescription = stringResource(R.string.queue_repeat_cd),
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -168,7 +171,7 @@ fun PlayerQueueSheet(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Очередь пуста",
+                        text = stringResource(R.string.queue_empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -252,7 +255,7 @@ private fun QueueTrackItem(
                 if (isDismissing) {
                     Icon(
                         imageVector = Icons.Filled.Delete,
-                        contentDescription = "Удалить из очереди",
+                        contentDescription = stringResource(R.string.queue_remove_cd),
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                     )
                 }
@@ -311,7 +314,7 @@ private fun QueueTrackItem(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = "Играет",
+                                contentDescription = stringResource(R.string.queue_playing_cd),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(22.dp),
                             )

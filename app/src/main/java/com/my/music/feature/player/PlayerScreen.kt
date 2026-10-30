@@ -81,6 +81,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -96,6 +97,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.R
 import com.my.music.core.download.DownloadMessages
 import com.my.music.core.download.DownloadState
 import com.my.music.core.location.LocationPermissions
@@ -123,11 +125,6 @@ import kotlin.math.abs
  * 3 — «На обложке»: название лежит прямо на обложке в матово-стеклянной плашке.
  */
 private const val PLAYER_LAYOUT_VARIANT = 1
-
-/** Ошибка скачивания без альтернативы (например, YouTube). */
-private const val DOWNLOAD_FAILED_MESSAGE = "Не удалось скачать трек (доступен только онлайн)"
-
-private const val FIND_ON_YOUTUBE_ACTION = "Найти"
 
 /** Порог закрытия свайпом вниз: 30% высоты экрана. */
 private const val DISMISS_THRESHOLD = 0.30f
@@ -237,6 +234,9 @@ fun PlayerScreen(
     // Крестик живёт секунду, поэтому Snackbar запускаем в scope композиции,
     // иначе смена состояния отменила бы его вместе с LaunchedEffect.
     val snackbarScope = rememberCoroutineScope()
+    // Тексты снекбара читаем здесь: внутри LaunchedEffect stringResource недоступен.
+    val downloadFailedMessage = stringResource(R.string.player_download_failed)
+    val findOnYouTubeLabel = stringResource(R.string.player_find_on_youtube)
     LaunchedEffect(downloadState, track?.id) {
         val error = downloadState as? DownloadState.Error
         if (error?.cause != DownloadState.Cause.FAILED || track == null) return@LaunchedEffect
@@ -249,9 +249,9 @@ fun PlayerScreen(
                 message = workerMessage ?: if (isSoundCloud) {
                     DownloadMessages.SOURCE_NOT_FOUND
                 } else {
-                    DOWNLOAD_FAILED_MESSAGE
+                    downloadFailedMessage
                 },
-                actionLabel = if (isSoundCloud) FIND_ON_YOUTUBE_ACTION else null,
+                actionLabel = if (isSoundCloud) findOnYouTubeLabel else null,
                 duration = if (isSoundCloud) SnackbarDuration.Long else SnackbarDuration.Short,
             )
             if (isSoundCloud && result == SnackbarResult.ActionPerformed) {
@@ -541,19 +541,22 @@ fun PlayerScreen(
                         IconButton(onClick = onBack) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Назад",
+                                contentDescription = stringResource(R.string.common_back),
                             )
                         }
                     },
                     title = {
                         Text(
-                            text = "Сейчас играет",
+                            text = stringResource(R.string.player_now_playing),
                             style = MaterialTheme.typography.titleMedium,
                         )
                     },
                     actions = {
                         IconButton(onClick = {}) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "Меню")
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = stringResource(R.string.player_menu_cd),
+                            )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -570,7 +573,7 @@ fun PlayerScreen(
                     // ─── Hero-зона: обложка-задник + передний план (обложка/тексты) ──
                     ExpressiveHeroZone(
                         variant = PLAYER_LAYOUT_VARIANT,
-                        title = track?.title ?: "Нет трека",
+                        title = track?.title ?: stringResource(R.string.player_no_track),
                         artist = track?.artist ?: "—",
                         artworkUrl = track?.artworkUrl,
                         isLiked = isLiked,
@@ -615,7 +618,11 @@ fun PlayerScreen(
                     // ─── Подсказка про геопозицию для «Воспоминаний» ─────────────
                     if (!hasLocationPermission) {
                         LocationPermissionBanner(
-                            actionLabel = if (permissionRequested) "Настройки" else "Разрешить",
+                            actionLabel = if (permissionRequested) {
+                                stringResource(R.string.player_permission_settings)
+                            } else {
+                                stringResource(R.string.player_permission_allow)
+                            },
                             onAction = { onPermissionBannerAction() },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -705,7 +712,13 @@ fun PlayerScreen(
                         colors = ButtonDefaults.textButtonColors(contentColor = coverAccent),
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     ) {
-                        Text(if (isLyricsMode) "Обложка" else "Текст песни")
+                        Text(
+                            if (isLyricsMode) {
+                                stringResource(R.string.player_cover)
+                            } else {
+                                stringResource(R.string.player_lyrics)
+                            },
+                        )
                     }
                 }
         }
@@ -758,11 +771,11 @@ private fun LocationPermissionBanner(
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Геопозиция выключена",
+                    text = stringResource(R.string.player_location_off),
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 )
                 Text(
-                    text = "«Воспоминания» не сохранят место лайка",
+                    text = stringResource(R.string.player_location_off_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1220,7 +1233,7 @@ private fun DownloadSquircle(
             when (target) {
                 DownloadButtonKind.Download -> Icon(
                     imageVector = Icons.Rounded.Download,
-                    contentDescription = "Скачать трек",
+                    contentDescription = stringResource(R.string.player_download_cd),
                     modifier = Modifier.size(22.dp),
                 )
 
@@ -1242,13 +1255,13 @@ private fun DownloadSquircle(
 
                 DownloadButtonKind.Done -> Icon(
                     imageVector = Icons.Rounded.DownloadDone,
-                    contentDescription = "Трек скачан",
+                    contentDescription = stringResource(R.string.player_download_done_cd),
                     modifier = Modifier.size(22.dp),
                 )
 
                 DownloadButtonKind.Error -> Icon(
                     imageVector = Icons.Rounded.Close,
-                    contentDescription = "Скачивание отменено",
+                    contentDescription = stringResource(R.string.player_download_cancelled_cd),
                     modifier = Modifier.size(22.dp),
                 )
             }
@@ -1276,7 +1289,7 @@ private fun LikeSquircle(
     ) {
         Icon(
             imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            contentDescription = "Лайк",
+            contentDescription = stringResource(R.string.player_like_cd),
             modifier = Modifier.size(22.dp),
         )
     }
@@ -1305,7 +1318,11 @@ private fun DislikeSquircle(
     ) {
         Icon(
             imageVector = Icons.Filled.ThumbDown,
-            contentDescription = if (isDisliked) "Убрать дизлайк" else "Дизлайк",
+            contentDescription = if (isDisliked) {
+                stringResource(R.string.player_undislike_cd)
+            } else {
+                stringResource(R.string.player_dislike_cd)
+            },
             modifier = Modifier.size(22.dp),
         )
     }
@@ -1423,7 +1440,7 @@ private fun ArtworkImage(
         }
         AsyncImage(
             model = imageRequest,
-            contentDescription = "Обложка",
+            contentDescription = stringResource(R.string.player_cover_cd),
             contentScale = ContentScale.Crop,
             placeholder = placeholderPainter,
             error = notePainter,
@@ -1543,7 +1560,7 @@ private fun LyricsListView(
                     CircularProgressIndicator(modifier = Modifier.size(36.dp), color = highlightColor)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Поиск текста в LRCLIB…",
+                        stringResource(R.string.player_lyrics_searching),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1552,7 +1569,7 @@ private fun LyricsListView(
 
             lyricsResult?.isInstrumental == true -> {
                 Text(
-                    "Инструментальный трек",
+                    stringResource(R.string.player_lyrics_instrumental),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1616,14 +1633,14 @@ private fun LyricsListView(
                     modifier = Modifier.padding(16.dp),
                 ) {
                     Text(
-                        text = error ?: "Текст не найден",
+                        text = error ?: stringResource(R.string.player_lyrics_not_found),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(12.dp))
                     FilledTonalButton(onClick = onRetry) {
-                        Text("Повторить поиск текста")
+                        Text(stringResource(R.string.player_lyrics_retry))
                     }
                 }
             }

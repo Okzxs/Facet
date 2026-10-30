@@ -46,8 +46,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.my.music.R
 
 /** Пружинный press-scale (0.90 при нажатии) — общий микро-жест Expressive-кнопок. */
 @Composable
@@ -154,7 +156,7 @@ fun PlayerControlIsland(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.SkipPrevious,
-                            contentDescription = "Предыдущий",
+                            contentDescription = stringResource(R.string.common_previous_cd),
                             modifier = Modifier.size(24.dp),
                         )
                     }
@@ -186,7 +188,7 @@ fun PlayerControlIsland(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.SkipNext,
-                            contentDescription = "Следующий",
+                            contentDescription = stringResource(R.string.common_next_cd),
                             modifier = Modifier.size(24.dp),
                         )
                     }
@@ -209,7 +211,7 @@ fun PlayerControlIsland(
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                                contentDescription = "Очередь",
+                                contentDescription = stringResource(R.string.queue_title),
                                 modifier = Modifier.size(22.dp),
                             )
                         }
@@ -262,7 +264,11 @@ private fun PlayMorphButton(
         } else {
             Icon(
                 imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "Пауза" else "Играть",
+                contentDescription = if (isPlaying) {
+                    stringResource(R.string.common_pause_cd)
+                } else {
+                    stringResource(R.string.common_play_cd)
+                },
                 modifier = Modifier.size(30.dp),
             )
         }
@@ -317,7 +323,7 @@ private fun LyricsTab(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "Текст",
+                text = stringResource(R.string.player_lyrics),
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             )
         }

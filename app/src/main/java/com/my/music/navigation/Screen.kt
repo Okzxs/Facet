@@ -11,6 +11,7 @@ import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Waves
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.my.music.R
 
 sealed class Screen(val route: String) {
     // Вкладки нижней навигации
@@ -24,16 +25,20 @@ sealed class Screen(val route: String) {
     object Settings : Screen("settings")
 }
 
+/**
+ * Подпись вкладки хранится ссылкой на строковый ресурс: язык интерфейса
+ * меняется на лету, поэтому строку нельзя зашивать в элемент списка.
+ */
 data class BottomNavItem(
     val screen: Screen,
-    val label: String,
+    @StringRes val labelRes: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
 )
 
 val bottomNavItems = listOf(
-    BottomNavItem(Screen.Home, "Главная", Icons.Filled.Home, Icons.Outlined.Home),
-    BottomNavItem(Screen.Search, "Поиск", Icons.Filled.Search, Icons.Outlined.Search),
-    BottomNavItem(Screen.Library, "Библиотека", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic),
-    BottomNavItem(Screen.Wave, "Моя волна", Icons.Filled.Waves, Icons.Outlined.Waves),
+    BottomNavItem(Screen.Home, R.string.nav_home, Icons.Filled.Home, Icons.Outlined.Home),
+    BottomNavItem(Screen.Search, R.string.nav_search, Icons.Filled.Search, Icons.Outlined.Search),
+    BottomNavItem(Screen.Library, R.string.nav_library, Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic),
+    BottomNavItem(Screen.Wave, R.string.nav_wave, Icons.Filled.Waves, Icons.Outlined.Waves),
 )

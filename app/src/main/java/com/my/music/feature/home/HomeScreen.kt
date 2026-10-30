@@ -61,7 +61,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,6 +81,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.my.music.R
 import com.my.music.core.ui.components.formatDuration
 import com.my.music.core.ui.theme.PillShape
 import com.my.music.core.util.SeasonProvider
@@ -175,7 +179,7 @@ fun HomeScreen(
                 item(key = "memory") {
                     RevealBlock(index = 4) {
                         Column {
-                            HomeSectionHeader(eyebrow = "АРХИВ", title = "Воспоминания")
+                            HomeSectionHeader(title = stringResource(R.string.home_memories))
                             MemoryCard(
                                 memories = uiState.memories,
                                 season = uiState.memorySeason,
@@ -188,7 +192,7 @@ fun HomeScreen(
                 item(key = "liked") {
                     RevealBlock(index = 4) {
                         Column {
-                            HomeSectionHeader(eyebrow = "КОЛЛЕКЦИЯ", title = "Любимое")
+                            HomeSectionHeader(title = stringResource(R.string.home_favourites))
                             LikedCard(
                                 tracks = uiState.likedTracks,
                                 onTrackClick = onTrackClick,
@@ -240,20 +244,24 @@ private fun RevealBlock(
 
 @Composable
 private fun HomeHeader(onSettingsClick: () -> Unit) {
-    val locale = remember { Locale.forLanguageTag("ru-RU") }
+    // Язык даты берём из конфигурации: AppLocale подменяет её вместе с языком UI,
+    // поэтому «ru» и «en» дают разные названия дней и месяцев.
+    val configuration = LocalConfiguration.current
+    val locale = remember(configuration) { configuration.locales[0] }
     val dateLabel = remember(locale) {
         SimpleDateFormat("EEEE, d MMMM", locale)
             .format(Date())
             .replaceFirstChar { it.uppercase(locale) }
     }
-    val greeting = remember {
+    val greetingKey = remember {
         when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
-            in 5..11 -> "Доброе утро"
-            in 12..17 -> "Добрый день"
-            in 18..22 -> "Добрый вечер"
-            else -> "Доброй ночи"
+            in 5..11 -> R.string.home_greeting_morning
+            in 12..17 -> R.string.home_greeting_day
+            in 18..22 -> R.string.home_greeting_evening
+            else -> R.string.home_greeting_night
         }
     }
+    val greeting = stringResource(greetingKey)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -284,7 +292,7 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Rounded.Settings,
-                contentDescription = "Настройки",
+                contentDescription = stringResource(R.string.home_settings_cd),
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -296,7 +304,7 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
  * иерархию задают размер и воздух между секциями.
  */
 @Composable
-private fun HomeSectionHeader(eyebrow: String, title: String) {
+private fun HomeSectionHeader(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleLarge,
@@ -314,6 +322,8 @@ private fun ContinueListeningCard(
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    // Строку для скринридера считаем заранее: лямбда semantics не @Composable.
+    val continueCd = stringResource(R.string.home_continue_cd, track.title)
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -324,7 +334,7 @@ private fun ContinueListeningCard(
                 onClick = { onTrackClick(track, queue) },
             )
             .semantics {
-                contentDescription = "Продолжить слушать ${track.title}"
+                contentDescription = continueCd
             },
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -347,7 +357,7 @@ private fun ContinueListeningCard(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = "Продолжить",
+                    text = stringResource(R.string.home_continue),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
@@ -376,7 +386,7 @@ private fun ContinueListeningCard(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = "Слушать",
+                    contentDescription = stringResource(R.string.common_play_cd),
                     modifier = Modifier.size(24.dp),
                 )
             }
@@ -394,7 +404,7 @@ private fun RecommendationsBlock(
     onRetry: () -> Unit,
 ) {
     Column {
-        HomeSectionHeader(eyebrow = "РЕКОМЕНДАЦИИ", title = "Для вас")
+        HomeSectionHeader(title = stringResource(R.string.home_for_you))
         when {
             tracks.isNotEmpty() -> RecommendationsRow(
                 tracks = tracks,
@@ -403,15 +413,15 @@ private fun RecommendationsBlock(
             )
             isLoading -> RecommendationsSkeleton()
             error != null -> RecommendationsMessage(
-                title = "Не удалось загрузить рекомендации",
+                title = stringResource(R.string.home_recs_error),
                 message = error,
-                actionLabel = "Повторить",
+                actionLabel = stringResource(R.string.home_retry),
                 onAction = onRetry,
             )
             else -> RecommendationsMessage(
-                title = "Пока нет рекомендаций",
-                message = "Попробуйте обновить подборку.",
-                actionLabel = "Обновить",
+                title = stringResource(R.string.home_recs_empty),
+                message = stringResource(R.string.home_recs_empty_hint),
+                actionLabel = stringResource(R.string.home_refresh),
                 onAction = onRetry,
             )
         }
@@ -448,6 +458,7 @@ private fun RecommendationCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    val playCd = stringResource(R.string.home_play_recommendation_cd, track.title, track.artist)
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.96f else 1f,
         animationSpec = spring(
@@ -473,7 +484,7 @@ private fun RecommendationCard(
                     onClick = onClick,
                 )
                 .semantics {
-                    contentDescription = "Воспроизвести ${track.title}, ${track.artist}"
+                    contentDescription = playCd
                 },
         ) {
             Artwork(
@@ -582,7 +593,7 @@ private fun RecentBlock(
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     Column {
-        HomeSectionHeader(eyebrow = "ИСТОРИЯ", title = "Недавнее")
+        HomeSectionHeader(title = stringResource(R.string.home_recent))
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -607,6 +618,7 @@ private fun RecentCover(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    val playCd = stringResource(R.string.home_play_track_cd, track.title)
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.96f else 1f,
         animationSpec = spring(
@@ -634,7 +646,7 @@ private fun RecentCover(
                     onClick = onClick,
                 )
                 .semantics {
-                    contentDescription = "Воспроизвести ${track.title}"
+                    contentDescription = playCd
                 },
         ) {
             Artwork(
@@ -679,6 +691,12 @@ private fun MemoryCard(
     val memoryTracks = remember(memories) { memories.map { it.track } }
     val preview = remember(memories) { memories.take(MEMORY_PREVIEW_LIMIT) }
     val firstTrack = memoryTracks.firstOrNull() ?: return
+    val subtitle = pluralStringResource(
+        R.plurals.home_memories_subtitle,
+        memories.size,
+        seasonName(season),
+        memories.size,
+    )
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -691,13 +709,12 @@ private fun MemoryCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Воспоминания",
+                        text = stringResource(R.string.home_memories),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = "${seasonDisplayName(season)} · ${memories.size} " +
-                            tracksWord(memories.size),
+                        text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -709,7 +726,7 @@ private fun MemoryCard(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = "Слушать воспоминания",
+                        contentDescription = stringResource(R.string.home_play_memories_cd),
                         modifier = Modifier.size(24.dp),
                     )
                 }
@@ -724,7 +741,7 @@ private fun MemoryCard(
             }
             if (memories.size > preview.size) {
                 Text(
-                    text = "Ещё ${memories.size - preview.size}",
+                    text = stringResource(R.string.home_more, memories.size - preview.size),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(start = 56.dp, top = 4.dp),
@@ -801,12 +818,12 @@ private fun LikedCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Любимое",
+                    text = stringResource(R.string.home_favourites),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "${tracks.size} ${tracksWord(tracks.size)}",
+                    text = pluralStringResource(R.plurals.track_count, tracks.size, tracks.size),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -818,7 +835,7 @@ private fun LikedCard(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = "Слушать любимое",
+                    contentDescription = stringResource(R.string.home_play_favourites_cd),
                     modifier = Modifier.size(24.dp),
                 )
             }
@@ -831,7 +848,7 @@ private fun PlayBadge(
     containerColor: Color,
     contentColor: Color,
     onClick: (() -> Unit)? = null,
-    contentDescription: String = "Воспроизвести",
+    contentDescription: String = stringResource(R.string.common_play_cd),
     size: Dp = 44.dp,
 ) {
     val baseModifier = Modifier
@@ -907,20 +924,10 @@ private fun Artwork(
     }
 }
 
-private fun seasonDisplayName(season: String): String = when (season) {
-    SeasonProvider.WINTER -> "Зима"
-    SeasonProvider.SPRING -> "Весна"
-    SeasonProvider.SUMMER -> "Лето"
-    else -> "Осень"
-}
-
-private fun tracksWord(count: Int): String {
-    val lastTwo = count % 100
-    val last = count % 10
-    return when {
-        lastTwo in 11..14 -> "треков"
-        last == 1 -> "трек"
-        last in 2..4 -> "трека"
-        else -> "треков"
-    }
+@Composable
+private fun seasonName(season: String): String = when (season) {
+    SeasonProvider.WINTER -> stringResource(R.string.home_season_winter)
+    SeasonProvider.SPRING -> stringResource(R.string.home_season_spring)
+    SeasonProvider.SUMMER -> stringResource(R.string.home_season_summer)
+    else -> stringResource(R.string.home_season_autumn)
 }
