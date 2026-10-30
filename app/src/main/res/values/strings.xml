@@ -9,6 +9,16 @@
     <!-- Название приложения: одинаково во всех локалях, меняется только здесь -->
     <string name="app_name">Facet</string>
 
+    <!-- Онбординг первого запуска -->
+    <string name="onboarding_tagline">Every platform. One player.</string>
+    <string name="onboarding_feature_sources_title">All your sources</string>
+    <string name="onboarding_feature_sources_text">Search SoundCloud, YouTube, Deezer, Apple Music and Spotify in one place.</string>
+    <string name="onboarding_feature_offline_title">Listen offline</string>
+    <string name="onboarding_feature_offline_text">Download tracks and keep them on your device for when the network is gone.</string>
+    <string name="onboarding_feature_wave_title">Endless wave</string>
+    <string name="onboarding_feature_wave_text">Recommendations built from your likes, listening history and charts.</string>
+    <string name="onboarding_start">Get started</string>
+
     <!-- Нижняя навигация -->
     <string name="nav_home">Home</string>
     <string name="nav_search">Search</string>
@@ -109,6 +119,11 @@
     <string name="settings_location_denied_hint">Without location, like coordinates are not saved and “Memories” are not tied to a place</string>
     <string name="settings_check_permissions">Check permissions</string>
     <string name="settings_location_footer">If access is denied, the button opens app settings</string>
+    <string name="settings_licenses">Licenses</string>
+    <string name="settings_licenses_title">Licenses and components</string>
+    <string name="settings_licenses_body">Facet is distributed under the GNU General Public License v3.0.\n\nBuilt with:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0</string>
+    <string name="settings_licenses_open">Open LICENSE</string>
+    <string name="settings_licenses_close">Close</string>
     <string name="settings_version">Facet · version %1$s</string>
 
     <!-- Медиатека -->

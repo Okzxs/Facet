@@ -45,6 +45,8 @@ data class AppSettings(
     val spotifyClientSecret: String = "",
     /** Язык интерфейса: [AppSettings.LANGUAGE_SYSTEM], `ru` или `en`. */
     val appLanguage: String = LANGUAGE_SYSTEM,
+    /** Показан ли онбординг первого запуска; false — показываем при старте. */
+    val onboardingCompleted: Boolean = false,
 ) {
     /** Настроены ли ключи Spotify: нужны оба поля, иначе поиск не работает. */
     val isSpotifyConfigured: Boolean
@@ -105,4 +107,7 @@ interface SettingsRepository {
      * Применяется в `MainActivity` пересозданием Activity.
      */
     suspend fun setAppLanguage(language: String)
+
+    /** Отметить онбординг пройденным, чтобы не показывать его снова. */
+    suspend fun setOnboardingCompleted(completed: Boolean)
 }

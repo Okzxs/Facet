@@ -62,4 +62,17 @@ class SettingsRepositoryImplTest {
             reloaded.settings.first().recentAccentColors,
         )
     }
+
+    @Test
+    fun `onboarding is not completed by default`() = runTest {
+        val repository = SettingsRepositoryImpl(context)
+        assertEquals(false, repository.settings.first().onboardingCompleted)
+    }
+
+    @Test
+    fun `onboarding flag survives repository recreation`() = runTest {
+        SettingsRepositoryImpl(context).setOnboardingCompleted(true)
+        val reloaded = SettingsRepositoryImpl(context)
+        assertEquals(true, reloaded.settings.first().onboardingCompleted)
+    }
 }

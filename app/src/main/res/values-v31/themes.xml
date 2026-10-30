@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Android 12+ рисует системный сплэш из иконки и windowBackground.
+      Здесь явно задаём те же цвета, что и у окна, чтобы не было белой вспышки
+      в тёмной теме и чтобы сплэш не отличался от первого кадра Compose.
+    -->
+    <style name="Theme.Facet" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowSplashScreenBackground">@color/window_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+    </style>
+</resources>

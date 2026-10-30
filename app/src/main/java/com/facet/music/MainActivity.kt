@@ -1,17 +1,31 @@
 package com.facet.music
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import com.facet.music.core.i18n.AppLocale
@@ -19,7 +33,9 @@ import com.facet.music.core.ui.theme.FacetTheme
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SpotifyAuthRepository
+import com.facet.music.feature.onboarding.OnboardingScreen
 import com.facet.music.navigation.AppNavGraph
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -52,6 +68,13 @@ class MainActivity : ComponentActivity() {
         handleSpotifyRedirect(intent)
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
+            // До первого чтения настроек нельзя решать, показывать ли онбординг:
+            // иначе он мигал бы на каждом холодном старте уже пройденного экрана.
+            var settingsLoaded by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                settingsRepository.settings.first()
+                settingsLoaded = true
+            }
             // Смена языка пересоздаёт Activity: attachBaseContext заново
             // обернёт контекст нужной локалью, и все строки перечитаются.
             LaunchedEffect(settings.appLanguage) {
@@ -83,7 +106,35 @@ class MainActivity : ComponentActivity() {
                 accentColor = accentOverride,
                 customAccentColor = customAccentOverride,
             ) {
-                AppNavGraph()
+                val context = LocalContext.current
+                // Уведомление медиасессии на Android 13+ требует разрешения.
+                // Спрашиваем один раз — после онбординга, когда экран уже понятен.
+                val notificationPermission = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission(),
+                ) { }
+                LaunchedEffect(settingsLoaded, settings.onboardingCompleted) {
+                    val android13 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    val granted = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (settingsLoaded && settings.onboardingCompleted && android13 && !granted) {
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+
+                when {
+                    // Пока настройки читаются с диска — только фон, без прыжков UI.
+                    !settingsLoaded -> Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                    )
+
+                    !settings.onboardingCompleted -> OnboardingScreen()
+
+                    else -> AppNavGraph()
+                }
             }
         }
     }

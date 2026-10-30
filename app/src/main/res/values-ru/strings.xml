@@ -8,6 +8,16 @@
     <!-- Название приложения: одинаково во всех локалях, меняется только здесь -->
     <string name="app_name">Facet</string>
 
+    <!-- Онбординг первого запуска -->
+    <string name="onboarding_tagline">Все платформы. Один плеер.</string>
+    <string name="onboarding_feature_sources_title">Все источники</string>
+    <string name="onboarding_feature_sources_text">Поиск по SoundCloud, YouTube, Deezer, Apple Music и Spotify в одном месте.</string>
+    <string name="onboarding_feature_offline_title">Слушай офлайн</string>
+    <string name="onboarding_feature_offline_text">Скачивай треки на телефон и слушай их без интернета.</string>
+    <string name="onboarding_feature_wave_title">Бесконечная волна</string>
+    <string name="onboarding_feature_wave_text">Рекомендации из лайков, истории прослушиваний и чартов.</string>
+    <string name="onboarding_start">Начать</string>
+
     <!-- Нижняя навигация -->
     <string name="nav_home">Главная</string>
     <string name="nav_search">Поиск</string>
@@ -108,6 +118,11 @@
     <string name="settings_location_denied_hint">Без доступа координаты лайков не сохраняются, а «Воспоминания» не привязываются к месту</string>
     <string name="settings_check_permissions">Проверить разрешения</string>
     <string name="settings_location_footer">Если доступ запрещён, кнопка откроет настройки приложения</string>
+    <string name="settings_licenses">Лицензии</string>
+    <string name="settings_licenses_title">Лицензии и компоненты</string>
+    <string name="settings_licenses_body">Facet распространяется по GNU General Public License v3.0.\n\nИспользованы:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0</string>
+    <string name="settings_licenses_open">Открыть LICENSE</string>
+    <string name="settings_licenses_close">Закрыть</string>
     <string name="settings_version">Facet · версия %1$s</string>
 
     <!-- Медиатека -->

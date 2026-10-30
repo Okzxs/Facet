@@ -1,6 +1,36 @@
 # PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
 
-## Последнее обновление: 30.10.2026 (сессия 61)
+## Последнее обновление: 30.10.2026 (сессия 62)
+
+## Иконка, сплэш, онбординг и лицензии — сессия 62
+
+### 1. Иконка «Грань»
+- Адаптивная иконка: `drawable/ic_launcher_foreground.xml` (треугольник с медианой, фигура целиком в safe zone 66dp), фон `@color/ic_launcher_background` (#111318), `mipmap-anydpi-v26/ic_launcher.xml` и `ic_launcher_round.xml`. На Android 13+ — `mipmap-anydpi-v33` с `<monochrome>` (`ic_launcher_monochrome.xml`) для тематических иконок.
+- Манифест: `android:icon` и `android:roundIcon`; лейбл — `@string/app_name`.
+- Три варианта («Грань», «Призма», «Кристалл») отрисованы в PNG и отправлены в Telegram. В приложении пока «Грань» — самый минималистичный; замена — только `ic_launcher_foreground.xml` и `ic_launcher_monochrome.xml`.
+
+### 2. Сплэш
+- `values-v31/themes.xml` и `values-night-v31/themes.xml`: `windowSplashScreenBackground` = `window_background`, `windowSplashScreenAnimatedIcon` = `ic_launcher_foreground`. Новых зависимостей нет — только framework-атрибуты Android 12+.
+
+### 3. Онбординг первого запуска
+- `feature/onboarding/OnboardingScreen.kt` + `OnboardingViewModel`: знак в кружке `primaryContainer`, название, слоган, три возможности (все источники, офлайн, волна) и кнопка «Начать».
+- `AppSettings.onboardingCompleted` (SharedPreferences `onboarding_completed`), `SettingsRepository.setOnboardingCompleted`; `MainActivity` показывает онбординг, пока флаг не выставлен, и ждёт первого чтения настроек (`settingsLoaded`) — иначе экран мигал бы на каждом холодном старте.
+- Строки: 8 ключей `onboarding_*` в EN и RU.
+
+### 4. Уведомления и бэкап
+- `MainActivity`: запрос `POST_NOTIFICATIONS` на Android 13+ после онбординга через `rememberLauncherForActivityResult`.
+- `android:allowBackup="false"` — токены и настройки не уходят в облачный бэкап.
+
+### 5. Лицензия
+- `LICENSE` — GNU GPLv3 (требование NewPipe Extractor).
+- В настройках под версией — кнопка «Лицензии»: диалог со списком компонентов и ссылкой на LICENSE (5 ключей `settings_licenses_*`).
+
+### Проверки
+- `assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL, 33 suites / 235 тестов, 0 failures (было 233): +2 теста онбординга в `SettingsRepositoryImplTest`.
+- `assembleRelease` — BUILD SUCCESSFUL (6m02s), release APK 6 381 849 байт, подпись прежняя (CN=Facet Music).
+- `aapt dump badging`: label `Facet`, adaptive icon `res/IG.xml`, package `com.facet.music` 1.0.0.
+- Установлено на SM-A266B (`192.168.1.106:42099`): Success, 1.0.0.
+- Не проверено вживую (телефон занят): иконка на лончере, онбординг, запрос уведомлений, диалог лицензий.
 
 ## Переезд на Facet, release-подпись и R8 — сессия 61
 

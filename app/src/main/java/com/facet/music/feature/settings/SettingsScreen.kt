@@ -77,6 +77,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -132,6 +133,7 @@ fun SettingsScreen(
     }
     var showCustomColorDialog by remember { mutableStateOf(false) }
     var showSpotifyGuide by remember { mutableStateOf(false) }
+    var showLicenses by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -601,10 +603,19 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TextButton(
+            onClick = { showLicenses = true },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 24.dp),
-        )
+                .padding(bottom = 16.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.settings_licenses),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
     }
 
         // Снекбар смены языка живёт над прокручиваемым содержимым, но внутри
@@ -635,7 +646,50 @@ fun SettingsScreen(
     if (showSpotifyGuide) {
         SpotifyGuideDialog(onDismiss = { showSpotifyGuide = false })
     }
+
+    if (showLicenses) {
+        LicensesDialog(onDismiss = { showLicenses = false })
+    }
 }
+
+/**
+ * Диалог лицензий: приложение распространяется по GPLv3 из-за NewPipe Extractor,
+ * полный текст лежит в LICENSE в корне репозитория.
+ */
+@Composable
+private fun LicensesDialog(onDismiss: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_licenses_title)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = stringResource(R.string.settings_licenses_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    runCatching { uriHandler.openUri(LICENSES_URL) }
+                },
+            ) {
+                Text(stringResource(R.string.settings_licenses_open))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_licenses_close))
+            }
+        },
+    )
+}
+
+/** Ссылка на полный текст лицензии в репозитории. */
+private const val LICENSES_URL = "https://github.com/Okzxs/my-music-app/blob/main/LICENSE"
 
 @Composable
 private fun SettingsHeader(onBack: () -> Unit) {

@@ -99,3 +99,9 @@ app/src/main/java/com/facet/music/
 ## Технологии
 
 Kotlin 2.0.21 · Jetpack Compose · Material 3 · Hilt · Media3 · Room · NewPipe Extractor · Last.fm · Coil 3
+
+---
+
+## Лицензия
+
+Проект распространяется по [GNU GPL v3.0](LICENSE): этого требует лицензия NewPipe Extractor, через который работает SoundCloud. Исходники открыты, форки обязаны оставаться под GPLv3.
