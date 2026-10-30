@@ -27,7 +27,8 @@ const val SPOTIFY_MY_PLAYLISTS_URL: String = "https://api.spotify.com/v1/me/play
  * Стрим всё равно идёт через YouTube — звук Spotify приложению недоступен.
  */
 const val SPOTIFY_SCOPES: String =
-    "user-read-private user-read-email playlist-read-private playlist-read-collaborative"
+    "user-read-private user-read-email user-library-read " +
+        "playlist-read-private playlist-read-collaborative"
 
 /**
  * Состояние входа Spotify для UI.

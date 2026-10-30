@@ -349,6 +349,11 @@
 
     <!-- Медиатека, артист и Spotify (сессия 60) -->
     <string name="library_favorites">Любимые треки</string>
+    <string name="library_import_likes">Импортировать любимые</string>
+    <string name="library_import_likes_hint">Требуется вход в Spotify</string>
+    <string name="library_import_likes_done">Импортировано треков: %1$d</string>
+    <string name="library_import_likes_empty">Новых треков нет</string>
+    <string name="library_import_likes_error">Не удалось импортировать любимые</string>
     <string name="library_import_short">Импорт</string>
     <string name="playlist_delete_action">Удалить плейлист</string>
     <string name="artist_followers">%1$s слушателей</string>

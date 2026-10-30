@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -115,6 +116,9 @@ fun LibraryScreen(
     val spotifyPlaylists by viewModel.spotifyPlaylists.collectAsState()
     val spotifyLoading by viewModel.spotifyLoading.collectAsState()
     val spotifyError by viewModel.spotifyError.collectAsState()
+    val spotifyLikesImported by viewModel.spotifyLikesImported.collectAsState()
+    val spotifyLikesLoading by viewModel.spotifyLikesLoading.collectAsState()
+    val spotifyLikesError by viewModel.spotifyLikesError.collectAsState()
     val importState by viewModel.importState.collectAsState()
     val importError by viewModel.importError.collectAsState()
     val importSuccess by viewModel.importSuccess.collectAsState()
@@ -153,6 +157,28 @@ fun LibraryScreen(
                 duration = SnackbarDuration.Short,
             )
         }
+    }
+
+    LaunchedEffect(spotifyLikesImported) {
+        val count = spotifyLikesImported ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = if (count > 0) {
+                context.getString(R.string.library_import_likes_done, count)
+            } else {
+                context.getString(R.string.library_import_likes_empty)
+            },
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.consumeSpotifyLikesResult()
+    }
+
+    LaunchedEffect(spotifyLikesError) {
+        if (!spotifyLikesError) return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = context.getString(R.string.library_import_likes_error),
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.consumeSpotifyLikesError()
     }
 
     LaunchedEffect(downloadError) {
@@ -231,6 +257,41 @@ fun LibraryScreen(
                     onClick = onLikedTracksClick,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
+            }
+
+            // ─── Импорт любимых Spotify ──────────────────────────────────
+            item(key = "library_import_likes") {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    AssistChip(
+                        onClick = { viewModel.importSpotifyLikes() },
+                        enabled = spotifyConnected && !spotifyLikesLoading,
+                        label = { Text(stringResource(R.string.library_import_likes)) },
+                        leadingIcon = {
+                            if (spotifyLikesLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.Favorite,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        },
+                    )
+                    // Без входа кнопка неактивна — объясняем, чего не хватает.
+                    if (!spotifyConnected) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.library_import_likes_hint),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                }
             }
 
             // ─── Плейлисты ───────────────────────────────────────────────

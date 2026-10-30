@@ -344,6 +344,11 @@
 
     <!-- Медиатека, артист и Spotify (сессия 60) -->
     <string name="library_favorites">Liked songs</string>
+    <string name="library_import_likes">Import liked tracks</string>
+    <string name="library_import_likes_hint">Spotify sign-in required</string>
+    <string name="library_import_likes_done">Imported %1$d tracks</string>
+    <string name="library_import_likes_empty">Nothing new to import</string>
+    <string name="library_import_likes_error">Couldn’t import liked tracks</string>
     <string name="library_import_short">Import</string>
     <string name="playlist_delete_action">Delete playlist</string>
     <string name="artist_followers">%1$s listeners</string>

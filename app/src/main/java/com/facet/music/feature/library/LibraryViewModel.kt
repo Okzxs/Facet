@@ -18,6 +18,7 @@ import com.facet.music.data.repository.DownloadRepository
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlaylistRepository
 import com.facet.music.data.repository.SpotifyAuthRepository
+import com.facet.music.data.source.external.SpotifyProvider
 import com.facet.music.data.source.imports.PlaylistImportResult
 import com.facet.music.data.source.imports.PlaylistImportService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -53,6 +55,7 @@ class LibraryViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val playlistImportService: PlaylistImportService,
     private val spotifyAuthRepository: SpotifyAuthRepository,
+    private val spotifyProvider: SpotifyProvider,
     playerController: PlayerController,
 ) : ViewModel() {
 
@@ -196,6 +199,59 @@ class LibraryViewModel @Inject constructor(
 
     fun consumeSpotifyError() {
         _spotifyError.value = false
+    }
+
+    // ─── Импорт любимых треков Spotify ───────────────────────────────────
+
+    /** Сколько новых лайков добавлено последним импортом; null — результата нет. */
+    private val _spotifyLikesImported = MutableStateFlow<Int?>(null)
+    val spotifyLikesImported: StateFlow<Int?> = _spotifyLikesImported.asStateFlow()
+
+    private val _spotifyLikesLoading = MutableStateFlow(false)
+    val spotifyLikesLoading: StateFlow<Boolean> = _spotifyLikesLoading.asStateFlow()
+
+    private val _spotifyLikesError = MutableStateFlow(false)
+    val spotifyLikesError: StateFlow<Boolean> = _spotifyLikesError.asStateFlow()
+
+    /**
+     * Импорт любимых треков Spotify: тянем `/v1/me/tracks` постранично и
+     * докладываем в нашу БД только те, которых ещё нет в избранном.
+     * Без входа ничего не делаем — UI показывает подсказку и гасит кнопку.
+     */
+    fun importSpotifyLikes() {
+        if (_spotifyLikesLoading.value) return
+        if (!spotifyAuthRepository.authState.value.connected) {
+            _spotifyLikesError.value = true
+            return
+        }
+        viewModelScope.launch {
+            _spotifyLikesLoading.value = true
+            val existing = runCatching {
+                likedTracksRepository.getLikedTracks().first()
+            }.getOrDefault(emptyList()).mapTo(HashSet()) { it.id }
+
+            spotifyProvider.fetchLikedTracks()
+                .onSuccess { tracks ->
+                    val fresh = tracks.filter { it.id !in existing }
+                    fresh.forEach { track ->
+                        runCatching { likedTracksRepository.likeTrack(track) }
+                    }
+                    _spotifyLikesImported.value = fresh.size
+                }
+                .onFailure { error ->
+                    Log.e(TAG, "Не удалось импортировать любимые Spotify", error)
+                    _spotifyLikesError.value = true
+                }
+            _spotifyLikesLoading.value = false
+        }
+    }
+
+    fun consumeSpotifyLikesResult() {
+        _spotifyLikesImported.value = null
+    }
+
+    fun consumeSpotifyLikesError() {
+        _spotifyLikesError.value = false
     }
 
     /**

@@ -146,6 +146,36 @@ class SpotifyProvider @Inject constructor(
         fetchPlaylist(playlistId).map { playlist -> playlist.tracks }
 
     /**
+     * Любимые треки пользователя: `/v1/me/tracks` постранично по 50.
+     * Нужен пользовательский токен (scope `user-library-read`):
+     * Client Credentials к личной библиотеке доступа не даёт.
+     */
+    suspend fun fetchLikedTracks(maxTracks: Int = MAX_LIKED_TRACKS): Result<List<Track>> =
+        runCatching {
+            if (spotifyAuth.accessToken() == null) error(LOGIN_REQUIRED_MESSAGE)
+            val result = LinkedHashMap<String, Track>()
+            var offset = 0
+            while (result.size < maxTracks) {
+                val body = rateLimiter.acquire {
+                    authorizedBody(
+                        "$API_URL/me/tracks?limit=$LIKED_PAGE_SIZE&offset=$offset",
+                        credentials(),
+                    )
+                }
+                val page = parsePlaylistTracks(body)
+                page.forEach { track ->
+                    if (track.id.isNotBlank()) result.putIfAbsent(track.id, track)
+                }
+                val total = json.parseToJsonElement(body).jsonObject["total"]
+                    ?.jsonPrimitive?.intOrNull
+                offset += LIKED_PAGE_SIZE
+                // Пустая страница или достигнутый total — конец библиотеки.
+                if (page.isEmpty() || (total != null && offset >= total)) break
+            }
+            result.values.take(maxTracks)
+        }
+
+    /**
      * Разбор `/v1/playlists/{id}/tracks`: элемент `track` может быть null
      * (удалённый трек) или эпизодом подкаста — такие строки пропускаем.
      */
@@ -344,6 +374,15 @@ class SpotifyProvider @Inject constructor(
         const val GRANT_TYPE = "client_credentials"
         const val FORM_CONTENT_TYPE = "application/x-www-form-urlencoded"
         const val MAX_LIMIT = 20
+
+        /** Сколько любимых треков максимум тянем из Spotify за один импорт. */
+        const val MAX_LIKED_TRACKS = 1000
+
+        /** Spotify отдаёт /me/tracks страницами не больше 50. */
+        const val LIKED_PAGE_SIZE = 50
+
+        /** Текст ошибки, когда вход не выполнен: UI показывает подсказку сам. */
+        const val LOGIN_REQUIRED_MESSAGE = "Требуется вход в Spotify"
         const val MAX_PLAYLIST_TRACKS = 100
         const val DEFAULT_PLAYLIST_NAME = "Плейлист Spotify"
         const val EPISODE_TYPE = "episode"
