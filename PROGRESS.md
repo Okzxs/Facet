@@ -1,7 +1,18 @@
-﻿# PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
+# PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
 
 
-## Последнее обновление: 30.10.2026 (сессия 55)
+## Последнее обновление: 30.10.2026 (сессия 56)
+
+## Кэш поиска, лимитер 1 rps и миграция 10→11 — сессия 56
+- **Room v11**: новая таблица `search_cache` (PK `query`, колонки `source`, `jsonResponse`, `timestamp`), сущность `SearchCacheEntity`, DAO `SearchCacheDao` (`get(query, source)`, `upsert` через REPLACE, `deleteOlderThan`, точечный `delete`, `clearAll`), абстрактный `searchCacheDao()` в `AppDatabase`. Схема экспортируется в `app/schemas/com.my.music.data.local.AppDatabase/11.json`; `createSql` из 11.json совпадает с `MIGRATION_10_11` один-в-один.
+- **Миграция 10→11**: `DatabaseMigrations.kt` создаёт `search_cache` и добавлена в `ALL_MIGRATIONS`. Изолированный тест 10→11 проверяет таблицу, колонки и первичный ключ, сквозной тест 1→11 пишет и читает кэш после всех миграций, отдельный тест сверяет состав колонок и PK с `11.json`; саму схему при открытии мигрированной базы валидирует Room.
+- **Репозиторий кэша**: интерфейс `SearchCacheRepository` (`get` с TTL по умолчанию 24 ч, `put`, `clear`) и `SearchCacheRepositoryImpl` в `data/local`; просроченная запись удаляется при чтении, каждая запись подметает строки старше суток через `deleteOlderThan`. Биндинг — в `RepositoryModule`, DAO — в `DatabaseModule`. Кэш лежит в Room, поэтому переживает перезапуск приложения.
+- **Провайдеры**: Deezer/Apple/Spotify перед сетью смотрят кэш по `query` + `source`, после успешного разбора сохраняют сырой JSON; разбор вынесен в `parseTracks(body: String)` и одинаков для свежего и закэшированного ответа. Битый кэш молча игнорируется и заменяется сетевым ответом, ошибки сети не кэшируются (запись идёт только после успешного разбора). Apple кэширует тело удачного фолбэка без `country`; Spotify отдаёт кэш до проверки ключей; `resolve()` у Deezer/Apple кэш не использует (ссылки превью одноразовые), но проходит лимитер.
+- **RateLimiter**: `core/network/RateLimiter.kt` — резервирование слотов под `Mutex` + `delay` (главный поток не блокируется), API `awaitSlot()` / `acquire { }`, минимум 1000 мс; часы вынесены параметром ради виртуального времени в тестах. По одному лимитеру на источник через квалификатор `@SourceRateLimiter` и `RateLimiterModule`. У Spotify лимитер общий для поиска и запроса токена; `token()` переведён с `synchronized` на `Mutex` (обновление стало suspend), повтор на 401 сохранён.
+- **Health-проверка мимо кэша**: в `MusicSourceProvider.search` добавлен параметр `useCache` (по умолчанию true), `ServiceStatusManager` зовёт `useCache = false` — иначе статус «онлайн» показывался бы из кэша без сети.
+- **Настройки**: в `SpotifyIntegrationCard` абзац про Extended Quota Mode; ключ `settings_spotify_quota_warning` в EN и RU (195 ключей, наборы совпадают).
+- **Тесты**: `RateLimiterTest` (5: интервал 1000 мс, два интервала на три вызова, очередь параллельных вызовов, первый вызов без ожидания, свой интервал) на виртуальном времени, `SearchCacheRepositoryTest` (7: put/get, просрочка, чужой источник, TTL, чистка при записи, clear, TTL по умолчанию), миграция 10→11 и сверка с 11.json в `DatabaseMigrationTest`.
+- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 792 341 байт; `testDebugUnitTest` — 26 suites / 178 тестов, 0 failures/errors/skipped. Установка на телефон не выполнена: `adb devices` пуст, Android-устройств в системе нет.
 
 ## Иконки источников 48dp и локализация 100% — сессия 55
 - **Выбор источника (SearchScreen)**: ряд кнопок 64dp с аббревиатурами и горизонтальным скроллом заменён на 5 иконок-кнопок 48×48dp (радиус 14dp = `MaterialTheme.shapes.medium`) и кнопку статусов 46dp справа. Внутренний `Row` — `Arrangement.spacedBy(10.dp)`, промежуток считается в `BoxWithConstraints` и сжимается до 4dp только на узких экранах: прокрутки нет (5×48 + 4×10 = 280dp, вместе со статусом 326dp при ширине 411dp), кнопки не имеют `weight` и не сплющиваются.

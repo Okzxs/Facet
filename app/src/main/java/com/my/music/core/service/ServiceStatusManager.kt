@@ -124,7 +124,7 @@ class ServiceStatusManager @Inject constructor(
                     Log.d(tag, "${type.displayName}: источник не настроен")
                     return false
                 }
-                provider.search(HEALTH_QUERY, HEALTH_LIMIT)
+                provider.search(HEALTH_QUERY, HEALTH_LIMIT, useCache = false)
             } else {
                 when (type) {
                     ServiceType.SOUNDCLOUD -> soundCloudRepository.search(HEALTH_QUERY, HEALTH_LIMIT)

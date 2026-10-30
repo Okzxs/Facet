@@ -93,5 +93,11 @@ abstract class RepositoryModule {
     abstract fun bindDownloadRepository(
         impl: com.my.music.data.local.DownloadRepositoryImpl,
     ): com.my.music.data.repository.DownloadRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSearchCacheRepository(
+        impl: com.my.music.data.local.SearchCacheRepositoryImpl,
+    ): com.my.music.data.repository.SearchCacheRepository
 }
 

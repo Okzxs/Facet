@@ -1100,6 +1100,14 @@ private fun SpotifyIntegrationCard(
                     Text(stringResource(R.string.settings_save))
                 }
             }
+            // Предупреждение о лимите Spotify: один client_id работает не более
+            // чем на 10 устройствах, дальше нужен Extended Quota Mode.
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = stringResource(R.string.settings_spotify_quota_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

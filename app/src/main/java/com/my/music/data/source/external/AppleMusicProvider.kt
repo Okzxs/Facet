@@ -1,11 +1,15 @@
 package com.my.music.data.source.external
 
 import android.util.Log
+import com.my.music.core.network.RateLimiter
+import com.my.music.core.network.RateLimiterKeys
+import com.my.music.core.network.SourceRateLimiter
 import com.my.music.core.source.MusicSourceProvider
 import com.my.music.core.source.SourceCapabilities
 import com.my.music.data.model.AudioStreamResult
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
+import com.my.music.data.repository.SearchCacheRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -28,11 +32,16 @@ import javax.inject.Singleton
  * `previewUrl` (M4A, ~30 секунд). Полные треки защищены DRM и недоступны
  * сторонним клиентам, поэтому для альбомных версий используется
  * [com.my.music.core.source.StreamResolver] (поиск на YouTube).
+ *
+ * Успешные ответы поиска кэшируются как сырой JSON (Room, TTL 24 ч),
+ * сеть вызывается не чаще раза в секунду ([RateLimiter]).
  */
 @Singleton
 class AppleMusicProvider @Inject constructor(
     private val client: OkHttpClient,
     private val json: Json,
+    private val searchCache: SearchCacheRepository,
+    @SourceRateLimiter(RateLimiterKeys.APPLE) private val rateLimiter: RateLimiter,
 ) : MusicSourceProvider {
 
     override val source: Source = Source.APPLE
@@ -45,12 +54,14 @@ class AppleMusicProvider @Inject constructor(
         supportsDownload = false,
     )
 
-    override suspend fun search(query: String, limit: Int): Result<List<Track>> =
+    override suspend fun search(
+        query: String,
+        limit: Int,
+        useCache: Boolean,
+    ): Result<List<Track>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val tracks = searchOnce(query = query, limit = limit, country = countryFor(query))
-                // Русский запрос может не найтись в нужном сторе — повторяем без страны.
-                tracks.ifEmpty { searchOnce(query = query, limit = limit, country = null) }
+                loadTracks(query = query, limit = limit, useCache = useCache)
             }.onFailure { error -> Log.w(TAG, "Поиск iTunes не удался: ${error.message}") }
         }
 
@@ -60,7 +71,9 @@ class AppleMusicProvider @Inject constructor(
             runCatching {
                 val trackId = track.id.removePrefix(ID_PREFIX)
                 val url = "$BASE_URL/lookup?id=$trackId&entity=song"
-                val fresh = request(url)["results"]?.jsonArray
+                // Ссылка превью одноразовая — кэш тут не нужен, только лимитер.
+                val root = rateLimiter.acquire { requestJson(url) }
+                val fresh = root["results"]?.jsonArray
                     ?.mapNotNull { parseTrack(it.jsonObject) }
                     ?.firstOrNull()
                 val direct = fresh?.streamUrl
@@ -69,13 +82,38 @@ class AppleMusicProvider @Inject constructor(
             }.onFailure { error -> Log.w(TAG, "Resolve Apple не удался: ${error.message}") }
         }
 
-    private fun searchOnce(query: String, limit: Int, country: String?): List<Track> {
-        val countryParam = country?.let { "&country=$it" }.orEmpty()
-        val url = "$BASE_URL/search?term=${encode(query)}&entity=song" +
-            "&limit=${limit.coerceIn(1, MAX_LIMIT)}$countryParam"
-        return request(url)["results"]?.jsonArray
+    /** Кэш → сеть. Русский стор может не знать запрос, тогда пробуем без страны. */
+    private suspend fun loadTracks(query: String, limit: Int, useCache: Boolean): List<Track> {
+        if (useCache) {
+            searchCache.get(query, source)?.let { cached ->
+                runCatching { parseTracks(cached) }.getOrNull()?.let { return it }
+            }
+        }
+
+        val country = countryFor(query)
+        val firstBody = rateLimiter.acquire { requestBody(searchUrl(query, limit, country)) }
+        val first = parseTracks(firstBody)
+        if (first.isNotEmpty() || country == null) {
+            if (useCache) searchCache.put(query, source, firstBody)
+            return first
+        }
+
+        val fallbackBody = rateLimiter.acquire { requestBody(searchUrl(query, limit, null)) }
+        val fallback = parseTracks(fallbackBody)
+        if (useCache) searchCache.put(query, source, fallbackBody)
+        return fallback
+    }
+
+    /** Разбор тела ответа — общий для свежего и закэшированного JSON. */
+    private fun parseTracks(body: String): List<Track> =
+        json.parseToJsonElement(body).jsonObject["results"]?.jsonArray
             ?.mapNotNull { parseTrack(it.jsonObject) }
             .orEmpty()
+
+    private fun searchUrl(query: String, limit: Int, country: String?): String {
+        val countryParam = country?.let { "&country=$it" }.orEmpty()
+        return "$BASE_URL/search?term=${encode(query)}&entity=song" +
+            "&limit=${limit.coerceIn(1, MAX_LIMIT)}$countryParam"
     }
 
     private fun parseTrack(item: JsonObject): Track? {
@@ -101,15 +139,17 @@ class AppleMusicProvider @Inject constructor(
         )
     }
 
-    private fun request(url: String): JsonObject {
+    private fun requestJson(url: String): JsonObject =
+        json.parseToJsonElement(requestBody(url)).jsonObject
+
+    private fun requestBody(url: String): String {
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json")
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("iTunes HTTP ${response.code}")
-            val body = response.body?.string().orEmpty()
-            return json.parseToJsonElement(body).jsonObject
+            return response.body?.string().orEmpty()
         }
     }
 

@@ -87,6 +87,7 @@
     <string name="settings_integrations">Интеграции</string>
     <string name="settings_spotify">Spotify</string>
     <string name="settings_spotify_hint">Ключи нужны только для поиска: стрим идёт через YouTube</string>
+    <string name="settings_spotify_quota_warning">Для работы на 10+ устройствах требуется Extended Quota Mode в Spotify Developer Dashboard</string>
     <string name="settings_spotify_where">Создайте приложение в кабинете Spotify for Developers и скопируйте Client ID и Client Secret</string>
     <string name="settings_spotify_client_id">Client ID</string>
     <string name="settings_spotify_client_secret">Client secret</string>

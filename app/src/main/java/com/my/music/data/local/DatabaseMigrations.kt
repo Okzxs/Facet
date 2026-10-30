@@ -15,6 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v7 → v8: память о треках, уже показанных в рекомендациях.
  * v8 → v9: индексы по горячим полям выборок (сезон и дата лайка, время прослушивания, вес жанра).
  * v9 → v10: таблица дизлайков для фильтрации рекомендаций.
+ * v10 → v11: кэш сырых JSON-ответов поиска внешних источников.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -200,6 +201,22 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `search_cache` (
+                `query` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `jsonResponse` TEXT NOT NULL,
+                `timestamp` INTEGER NOT NULL,
+                PRIMARY KEY(`query`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -210,4 +227,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_7_8,
     MIGRATION_8_9,
     MIGRATION_9_10,
+    MIGRATION_10_11,
 )

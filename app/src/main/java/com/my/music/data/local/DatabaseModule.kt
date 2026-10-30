@@ -7,6 +7,7 @@ import com.my.music.data.local.dao.DownloadedTracksDao
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
 import com.my.music.data.local.dao.RecentlyShownDao
+import com.my.music.data.local.dao.SearchCacheDao
 import com.my.music.data.local.dao.TasteDao
 import dagger.Module
 import dagger.Provides
@@ -73,5 +74,11 @@ object DatabaseModule {
     @Singleton
     fun provideRecentlyShownDao(database: AppDatabase): RecentlyShownDao {
         return database.recentlyShownDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideSearchCacheDao(database: AppDatabase): SearchCacheDao {
+        return database.searchCacheDao()
     }
 }

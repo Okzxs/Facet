@@ -1,13 +1,19 @@
 package com.my.music.data.source.external
 
 import android.util.Log
+import com.my.music.core.network.RateLimiter
+import com.my.music.core.network.RateLimiterKeys
+import com.my.music.core.network.SourceRateLimiter
 import com.my.music.core.source.MusicSourceProvider
 import com.my.music.core.source.SourceCapabilities
 import com.my.music.data.model.Source
 import com.my.music.data.model.Track
+import com.my.music.data.repository.SearchCacheRepository
 import com.my.music.data.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -37,12 +43,17 @@ import javax.inject.Singleton
  * `streamUrl` всегда null, а воспроизведение идёт через
  * [com.my.music.core.source.StreamResolver] → матч на YouTube. `resolve`
  * не переопределяем: базовый интерфейс честно отвечает «поток недоступен».
+ *
+ * Успешные ответы поиска кэшируются сырым JSON (Room, TTL 24 ч). Лимитер
+ * общий для поиска и запроса токена: квота Spotify считается на все запросы.
  */
 @Singleton
 class SpotifyProvider @Inject constructor(
     private val client: OkHttpClient,
     private val json: Json,
     private val settingsRepository: SettingsRepository,
+    private val searchCache: SearchCacheRepository,
+    @SourceRateLimiter(RateLimiterKeys.SPOTIFY) private val rateLimiter: RateLimiter,
 ) : MusicSourceProvider {
 
     override val source: Source = Source.SPOTIFY
@@ -55,8 +66,9 @@ class SpotifyProvider @Inject constructor(
         supportsDownload = false,
     )
 
-    // Токен общий для всех запросов: обновляем под локом, читаем без него.
-    private val tokenLock = Any()
+    // Токен общий для всех запросов: обновляем под мьютексом, читаем без него.
+    // Mutex вместо synchronized — обновление теперь suspend (ждёт слот лимитера).
+    private val tokenMutex = Mutex()
 
     @Volatile
     private var accessToken: String? = null
@@ -67,19 +79,34 @@ class SpotifyProvider @Inject constructor(
     /** Без ключей источник неработоспособен: проверка статусов не идёт в сеть. */
     override suspend fun isConfigured(): Boolean = credentials() != null
 
-    override suspend fun search(query: String, limit: Int): Result<List<Track>> =
+    override suspend fun search(
+        query: String,
+        limit: Int,
+        useCache: Boolean,
+    ): Result<List<Track>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val credentials = credentials() ?: error(NOT_CONFIGURED_MESSAGE)
-                val url = "$API_URL/search?q=${encode(query)}" +
-                    "&type=track&limit=${limit.coerceIn(1, MAX_LIMIT)}"
-                val root = authorizedRequest(url, credentials)
-                root["tracks"]?.jsonObject
-                    ?.get("items")?.jsonArray
-                    ?.mapNotNull { parseTrack(it.jsonObject) }
-                    .orEmpty()
+                loadTracks(query = query, limit = limit, useCache = useCache)
             }.onFailure { error -> Log.w(TAG, "Поиск Spotify не удался: ${error.message}") }
         }
+
+    /** Кэш → сеть. В кэш попадает только успешно разобранный ответ. */
+    private suspend fun loadTracks(query: String, limit: Int, useCache: Boolean): List<Track> {
+        if (useCache) {
+            searchCache.get(query, source)?.let { cached ->
+                // Битый кэш не должен ломать поиск: молча уходим в сеть.
+                runCatching { parseTracks(cached) }.getOrNull()?.let { return it }
+            }
+        }
+
+        val credentials = credentials() ?: error(NOT_CONFIGURED_MESSAGE)
+        val url = "$API_URL/search?q=${encode(query)}" +
+            "&type=track&limit=${limit.coerceIn(1, MAX_LIMIT)}"
+        val body = rateLimiter.acquire { authorizedBody(url, credentials) }
+        val tracks = parseTracks(body)
+        if (useCache) searchCache.put(query, source, body)
+        return tracks
+    }
 
     private suspend fun credentials(): Credentials? {
         // Настройки приходят из SharedPreferences через репозиторий: источник
@@ -94,14 +121,14 @@ class SpotifyProvider @Inject constructor(
      * GET с авторизацией. На 401 токен мог быть отозван — сбрасываем кэш,
      * берём новый и повторяем запрос ровно один раз.
      */
-    private fun authorizedRequest(url: String, credentials: Credentials): JsonObject {
+    private suspend fun authorizedBody(url: String, credentials: Credentials): String {
         val first = get(url = url, token = token(credentials, forceRefresh = false))
         if (first.code != HTTP_UNAUTHORIZED) {
-            return parseJson(first.code, first.body)
+            return parseBody(first)
         }
         Log.d(TAG, "Токен Spotify отклонён (401), запрашиваем новый")
         val second = get(url = url, token = token(credentials, forceRefresh = true))
-        return parseJson(second.code, second.body)
+        return parseBody(second)
     }
 
     private fun get(url: String, token: String): HttpResponse {
@@ -119,18 +146,23 @@ class SpotifyProvider @Inject constructor(
         }
     }
 
-    private fun parseJson(code: Int, body: String): JsonObject {
-        if (code !in HTTP_OK_RANGE) error("Spotify HTTP $code")
-        return json.parseToJsonElement(body).jsonObject
+    private fun parseBody(response: HttpResponse): String {
+        if (response.code !in HTTP_OK_RANGE) error("Spotify HTTP ${response.code}")
+        return response.body
     }
 
+    /** Разбор тела ответа — общий для свежего и закэшированного JSON. */
+    private fun parseTracks(body: String): List<Track> =
+        json.parseToJsonElement(body).jsonObject["tracks"]?.jsonObject
+            ?.get("items")?.jsonArray
+            ?.mapNotNull { parseTrack(it.jsonObject) }
+            .orEmpty()
+
     /** access_token из кэша или новый запрос Client Credentials Flow. */
-    private fun token(credentials: Credentials, forceRefresh: Boolean): String {
-        val cached = accessToken
-        if (!forceRefresh && cached != null && System.currentTimeMillis() < tokenExpiresAtMs) {
-            return cached
-        }
-        synchronized(tokenLock) {
+    private suspend fun token(credentials: Credentials, forceRefresh: Boolean): String {
+        accessToken?.takeIf { !forceRefresh && System.currentTimeMillis() < tokenExpiresAtMs }
+            ?.let { return it }
+        tokenMutex.withLock {
             val fresh = accessToken
             if (!forceRefresh && fresh != null && System.currentTimeMillis() < tokenExpiresAtMs) {
                 return fresh
@@ -144,7 +176,9 @@ class SpotifyProvider @Inject constructor(
         }
     }
 
-    private fun requestToken(credentials: Credentials): IssuedToken {
+    private suspend fun requestToken(credentials: Credentials): IssuedToken {
+        // Запрос токена тоже упирается в лимит: Spotify считает квоту на все вызовы.
+        rateLimiter.awaitSlot()
         val body = "grant_type=$GRANT_TYPE".toRequestBody(FORM_MIME_TYPE)
         val request = Request.Builder()
             .url(TOKEN_URL)

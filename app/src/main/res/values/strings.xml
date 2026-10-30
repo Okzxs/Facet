@@ -88,6 +88,7 @@
     <string name="settings_integrations">Integrations</string>
     <string name="settings_spotify">Spotify</string>
     <string name="settings_spotify_hint">Keys are only needed to search in Spotify; streaming goes through YouTube</string>
+    <string name="settings_spotify_quota_warning">Extended Quota Mode in the Spotify Developer Dashboard is required to work on 10+ devices</string>
     <string name="settings_spotify_where">Create an app in the Spotify developer dashboard and copy its Client ID and Client Secret</string>
     <string name="settings_spotify_client_id">Client ID</string>
     <string name="settings_spotify_client_secret">Client secret</string>

@@ -39,8 +39,18 @@ interface MusicSourceProvider {
     /** Возможности источника — по ним строятся бейджи и проверки доступности. */
     val capabilities: SourceCapabilities
 
-    /** Поиск треков. Ошибка сети/сервиса — [Result.failure], не исключение. */
-    suspend fun search(query: String, limit: Int = DEFAULT_LIMIT): Result<List<Track>>
+    /**
+     * Поиск треков. Ошибка сети/сервиса — [Result.failure], не исключение.
+     *
+     * @param useCache разрешено ли отдать ответ из кэша поиска. Проверка
+     *   доступности сервиса идёт мимо кэша ([useCache] = false), иначе статус
+     *   «онлайн» показывался бы из сохранённого ответа без обращения к сети.
+     */
+    suspend fun search(
+        query: String,
+        limit: Int = DEFAULT_LIMIT,
+        useCache: Boolean = true,
+    ): Result<List<Track>>
 
     /**
      * Готов ли источник к работе: есть ключи/токен пользователя.

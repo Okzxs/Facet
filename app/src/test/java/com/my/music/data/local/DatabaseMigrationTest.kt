@@ -12,9 +12,14 @@ import com.my.music.data.local.entity.DislikedTrackEntity
 import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.GenreWeightEntity
 import com.my.music.data.local.entity.RecentlyShownEntity
+import com.my.music.data.local.entity.SearchCacheEntity
 import com.my.music.data.local.entity.UserPreferenceEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -24,6 +29,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -49,7 +55,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 8 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 11 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -86,7 +92,7 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(10, database.openHelper.writableDatabase.version)
+            assertEquals(11, database.openHelper.writableDatabase.version)
 
             // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
@@ -147,6 +153,20 @@ class DatabaseMigrationTest {
             assertEquals(
                 listOf("disliked-1"),
                 database.dislikedTrackDao().getAll().map { it.trackId },
+            )
+
+            // Таблица кэша поиска создана миграцией 10 → 11
+            database.searchCacheDao().upsert(
+                SearchCacheEntity(
+                    query = "cachalot",
+                    source = "DEEZER",
+                    jsonResponse = """{"data":[]}""",
+                    timestamp = 9_000L,
+                ),
+            )
+            assertEquals(
+                "DEEZER",
+                database.searchCacheDao().get("cachalot", "DEEZER")?.source,
             )
         } finally {
             database.close()
@@ -315,6 +335,48 @@ class DatabaseMigrationTest {
         assertTrue(hasIndex(db, "index_genre_weights_weight"))
     }
 
+    @Test
+    fun `migration 10 to 11 creates search cache table`() {
+        val db = openLegacyDatabase("m-10-11.db", 10) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+        }
+
+        MIGRATION_10_11.migrate(db)
+
+        assertTrue(hasTable(db, "search_cache"))
+        assertEquals(
+            setOf("query", "source", "jsonResponse", "timestamp"),
+            tableColumns(db, "search_cache"),
+        )
+        assertEquals(listOf("query"), primaryKeyColumns(db, "search_cache"))
+    }
+
+    /**
+     * Миграция обязана давать ровно ту схему, что Room экспортировал в 11.json:
+     * иначе после обновления приложения база не откроется (Room schema validation).
+     */
+    @Test
+    fun `schema 11 json matches migrated search cache table`() {
+        val schemaFile = schemaFile("11.json")
+            ?: error("Не найден app/schemas/.../11.json — KSP не экспортировал схему")
+        val root = Json.parseToJsonElement(schemaFile.readText()).jsonObject
+        val table = root["database"]?.jsonObject
+            ?.get("entities")?.jsonArray
+            ?.map { it.jsonObject }
+            ?.firstOrNull { it["tableName"]?.jsonPrimitive?.content == "search_cache" }
+            ?: error("В 11.json нет таблицы search_cache")
+
+        assertEquals(
+            listOf("query", "source", "jsonResponse", "timestamp"),
+            table["fields"]!!.jsonArray.map { it.jsonObject["columnName"]!!.jsonPrimitive.content },
+        )
+        assertEquals(
+            listOf("query"),
+            table["primaryKey"]!!.jsonObject["columnNames"]!!.jsonArray
+                .map { it.jsonPrimitive.content },
+        )
+    }
+
     // ─── Хелперы ──────────────────────────────────────────────────────────────
 
     /** Открывает сырую базу версии [version] со схемой [create] для прогона одной миграции. */
@@ -355,6 +417,30 @@ class DatabaseMigrationTest {
     private fun hasIndex(db: SupportSQLiteDatabase, index: String): Boolean {
         db.query("SELECT 1 FROM `sqlite_master` WHERE `type` = 'index' AND `name` = '$index'")
             .use { return it.moveToFirst() }
+    }
+
+    /** Колонки первичного ключа в порядке составного ключа. */
+    private fun primaryKeyColumns(db: SupportSQLiteDatabase, table: String): List<String> {
+        db.query("PRAGMA table_info(`$table`)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            val pkIndex = cursor.getColumnIndexOrThrow("pk")
+            val columns = mutableListOf<Pair<Int, String>>()
+            while (cursor.moveToNext()) {
+                val pk = cursor.getInt(pkIndex)
+                if (pk > 0) columns += pk to cursor.getString(nameIndex)
+            }
+            return columns.sortedBy { it.first }.map { it.second }
+        }
+    }
+
+    /** Ищет экспортированную схему независимо от рабочей папки теста. */
+    private fun schemaFile(name: String): File? {
+        val relative = "schemas/com.my.music.data.local.AppDatabase/$name"
+        return listOf(
+            File(relative),
+            File("app/$relative"),
+            File("../app/$relative"),
+        ).firstOrNull { it.isFile }
     }
 
     private companion object {
