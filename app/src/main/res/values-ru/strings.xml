@@ -333,7 +333,7 @@
     <string name="import_track_line">%1$s — %2$s</string>
     <string name="import_success">Плейлист «%1$s» импортирован</string>
     <string name="import_error_empty">Вставьте ссылку на плейлист</string>
-    <string name="import_error_unsupported">Не удалось распознать ссылку. Поддержаны Spotify, Deezer, Яндекс Музыка и Apple Music</string>
+    <string name="import_error_unsupported">Не удалось распознать ссылку. Поддержаны Spotify, Deezer, Яндекс Музыка, Apple Music, YouTube и SoundCloud</string>
     <string name="import_error_yandex">Импорт плейлистов Яндекс Музыки пока недоступен</string>
     <string name="import_error_apple">Импорт плейлистов Apple Music недоступен без Apple Music API</string>
     <string name="import_error_spotify_keys">Добавьте ключи Spotify в настройках</string>

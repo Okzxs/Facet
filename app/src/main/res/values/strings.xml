@@ -328,7 +328,7 @@
     <string name="import_track_line">%1$s — %2$s</string>
     <string name="import_success">Playlist «%1$s» imported</string>
     <string name="import_error_empty">Paste a playlist link</string>
-    <string name="import_error_unsupported">Couldn’t recognize the link. Spotify, Deezer, Yandex Music and Apple Music links are supported</string>
+    <string name="import_error_unsupported">Couldn’t recognize the link. Spotify, Deezer, Yandex Music, Apple Music, YouTube and SoundCloud links are supported</string>
     <string name="import_error_yandex">Yandex Music import is not available yet</string>
     <string name="import_error_apple">Importing Apple Music playlists is unavailable without the Apple Music API</string>
     <string name="import_error_spotify_keys">Add Spotify keys in settings</string>

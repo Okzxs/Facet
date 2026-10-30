@@ -6,6 +6,8 @@ enum class ImportService {
     YANDEX,
     APPLE,
     DEEZER,
+    YOUTUBE,
+    SOUNDCLOUD,
 }
 
 /**
@@ -78,8 +80,47 @@ object PlaylistLinkParser {
             isYandexHost(host) -> parseYandex(segments.drop(1))
             isAppleHost(host) -> parseApple(segments.drop(1), query)
             isDeezerHost(host) -> parseDeezer(segments.drop(1))
+            isYouTubeHost(host) -> parseYouTube(query)
+            isSoundCloudHost(host) -> parseSoundCloud(host, segments.drop(1))
             else -> unsupported()
         }
+    }
+
+    /**
+     * YouTube: `youtube.com/playlist?list=<id>`, `music.youtube.com/playlist?list=…`
+     * и ссылка на видео с `list=` — все три несут id плейлиста в query.
+     */
+    private fun parseYouTube(query: String): PlaylistLinkParseResult {
+        val id = queryParam(query, LIST_QUERY_PARAM)
+            ?.takeIf { it.isNotEmpty() }
+            ?: return failure(
+                ImportError.UNSUPPORTED_LINK,
+                "В ссылке YouTube нет параметра list — это не плейлист",
+            )
+        return PlaylistLinkParseResult.Success(ImportService.YOUTUBE, id)
+    }
+
+    /**
+     * SoundCloud: `soundcloud.com/<user>/sets/<name>`. Идентификатором служит
+     * канонический URL — NewPipe открывает плейлист именно по нему.
+     */
+    private fun parseSoundCloud(host: String, segments: List<String>): PlaylistLinkParseResult {
+        val setsIndex = segments.indexOfFirst { it.equals(SOUNDCLOUD_SETS_SEGMENT, true) }
+        if (setsIndex < 0 || segments.size <= setsIndex + 1) {
+            return failure(
+                ImportError.UNSUPPORTED_LINK,
+                "Ссылка SoundCloud должна вести на плейлист (/sets/…)",
+            )
+        }
+        val canonical = buildString {
+            append("https://")
+            append(host)
+            segments.forEach { segment ->
+                append('/')
+                append(segment)
+            }
+        }
+        return PlaylistLinkParseResult.Success(ImportService.SOUNDCLOUD, canonical)
     }
 
     /** `open.spotify.com/playlist/<id>`, `spotify.com/playlist/<id>`. */
@@ -175,6 +216,12 @@ object PlaylistLinkParser {
     private fun isDeezerHost(host: String): Boolean =
         host == "deezer.com" || host.endsWith(".deezer.com")
 
+    private fun isYouTubeHost(host: String): Boolean =
+        host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be"
+
+    private fun isSoundCloudHost(host: String): Boolean =
+        host == "soundcloud.com" || host.endsWith(".soundcloud.com")
+
     /** Значение query-параметра по имени; null, если параметра нет. */
     private fun queryParam(query: String, name: String): String? =
         query.split('&')
@@ -183,7 +230,8 @@ object PlaylistLinkParser {
 
     private fun unsupported(): PlaylistLinkParseResult.Failure = failure(
         ImportError.UNSUPPORTED_LINK,
-        "Не удалось распознать ссылку: поддержаны Spotify, Deezer, Яндекс Музыка и Apple Music",
+        "Не удалось распознать ссылку: поддержаны Spotify, Deezer, Яндекс Музыка, " +
+            "Apple Music, YouTube и SoundCloud",
     )
 
     private fun failure(error: ImportError, message: String): PlaylistLinkParseResult.Failure =
@@ -192,6 +240,8 @@ object PlaylistLinkParser {
     private const val PLAYLIST_SEGMENT = "playlist"
     private const val YANDEX_PLAYLISTS_SEGMENT = "playlists"
     private const val TRACK_QUERY_PARAM = "i"
+    private const val LIST_QUERY_PARAM = "list"
+    private const val SOUNDCLOUD_SETS_SEGMENT = "sets"
     private const val APPLE_PLAYLIST_PREFIX = "pl."
     private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
 }

@@ -11,6 +11,7 @@ import com.facet.music.core.network.RateLimiter
 import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
 import com.facet.music.core.util.rethrowCancellation
+import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.source.external.SpotifyProvider
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.StreamingService
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -86,7 +90,62 @@ class PlaylistImportServiceImpl @Inject constructor(
                 ImportError.YANDEX_UNSUPPORTED,
                 "Импорт плейлистов Яндекс Музыки недоступен: нужен закрытый API",
             )
+            ImportService.YOUTUBE -> loadWithNewPipe(
+                service = ServiceList.YouTube,
+                url = "https://www.youtube.com/playlist?list=${link.id}",
+                importService = ImportService.YOUTUBE,
+            )
+            ImportService.SOUNDCLOUD -> loadWithNewPipe(
+                service = ServiceList.SoundCloud,
+                url = link.id,
+                importService = ImportService.SOUNDCLOUD,
+            )
         }
+
+    /**
+     * YouTube и SoundCloud через NewPipe: у обоих сервисов есть
+     * `PlaylistExtractor`, поэтому логика общая — постранично набираем
+     * `StreamInfoItem` и переводим их в доменные треки.
+     */
+    private fun loadWithNewPipe(
+        service: StreamingService,
+        url: String,
+        importService: ImportService,
+    ): PlaylistImportResult = runCatching {
+        val handler = service.playlistLHFactory.fromUrl(url)
+        val extractor = service.getPlaylistExtractor(handler)
+        extractor.fetchPage()
+
+        val items = mutableListOf<StreamInfoItem>()
+        var page = extractor.initialPage
+        items += page.items.filterIsInstance<StreamInfoItem>()
+        var pages = 1
+        while (pages < MAX_NEWPIPE_PAGES && page.hasNextPage()) {
+            page = extractor.getPage(page.nextPage)
+            items += page.items.filterIsInstance<StreamInfoItem>()
+            pages++
+        }
+
+        val tracks = items.mapNotNull { it.toImportedTrack(importService) }
+        successOrEmpty(extractor.name, importService, tracks)
+    }.rethrowCancellation()
+        .getOrElse { error -> networkFailure(error) }
+
+    /** Строка плейлиста NewPipe → доменный трек; пустые/битые пропускаем. */
+    private fun StreamInfoItem.toImportedTrack(service: ImportService): Track? {
+        if (url.isBlank() || name.isBlank()) return null
+        return Track(
+            id = url,
+            source = if (service == ImportService.YOUTUBE) Source.YOUTUBE else Source.SOUNDCLOUD,
+            title = name,
+            artist = uploaderName.orEmpty().ifBlank { UNKNOWN_ARTIST },
+            artworkUrl = thumbnails.lastOrNull()?.url,
+            streamUrl = null,
+            durationMs = duration.coerceAtLeast(0L) * 1_000L,
+            genre = null,
+            transcodingUrl = url,
+        )
+    }
 
     /** Без ключей Spotify не ходим в сеть — сразу говорим, что делать. */
     private suspend fun loadSpotify(playlistId: String): PlaylistImportResult {
@@ -176,6 +235,10 @@ class PlaylistImportServiceImpl @Inject constructor(
 
     private companion object {
         const val TAG = "PlaylistImportService"
+
+        /** Сколько страниц NewPipe максимум листаем: 5 × ~100 треков. */
+        const val MAX_NEWPIPE_PAGES = 5
+        const val UNKNOWN_ARTIST = "Unknown artist"
         const val DEEZER_PLAYLIST_URL = "https://api.deezer.com/playlist/"
         const val ITUNES_LOOKUP_URL = "https://itunes.apple.com/lookup"
         const val SPOTIFY_NOT_CONFIGURED_MESSAGE = "Добавьте ключи Spotify в настройках"
