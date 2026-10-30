@@ -111,5 +111,11 @@ abstract class RepositoryModule {
     abstract fun bindPlaylistImportService(
         impl: com.my.music.data.source.imports.PlaylistImportServiceImpl,
     ): com.my.music.data.source.imports.PlaylistImportService
+
+    @Binds
+    @Singleton
+    abstract fun bindSpotifyAuthRepository(
+        impl: com.my.music.data.source.external.SpotifyAuthRepositoryImpl,
+    ): com.my.music.data.repository.SpotifyAuthRepository
 }
 

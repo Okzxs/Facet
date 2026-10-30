@@ -287,6 +287,9 @@ fun AppNavGraph() {
                     ArtistScreen(
                         onBack = { navController.popBackStack() },
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        onArtistClick = { artist ->
+                            navController.navigate(Screen.Artist.createRoute(artist))
+                        },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )

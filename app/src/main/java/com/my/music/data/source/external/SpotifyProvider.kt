@@ -10,6 +10,7 @@ import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import com.my.music.data.repository.SearchCacheRepository
 import com.my.music.data.repository.SettingsRepository
+import com.my.music.data.repository.SpotifyAuthRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -63,6 +64,7 @@ class SpotifyProvider @Inject constructor(
     private val client: OkHttpClient,
     private val json: Json,
     private val settingsRepository: SettingsRepository,
+    private val spotifyAuth: SpotifyAuthRepository,
     private val searchCache: SearchCacheRepository,
     @SourceRateLimiter(RateLimiterKeys.SPOTIFY) private val rateLimiter: RateLimiter,
 ) : MusicSourceProvider {
@@ -87,8 +89,12 @@ class SpotifyProvider @Inject constructor(
     @Volatile
     private var tokenExpiresAtMs: Long = 0L
 
-    /** Без ключей источник неработоспособен: проверка статусов не идёт в сеть. */
-    override suspend fun isConfigured(): Boolean = credentials() != null
+    /**
+     * Источник настроен, если пользователь вошёл через Spotify (OAuth)
+     * или задал Client ID + Secret для поиска без входа.
+     */
+    override suspend fun isConfigured(): Boolean =
+        spotifyAuth.authState.value.connected || credentials() != null
 
     override suspend fun search(
         query: String,
@@ -108,7 +114,7 @@ class SpotifyProvider @Inject constructor(
     suspend fun fetchPlaylist(playlistId: String): Result<SpotifyPlaylist> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val credentials = credentials() ?: error(NOT_CONFIGURED_MESSAGE)
+                val credentials = credentials()
                 val id = playlistId.removePrefix(ID_PREFIX)
                 val detailsBody = rateLimiter.acquire {
                     authorizedBody("$API_URL/playlists/$id", credentials)
@@ -164,10 +170,9 @@ class SpotifyProvider @Inject constructor(
             }
         }
 
-        val credentials = credentials() ?: error(NOT_CONFIGURED_MESSAGE)
         val url = "$API_URL/search?q=${encode(query)}" +
             "&type=track&limit=${limit.coerceIn(1, MAX_LIMIT)}"
-        val body = rateLimiter.acquire { authorizedBody(url, credentials) }
+        val body = rateLimiter.acquire { authorizedBody(url, credentials()) }
         val tracks = parseTracks(body)
         if (useCache) searchCache.put(query, source, body)
         return tracks
@@ -183,16 +188,27 @@ class SpotifyProvider @Inject constructor(
     }
 
     /**
-     * GET с авторизацией. На 401 токен мог быть отозван — сбрасываем кэш,
-     * берём новый и повторяем запрос ровно один раз.
+     * GET с авторизацией. Приоритет — пользовательский токен OAuth: он даёт
+     * доступ к личным плейлистам, а Client Credentials — только к публичным
+     * данным. На 401 токен мог быть отозван: обновляем и повторяем один раз.
      */
-    private suspend fun authorizedBody(url: String, credentials: Credentials): String {
-        val first = get(url = url, token = token(credentials, forceRefresh = false))
+    private suspend fun authorizedBody(url: String, credentials: Credentials?): String {
+        val userToken = spotifyAuth.accessToken()
+        if (userToken != null) {
+            val first = get(url = url, token = userToken)
+            if (first.code != HTTP_UNAUTHORIZED) return parseBody(first)
+            Log.d(TAG, "Пользовательский токен отклонён, обновляем")
+            val refreshed = spotifyAuth.accessToken(forceRefresh = true)
+            if (refreshed != null) return parseBody(get(url = url, token = refreshed))
+        }
+
+        val creds = credentials ?: error(NOT_CONFIGURED_MESSAGE)
+        val first = get(url = url, token = token(creds, forceRefresh = false))
         if (first.code != HTTP_UNAUTHORIZED) {
             return parseBody(first)
         }
         Log.d(TAG, "Токен Spotify отклонён (401), запрашиваем новый")
-        val second = get(url = url, token = token(credentials, forceRefresh = true))
+        val second = get(url = url, token = token(creds, forceRefresh = true))
         return parseBody(second)
     }
 

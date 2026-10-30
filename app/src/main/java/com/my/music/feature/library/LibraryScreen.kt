@@ -1,6 +1,9 @@
 package com.my.music.feature.library
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,8 +29,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.rounded.AddLink
 import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,10 +68,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.my.music.R
 import com.my.music.core.download.DownloadState
 import com.my.music.core.import.ImportError
+import com.my.music.core.spotify.SpotifyPlaylistSummary
 import com.my.music.core.import.ImportedPlaylist
 import com.my.music.core.ui.components.AddToPlaylistSheet
 import com.my.music.core.ui.components.CollectionChipCard
 import com.my.music.core.ui.components.CollectionSummary
+import com.my.music.core.ui.components.PlaylistCover
 import com.my.music.core.ui.components.PlaylistTile
 import com.my.music.core.ui.components.SectionHeader
 import com.my.music.core.ui.components.TrackCard
@@ -104,6 +111,10 @@ fun LibraryScreen(
     val playlistError by viewModel.playlistError.collectAsState()
     val downloadedTracks by viewModel.downloadedTracks.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
+    val spotifyConnected by viewModel.spotifyConnected.collectAsState()
+    val spotifyPlaylists by viewModel.spotifyPlaylists.collectAsState()
+    val spotifyLoading by viewModel.spotifyLoading.collectAsState()
+    val spotifyError by viewModel.spotifyError.collectAsState()
     val importState by viewModel.importState.collectAsState()
     val importError by viewModel.importError.collectAsState()
     val importSuccess by viewModel.importSuccess.collectAsState()
@@ -180,6 +191,16 @@ fun LibraryScreen(
         viewModel.consumeImportSuccess()
     }
 
+    val spotifyErrorMessage = stringResource(R.string.spotify_import_failed)
+    LaunchedEffect(spotifyError) {
+        if (!spotifyError) return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = spotifyErrorMessage,
+            duration = SnackbarDuration.Short,
+        )
+        viewModel.consumeSpotifyError()
+    }
+
     Scaffold(
         // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
         modifier = Modifier
@@ -252,6 +273,49 @@ fun LibraryScreen(
                             // Нечётное число плиток: пустая колонка держит ширину.
                             if (row.size < PLAYLIST_GRID_COLUMNS) {
                                 Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ─── Плейлисты Spotify (только после входа) ──────────────────
+            if (spotifyConnected) {
+                item(key = "library_spotify_header") {
+                    SectionHeader(
+                        title = stringResource(R.string.spotify_import_row),
+                        actionIcon = Icons.Rounded.Refresh,
+                        onAction = viewModel::refreshSpotifyPlaylists,
+                    )
+                }
+                item(key = "library_spotify_row") {
+                    when {
+                        spotifyLoading -> Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        }
+                        spotifyPlaylists.isEmpty() -> Text(
+                            text = stringResource(R.string.spotify_import_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                        else -> Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            spotifyPlaylists.forEach { playlist ->
+                                SpotifyPlaylistTile(
+                                    playlist = playlist,
+                                    onClick = { viewModel.importSpotifyPlaylist(playlist.id) },
+                                )
                             }
                         }
                     }
@@ -496,6 +560,44 @@ private fun DownloadsEmptyCard(onOpenSearch: () -> Unit) {
                 Text(stringResource(R.string.library_find_music))
             }
         }
+    }
+}
+
+/** Плитка плейлиста Spotify: обложка, название и счётчик треков. */
+@Composable
+private fun SpotifyPlaylistTile(
+    playlist: SpotifyPlaylistSummary,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(132.dp)
+            .clickable(onClick = onClick),
+    ) {
+        PlaylistCover(
+            name = playlist.name,
+            coverUrl = playlist.coverUrl,
+            modifier = Modifier.size(132.dp),
+            corner = 16.dp,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = playlist.name,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = pluralStringResource(
+                R.plurals.track_count,
+                playlist.trackCount,
+                playlist.trackCount,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 

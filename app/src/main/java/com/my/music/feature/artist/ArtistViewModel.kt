@@ -6,12 +6,17 @@ import androidx.lifecycle.viewModelScope
 import com.my.music.core.player.PlayerController
 import com.my.music.data.model.Track
 import com.my.music.data.repository.YouTubeRepository
+import com.my.music.data.source.external.DeezerAlbum
+import com.my.music.data.source.external.DeezerArtistRef
 import com.my.music.data.source.external.DeezerProvider
 import com.my.music.navigation.ARTIST_NAME_ARG
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -24,23 +29,34 @@ import javax.inject.Inject
  * Состояние экрана артиста.
  *
  * @param name имя из маршрута (показывается сразу, ещё до загрузки);
+ * @param pictureUrl аватар из Deezer (null — рисуем градиентную заглушку);
+ * @param fans число слушателей Deezer, 0 — статистики нет;
+ * @param albumCount число альбомов Deezer, 0 — статистики нет;
  * @param tracks популярные треки в порядке Deezer либо YouTube-фолбэка;
+ * @param albums альбомы для карусели (пусто — секция скрыта);
+ * @param related похожие артисты (пусто — секция скрыта);
  * @param isLoading идёт ли загрузка;
  * @param failed ни Deezer, ни YouTube не дали треков — показываем ошибку с повтором.
  */
 data class ArtistUiState(
     val name: String = "",
+    val pictureUrl: String? = null,
+    val fans: Int = 0,
+    val albumCount: Int = 0,
     val tracks: List<Track> = emptyList(),
+    val albums: List<DeezerAlbum> = emptyList(),
+    val related: List<DeezerArtistRef> = emptyList(),
     val isLoading: Boolean = true,
     val failed: Boolean = false,
 )
 
 /**
- * Экран артиста: топ-треки Deezer (без авторизации, 30-секундные превью),
- * при пустом ответе — поиск YouTube `"<артист> official audio"`.
+ * Экран артиста: шапка с аватаром и статистикой, популярные треки, альбомы
+ * и похожие артисты.
  *
- * Deezer выбран первым: он отдаёт популярные треки именно артиста, а не
- * случайные видео, и не требует ключей.
+ * Всё, кроме фолбэка на YouTube, берётся из Deezer: публичный API без ключей
+ * отдаёт и топ артиста, и альбомы, и связанных исполнителей. Статистика и
+ * альбомы не обязательны — при пустом ответе секции просто скрываются.
  */
 @HiltViewModel
 class ArtistViewModel @Inject constructor(
@@ -75,33 +91,89 @@ class ArtistViewModel @Inject constructor(
             initialValue = false,
         )
 
+    /** Запрос на воспроизведение альбома: экран сам зовёт onTrackClick. */
+    private val _playQueue = MutableSharedFlow<List<Track>>(extraBufferCapacity = 1)
+    val playQueue: SharedFlow<List<Track>> = _playQueue.asSharedFlow()
+
+    /** Альбом не загрузился — UI показывает Snackbar. */
+    private val _albumError = MutableStateFlow(false)
+    val albumError: StateFlow<Boolean> = _albumError.asStateFlow()
+
     init {
-        loadTracks()
+        loadArtist()
     }
 
     /** Повторная загрузка для кнопки «Повторить». */
     fun retry() {
-        loadTracks()
+        loadArtist()
     }
 
-    private fun loadTracks() {
+    /** Воспроизведение альбома целиком: треки приходят одним запросом. */
+    fun playAlbum(albumId: Long) {
+        viewModelScope.launch {
+            val tracks = deezerProvider.fetchAlbumTracks(albumId).getOrNull().orEmpty()
+            if (tracks.isEmpty()) {
+                _albumError.value = true
+            } else {
+                _playQueue.emit(tracks)
+            }
+        }
+    }
+
+    fun consumeAlbumError() {
+        _albumError.value = false
+    }
+
+    private fun loadArtist() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, failed = false) }
 
-            val deezerTracks = if (artistName.isBlank()) {
-                emptyList()
+            // Один поиск артиста даёт id для топа, альбомов и похожих.
+            val artist = if (artistName.isBlank()) {
+                null
             } else {
-                deezerProvider.fetchArtistTopTracks(artistName)
-                    .getOrNull()
-                    .orEmpty()
+                deezerProvider.fetchArtist(artistName).getOrNull()
+            }
+
+            val deezerTracks = when {
+                artist != null -> deezerProvider.fetchArtistTopTracks(artist.id).getOrNull()
+                artistName.isNotBlank() -> deezerProvider.fetchArtistTopTracks(artistName).getOrNull()
+                else -> null
+            }.orEmpty()
+
+            // У части артистов Deezer отдаёт в топ один трек — дополняем поиском
+            // по `artist:"имя"`, иначе секция выглядит обрезанной.
+            val filledTracks = if (deezerTracks.size < MIN_TOP_TRACKS && artistName.isNotBlank()) {
+                val extra = deezerProvider.searchArtistTracks(artistName).getOrNull().orEmpty()
+                (deezerTracks + extra)
+                    .distinctBy { it.id }
+                    .take(ARTIST_TRACK_LIMIT)
+            } else {
+                deezerTracks
             }
 
             // Deezer не нашёл артиста — ищем официальные аудио на YouTube.
-            val tracks = deezerTracks.ifEmpty { youTubeFallback() }
+            val tracks = filledTracks.ifEmpty { youTubeFallback() }
 
-            _uiState.update {
-                it.copy(
+            val albums = artist?.let {
+                deezerProvider.fetchArtistAlbums(it.id).getOrNull()
+            }.orEmpty()
+
+            val related = artist?.let {
+                deezerProvider.fetchRelatedArtists(it.id).getOrNull()
+            }.orEmpty()
+
+            _uiState.update { current ->
+                current.copy(
+                    // Имя из Deezer точнее введённого вручную: там оригинальная
+                    // раскладка. Пустое — оставляем имя из маршрута.
+                    name = artist?.name ?: current.name,
+                    pictureUrl = artist?.pictureUrl,
+                    fans = artist?.fans ?: 0,
+                    albumCount = artist?.albums ?: 0,
                     tracks = tracks,
+                    albums = albums,
+                    related = related,
                     isLoading = false,
                     failed = tracks.isEmpty(),
                 )
@@ -121,5 +193,11 @@ class ArtistViewModel @Inject constructor(
     private companion object {
         const val YOUTUBE_FALLBACK_SUFFIX = "official audio"
         const val FALLBACK_LIMIT = 20
+
+        /** Меньше этого числа треков в топе Deezer считаем «пустым» и дополняем. */
+        const val MIN_TOP_TRACKS = 5
+
+        /** Сколько треков артиста показываем всего. */
+        const val ARTIST_TRACK_LIMIT = 20
     }
 }

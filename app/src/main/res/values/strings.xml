@@ -344,5 +344,9 @@
     <string name="spotify_import_row">Spotify playlists</string>
     <string name="spotify_import_loading">Loading Spotify playlists…</string>
     <string name="spotify_import_failed">Couldn’t load Spotify playlists</string>
+    <string name="artist_load_failed_hint">Check your internet connection and try again</string>
+    <string name="common_close">Close</string>
+    <string name="spotify_signed_in_toast">Spotify connected</string>
+    <string name="spotify_import_empty">No playlists in your Spotify library yet</string>
 
 </resources>

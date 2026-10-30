@@ -2,7 +2,9 @@ package com.my.music.feature.settings
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.ContextWrapper
+import android.net.Uri
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -35,6 +37,7 @@ import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -58,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -89,6 +93,8 @@ import com.my.music.core.i18n.AppLocale
 import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.theme.AccentOption
 import com.my.music.core.ui.theme.AccentOptions
+import com.my.music.core.spotify.SpotifyAuthState
+import com.my.music.core.ui.components.TrackArtwork
 import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.ThemeMode
 import kotlinx.coroutines.launch
@@ -115,6 +121,9 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val russianPriority by viewModel.russianPriority.collectAsState()
+    val spotifyAuth by viewModel.spotifyAuth.collectAsState()
+    val spotifyAuthUrl by viewModel.spotifyAuthUrl.collectAsState()
+    val spotifyAuthError by viewModel.spotifyAuthError.collectAsState()
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -122,8 +131,29 @@ fun SettingsScreen(
         mutableStateOf(LocationPermissions.hasPermission(context))
     }
     var showCustomColorDialog by remember { mutableStateOf(false) }
+    var showSpotifyGuide by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // Ссылка согласия открывается в браузере: WebView внутри приложения
+    // Spotify не любит, а системный браузер уже авторизован у пользователя.
+    LaunchedEffect(spotifyAuthUrl) {
+        val url = spotifyAuthUrl ?: return@LaunchedEffect
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+        viewModel.consumeSpotifyAuthUrl()
+    }
+
+    val spotifyErrorText = stringResource(R.string.spotify_sign_in_failed)
+    LaunchedEffect(spotifyAuthError) {
+        if (!spotifyAuthError) return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = spotifyErrorText,
+            duration = SnackbarDuration.Long,
+        )
+        viewModel.consumeSpotifyAuthError()
+    }
 
     // Смена языка уже пересоздаёт Activity через MainActivity, но если по какой-то
     // причине этого не случилось — пользователь может перезапустить экран вручную.
@@ -418,7 +448,11 @@ fun SettingsScreen(
         Spacer(Modifier.height(10.dp))
         SpotifyIntegrationCard(
             settings = settings,
+            auth = spotifyAuth,
             onSave = viewModel::saveSpotifyCredentials,
+            onSignIn = viewModel::signInSpotify,
+            onSignOut = viewModel::signOutSpotify,
+            onOpenGuide = { showSpotifyGuide = true },
         )
 
         Spacer(Modifier.height(40.dp))
@@ -596,6 +630,10 @@ fun SettingsScreen(
                 showCustomColorDialog = false
             },
         )
+    }
+
+    if (showSpotifyGuide) {
+        SpotifyGuideDialog(onDismiss = { showSpotifyGuide = false })
     }
 }
 
@@ -1027,11 +1065,15 @@ private fun SegmentedButtonRow(selected: String, onSelect: (String) -> Unit) {
     }
 }
 
-/** Карточка интеграции Spotify: ключи приложения для поиска метаданных. */
+/** Карточка интеграции Spotify: ключи, вход по OAuth и понятный статус. */
 @Composable
 private fun SpotifyIntegrationCard(
     settings: AppSettings,
+    auth: SpotifyAuthState,
     onSave: (String, String) -> Unit,
+    onSignIn: (String, String) -> Unit,
+    onSignOut: () -> Unit,
+    onOpenGuide: () -> Unit,
 ) {
     var clientId by remember(settings.spotifyClientId) {
         mutableStateOf(settings.spotifyClientId)
@@ -1039,6 +1081,8 @@ private fun SpotifyIntegrationCard(
     var clientSecret by remember(settings.spotifyClientSecret) {
         mutableStateOf(settings.spotifyClientSecret)
     }
+    val connected = auth.connected
+    val displayName = auth.displayName?.takeIf { it.isNotBlank() } ?: "Spotify"
 
     Surface(
         modifier = Modifier
@@ -1048,11 +1092,23 @@ private fun SpotifyIntegrationCard(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Spotify",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Spotify",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                // Инструкция всегда под рукой: без неё ключи взять неоткуда.
+                TextButton(onClick = onOpenGuide) {
+                    Text(
+                        text = stringResource(R.string.spotify_guide_open),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            }
             Spacer(Modifier.height(3.dp))
             Text(
                 text = stringResource(R.string.settings_spotify_hint),
@@ -1079,17 +1135,16 @@ private fun SpotifyIntegrationCard(
             Spacer(Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (settings.isSpotifyConfigured) {
+                    text = if (connected || settings.isSpotifyConfigured) {
                         stringResource(R.string.settings_spotify_connected)
                     } else {
                         stringResource(R.string.settings_spotify_not_connected)
                     },
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (settings.isSpotifyConfigured) {
+                    color = if (connected || settings.isSpotifyConfigured) {
                         MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -1100,9 +1155,55 @@ private fun SpotifyIntegrationCard(
                     Text(stringResource(R.string.settings_save))
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+            if (connected) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TrackArtwork(
+                        url = auth.imageUrl,
+                        contentDescription = null,
+                        size = 40,
+                        cornerDp = 20,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = displayName,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.spotify_signed_in_as, displayName),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onSignOut) {
+                        Text(stringResource(R.string.spotify_sign_out))
+                    }
+                }
+            } else {
+                // Вход без секрета: PKCE-поток открывает браузер и возвращает
+                // пользователя сам. Секрет нужен только поиску без входа.
+                Button(
+                    onClick = { onSignIn(clientId, clientSecret) },
+                    enabled = clientId.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = CircleShape,
+                ) {
+                    Text(stringResource(R.string.spotify_sign_in))
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.spotify_redirect_uri),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
             // Предупреждение о лимите Spotify: один client_id работает не более
             // чем на 10 устройствах, дальше нужен Extended Quota Mode.
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.settings_spotify_quota_warning),
                 style = MaterialTheme.typography.bodySmall,
@@ -1111,3 +1212,110 @@ private fun SpotifyIntegrationCard(
         }
     }
 }
+
+/**
+ * Инструкция «как получить ключи Spotify»: четыре шага, адрес возврата
+ * и кнопка открытия Developer Dashboard.
+ *
+ * Redirect URI показываем отдельной строкой: его копируют в Dashboard
+ * символ в символ, иначе Spotify откажет в авторизации.
+ */
+@Composable
+private fun SpotifyGuideDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.spotify_guide_title)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                GuideStep(
+                    number = 1,
+                    titleRes = R.string.spotify_guide_step1_title,
+                    bodyRes = R.string.spotify_guide_step1_body,
+                )
+                GuideStep(
+                    number = 2,
+                    titleRes = R.string.spotify_guide_step2_title,
+                    bodyRes = R.string.spotify_guide_step2_body,
+                )
+                GuideStep(
+                    number = 3,
+                    titleRes = R.string.spotify_guide_step3_title,
+                    bodyRes = R.string.spotify_guide_step3_body,
+                )
+                GuideStep(
+                    number = 4,
+                    titleRes = R.string.spotify_guide_step4_title,
+                    bodyRes = R.string.spotify_guide_step4_body,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.spotify_redirect_uri),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.spotify_guide_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(SPOTIFY_DASHBOARD_URL)),
+                        )
+                    }
+                },
+            ) {
+                Text(stringResource(R.string.spotify_guide_open_dashboard))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_close))
+            }
+        },
+    )
+}
+
+/** Один шаг инструкции: номер в кружке, заголовок и пояснение. */
+@Composable
+private fun GuideStep(number: Int, titleRes: Int, bodyRes: Int) {
+    Row(modifier = Modifier.padding(bottom = 12.dp)) {
+        Surface(
+            modifier = Modifier.size(24.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = number.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(
+                text = stringResource(titleRes),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = stringResource(bodyRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Адрес Spotify Developer Dashboard для кнопки инструкции. */
+private const val SPOTIFY_DASHBOARD_URL = "https://developer.spotify.com/dashboard"

@@ -9,6 +9,7 @@ import com.my.music.core.download.DownloadState
 import com.my.music.core.import.ImportError
 import com.my.music.core.import.ImportedPlaylist
 import com.my.music.core.player.PlayerController
+import com.my.music.core.spotify.SpotifyPlaylistSummary
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.DownloadedTrack
 import com.my.music.data.model.Playlist
@@ -16,6 +17,7 @@ import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.LikedTracksRepository
 import com.my.music.data.repository.PlaylistRepository
+import com.my.music.data.repository.SpotifyAuthRepository
 import com.my.music.data.source.imports.PlaylistImportResult
 import com.my.music.data.source.imports.PlaylistImportService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -50,6 +52,7 @@ class LibraryViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
     private val playlistRepository: PlaylistRepository,
     private val playlistImportService: PlaylistImportService,
+    private val spotifyAuthRepository: SpotifyAuthRepository,
     playerController: PlayerController,
 ) : ViewModel() {
 
@@ -141,6 +144,67 @@ class LibraryViewModel @Inject constructor(
     val importSuccess: StateFlow<String?> = _importSuccess.asStateFlow()
 
     private var importJob: Job? = null
+
+    /** Плейлисты Spotify вошедшего пользователя — строка импорта в медиатеке. */
+    private val _spotifyPlaylists = MutableStateFlow<List<SpotifyPlaylistSummary>>(emptyList())
+    val spotifyPlaylists: StateFlow<List<SpotifyPlaylistSummary>> = _spotifyPlaylists.asStateFlow()
+
+    private val _spotifyLoading = MutableStateFlow(false)
+    val spotifyLoading: StateFlow<Boolean> = _spotifyLoading.asStateFlow()
+
+    /** Не удалось загрузить плейлисты Spotify — показываем Snackbar. */
+    private val _spotifyError = MutableStateFlow(false)
+    val spotifyError: StateFlow<Boolean> = _spotifyError.asStateFlow()
+
+    /** Вошёл ли пользователь в Spotify: без входа секция скрыта. */
+    val spotifyConnected: StateFlow<Boolean> = spotifyAuthRepository.authState
+        .map { it.connected }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = false,
+        )
+
+    init {
+        // Как только вход завершён, подтягиваем плейлисты пользователя.
+        viewModelScope.launch {
+            spotifyAuthRepository.authState.collect { state ->
+                if (state.connected) {
+                    loadSpotifyPlaylists()
+                } else {
+                    _spotifyPlaylists.value = emptyList()
+                }
+            }
+        }
+    }
+
+    /** Ручное обновление: пользователь мог добавить плейлист в Spotify. */
+    fun refreshSpotifyPlaylists() {
+        if (spotifyAuthRepository.authState.value.connected) loadSpotifyPlaylists()
+    }
+
+    private fun loadSpotifyPlaylists() {
+        viewModelScope.launch {
+            _spotifyLoading.value = true
+            spotifyAuthRepository.fetchMyPlaylists()
+                .onSuccess { playlists -> _spotifyPlaylists.value = playlists }
+                .onFailure { _spotifyError.value = true }
+            _spotifyLoading.value = false
+        }
+    }
+
+    fun consumeSpotifyError() {
+        _spotifyError.value = false
+    }
+
+    /**
+     * Импорт плейлиста Spotify по id: переиспользуем обычный разбор ссылки,
+     * чтобы превью и сохранение шли тем же путём, что и ручная вставка.
+     */
+    fun importSpotifyPlaylist(id: String) {
+        startImport("https://open.spotify.com/playlist/$id")
+    }
 
     fun removeLike(track: Track) {
         viewModelScope.launch {

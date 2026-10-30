@@ -1,8 +1,10 @@
 package com.my.music
 
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -10,12 +12,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import com.my.music.core.i18n.AppLocale
 import com.my.music.core.ui.theme.MyMusicTheme
 import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.SettingsRepository
+import com.my.music.data.repository.SpotifyAuthRepository
 import com.my.music.navigation.AppNavGraph
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -23,6 +28,10 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var settingsRepository: SettingsRepository
+
+    /** Вход Spotify: deep link возвращается из браузера в это же Activity. */
+    @Inject
+    lateinit var spotifyAuthRepository: SpotifyAuthRepository
 
     /**
      * Язык, с которым Activity уже создана. Читается синхронно из настроек:
@@ -39,6 +48,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Холодный старт по ссылке из браузера: сразу завершаем вход.
+        handleSpotifyRedirect(intent)
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
             // Смена языка пересоздаёт Activity: attachBaseContext заново
@@ -74,6 +85,39 @@ class MainActivity : ComponentActivity() {
             ) {
                 AppNavGraph()
             }
+        }
+    }
+
+    /**
+     * Activity уже запущена (launchMode=singleTop): браузер возвращает
+     * пользователя новым intent'ом, а не новым экземпляром.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSpotifyRedirect(intent)
+    }
+
+    /** Обмен кода на токены + профиль. Ошибку показываем тостом. */
+    private fun handleSpotifyRedirect(intent: Intent?) {
+        val data = intent?.dataString ?: return
+        if (!spotifyAuthRepository.isRedirect(data)) return
+        lifecycleScope.launch {
+            spotifyAuthRepository.completeAuthorization(data)
+                .onSuccess {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.spotify_signed_in_toast),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                .onFailure {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.spotify_sign_in_failed),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
         }
     }
 }

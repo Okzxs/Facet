@@ -2,12 +2,15 @@ package com.my.music.data.source.imports
 
 import com.my.music.core.import.ImportError
 import com.my.music.core.network.RateLimiter
+import com.my.music.core.spotify.SpotifyAuthState
 import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.SearchCacheRepository
 import com.my.music.data.repository.SettingsRepository
+import com.my.music.data.repository.SpotifyAuthRepository
 import com.my.music.data.source.external.SpotifyProvider
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -35,10 +38,15 @@ class PlaylistImportServiceTest {
                 spotifyClientSecret = if (spotifyConfigured) "client-secret" else "",
             ),
         )
+        // Реальный StateFlow вместо relaxed-мока: у мока generic-свойства
+        // value возвращается Object и падает на касте к SpotifyAuthState.
+        val auth = mockk<SpotifyAuthRepository>(relaxed = true)
+        every { auth.authState } returns MutableStateFlow(SpotifyAuthState())
         val spotify = SpotifyProvider(
             client = OkHttpClient(),
             json = json,
             settingsRepository = settings,
+            spotifyAuth = auth,
             searchCache = mockk<SearchCacheRepository>(relaxed = true),
             rateLimiter = RateLimiter(),
         )

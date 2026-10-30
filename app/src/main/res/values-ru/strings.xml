@@ -349,5 +349,9 @@
     <string name="spotify_import_row">Плейлисты Spotify</string>
     <string name="spotify_import_loading">Загружаем плейлисты Spotify…</string>
     <string name="spotify_import_failed">Не удалось загрузить плейлисты Spotify</string>
+    <string name="artist_load_failed_hint">Проверьте подключение к интернету и попробуйте ещё раз</string>
+    <string name="common_close">Закрыть</string>
+    <string name="spotify_signed_in_toast">Spotify подключён</string>
+    <string name="spotify_import_empty">В вашей библиотеке Spotify пока нет плейлистов</string>
 
 </resources>

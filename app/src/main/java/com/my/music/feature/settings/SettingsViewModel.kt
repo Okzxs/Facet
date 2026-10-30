@@ -4,8 +4,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.my.music.core.spotify.SpotifyAuthState
 import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.SettingsRepository
+import com.my.music.data.repository.SpotifyAuthRepository
 import com.my.music.data.repository.TasteRepository
 import com.my.music.data.repository.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,12 +20,14 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * ViewModel экрана настроек: оформление (динамические цвета, акцент).
+ * ViewModel экрана настроек: оформление (динамические цвета, акцент)
+ * и интеграция Spotify (ключи + вход по OAuth).
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val tasteRepository: TasteRepository,
+    private val spotifyAuthRepository: SpotifyAuthRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = settingsRepository.settings
@@ -32,6 +36,20 @@ class SettingsViewModel @Inject constructor(
             started = SharingStarted.Eagerly,
             initialValue = AppSettings(),
         )
+
+    /** Состояние входа Spotify: имя и аватар для карточки интеграции. */
+    val spotifyAuth: StateFlow<SpotifyAuthState> = spotifyAuthRepository.authState
+
+    /**
+     * URL страницы согласия. UI открывает его в браузере и сбрасывает:
+     * навигация — побочный эффект экрана, а не состояние ViewModel.
+     */
+    private val _spotifyAuthUrl = MutableStateFlow<String?>(null)
+    val spotifyAuthUrl: StateFlow<String?> = _spotifyAuthUrl.asStateFlow()
+
+    /** Вход не удалось даже начать (нет Client ID или сбой генерации PKCE). */
+    private val _spotifyAuthError = MutableStateFlow(false)
+    val spotifyAuthError: StateFlow<Boolean> = _spotifyAuthError.asStateFlow()
 
     private val _russianPriority = MutableStateFlow(true)
     val russianPriority: StateFlow<Boolean> = _russianPriority.asStateFlow()
@@ -94,6 +112,31 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.setSpotifyCredentials(clientId, clientSecret)
         }
+    }
+
+    /**
+     * Вход Spotify: сначала сохраняем ключи (Client ID переживёт перезапуск),
+     * затем генерируем PKCE и отдаём URL для браузера.
+     */
+    fun signInSpotify(clientId: String, clientSecret: String) {
+        viewModelScope.launch {
+            settingsRepository.setSpotifyCredentials(clientId, clientSecret)
+            spotifyAuthRepository.startAuthorization(clientId)
+                .onSuccess { url -> _spotifyAuthUrl.value = url }
+                .onFailure { _spotifyAuthError.value = true }
+        }
+    }
+
+    fun signOutSpotify() {
+        viewModelScope.launch { spotifyAuthRepository.signOut() }
+    }
+
+    fun consumeSpotifyAuthUrl() {
+        _spotifyAuthUrl.value = null
+    }
+
+    fun consumeSpotifyAuthError() {
+        _spotifyAuthError.value = false
     }
 
     /** Применить собственный цвет; null сбрасывает собственный акцент. */
