@@ -9,9 +9,11 @@ import com.my.music.core.download.DownloadState
 import com.my.music.core.player.PlayerController
 import com.my.music.core.util.rethrowCancellation
 import com.my.music.data.model.DownloadedTrack
+import com.my.music.data.model.Playlist
 import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.LikedTracksRepository
+import com.my.music.data.repository.PlaylistRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +32,7 @@ class LibraryViewModel @Inject constructor(
     private val likedTracksRepository: LikedTracksRepository,
     private val downloadRepository: DownloadRepository,
     private val downloadManager: DownloadManager,
+    private val playlistRepository: PlaylistRepository,
     playerController: PlayerController,
 ) : ViewModel() {
 
@@ -77,6 +80,14 @@ class LibraryViewModel @Inject constructor(
                 initialValue = emptyList(),
             )
 
+    /** Плейлисты со счётчиками — третья вкладка медиатеки. */
+    val playlists: StateFlow<List<Playlist>> = playlistRepository.observePlaylists()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList(),
+        )
+
     /** Состояния кнопок скачивания в списке лайков. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val downloadStates: StateFlow<Map<String, DownloadState>> = likedTracks
@@ -95,6 +106,10 @@ class LibraryViewModel @Inject constructor(
     /** Ошибка БД при снятии лайка — показывается Snackbar'ом вместо краша. */
     private val _likeError = MutableStateFlow<String?>(null)
     val likeError: StateFlow<String?> = _likeError.asStateFlow()
+
+    /** Ошибка удаления плейлиста — отдельный поток, чтобы не путать с лайком. */
+    private val _playlistError = MutableStateFlow<String?>(null)
+    val playlistError: StateFlow<String?> = _playlistError.asStateFlow()
 
     fun removeLike(track: Track) {
         viewModelScope.launch {
@@ -123,6 +138,10 @@ class LibraryViewModel @Inject constructor(
         _likeError.value = null
     }
 
+    fun consumePlaylistError() {
+        _playlistError.value = null
+    }
+
     /** Удаление скачанного трека: файл и запись в Room убирает репозиторий. */
     fun removeDownload(trackId: String) {
         viewModelScope.launch {
@@ -135,9 +154,25 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Удаление плейлиста: его треки уходят каскадом внешнего ключа.
+     * Сбой БД не крашит экран — показываем Snackbar.
+     */
+    fun deletePlaylist(playlistId: Long) {
+        viewModelScope.launch {
+            runCatching { playlistRepository.deletePlaylist(playlistId) }
+                .rethrowCancellation()
+                .onFailure { error ->
+                    Log.e(TAG, "Не удалось удалить плейлист", error)
+                    _playlistError.value = PLAYLIST_DELETE_FAILED_MESSAGE
+                }
+        }
+    }
+
     private companion object {
         const val TAG = "LibraryViewModel"
         const val LIKE_FAILED_MESSAGE = "Не удалось обновить лайк: база данных недоступна"
         const val DELETE_FAILED_MESSAGE = "Не удалось удалить трек с устройства"
+        const val PLAYLIST_DELETE_FAILED_MESSAGE = "Не удалось удалить плейлист: база данных недоступна"
     }
 }

@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
@@ -105,6 +106,7 @@ import com.my.music.core.ui.components.ExpressivePlayerSlider
 import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
 import com.my.music.core.ui.components.PlayerSliderState
+import com.my.music.core.ui.components.AddToPlaylistSheet
 import com.my.music.core.ui.theme.PillShape
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.runtime.key
@@ -173,6 +175,8 @@ fun PlayerScreen(
 
     var isLyricsMode by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showAddToPlaylist by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // ─── Разрешение на геопозицию ────────────────────────────────────────
@@ -552,11 +556,32 @@ fun PlayerScreen(
                         )
                     },
                     actions = {
-                        IconButton(onClick = {}) {
-                            Icon(
-                                Icons.Filled.MoreVert,
-                                contentDescription = stringResource(R.string.player_menu_cd),
-                            )
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(
+                                    Icons.Filled.MoreVert,
+                                    contentDescription = stringResource(R.string.player_menu_cd),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.playlist_add_title)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    enabled = track != null,
+                                    onClick = {
+                                        showMenu = false
+                                        showAddToPlaylist = true
+                                    },
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -738,6 +763,25 @@ fun PlayerScreen(
             onToggleShuffle = { viewModel.toggleShuffle() },
             onToggleRepeat = { viewModel.toggleRepeat() },
             onDismiss = { showQueueSheet = false },
+        )
+    }
+
+    // «Добавить в плейлист» из overflow-меню шапки. Шторка общая с поиском
+    // и медиатекой; после успеха закрываем её и показываем Snackbar плеера.
+    val playlistTrack = track
+    if (showAddToPlaylist && playlistTrack != null) {
+        AddToPlaylistSheet(
+            track = playlistTrack,
+            onDismiss = { showAddToPlaylist = false },
+            onAdded = { playlistName ->
+                showAddToPlaylist = false
+                snackbarScope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = context.getString(R.string.playlist_added_to, playlistName),
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+            },
         )
     }
 }

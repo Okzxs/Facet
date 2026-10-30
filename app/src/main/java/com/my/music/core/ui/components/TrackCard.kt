@@ -26,9 +26,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +80,11 @@ fun TrackCard(
     artworkSize: Int = 56,
     artworkCornerDp: Int = 12,
     trailingContent: @Composable (() -> Unit)? = null,
+    /**
+     * Необязательное действие «в плейлист». Если передано, в trailing-области
+     * появляется компактная иконка 40dp; экраны без плейлистов её не показывают.
+     */
+    onAddToPlaylist: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -181,7 +188,7 @@ fun TrackCard(
                     }
                 }
             },
-            trailingContent = if (isPlaying || trailingContent != null) {
+            trailingContent = if (isPlaying || trailingContent != null || onAddToPlaylist != null) {
                 {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (isPlaying) {
@@ -196,6 +203,19 @@ fun TrackCard(
                             }
                         }
                         trailingContent?.invoke()
+                        onAddToPlaylist?.let { onAdd ->
+                            IconButton(
+                                onClick = onAdd,
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                    contentDescription = stringResource(R.string.playlist_add_to_cd),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                        }
                     }
                 }
             } else {

@@ -23,7 +23,18 @@ sealed class Screen(val route: String) {
     // Полноэкранные экраны (без нижней панели)
     object Player : Screen("player")
     object Settings : Screen("settings")
+
+    /** Экран одного плейлиста: маршрут с аргументом-id. */
+    object Playlist : Screen("playlist/{$PLAYLIST_ID_ARG}") {
+        const val ARG_ID = PLAYLIST_ID_ARG
+
+        /** Собирает конкретный маршрут для навигации. */
+        fun createRoute(playlistId: Long): String = "playlist/$playlistId"
+    }
 }
+
+/** Имя аргумента маршрута плейлиста — общее для [Screen.Playlist] и навграфа. */
+const val PLAYLIST_ID_ARG = "playlistId"
 
 /**
  * Подпись вкладки хранится ссылкой на строковый ресурс: язык интерфейса

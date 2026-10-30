@@ -7,6 +7,7 @@ import com.my.music.data.local.dao.DislikedTrackDao
 import com.my.music.data.local.dao.DownloadedTracksDao
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
+import com.my.music.data.local.dao.PlaylistDao
 import com.my.music.data.local.dao.RecentlyShownDao
 import com.my.music.data.local.dao.SearchCacheDao
 import com.my.music.data.local.dao.TasteDao
@@ -17,6 +18,8 @@ import com.my.music.data.local.entity.LikedTrackEntity
 import com.my.music.data.local.entity.PlayHistoryEntity
 import com.my.music.data.local.entity.ArtistWeightEntity
 import com.my.music.data.local.entity.GenreWeightEntity
+import com.my.music.data.local.entity.PlaylistEntity
+import com.my.music.data.local.entity.PlaylistTrackEntity
 import com.my.music.data.local.entity.RecentlyShownEntity
 import com.my.music.data.local.entity.SearchCacheEntity
 import com.my.music.data.local.entity.UserPreferenceEntity
@@ -36,8 +39,10 @@ import com.my.music.data.local.entity.UserPreferenceEntity
         RecentlyShownEntity::class,
         DislikedTrackEntity::class,
         SearchCacheEntity::class,
+        PlaylistEntity::class,
+        PlaylistTrackEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -49,4 +54,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun downloadedTracksDao(): DownloadedTracksDao
     abstract fun recentlyShownDao(): RecentlyShownDao
     abstract fun searchCacheDao(): SearchCacheDao
+    abstract fun playlistDao(): PlaylistDao
 }

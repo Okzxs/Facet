@@ -16,6 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v8 → v9: индексы по горячим полям выборок (сезон и дата лайка, время прослушивания, вес жанра).
  * v9 → v10: таблица дизлайков для фильтрации рекомендаций.
  * v10 → v11: кэш сырых JSON-ответов поиска внешних источников.
+ * v11 → v12: плейлисты пользователя и их треки.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -217,6 +218,44 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `playlists` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `name` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        // Поля трека денормализованы: плейлист читается без сети. Внешний ключ
+        // с ON DELETE CASCADE повторяет Entity, иначе Room не примет схему.
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `playlist_tracks` (
+                `playlistId` INTEGER NOT NULL,
+                `trackId` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `source` TEXT NOT NULL,
+                `transcodingUrl` TEXT,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`playlistId`, `trackId`),
+                FOREIGN KEY(`playlistId`) REFERENCES `playlists`(`id`)
+                    ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_playlist_tracks_playlistId` " +
+                "ON `playlist_tracks` (`playlistId`)",
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -228,4 +267,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_8_9,
     MIGRATION_9_10,
     MIGRATION_10_11,
+    MIGRATION_11_12,
 )

@@ -11,12 +11,15 @@ import com.my.music.data.local.entity.ChartCacheEntity
 import com.my.music.data.local.entity.DislikedTrackEntity
 import com.my.music.data.local.entity.DownloadedTrackEntity
 import com.my.music.data.local.entity.GenreWeightEntity
+import com.my.music.data.local.entity.PlaylistEntity
+import com.my.music.data.local.entity.PlaylistTrackEntity
 import com.my.music.data.local.entity.RecentlyShownEntity
 import com.my.music.data.local.entity.SearchCacheEntity
 import com.my.music.data.local.entity.UserPreferenceEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -55,7 +58,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 11 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 12 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -92,7 +95,7 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(11, database.openHelper.writableDatabase.version)
+            assertEquals(12, database.openHelper.writableDatabase.version)
 
             // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
@@ -167,6 +170,29 @@ class DatabaseMigrationTest {
             assertEquals(
                 "DEEZER",
                 database.searchCacheDao().get("cachalot", "DEEZER")?.source,
+            )
+
+            // Таблицы плейлистов созданы миграцией 11 → 12 и работают вместе с FK.
+            val playlistId = database.playlistDao().insertPlaylist(
+                PlaylistEntity(name = "Дорога", createdAt = 10_000L),
+            )
+            database.playlistDao().insertTrack(
+                PlaylistTrackEntity(
+                    playlistId = playlistId,
+                    trackId = "playlist-track-1",
+                    title = "Playlist track",
+                    artist = "Artist",
+                    artworkUrl = null,
+                    durationMs = 60_000L,
+                    source = "SOUNDCLOUD",
+                    transcodingUrl = "https://soundcloud.com/test/playlist-track-1",
+                    addedAt = 11_000L,
+                ),
+            )
+            assertEquals(1, database.playlistDao().count(playlistId))
+            assertEquals(
+                "playlist-track-1",
+                database.playlistDao().observeTracks(playlistId).first().single().trackId,
             )
         } finally {
             database.close()
@@ -377,6 +403,134 @@ class DatabaseMigrationTest {
         )
     }
 
+    @Test
+    fun `migration 11 to 12 creates playlist tables with cascade`() {
+        val db = openLegacyDatabase("m-11-12.db", 11) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+        }
+
+        MIGRATION_11_12.migrate(db)
+
+        assertTrue(hasTable(db, "playlists"))
+        assertEquals(setOf("id", "name", "createdAt"), tableColumns(db, "playlists"))
+        assertEquals(listOf("id"), primaryKeyColumns(db, "playlists"))
+
+        assertTrue(hasTable(db, "playlist_tracks"))
+        assertEquals(
+            setOf(
+                "playlistId",
+                "trackId",
+                "title",
+                "artist",
+                "artworkUrl",
+                "durationMs",
+                "source",
+                "transcodingUrl",
+                "addedAt",
+            ),
+            tableColumns(db, "playlist_tracks"),
+        )
+        assertEquals(listOf("playlistId", "trackId"), primaryKeyColumns(db, "playlist_tracks"))
+        assertTrue(hasIndex(db, "index_playlist_tracks_playlistId"))
+
+        // Внешний ключ с ON DELETE CASCADE: удаление плейлиста чистит треки.
+        db.query("PRAGMA foreign_key_list(`playlist_tracks`)").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("playlists", cursor.getString(cursor.getColumnIndexOrThrow("table")))
+            assertEquals("CASCADE", cursor.getString(cursor.getColumnIndexOrThrow("on_delete")))
+        }
+
+        db.execSQL("PRAGMA foreign_keys = ON")
+        db.execSQL("INSERT INTO `playlists` (`id`, `name`, `createdAt`) VALUES (7, 'Test', 1000)")
+        db.execSQL(
+            """
+            INSERT INTO `playlist_tracks`
+                (`playlistId`, `trackId`, `title`, `artist`, `artworkUrl`, `durationMs`,
+                 `source`, `transcodingUrl`, `addedAt`)
+            VALUES
+                (7, 't1', 'Title', 'Artist', NULL, 60000, 'SOUNDCLOUD', NULL, 2000)
+            """.trimIndent(),
+        )
+        assertEquals(1, countRows(db, "playlist_tracks"))
+
+        db.execSQL("DELETE FROM `playlists` WHERE `id` = 7")
+        assertEquals(0, countRows(db, "playlist_tracks"))
+    }
+
+    /**
+     * Миграция обязана давать ровно ту схему, что Room экспортировал в 12.json:
+     * иначе после обновления приложения база не откроется (Room schema validation).
+     */
+    @Test
+    fun `schema 12 json matches migrated playlist tables`() {
+        val schemaFile = schemaFile("12.json")
+            ?: error("Не найден app/schemas/.../12.json — KSP не экспортировал схему")
+        val root = Json.parseToJsonElement(schemaFile.readText()).jsonObject
+        val entities = root["database"]?.jsonObject
+            ?.get("entities")?.jsonArray
+            ?.map { it.jsonObject }
+            ?: error("В 12.json нет списка entities")
+
+        val playlists = entities.firstOrNull {
+            it["tableName"]?.jsonPrimitive?.content == "playlists"
+        } ?: error("В 12.json нет таблицы playlists")
+        assertEquals(
+            listOf("id", "name", "createdAt"),
+            playlists["fields"]!!.jsonArray.map { it.jsonObject["columnName"]!!.jsonPrimitive.content },
+        )
+        assertEquals(
+            listOf("id"),
+            playlists["primaryKey"]!!.jsonObject["columnNames"]!!.jsonArray
+                .map { it.jsonPrimitive.content },
+        )
+        assertTrue(playlists["primaryKey"]!!.jsonObject["autoGenerate"]!!.jsonPrimitive.boolean)
+
+        val tracks = entities.firstOrNull {
+            it["tableName"]?.jsonPrimitive?.content == "playlist_tracks"
+        } ?: error("В 12.json нет таблицы playlist_tracks")
+        assertEquals(
+            listOf(
+                "playlistId",
+                "trackId",
+                "title",
+                "artist",
+                "artworkUrl",
+                "durationMs",
+                "source",
+                "transcodingUrl",
+                "addedAt",
+            ),
+            tracks["fields"]!!.jsonArray.map { it.jsonObject["columnName"]!!.jsonPrimitive.content },
+        )
+        assertEquals(
+            listOf("playlistId", "trackId"),
+            tracks["primaryKey"]!!.jsonObject["columnNames"]!!.jsonArray
+                .map { it.jsonPrimitive.content },
+        )
+
+        val foreignKey = tracks["foreignKeys"]!!.jsonArray.single().jsonObject
+        assertEquals("playlists", foreignKey["table"]!!.jsonPrimitive.content)
+        assertEquals("CASCADE", foreignKey["onDelete"]!!.jsonPrimitive.content)
+        assertEquals(
+            listOf("playlistId"),
+            foreignKey["columns"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals(
+            listOf("id"),
+            foreignKey["referencedColumns"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+
+        val index = tracks["indices"]!!.jsonArray.single().jsonObject
+        assertEquals(
+            "index_playlist_tracks_playlistId",
+            index["name"]!!.jsonPrimitive.content,
+        )
+        assertEquals(
+            listOf("playlistId"),
+            index["columnNames"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+    }
+
     // ─── Хелперы ──────────────────────────────────────────────────────────────
 
     /** Открывает сырую базу версии [version] со схемой [create] для прогона одной миграции. */
@@ -417,6 +571,13 @@ class DatabaseMigrationTest {
     private fun hasIndex(db: SupportSQLiteDatabase, index: String): Boolean {
         db.query("SELECT 1 FROM `sqlite_master` WHERE `type` = 'index' AND `name` = '$index'")
             .use { return it.moveToFirst() }
+    }
+
+    /** Число строк в таблице — для проверки каскадного удаления. */
+    private fun countRows(db: SupportSQLiteDatabase, table: String): Int {
+        db.query("SELECT COUNT(*) FROM `$table`").use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
     }
 
     /** Колонки первичного ключа в порядке составного ключа. */

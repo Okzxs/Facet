@@ -126,6 +126,31 @@
     <string name="library_delete_cancel">Отмена</string>
     <string name="library_downloaded_menu">Удалить скачанное</string>
 
+    <!-- Плейлисты -->
+    <string name="library_tab_playlists">Плейлисты</string>
+    <string name="playlist_add_title">Добавить в плейлист</string>
+    <string name="playlist_add_to_cd">Добавить в плейлист</string>
+    <string name="playlist_added_to">Добавлено в %1$s</string>
+    <string name="playlist_create">Создать плейлист</string>
+    <string name="playlist_create_title">Новый плейлист</string>
+    <string name="playlist_create_name">Название</string>
+    <string name="playlist_create_confirm">Создать</string>
+    <string name="playlist_create_cancel">Отмена</string>
+    <string name="playlist_default_name">Мой плейлист</string>
+    <string name="playlist_update_failed">Не удалось обновить плейлист</string>
+    <string name="playlist_empty">Плейлистов нет — создайте первый</string>
+    <string name="playlist_empty_title">Плейлистов пока нет</string>
+    <string name="playlist_empty_message">Добавляйте треки из поиска или плеера — они появятся здесь</string>
+    <string name="playlist_title">Плейлист</string>
+    <string name="playlist_delete_cd">Удалить плейлист</string>
+    <string name="playlist_delete_title">Удалить плейлист?</string>
+    <string name="playlist_delete_message">«%1$s» и его треки будут удалены. Сами треки останутся в медиатеке.</string>
+    <string name="playlist_delete_confirm">Удалить</string>
+    <string name="playlist_delete_cancel">Отмена</string>
+    <string name="playlist_remove_track_cd">Удалить трек из плейлиста</string>
+    <string name="playlist_tracks_empty_title">В плейлисте пока пусто</string>
+    <string name="playlist_tracks_empty_message">Добавляйте треки из поиска или плеера</string>
+
     <!-- Главная -->
     <string name="home_greeting_morning">Доброе утро</string>
     <string name="home_greeting_day">Добрый день</string>
@@ -230,6 +255,12 @@
         <item quantity="few">%d трека</item>
         <item quantity="many">%d треков</item>
         <item quantity="other">%d трека</item>
+    </plurals>
+    <plurals name="playlist_count">
+        <item quantity="one">%d плейлист</item>
+        <item quantity="few">%d плейлиста</item>
+        <item quantity="many">%d плейлистов</item>
+        <item quantity="other">%d плейлиста</item>
     </plurals>
 
 </resources>

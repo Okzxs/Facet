@@ -47,10 +47,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.my.music.core.ui.components.ExpressiveBottomDock
 import com.my.music.core.ui.components.FloatingMiniPlayer
 import com.my.music.core.ui.components.MiniPlayerGap
@@ -63,6 +65,7 @@ import com.my.music.feature.library.LibraryScreen
 import com.my.music.feature.player.PlayerSwipeState
 import com.my.music.feature.player.PlayerViewModel
 import com.my.music.feature.player.PlayerScreen
+import com.my.music.feature.playlist.PlaylistScreen
 import com.my.music.feature.search.SearchScreen
 import com.my.music.feature.settings.SettingsScreen
 import com.my.music.feature.wave.WaveScreen
@@ -78,11 +81,13 @@ fun AppNavGraph() {
     // остаётся скомпонованной под ним и реально проглядывает при свайпе вниз.
     var isPlayerOpen by rememberSaveable { mutableStateOf(false) }
 
-    // Скрываем BottomBar на полноэкранных экранах (плеер, настройки).
+    // Скрываем BottomBar на полноэкранных экранах (плеер, настройки, плейлист).
     val showBottomBar by remember {
         derivedStateOf {
             val route = navBackStackEntry?.destination?.route
-            !isPlayerOpen && route != Screen.Settings.route
+            !isPlayerOpen &&
+                route != Screen.Settings.route &&
+                route != Screen.Playlist.route
         }
     }
 
@@ -208,6 +213,22 @@ fun AppNavGraph() {
                                 restoreState = true
                             }
                         },
+                        onPlaylistClick = { playlistId ->
+                            navController.navigate(Screen.Playlist.createRoute(playlistId))
+                        },
+                    )
+                }
+                // Экран плейлиста — отдельный маршрут с id. Нижний док скрыт:
+                // это детальный экран, как настройки; back возвращает в медиатеку.
+                composable(
+                    route = Screen.Playlist.route,
+                    arguments = listOf(
+                        navArgument(Screen.Playlist.ARG_ID) { type = NavType.LongType },
+                    ),
+                ) {
+                    PlaylistScreen(
+                        onBack = { navController.popBackStack() },
+                        onTrackClick = { track, queue -> openPlayer(track, queue) },
                     )
                 }
                 composable(Screen.Wave.route) {

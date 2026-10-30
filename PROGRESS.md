@@ -1,5 +1,13 @@
 # PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
 
+## Последнее обновление: 30.10.2026 (сессия 57)
+
+## Плейлисты (Room v12) — сессия 57
+- Room v12: таблицы `playlists` (id, name, createdAt) и `playlist_tracks` (playlistId + trackId в составном PK, FK на playlists с CASCADE, индекс по playlistId, денормализованные поля трека — title/artist/artworkUrl/durationMs/source/transcodingUrl, поэтому плейлист открывается без сети). Миграция `MIGRATION_11_12` в `ALL_MIGRATIONS`, схема `12.json`, изолированный тест 11→12 и сквозной до 12.
+- `PlaylistRepository` + `PlaylistRepositoryImpl` (observe/create/addTrack/removeTrack/deletePlaylist/rename), `PlaylistDao`, маппинг entity↔`Track`.
+- UI: `AddToPlaylistSheet` (ModalBottomSheet, список плейлистов + «Создать»), точки входа — overflow-меню плеера и необязательная иконка `onAddToPlaylist` в `TrackCard` (поиск и обе вкладки библиотеки); третья вкладка «Плейлисты» в библиотеке и экран `PlaylistScreen` (`feature/playlist/`) со списком треков и удалением, маршрут `Screen.Playlist(id)`.
+- Строки — в `values/strings.xml` и `values-ru/strings.xml` (наборы совпадают, кириллица проверена скриптом).
+- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 948 920 байт; `testDebugUnitTest` — 27 suites / 187 тестов, 0 failures (после сброса битого KSP-кэша, оставшегося от внезапного выключения ноутбука).
 
 ## Последнее обновление: 30.10.2026 (сессия 56)
 

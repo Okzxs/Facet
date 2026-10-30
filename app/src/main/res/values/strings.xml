@@ -127,6 +127,31 @@
     <string name="library_delete_cancel">Cancel</string>
     <string name="library_downloaded_menu">Remove download</string>
 
+    <!-- Плейлисты -->
+    <string name="library_tab_playlists">Playlists</string>
+    <string name="playlist_add_title">Add to playlist</string>
+    <string name="playlist_add_to_cd">Add to playlist</string>
+    <string name="playlist_added_to">Added to %1$s</string>
+    <string name="playlist_create">Create playlist</string>
+    <string name="playlist_create_title">New playlist</string>
+    <string name="playlist_create_name">Name</string>
+    <string name="playlist_create_confirm">Create</string>
+    <string name="playlist_create_cancel">Cancel</string>
+    <string name="playlist_default_name">My playlist</string>
+    <string name="playlist_update_failed">Couldn’t update the playlist</string>
+    <string name="playlist_empty">No playlists yet — create the first one</string>
+    <string name="playlist_empty_title">No playlists yet</string>
+    <string name="playlist_empty_message">Add tracks from search or the player — they will appear here</string>
+    <string name="playlist_title">Playlist</string>
+    <string name="playlist_delete_cd">Delete playlist</string>
+    <string name="playlist_delete_title">Delete playlist?</string>
+    <string name="playlist_delete_message">“%1$s” and its tracks will be removed. The tracks themselves stay in the library.</string>
+    <string name="playlist_delete_confirm">Delete</string>
+    <string name="playlist_delete_cancel">Cancel</string>
+    <string name="playlist_remove_track_cd">Remove track from playlist</string>
+    <string name="playlist_tracks_empty_title">Playlist is empty</string>
+    <string name="playlist_tracks_empty_message">Add tracks from search or the player</string>
+
     <!-- Главная -->
     <string name="home_greeting_morning">Good morning</string>
     <string name="home_greeting_day">Good afternoon</string>
@@ -227,6 +252,10 @@
     <plurals name="track_count">
         <item quantity="one">%d track</item>
         <item quantity="other">%d tracks</item>
+    </plurals>
+    <plurals name="playlist_count">
+        <item quantity="one">%d playlist</item>
+        <item quantity="other">%d playlists</item>
     </plurals>
 
 </resources>

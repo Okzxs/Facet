@@ -69,6 +69,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -77,6 +80,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +91,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -100,9 +105,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.my.music.R
 import com.my.music.core.service.ServiceHealth
 import com.my.music.core.service.ServiceType
+import com.my.music.core.ui.components.AddToPlaylistSheet
 import com.my.music.core.ui.components.TrackCard
 import com.my.music.navigation.LocalBottomDockHeight
 import com.my.music.data.model.Track
+import kotlinx.coroutines.launch
 
 private enum class SearchContentState { Idle, Loading, Error, Empty, Results }
 
@@ -158,6 +165,11 @@ fun SearchScreen(
     val state by viewModel.uiState.collectAsState()
     val downloadedIds by viewModel.downloadedIds.collectAsState()
     val serviceStatuses by viewModel.serviceStatuses.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // Трек, для которого открыта шторка «Добавить в плейлист».
+    var playlistTrack by remember { mutableStateOf<Track?>(null) }
 
     val contentState = when {
         state.isLoading -> SearchContentState.Loading
@@ -176,6 +188,7 @@ fun SearchScreen(
         // Статус-бар обеспечиваем сами (корневого Scaffold больше нет); низ —
         // через contentPadding списков с запасом под плавающий док.
         contentWindowInsets = WindowInsets.statusBars,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -257,10 +270,29 @@ fun SearchScreen(
                         downloadedIds = downloadedIds,
                         serviceName = state.selectedService.displayName,
                         onTrackClick = onTrackClick,
+                        onAddToPlaylist = { track -> playlistTrack = track },
                     )
                 }
             }
         }
+    }
+
+    // Шторка вне Scaffold: она рисуется в отдельном окне, а Snackbar
+    // «Добавлено в …» показывает сам поиск.
+    playlistTrack?.let { track ->
+        AddToPlaylistSheet(
+            track = track,
+            onDismiss = { playlistTrack = null },
+            onAdded = { playlistName ->
+                playlistTrack = null
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = context.getString(R.string.playlist_added_to, playlistName),
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+            },
+        )
     }
 }
 
@@ -1098,6 +1130,7 @@ private fun ResultsList(
     downloadedIds: Set<String>,
     serviceName: String,
     onTrackClick: (Track, List<Track>) -> Unit,
+    onAddToPlaylist: (Track) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -1138,6 +1171,7 @@ private fun ResultsList(
                     track = track,
                     isDownloaded = track.id in downloadedIds,
                     onClick = { onTrackClick(track, tracks) },
+                    onAddToPlaylist = { onAddToPlaylist(track) },
                 )
             }
         }

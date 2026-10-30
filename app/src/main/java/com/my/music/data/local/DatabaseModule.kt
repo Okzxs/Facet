@@ -6,6 +6,7 @@ import com.my.music.data.local.dao.DislikedTrackDao
 import com.my.music.data.local.dao.DownloadedTracksDao
 import com.my.music.data.local.dao.LikedTracksDao
 import com.my.music.data.local.dao.PlayHistoryDao
+import com.my.music.data.local.dao.PlaylistDao
 import com.my.music.data.local.dao.RecentlyShownDao
 import com.my.music.data.local.dao.SearchCacheDao
 import com.my.music.data.local.dao.TasteDao
@@ -80,5 +81,11 @@ object DatabaseModule {
     @Singleton
     fun provideSearchCacheDao(database: AppDatabase): SearchCacheDao {
         return database.searchCacheDao()
+    }
+
+    @Provides
+    @Singleton
+    fun providePlaylistDao(database: AppDatabase): PlaylistDao {
+        return database.playlistDao()
     }
 }
