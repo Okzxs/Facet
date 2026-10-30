@@ -39,3 +39,8 @@ tg_commander.py
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Локальные служебные папки агента
+.opencode/
+.postman/
+postman/

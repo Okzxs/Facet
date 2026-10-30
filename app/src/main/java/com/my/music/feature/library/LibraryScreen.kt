@@ -15,6 +15,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import com.my.music.data.model.DownloadedTrack
+import com.my.music.data.model.toTrack
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -70,7 +81,10 @@ fun LibraryScreen(
     val likeError by viewModel.likeError.collectAsState()
     val currentTrackId by viewModel.currentTrackId.collectAsState()
     val isPlayerPlaying by viewModel.isPlaying.collectAsState()
+    val downloadedTracks by viewModel.downloadedTracks.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var tab by rememberSaveable { mutableStateOf(LibraryTab.MEDIA) }
+    var pendingDelete by remember { mutableStateOf<Track?>(null) }
 
     LaunchedEffect(downloadError) {
         val message = downloadError ?: return@LaunchedEffect
@@ -106,11 +120,33 @@ fun LibraryScreen(
                 .padding(padding),
         ) {
             LibraryHeader(
-                trackCount = likedTracks.size,
-                totalMs = likedTracks.sumOf { it.durationMs },
+                trackCount = if (tab == LibraryTab.MEDIA) likedTracks.size else downloadedTracks.size,
+                totalMs = if (tab == LibraryTab.MEDIA) {
+                    likedTracks.sumOf { it.durationMs }
+                } else {
+                    downloadedTracks.sumOf { it.durationMs }
+                },
             )
 
-            if (likedTracks.isEmpty()) {
+            LibraryTabs(
+                selected = tab,
+                onSelect = { tab = it },
+            )
+
+            // РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ СѓРґР°Р»РµРЅРёСЏ СЃРєР°С‡Р°РЅРЅРѕРіРѕ С„Р°Р№Р»Р° СЃ СѓСЃС‚СЂРѕР№СЃС‚РІР°.
+            pendingDelete?.let { track ->
+                DeleteDownloadDialog(
+                    title = track.title,
+                    onConfirm = {
+                        viewModel.removeDownload(track.id)
+                        pendingDelete = null
+                    },
+                    onDismiss = { pendingDelete = null },
+                )
+            }
+
+            when (tab) {
+                LibraryTab.MEDIA -> if (likedTracks.isEmpty()) {
                 LibraryEmptyState(
                     onOpenSearch = onOpenSearch,
                     modifier = Modifier
@@ -201,6 +237,15 @@ fun LibraryScreen(
                         )
                     }
                 }
+                }
+
+                LibraryTab.DOWNLOADED -> DownloadedContent(
+                    downloaded = downloadedTracks,
+                    currentTrackId = currentTrackId,
+                    onTrackClick = onTrackClick,
+                    onDelete = { track -> pendingDelete = track },
+                    onOpenSearch = onOpenSearch,
+                )
             }
         }
     }
@@ -308,4 +353,146 @@ private fun formatTotalDuration(ms: Long): String {
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
     return if (hours > 0) "$hours С‡ $minutes РјРёРЅ" else "$minutes РјРёРЅ"
+}
+
+/** Вкладки медиатеки: вся коллекция лайков или только офлайн-файлы. */
+private enum class LibraryTab { MEDIA, DOWNLOADED }
+
+@Composable
+private fun LibraryTabs(
+    selected: LibraryTab,
+    onSelect: (LibraryTab) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        val tabs = listOf(
+            LibraryTab.MEDIA to "Медиатека",
+            LibraryTab.DOWNLOADED to "Скачанное",
+        )
+        tabs.forEachIndexed { index, (tab, label) ->
+            SegmentedButton(
+                selected = selected == tab,
+                onClick = { onSelect(tab) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size),
+            ) {
+                Text(label)
+            }
+        }
+    }
+}
+
+/** Диалог удаления скачанного трека с устройства. */
+@Composable
+private fun DeleteDownloadDialog(
+    title: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Удалить с устройства?") },
+        text = { Text("Файл «$title» будет удалён, трек останется в медиатеке как онлайн.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Удалить") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
+    )
+}
+
+/** Вкладка «Скачанное»: офлайн-файлы с удалением по кнопке. */
+@Composable
+private fun DownloadedContent(
+    downloaded: List<DownloadedTrack>,
+    currentTrackId: String?,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    onDelete: (Track) -> Unit,
+    onOpenSearch: () -> Unit,
+) {
+    if (downloaded.isEmpty()) {
+        DownloadedEmptyState(onOpenSearch = onOpenSearch)
+        return
+    }
+    val tracks = downloaded.map { it.toTrack() }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(items = tracks, key = { it.id }) { track ->
+            TrackCard(
+                track = track,
+                isDownloaded = true,
+                isPlaying = track.id == currentTrackId,
+                artworkSize = 60,
+                artworkCornerDp = 16,
+                onClick = { onTrackClick(track, tracks) },
+                trailingContent = {
+                    IconButton(onClick = { onDelete(track) }) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "Удалить с устройства",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+            )
+        }
+    }
+}
+
+/** Пустое состояние «Скачанное». */
+@Composable
+private fun DownloadedEmptyState(onOpenSearch: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                modifier = Modifier.size(96.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(40.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = "Пока пусто",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "У вас пока нет скачанных треков. Нажмите на стрелочку в плеере, " +
+                    "чтобы сохранить музыку",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            FilledTonalButton(onClick = onOpenSearch, shape = CircleShape) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Найти музыку")
+            }
+        }
+    }
 }

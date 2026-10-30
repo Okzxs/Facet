@@ -82,6 +82,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Язык интерфейса: "system", "ru" или "en". Activity пересоздастся сама. */
+    fun setAppLanguage(language: String) {
+        viewModelScope.launch {
+            settingsRepository.setAppLanguage(language)
+        }
+    }
+
+    /** Ключи Spotify нужны только для поиска: стрим всё равно идёт через YouTube. */
+    fun saveSpotifyCredentials(clientId: String, clientSecret: String) {
+        viewModelScope.launch {
+            settingsRepository.setSpotifyCredentials(clientId, clientSecret)
+        }
+    }
+
     /** Применить собственный цвет; null сбрасывает собственный акцент. */
     fun setCustomAccentColor(color: Color?) {
         val argb = color?.toArgb()

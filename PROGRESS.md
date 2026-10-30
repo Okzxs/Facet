@@ -1,392 +1,403 @@
-# PROGRESS.md — История разработки
-
-## Последнее обновление: 30.10.2026 (сессия 53)
-
-## Deezer + Apple Music, фиксы рекомендаций и UX из Dotify — сессия 53
-- **S1. Фундамент источников**: новый `core/source/MusicSourceProvider` (source + `SourceCapabilities`: search/preview/fullStream/requiresAuth/supportsDownload) и `MusicSourceRegistry` (Set-провайдеров через `@IntoSet`). Новый источник добавляется одним биндингом — поиск, статусы и резолвер подхватывают его сами. `core/source/StreamResolver`: 1) прямая ссылка трека (превью), 2) провайдер обновляет ссылку, 3) матч на YouTube через `YouTubeMatcher` (скоринг артиста/названия/длительности, штраф за cover/remix/live/slowed, бонус official/topic, ISRC; порог 5.0 — лучше «не найдено», чем чужой трек).
-- **S2. Deezer и Apple/iTunes**: `DeezerProvider` (`api.deezer.com/search`, 30-сек. MP3-превью, ISRC) и `AppleMusicProvider` (`itunes.apple.com/search`, `previewUrl` M4A, апскейл обложки до 600×600, `country=RU` для кириллицы). Оба без авторизации; в `Track` добавлены `isrc` и `previewSeconds`, в `Source` — `DEEZER` и `APPLE`. `PlayerController` резолвит их через `StreamResolver` (null-safe, тестовые конструкторы не тронуты), MIME: Apple → M4A, Deezer → MP3.
-- **Рекомендации (P0/P1 из аудита)**: из кандидатов Дома исключаются `liked_tracks`, `play_history` и `downloaded_tracks`; дедуп по нормализованному `(artist, title)` в Доме, волне и фолбэке; в волну добавлен `filterDisliked` (дизлайки больше не возвращаются); холодный старт — `SoundCloudChartsRepository.getTop50()` вместо `"popular songs official audio"`, YouTube-поиск остался последним фолбэком.
-- **UX из Dotify (адаптировано под M3)**: 1) «Недавние» запросы чипсами под полем поиска (`SearchHistoryStore`, SharedPreferences, 8 записей, «Очистить»); 2) в пустой выдаче — «Поискать в другом источнике» с чипсами остальных сервисов; 3) в карточке трека видно «превью 30 с» — честная индикация того, что играет отрывок. Чипсы источников стали горизонтально скроллируемыми (4 сервиса не влезают в строку), статусы сервисов расширены до SoundCloud/YouTube/Deezer/Apple.
-- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 572 301 байт; тесты 24 suites / 164, 0 failures/errors/skipped (добавлены `YouTubeMatcherTest` — 6 кейсов, 2 кейса холодного старта и дедупа в `HomeViewModelRecommendationsTest`).
-- Живая проверка на 192.168.1.106:44537: чипсы Deezer/Apple Music, поиск «cachalot» в Deezer — 20 результатов с бейджем «превью 30 с», превью играет (0:17, очередь листается дальше), статусы всех четырёх сервисов «Онлайн» (значит и iTunes-поиск вернул результат), «Недавние» с чипсом «cachalot» и «Очистить».
-
-## Кнопки под обложкой в палитре плеера — сессия 52
-- Кнопки «скачать / лайк / дизлайк» под обложкой больше не берут цвет темы: при включённых динамических цветах обложки акцент — `coverAccent`, контейнер активного состояния — `playerColors.primaryContainer`, подложка покоя — `coverAccent.copy(alpha = 0.14f)` вместо серой `onSurface.copy(alpha = 0.08f)`.
-- Обе краски анимируются 420 мс (`heroActionContainer`, `heroActionIdleContainer`) синхронно с акцентом, поэтому при смене трека кнопки перетекают вместе с фоном и кнопкой Play, а не переключаются рывком.
-- Цвета прокинуты в `ExpressiveHeroZone` тремя параметрами (`actionAccent`, `actionContainer`, `actionIdleContainer`); `LikeSquircle`/`DislikeSquircle`/`DownloadSquircle` получили параметр `idleContainerColor` с прежним серым значением по умолчанию, чтобы мёртвые варианты (`CoverForeground`, `TrackGlassCard`) компилировались без правок.
-- Подпись «Текст песни»/«Обложка» тоже в палитре: `TextButton(colors = ButtonDefaults.textButtonColors(contentColor = coverAccent))`; при выключенных динамических цветах `coverAccent` равен `primary` темы, поэтому вид не меняется.
-- Дизлайк сохраняет семантический красный в активном состоянии (`errorContainer`/`error`), в покое использует общую подложку.
-- Проверки: `assembleDebug` — BUILD SUCCESSFUL; тесты 23 suites / 156, 0 failures/errors/skipped; установлено на 192.168.1.106:44537. Живая проверка: `credits song` (синяя обложка) — лайк, скачивание и Play в одном синем акценте, подложки с лёгким синим тоном; после выключения тумблера — серые подложки и зелёный акцент темы; тумблер возвращён в исходное состояние, лайк восстановлен.
-
-## Пропадание текста при смене строки — сессия 51
-- Симптом: при переключении строки весь текст на мгновение «исчезал» и возвращался, анимация выглядела рваной. Воспроизведено на устройстве записью экрана (30 с, `screenrecord`): 7 просадок «чернил» текста до 14% медианы, ровно в моменты смены активной строки; просадка держалась ~0.2 с и восстанавливалась ~250 мс.
-- Причина: `Modifier.animateItem()` у строк `LazyColumn`. Смена активной строки вызывает `animateScrollToItem`, и аниматор появления (`fadeIn` spring `StiffnessMediumLow`) гасил в ноль уже видимые строки, а потом проявлял их заново. Список не добавляет и не удаляет строки, поэтому эта анимация не нужна (известные баги Google: 352584409, 455884472).
-- Фикс 1: `animateItem()` убран; в коде оставлен комментарий-предупреждение, чтобы не вернули.
-- Фикс 2: высота строки больше не зависит от активности. `AnimatedVisibility` с `expandVertically`/`shrinkVertically` заменён на постоянный слот `LyricBarSlot = 12.dp`, внутри которого полоска проявляется альфой (200 мс вход, 140 мс выход). Раньше появление/исчезновение полоски меняло высоту элемента на 10dp, и список прыгал на каждой смене строки.
-- Побочно: вертикальный padding строки 6dp → `top = 2.dp` (слот сам даёт воздух); импорты `AnimatedVisibility`, `expandVertically`, `shrinkVertically` удалены.
-- Проверка после фикса той же методикой (30 с записи): ни одной просадки ниже 50% медианы после стартового позиционирования списка.
-- Проверки: `assembleDebug` — BUILD SUCCESSFUL; тесты 23 suites / 156, 0 failures/errors/skipped; установлено на 192.168.1.106:44537.
-
-## Кинематографичная анимация текстов — сессия 50
-- `LyricLineItem`: размер анимируется `animateFloatAsState` (spring 0.9 / MediumLow): активная строка плавно вырастает до 22sp, соседние — 17sp, дальние — 15sp; `lineHeight` считается от текущего размера.
-- Цвет строки — `animateColorAsState` 280 мс (onSurfaceVariant → onSurface), вес переключается на SemiBold у активной.
-- Прозрачность — `tween` 300 мс; значение читается внутри `graphicsLayer`, поэтому анимация не вызывает рекомпозицию на каждый кадр.
-- Полоска прогресса: `AnimatedVisibility` с fade + `expandVertically`/`shrinkVertically` (220/160 мс). При смене строки старая полоска уезжает, новая выезжает; заливка внутри анимируется 240 мс.
-- `LazyColumn`: к каждой строке добавлен `Modifier.animateItem()` — сдвиги строк при росте активной анимируются, а не перескакивают.
-- Синхронизация не тронута: `activeIndex` по таймкоду и автоцентрирование остались прежними.
-- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 568 986 байт; тесты 23 suites / 156, 0 failures/errors/skipped; установлено на 192.168.1.106:44537.
-
-## Динамические цвета обложки и анимация смены трека — сессия 49
-- Динамическая тонировка усилена: при включённом тумблере фон плеера — вертикальный градиент 28% → 14% цвета обложки, панель управления подкрашена на 14%; слайдер и кнопка Play используют цвет обложки (`coverAccent`), контраст иконки Play считается по яркости. Акцент анимируется 420 мс, поэтому при смене трека фон и кнопки перетекают плавно. При выключенном тумблере — строго `colorScheme.background`, слайдер и Play — акцентом темы.
-- Смена трека: обложка + название + артист обёрнуты в `AnimatedContent` по `TrackDisplay` (ключ трека + тексты + artwork). Старый блок уходит fade + slide вверх, новый приходит fade + slide снизу (340 мс / 220 мс, `SizeTransform(clip = false)`). Shared-element морф вешается только на актуальный трек, поэтому сворачивание плеера не ломается.
-- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 568 967 байт; тесты 23 suites / 156, 0 failures/errors/skipped; установлено на 192.168.1.106:44537.
-
-## Синхронные тексты, акцент, настройки и свайп — сессия 48
-- Тексты: убран горизонтальный градиент по буквам — на перенесённой строке он закрашивал и вторую строку целиком. Прогресс теперь показывается тонкой полосой 2dp под активной строкой; текст центрирован, активная строка 22sp SemiBold, соседние 17sp Medium, дальние 15sp с alpha-иерархией, свечение убрано.
-- «Динамические цвета обложки» теперь работают: при включении фон плеера получает мягкую тонировку цветом обложки (10% в верхней точке), при выключении — чистый `background`. Палитра считается только при включённой опции.
-- Акцентный цвет: новый флаг `accentEnabled` (`AppSettings`, `SettingsRepositoryImpl`, SharedPreferences `accent_enabled`, по умолчанию false). Выключен — `MainActivity` передаёт null в `customAccentColor`, и тема берёт Dynamic Color с обоев; включён — свой цвет. Тап по кружку палитры автоматически включает акцент, сброс цвета выключает его.
-- Настройки: секции переставлены (Оформление → Моя волна → Разрешения), карточки без обводок, заголовки `titleSmall`, переключатель акцента с пояснением, палитра при выключенном акценте приглушается (alpha 0.38), геопозиция переехала в «Разрешения», в шапке стандартная стрелка `ArrowBack`.
-- Свайп вниз: порог закрытия снижен с 45% до 30% высоты экрана.
-- Морф обложки: с экрана плеера и мини-плеера сняты `scaleIn`/`scaleOut` — остаются только fade и сам shared-element морф, поэтому обложка не «едет» дважды; мини-плеер появляется мягким fade + scale 0.96.
-- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 568 968 байт; тесты 23 suites / 156, 0 failures/errors/skipped; установлено на SM-A266B (mDNS adb; адрес 192.168.0.102:39883 был недоступен).
-
-## Чистый Material 3 — сессия 47
-- Палитра переведена в строго нейтральную: светлая `#FAFAFA`, тёмная `#121212`, контейнеры — чистые серые без тёплого/зелёного уклона (`Color.kt`). Акцент на Android 12+ берётся из Dynamic Color (обои), fallback — Google Blue; нейтральные роли прибиты в `withAiryNeutrals`, чтобы обои не перекрашивали фон.
-- Типографика — каноничная шкала M3: display 57/45/36, headline 32/28/24, title 22/16/14, body 16/14/12, label 14/12/11; SemiBold в display/headline, Medium в title/label, Regular в body. Ручных `fontWeight` в экранах больше нет.
-- Формы: строго 12/16/24 (`AppShapes`) плюс `PillShape` для кнопок. Убраны асимметрия острова 44/22, кастомные радиусы и squircle.
-- Навигация: вместо кастомного дока — стандартный `NavigationBar` + `NavigationBarItem` (`ExpressiveBottomDock.kt`); `ExpressiveNavigationBar.kt` удалён.
-- Home: hero-карточка `surfaceContainerHigh` (обложка 88, текст, `FilledIconButton` 48); секции — `titleLarge` без надзаголовков; «Воспоминания» и «Любимое» — нейтральные `surfaceContainerLow` без гигантских цифр и разделителей.
-- Плеер: убраны градиент от обложки, стекло, свечение и текстовые тени; фон — `colorScheme.background`, обложка 24dp, название `headlineSmall`, артист `bodyLarge`, панель управления — простая карточка 24dp на `surfaceContainerLow`, Play 64dp, остальные кнопки 48dp. Тексты песен — без свечения, активная строка акцентом.
-- Отступы: сетка 16/24, между секциями 32dp; карточки `surfaceContainerLow` без теней и обводок.
-- Логика свайпа, холодного старта, навигации, скачивания и рекомендаций не менялась: `PlayerSwipeState`, `AppNavGraph`, `PlayerController`, `SettingsRepositoryImpl` не в diff.
-- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 624 863 байт; тесты 23 suites / 156, 0 failures/errors/skipped; `adb install -r` на 192.168.0.102:39883 — Success.
-
-## Редизайн «Light Airy MD3» — сессия 46
-- `Type.kt`: убран вес 800 из семейства, display/headline переведены с ExtraBold на SemiBold, title* — на Medium, labelSmall — Medium с трекингом 1.2; bodyLarge трекинг 0.5 → 0.25. Снято 30 ручных `fontWeight`-переопределений в экранах, теперь вес задаёт шкала.
-- `Color.kt`: нейтральная гамма — светлый фон `#FAF9F6`, тёмный `#1A1918`, контейнеры surfaceContainer* переведены с розовых на тёплые нейтральные; смягчены primaryContainer/secondaryContainer/tertiaryContainer.
-- `Theme.kt`: `surfaceTint = Color.Transparent` (elevation не подмешивает акцент); новая `withAiryNeutrals()` прибивает нейтральные роли поверх любой схемы — Dynamic Color оставляет акцент с обоев, но не перекрашивает фон. `values/colors.xml` и `values-night/colors.xml` синхронизированы.
-- `Shape.kt`: единая шкала M3 4/8/12/16/24 (`AppShapes`) + `PillShape`; `SquircleShape`, `HeroShape`, `BentoCardShape` удалены. 63 места с радиусами переведены на `MaterialTheme.shapes.*`; асимметрия осталась только у острова управления (44/22 и язычок), у стеклянной карточки плеера — симметричные 24dp.
-- Тени: удалены `Modifier.shadow` у обложки (22dp), стеклянной карточки (20dp), острова управления (26dp), мини-плеера (8dp), поля поиска (3→10dp) и `shadowElevation` меню (12→4dp). Иерархия теперь на `surfaceContainer*` + hairline 1dp. Убраны текстовые `Shadow` у артиста и активной строки текста.
-- «Воздух»: края экранов 20 → 24dp, блоки Home 32 → 40dp, внутренние паддинги карточек 12/14/22 → 18/18/26dp, списки 10–12 → 14–16dp, низ под док унифицирован на 24dp.
-- Плеер: заголовок трека с 40sp ExtraBold на 30sp SemiBold, свечение обложки 0.45 → 0.20, остров получил тональный `containerColor` через `compositeOver`.
-- Логика свайпов и холодного старта не тронута: `PlayerSwipeState.kt`, `AppNavGraph.kt`, `PlayerController`, `SettingsRepositoryImpl` не менялись; все `graphicsLayer`-блоки (translationY/alpha/scale) на месте.
-- Сборка: `assembleDebug` — BUILD SUCCESSFUL (2m 25s), APK 27 461 047 байт. Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `adb install -r` на 192.168.1.106:45609 — Success.
+﻿# PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
 
 
-## Удаление motion blur — сессия 45
-- Фича motion blur удалена из проекта полностью по решению пользователя: `core/ui/MotionBlur.kt` стёрт (`git rm`), других потребителей `Modifier.motionBlur` не было.
-- `PlayerSwipeState.kt`: убраны свойство `blurRadius`, константа `MAX_BLUR_RADIUS = 15f` и упоминание блюра в KDoc. Логика свайпа (`offsetPx` через `mutableFloatStateOf`, `progress`, пружина `settle()` в `settleJob`, `beginDrag/dragTo/dismiss/reset`) сохранена без изменений — на ней держится плавность 120 Гц.
-- `AppNavGraph.kt`: с `SharedTransitionLayout` снят `.motionBlur { maxOf(playerSwipe.blurRadius, playerBlur.value) }` (остался чистый `Modifier.fillMaxSize()`); удалены `playerVisibility`/`playerTransitionBlur`/`playerBlur` и импорты `animateFloat`, `rememberTransition`, `motionBlur`. `MutableTransitionState` + `SideEffect` сохранены — `playerVisibleState` по-прежнему передаётся в `AnimatedVisibility(visibleState = ...)` плеера.
-- `PlayerScreen.kt` не менялся: `blurRadius = 8f/18f` там — параметры `Shadow` (свечение имени артиста и активной строки текста), к motion blur отношения не имеют.
-- Оптимизации не тронуты: отложенное подключение `PlayerController` (`delay(600)` + `ensureConnected()`), асинхронный `SettingsRepositoryImpl` (lazy prefs, IO, `loaded.await()`), свайп только через `graphicsLayer` (translationY/scale/alpha), морф обложки через `SharedTransitionLayout`/`sharedElement` — всё работает без слоя размытия.
-- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL (3m 23s), APK 27 611 487 байт. `adb install -r` на 192.168.1.106:45609 — Success. Живой прогон не выполнялся по просьбе пользователя.
+## Последнее обновление: 30.10.2026 (сессия 54)
 
-## Cold start, 120 Гц и починка motion blur — сессия 44
-- Motion blur (`core/ui/MotionBlur.kt`): в `graphicsLayer` добавлен `CompositingStrategy.Offscreen`, пока эффект активен (без собственного offscreen-слоя `RenderEffect` на части устройств игнорируется), и сброс в `Auto` при радиусе ≤ 0.1f. Появилась лямбда-перегрузка `motionBlur(() -> Float)`: радиус читается в layer-блоке, поэтому анимация не вызывает рекомпозицию; старая `motionBlur(Float)` осталась тонкой обёрткой.
-- Блюр переехал из `PlayerScreen` в `AppNavGraph` — на сам `SharedTransitionLayout` (лишний `Box`-контейнер не понадобился: `modifier` у layout-функции уже есть). Слой layout захватывает и контент, и оверлей shared-элементов, где во время морфа живут панели. Итоговый радиус — `maxOf(playerSwipe.blurRadius, playerBlur)`.
-- Новый `feature/player/PlayerSwipeState.kt`: состояние свайпа поднято из `PlayerScreen` в `AppNavGraph`, чтобы и блюр, и смещение читались в `graphicsLayer` без рекомпозиции тяжёлых панелей. `offsetPx` — `mutableFloatStateOf`, а не `Animatable`: `snapTo` — suspend-функция, а из `awaitEachGesture` (restricted suspend scope) её вызывать нельзя, компилятор падал с «Restricted suspending functions…». Пружина после отпускания — `animate()` в `settleJob`, новое касание её отменяет. Есть `progress`, `blurRadius` (`MAX_BLUR_RADIUS = 15f`), `screenWidthPx/HeightPx`, `isDragging`, `isDismissed`, `reset()`.
-- 120 Гц: смещение корня и панелей — только `graphicsLayer.translationY`/`alpha`; обложка — `graphicsLayer` (scale/translationX/translationY), `Modifier.offset` в жесте не используется. На время drag `sharedElement` обложки отключается (`if (swipeState.isDragging) Modifier else coverModifier`) и включается после отпускания, чтобы `SharedTransitionLayout` не пересчитывал морф каждый кадр.
-- Enter/exit блюр: `MutableTransitionState` + `rememberTransition` объявлены снаружи `AnimatedVisibility` (плееру передан `visibleState = playerVisibleState`), радиус `0f → 15f` только на закрытии; `derivedStateOf { if (playerVisibleState.isIdle) 0f else transitionBlur }` гасит эффект в покое, иначе размытым оставался мини-плеер.
-- Cold start: `PlayerController` больше не подключается к `MusicService` в `init` — `scope.launch { delay(COLD_START_CONNECT_DELAY_MS = 600); ensureConnected() }`; `ensureConnected()` вызывается из `playTrackAt`, `resolveAndPlay`, `play`, `pauseOrResume`. Ранний тап по треку не теряется: `playStream` ждёт `controllerReady`, а `ensureConnected()` запускает соединение сразу.
-- `SettingsRepositoryImpl`: `getSharedPreferences` — `by lazy`, чтение в `Dispatchers.IO` из `init`, `settings = _settings.filterNotNull()` (до загрузки UI живёт на `initial = AppSettings()` в `MainActivity`). Сеттеры ждут `loaded.await()` и пишут состояние атомарно через `update`/`updateAndGet` — иначе параллельная смена темы и акцента терялась (read-modify-write по снимку).
-- `MainActivity`, `HomeViewModel`, `ServiceStatusManager` уже работали асинхронно (Room-флоу в `viewModelScope`, проверка сервисов в `Dispatchers.IO`) — правок не потребовали.
-- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 611 495 байт. `adb install -r` на 192.168.1.106:34187 — Success. Живой прогон не выполнялся по просьбе пользователя, визуальная проверка блюра и 120 Гц — на нём.
+## Spotify, локализация, «Скачанное» и кнопки источников — сессия 54
+- **Выбор источника**: вместо текстовых чипсов — ряд квадратных кнопок 64×64dp (радиус 16dp) в брендовых цветах YouTube / SoundCloud / Deezer / Apple / Spotify: фон 18% цвета бренда, активный — заливка 28% + рамка 2dp, аббревиатуры YT/SC/DZ/AM/SP, недоступный сервис приглушён.
+- **Spotify (S3)**: `SpotifyProvider` (Client Credentials Flow, кэш токена, 401 → перезапрос, `/v1/search`, ISRC, `streamUrl = null` — стрим через `YouTubeMatcher`); ключи `spotifyClientId`/`spotifyClientSecret` в `AppSettings`, в настройках секция «Интеграции» с двумя полями и «Сохранить»; `ServiceType.SPOTIFY`, резолв в `PlayerController` через `StreamResolver`.
+- **Локализация**: `AppSettings.appLanguage` (system/ru/en), `core/i18n/AppLocale` без AppCompat (`attachBaseContext` + `createConfigurationContext`), пересоздание Activity при смене языка, сегментированный выбор в настройках; строки в `res/values/strings.xml` и `res/values-ru/strings.xml` (≈150 ключей: навигация, поиск, новые секции; часть старых экранов пока с хардкодом).
+- **«Скачанное»**: в `LibraryScreen` сегменты «Медиатека / Скачанное», `LibraryViewModel.downloadedTracks`, список офлайн-файлов, удаление с устройства (файл + запись Room) через диалог подтверждения, пустое состояние с подсказкой и кнопкой «Найти музыку».
+- Проверки: `assembleDebug` — BUILD SUCCESSFUL, APK 27 647 838 байт; тесты 24 suites / 164, 0 failures. Установка на телефон не выполнена: устройство отключилось от Wi-Fi (adb: no devices) — APK готов, поставить при следующем подключении.
+- Из репозитория убрана служебная `.opencode/` (закоммичена по ошибке промежуточным агентом), добавлена в `.gitignore`.
 
-## Морф обложки во время свайпа и motion blur — сессия 43
-- `PlayerScreen.kt`: добавлен `screenWidthPx` (из `onSizeChanged`). Прогресс свайпа считается от анимированного `playerOffsetPx`, а не от `dragOffsetPx`: пока палец на экране значения совпадают (`snap`), а после отмены жеста пружина плавно возвращает и плеер, и обложку.
-- Обложка получила `coverSwipeModifier`: `scaleX/scaleY = 1f - 0.75f * progress`, `translationX = -screenWidthPx * 0.35f * progress`, `translationY = screenHeightPx * 0.4f * progress`, `clip = false`. Модификатор применён к контейнеру обложки (вместе со свечением), а не к `Surface` с `sharedElement` — так морф не начинается из двойной трансформации.
-- Важно: `translationY` содержит только дополнительный сдвиг, потому что корневой `Box` уже едет на `playerOffsetPx`. Формула из задачи (`dragOffsetPx + ...`) дала бы двойное смещение и увела обложку за экран раньше порога.
-- При `isDismissed` свайп-прогресс обложки сбрасывается в 0: дальнейший полёт в мини-плеер выполняет shared-переход.
-- Новый `core/ui/MotionBlur.kt`: `Modifier.motionBlur(blurRadius)` для Android 12+ (`RenderEffect.createBlurEffect` с `Shader.TileMode.CLAMP`); при радиусе ≤ 0.1f `renderEffect = null`, на API ниже 31 модификатор ничего не делает.
-- Motion blur применён к корневому `Box` плеера: при свайпе `swipeProgress * 15f`, при enter/exit — `transitionBlur` из `AnimatedVisibilityScope.transition.animateFloat` (`EnterExitState.Visible → 0`, остальные → 15), итог — `maxOf`. В покое ровно 0.
-- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 835 081 байт. APK установлен на устройство через `adb install -r` — Success; живой прогон не выполнялся по просьбе пользователя.
+## РџРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ: 30.10.2026 (СЃРµСЃСЃРёСЏ 53)
 
-## Ровная обложка и z-order панелей при морфе — сессия 42
-- `PlayerScreen.kt`: убран наклон обложки полностью — поле `HeroStyle.rotationZ` удалено, `graphicsLayer` больше не задаёт `rotationZ` (варианты 2/3 тоже без наклона). Форма обложки — единый `RoundedCornerShape(24.dp)` вместо асимметричных 56/24/56/24.
-- В hero-`Box` добавлены явные слои: обложка `Modifier.zIndex(0f)`, `AnimatedContent` с карточкой трека/текстами — `Modifier.zIndex(1f)`. Панель объявлена после обложки, поэтому в обычном состоянии всегда рисуется поверх.
-- Причина наложения при морфе: оверлей `SharedTransitionLayout` рисуется выше всего контента, и `zIndex` внутри `PlayerScreen` на него не влияет. Решение: панели (карточка трека и остров управления) на время enter/exit поднимаются в оверлей через `renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f)` и получают `animateEnterExit(enter = playerEnter, exit = playerExit)`.
-- `renderInOverlay = { !isPlayerOpen || animatedScope.transition.isRunning }`: в оверлее панели только во время перехода, в покое они остаются на своих местах и не перекрывают снекбар/мини-плеер.
-- Оверлей не наследует `graphicsLayer` свайпа, поэтому `panelModifier` добавляет `graphicsLayer` с `translationY = playerOffsetPx` и той же alpha при `isClosing` — панели не прыгают при закрытии жестом.
-- В оверлей поднимаются только панели, а не вся колонка: иначе свечение обложки оказалось бы над ней.
-- `PlayerScreen` получил параметры `foregroundModifier: Modifier = Modifier` и `isClosing: Boolean = false`; `ExpressiveHeroZone` — `panelModifier`. В `AppNavGraph` enter/exit плеера вынесены в локальные `playerEnter`/`playerExit` и переиспользуются в `animateEnterExit`.
-- Тесты: 23 suites / 156 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 835 081 байт (порядок импорта не изменил байткод). Живой тест на устройстве не выполнялся по просьбе пользователя; визуальный результат морфа не проверялся.
+## Deezer + Apple Music, С„РёРєСЃС‹ СЂРµРєРѕРјРµРЅРґР°С†РёР№ Рё UX РёР· Dotify вЂ” СЃРµСЃСЃРёСЏ 53
+- **S1. Р¤СѓРЅРґР°РјРµРЅС‚ РёСЃС‚РѕС‡РЅРёРєРѕРІ**: РЅРѕРІС‹Р№ `core/source/MusicSourceProvider` (source + `SourceCapabilities`: search/preview/fullStream/requiresAuth/supportsDownload) Рё `MusicSourceRegistry` (Set-РїСЂРѕРІР°Р№РґРµСЂРѕРІ С‡РµСЂРµР· `@IntoSet`). РќРѕРІС‹Р№ РёСЃС‚РѕС‡РЅРёРє РґРѕР±Р°РІР»СЏРµС‚СЃСЏ РѕРґРЅРёРј Р±РёРЅРґРёРЅРіРѕРј вЂ” РїРѕРёСЃРє, СЃС‚Р°С‚СѓСЃС‹ Рё СЂРµР·РѕР»РІРµСЂ РїРѕРґС…РІР°С‚С‹РІР°СЋС‚ РµРіРѕ СЃР°РјРё. `core/source/StreamResolver`: 1) РїСЂСЏРјР°СЏ СЃСЃС‹Р»РєР° С‚СЂРµРєР° (РїСЂРµРІСЊСЋ), 2) РїСЂРѕРІР°Р№РґРµСЂ РѕР±РЅРѕРІР»СЏРµС‚ СЃСЃС‹Р»РєСѓ, 3) РјР°С‚С‡ РЅР° YouTube С‡РµСЂРµР· `YouTubeMatcher` (СЃРєРѕСЂРёРЅРі Р°СЂС‚РёСЃС‚Р°/РЅР°Р·РІР°РЅРёСЏ/РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё, С€С‚СЂР°С„ Р·Р° cover/remix/live/slowed, Р±РѕРЅСѓСЃ official/topic, ISRC; РїРѕСЂРѕРі 5.0 вЂ” Р»СѓС‡С€Рµ В«РЅРµ РЅР°Р№РґРµРЅРѕВ», С‡РµРј С‡СѓР¶РѕР№ С‚СЂРµРє).
+- **S2. Deezer Рё Apple/iTunes**: `DeezerProvider` (`api.deezer.com/search`, 30-СЃРµРє. MP3-РїСЂРµРІСЊСЋ, ISRC) Рё `AppleMusicProvider` (`itunes.apple.com/search`, `previewUrl` M4A, Р°РїСЃРєРµР№Р» РѕР±Р»РѕР¶РєРё РґРѕ 600Г—600, `country=RU` РґР»СЏ РєРёСЂРёР»Р»РёС†С‹). РћР±Р° Р±РµР· Р°РІС‚РѕСЂРёР·Р°С†РёРё; РІ `Track` РґРѕР±Р°РІР»РµРЅС‹ `isrc` Рё `previewSeconds`, РІ `Source` вЂ” `DEEZER` Рё `APPLE`. `PlayerController` СЂРµР·РѕР»РІРёС‚ РёС… С‡РµСЂРµР· `StreamResolver` (null-safe, С‚РµСЃС‚РѕРІС‹Рµ РєРѕРЅСЃС‚СЂСѓРєС‚РѕСЂС‹ РЅРµ С‚СЂРѕРЅСѓС‚С‹), MIME: Apple в†’ M4A, Deezer в†’ MP3.
+- **Р РµРєРѕРјРµРЅРґР°С†РёРё (P0/P1 РёР· Р°СѓРґРёС‚Р°)**: РёР· РєР°РЅРґРёРґР°С‚РѕРІ Р”РѕРјР° РёСЃРєР»СЋС‡Р°СЋС‚СЃСЏ `liked_tracks`, `play_history` Рё `downloaded_tracks`; РґРµРґСѓРї РїРѕ РЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅРѕРјСѓ `(artist, title)` РІ Р”РѕРјРµ, РІРѕР»РЅРµ Рё С„РѕР»Р±СЌРєРµ; РІ РІРѕР»РЅСѓ РґРѕР±Р°РІР»РµРЅ `filterDisliked` (РґРёР·Р»Р°Р№РєРё Р±РѕР»СЊС€Рµ РЅРµ РІРѕР·РІСЂР°С‰Р°СЋС‚СЃСЏ); С…РѕР»РѕРґРЅС‹Р№ СЃС‚Р°СЂС‚ вЂ” `SoundCloudChartsRepository.getTop50()` РІРјРµСЃС‚Рѕ `"popular songs official audio"`, YouTube-РїРѕРёСЃРє РѕСЃС‚Р°Р»СЃСЏ РїРѕСЃР»РµРґРЅРёРј С„РѕР»Р±СЌРєРѕРј.
+- **UX РёР· Dotify (Р°РґР°РїС‚РёСЂРѕРІР°РЅРѕ РїРѕРґ M3)**: 1) В«РќРµРґР°РІРЅРёРµВ» Р·Р°РїСЂРѕСЃС‹ С‡РёРїСЃР°РјРё РїРѕРґ РїРѕР»РµРј РїРѕРёСЃРєР° (`SearchHistoryStore`, SharedPreferences, 8 Р·Р°РїРёСЃРµР№, В«РћС‡РёСЃС‚РёС‚СЊВ»); 2) РІ РїСѓСЃС‚РѕР№ РІС‹РґР°С‡Рµ вЂ” В«РџРѕРёСЃРєР°С‚СЊ РІ РґСЂСѓРіРѕРј РёСЃС‚РѕС‡РЅРёРєРµВ» СЃ С‡РёРїСЃР°РјРё РѕСЃС‚Р°Р»СЊРЅС‹С… СЃРµСЂРІРёСЃРѕРІ; 3) РІ РєР°СЂС‚РѕС‡РєРµ С‚СЂРµРєР° РІРёРґРЅРѕ В«РїСЂРµРІСЊСЋ 30 СЃВ» вЂ” С‡РµСЃС‚РЅР°СЏ РёРЅРґРёРєР°С†РёСЏ С‚РѕРіРѕ, С‡С‚Рѕ РёРіСЂР°РµС‚ РѕС‚СЂС‹РІРѕРє. Р§РёРїСЃС‹ РёСЃС‚РѕС‡РЅРёРєРѕРІ СЃС‚Р°Р»Рё РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅРѕ СЃРєСЂРѕР»Р»РёСЂСѓРµРјС‹РјРё (4 СЃРµСЂРІРёСЃР° РЅРµ РІР»РµР·Р°СЋС‚ РІ СЃС‚СЂРѕРєСѓ), СЃС‚Р°С‚СѓСЃС‹ СЃРµСЂРІРёСЃРѕРІ СЂР°СЃС€РёСЂРµРЅС‹ РґРѕ SoundCloud/YouTube/Deezer/Apple.
+- РџСЂРѕРІРµСЂРєРё: `assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 572 301 Р±Р°Р№С‚; С‚РµСЃС‚С‹ 24 suites / 164, 0 failures/errors/skipped (РґРѕР±Р°РІР»РµРЅС‹ `YouTubeMatcherTest` вЂ” 6 РєРµР№СЃРѕРІ, 2 РєРµР№СЃР° С…РѕР»РѕРґРЅРѕРіРѕ СЃС‚Р°СЂС‚Р° Рё РґРµРґСѓРїР° РІ `HomeViewModelRecommendationsTest`).
+- Р–РёРІР°СЏ РїСЂРѕРІРµСЂРєР° РЅР° 192.168.1.106:44537: С‡РёРїСЃС‹ Deezer/Apple Music, РїРѕРёСЃРє В«cachalotВ» РІ Deezer вЂ” 20 СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ СЃ Р±РµР№РґР¶РµРј В«РїСЂРµРІСЊСЋ 30 СЃВ», РїСЂРµРІСЊСЋ РёРіСЂР°РµС‚ (0:17, РѕС‡РµСЂРµРґСЊ Р»РёСЃС‚Р°РµС‚СЃСЏ РґР°Р»СЊС€Рµ), СЃС‚Р°С‚СѓСЃС‹ РІСЃРµС… С‡РµС‚С‹СЂС‘С… СЃРµСЂРІРёСЃРѕРІ В«РћРЅР»Р°Р№РЅВ» (Р·РЅР°С‡РёС‚ Рё iTunes-РїРѕРёСЃРє РІРµСЂРЅСѓР» СЂРµР·СѓР»СЊС‚Р°С‚), В«РќРµРґР°РІРЅРёРµВ» СЃ С‡РёРїСЃРѕРј В«cachalotВ» Рё В«РћС‡РёСЃС‚РёС‚СЊВ».
 
-## Свайп-переключение треков и морф обложки — сессия 41
-- `MiniPlayer.kt`: горизонтальный свайп переведён с перемотки на переключение треков. Влево — следующий (`onNext` → `PlayerViewModel.playNext()`), вправо — предыдущий (`onPrevious` → `playPrevious()`); `onSeekToFraction` удалён.
-- Порог вынесен в чистую функцию `swipeTrackDirection(offsetPx, widthPx, velocityX)`: 30% ширины островка или скорость больше 1000 px/s (`VelocityTracker`); +1 — следующий, -1 — предыдущий, 0 — возврат.
-- Обложка и текст едут за пальцем через `Animatable` + `graphicsLayer.translationX` с лёгким fade (до 25%), кнопка Play остаётся на месте; после отпускания или отмены — `spring(DampingRatioMediumBouncy, StiffnessMediumLow)`. Новый жест прерывает пружину через `offsetX.stop()`.
-- `AppNavGraph`: контейнер мини-плеера и плеера обёрнут в `SharedTransitionLayout`; обе обложки получают `Modifier.sharedElement(rememberSharedContentState(PlayerCoverSharedKey), animatedVisibilityScope)` с общим ключом `"player-cover"`.
-- Вход полноэкранного плеера заменён с `slideInVertically` на `fadeIn + scaleIn(0.96f)`, чтобы обложка летела в уже видимый экран; выход остался `scaleOut(0.9f) + fadeOut`.
-- `PlayerScreen` и `FloatingMiniPlayer` получили параметр `coverModifier`; в режиме текстов shared-element к скрытой обложке не применяется, чтобы она не «оживала».
-- `sharedBounds` для названия трека не делали: разные масштабы типографики дают заметный reflow при перелёте.
-- Тесты: 23 suites / 156 тестов, 0 failures/errors (добавлен `MiniPlayerSwipeTest` — 8 тестов порогов и скорости). `assembleDebug` — BUILD SUCCESSFUL, APK 27 835 081 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РљРЅРѕРїРєРё РїРѕРґ РѕР±Р»РѕР¶РєРѕР№ РІ РїР°Р»РёС‚СЂРµ РїР»РµРµСЂР° вЂ” СЃРµСЃСЃРёСЏ 52
+- РљРЅРѕРїРєРё В«СЃРєР°С‡Р°С‚СЊ / Р»Р°Р№Рє / РґРёР·Р»Р°Р№РєВ» РїРѕРґ РѕР±Р»РѕР¶РєРѕР№ Р±РѕР»СЊС€Рµ РЅРµ Р±РµСЂСѓС‚ С†РІРµС‚ С‚РµРјС‹: РїСЂРё РІРєР»СЋС‡С‘РЅРЅС‹С… РґРёРЅР°РјРёС‡РµСЃРєРёС… С†РІРµС‚Р°С… РѕР±Р»РѕР¶РєРё Р°РєС†РµРЅС‚ вЂ” `coverAccent`, РєРѕРЅС‚РµР№РЅРµСЂ Р°РєС‚РёРІРЅРѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ вЂ” `playerColors.primaryContainer`, РїРѕРґР»РѕР¶РєР° РїРѕРєРѕСЏ вЂ” `coverAccent.copy(alpha = 0.14f)` РІРјРµСЃС‚Рѕ СЃРµСЂРѕР№ `onSurface.copy(alpha = 0.08f)`.
+- РћР±Рµ РєСЂР°СЃРєРё Р°РЅРёРјРёСЂСѓСЋС‚СЃСЏ 420 РјСЃ (`heroActionContainer`, `heroActionIdleContainer`) СЃРёРЅС…СЂРѕРЅРЅРѕ СЃ Р°РєС†РµРЅС‚РѕРј, РїРѕСЌС‚РѕРјСѓ РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР° РєРЅРѕРїРєРё РїРµСЂРµС‚РµРєР°СЋС‚ РІРјРµСЃС‚Рµ СЃ С„РѕРЅРѕРј Рё РєРЅРѕРїРєРѕР№ Play, Р° РЅРµ РїРµСЂРµРєР»СЋС‡Р°СЋС‚СЃСЏ СЂС‹РІРєРѕРј.
+- Р¦РІРµС‚Р° РїСЂРѕРєРёРЅСѓС‚С‹ РІ `ExpressiveHeroZone` С‚СЂРµРјСЏ РїР°СЂР°РјРµС‚СЂР°РјРё (`actionAccent`, `actionContainer`, `actionIdleContainer`); `LikeSquircle`/`DislikeSquircle`/`DownloadSquircle` РїРѕР»СѓС‡РёР»Рё РїР°СЂР°РјРµС‚СЂ `idleContainerColor` СЃ РїСЂРµР¶РЅРёРј СЃРµСЂС‹Рј Р·РЅР°С‡РµРЅРёРµРј РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ, С‡С‚РѕР±С‹ РјС‘СЂС‚РІС‹Рµ РІР°СЂРёР°РЅС‚С‹ (`CoverForeground`, `TrackGlassCard`) РєРѕРјРїРёР»РёСЂРѕРІР°Р»РёСЃСЊ Р±РµР· РїСЂР°РІРѕРє.
+- РџРѕРґРїРёСЃСЊ В«РўРµРєСЃС‚ РїРµСЃРЅРёВ»/В«РћР±Р»РѕР¶РєР°В» С‚РѕР¶Рµ РІ РїР°Р»РёС‚СЂРµ: `TextButton(colors = ButtonDefaults.textButtonColors(contentColor = coverAccent))`; РїСЂРё РІС‹РєР»СЋС‡РµРЅРЅС‹С… РґРёРЅР°РјРёС‡РµСЃРєРёС… С†РІРµС‚Р°С… `coverAccent` СЂР°РІРµРЅ `primary` С‚РµРјС‹, РїРѕСЌС‚РѕРјСѓ РІРёРґ РЅРµ РјРµРЅСЏРµС‚СЃСЏ.
+- Р”РёР·Р»Р°Р№Рє СЃРѕС…СЂР°РЅСЏРµС‚ СЃРµРјР°РЅС‚РёС‡РµСЃРєРёР№ РєСЂР°СЃРЅС‹Р№ РІ Р°РєС‚РёРІРЅРѕРј СЃРѕСЃС‚РѕСЏРЅРёРё (`errorContainer`/`error`), РІ РїРѕРєРѕРµ РёСЃРїРѕР»СЊР·СѓРµС‚ РѕР±С‰СѓСЋ РїРѕРґР»РѕР¶РєСѓ.
+- РџСЂРѕРІРµСЂРєРё: `assembleDebug` вЂ” BUILD SUCCESSFUL; С‚РµСЃС‚С‹ 23 suites / 156, 0 failures/errors/skipped; СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ РЅР° 192.168.1.106:44537. Р–РёРІР°СЏ РїСЂРѕРІРµСЂРєР°: `credits song` (СЃРёРЅСЏСЏ РѕР±Р»РѕР¶РєР°) вЂ” Р»Р°Р№Рє, СЃРєР°С‡РёРІР°РЅРёРµ Рё Play РІ РѕРґРЅРѕРј СЃРёРЅРµРј Р°РєС†РµРЅС‚Рµ, РїРѕРґР»РѕР¶РєРё СЃ Р»С‘РіРєРёРј СЃРёРЅРёРј С‚РѕРЅРѕРј; РїРѕСЃР»Рµ РІС‹РєР»СЋС‡РµРЅРёСЏ С‚СѓРјР±Р»РµСЂР° вЂ” СЃРµСЂС‹Рµ РїРѕРґР»РѕР¶РєРё Рё Р·РµР»С‘РЅС‹Р№ Р°РєС†РµРЅС‚ С‚РµРјС‹; С‚СѓРјР±Р»РµСЂ РІРѕР·РІСЂР°С‰С‘РЅ РІ РёСЃС…РѕРґРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ, Р»Р°Р№Рє РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅ.
 
-## Навигация и мини-плеер разделены, свайп-перемотка — сессия 40
-- `ExpressiveBottomDock` теперь только навигационный бар: `Surface` во всю ширину, фон `surfaceContainerHigh` (alpha 0.97) доходит до нижней кромки, `navigationBarsPadding()` внутри, высота контента `DockNavHeight = 72dp`, обводка 1dp. Иконки выросли с 22dp до 28dp, подписи — с 11sp до 12sp, индикатор совмещён с квадратом иконки (`indicatorTop = 13dp`).
-- `MiniPlayer.kt` переписан в `FloatingMiniPlayer`: отдельный островок высотой 64dp, радиус 30dp, тень 8dp, обложка 48dp, название/артист, кнопка Play/Pause 40dp (зона 48dp), полоска прогресса 2dp внизу с inset 24dp. Боковые отступы 16dp и позиция над баром задаются в `AppNavGraph`.
-- Перемотка свайпом: `detectHorizontalDragGestures` на островке, прогресс следует за пальцем через `size.width`, при отпускании вызывается `PlayerViewModel.seekTo(fraction)`, при отмене жеста полоска возвращается к стартовой доле. Опрос позиции останавливается на время жеста и возобновляется через 120 мс после seek, чтобы полоска не прыгала назад.
-- `AppNavGraph`: бар и мини-плеер — два независимых `AnimatedVisibility`. Высота бара измеряется через `onSizeChanged`; островок висит на `navBarHeight + 12dp`, виден при `showBottomBar && track != null && navBarHeightPx > 0`. `lastTrack` удерживает контент на время exit-анимации. `LocalBottomDockHeight = navBarHeight + анимированный резерв (64 + 12dp)`, поэтому контент вкладок не прыгает при появлении островка.
-- Сворачивание плеера: exit заменён с полного `slideOutVertically` на `scaleOut(0.9f, TransformOrigin(0.5f, 1f)) + fadeOut`; мини-плеер входит `slideInVertically + scaleIn(0.85f, bottom origin) + fadeIn`. Визуально экран сжимается к низу и тает, а островок выезжает из-под бара.
-- Тесты: 22 suites / 148 тестов, 0 failures/errors. `assembleDebug` — BUILD SUCCESSFUL, APK 27 635 291 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РџСЂРѕРїР°РґР°РЅРёРµ С‚РµРєСЃС‚Р° РїСЂРё СЃРјРµРЅРµ СЃС‚СЂРѕРєРё вЂ” СЃРµСЃСЃРёСЏ 51
+- РЎРёРјРїС‚РѕРј: РїСЂРё РїРµСЂРµРєР»СЋС‡РµРЅРёРё СЃС‚СЂРѕРєРё РІРµСЃСЊ С‚РµРєСЃС‚ РЅР° РјРіРЅРѕРІРµРЅРёРµ В«РёСЃС‡РµР·Р°Р»В» Рё РІРѕР·РІСЂР°С‰Р°Р»СЃСЏ, Р°РЅРёРјР°С†РёСЏ РІС‹РіР»СЏРґРµР»Р° СЂРІР°РЅРѕР№. Р’РѕСЃРїСЂРѕРёР·РІРµРґРµРЅРѕ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ Р·Р°РїРёСЃСЊСЋ СЌРєСЂР°РЅР° (30 СЃ, `screenrecord`): 7 РїСЂРѕСЃР°РґРѕРє В«С‡РµСЂРЅРёР»В» С‚РµРєСЃС‚Р° РґРѕ 14% РјРµРґРёР°РЅС‹, СЂРѕРІРЅРѕ РІ РјРѕРјРµРЅС‚С‹ СЃРјРµРЅС‹ Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё; РїСЂРѕСЃР°РґРєР° РґРµСЂР¶Р°Р»Р°СЃСЊ ~0.2 СЃ Рё РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°Р»Р°СЃСЊ ~250 РјСЃ.
+- РџСЂРёС‡РёРЅР°: `Modifier.animateItem()` Сѓ СЃС‚СЂРѕРє `LazyColumn`. РЎРјРµРЅР° Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё РІС‹Р·С‹РІР°РµС‚ `animateScrollToItem`, Рё Р°РЅРёРјР°С‚РѕСЂ РїРѕСЏРІР»РµРЅРёСЏ (`fadeIn` spring `StiffnessMediumLow`) РіР°СЃРёР» РІ РЅРѕР»СЊ СѓР¶Рµ РІРёРґРёРјС‹Рµ СЃС‚СЂРѕРєРё, Р° РїРѕС‚РѕРј РїСЂРѕСЏРІР»СЏР» РёС… Р·Р°РЅРѕРІРѕ. РЎРїРёСЃРѕРє РЅРµ РґРѕР±Р°РІР»СЏРµС‚ Рё РЅРµ СѓРґР°Р»СЏРµС‚ СЃС‚СЂРѕРєРё, РїРѕСЌС‚РѕРјСѓ СЌС‚Р° Р°РЅРёРјР°С†РёСЏ РЅРµ РЅСѓР¶РЅР° (РёР·РІРµСЃС‚РЅС‹Рµ Р±Р°РіРё Google: 352584409, 455884472).
+- Р¤РёРєСЃ 1: `animateItem()` СѓР±СЂР°РЅ; РІ РєРѕРґРµ РѕСЃС‚Р°РІР»РµРЅ РєРѕРјРјРµРЅС‚Р°СЂРёР№-РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ, С‡С‚РѕР±С‹ РЅРµ РІРµСЂРЅСѓР»Рё.
+- Р¤РёРєСЃ 2: РІС‹СЃРѕС‚Р° СЃС‚СЂРѕРєРё Р±РѕР»СЊС€Рµ РЅРµ Р·Р°РІРёСЃРёС‚ РѕС‚ Р°РєС‚РёРІРЅРѕСЃС‚Рё. `AnimatedVisibility` СЃ `expandVertically`/`shrinkVertically` Р·Р°РјРµРЅС‘РЅ РЅР° РїРѕСЃС‚РѕСЏРЅРЅС‹Р№ СЃР»РѕС‚ `LyricBarSlot = 12.dp`, РІРЅСѓС‚СЂРё РєРѕС‚РѕСЂРѕРіРѕ РїРѕР»РѕСЃРєР° РїСЂРѕСЏРІР»СЏРµС‚СЃСЏ Р°Р»СЊС„РѕР№ (200 РјСЃ РІС…РѕРґ, 140 РјСЃ РІС‹С…РѕРґ). Р Р°РЅСЊС€Рµ РїРѕСЏРІР»РµРЅРёРµ/РёСЃС‡РµР·РЅРѕРІРµРЅРёРµ РїРѕР»РѕСЃРєРё РјРµРЅСЏР»Рѕ РІС‹СЃРѕС‚Сѓ СЌР»РµРјРµРЅС‚Р° РЅР° 10dp, Рё СЃРїРёСЃРѕРє РїСЂС‹РіР°Р» РЅР° РєР°Р¶РґРѕР№ СЃРјРµРЅРµ СЃС‚СЂРѕРєРё.
+- РџРѕР±РѕС‡РЅРѕ: РІРµСЂС‚РёРєР°Р»СЊРЅС‹Р№ padding СЃС‚СЂРѕРєРё 6dp в†’ `top = 2.dp` (СЃР»РѕС‚ СЃР°Рј РґР°С‘С‚ РІРѕР·РґСѓС…); РёРјРїРѕСЂС‚С‹ `AnimatedVisibility`, `expandVertically`, `shrinkVertically` СѓРґР°Р»РµРЅС‹.
+- РџСЂРѕРІРµСЂРєР° РїРѕСЃР»Рµ С„РёРєСЃР° С‚РѕР№ Р¶Рµ РјРµС‚РѕРґРёРєРѕР№ (30 СЃ Р·Р°РїРёСЃРё): РЅРё РѕРґРЅРѕР№ РїСЂРѕСЃР°РґРєРё РЅРёР¶Рµ 50% РјРµРґРёР°РЅС‹ РїРѕСЃР»Рµ СЃС‚Р°СЂС‚РѕРІРѕРіРѕ РїРѕР·РёС†РёРѕРЅРёСЂРѕРІР°РЅРёСЏ СЃРїРёСЃРєР°.
+- РџСЂРѕРІРµСЂРєРё: `assembleDebug` вЂ” BUILD SUCCESSFUL; С‚РµСЃС‚С‹ 23 suites / 156, 0 failures/errors/skipped; СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ РЅР° 192.168.1.106:44537.
 
-## Плавающий нижний док — сессия 39
-- `ExpressiveBottomDock`: боковые отступы увеличены с 16dp до 24dp, снизу — `navigationBarsPadding()` + 12dp (было 8dp), сверху осталось 8dp. Фон `surfaceContainerHigh` больше не тянется до краёв экрана и не прилипает к системной панели — док читается как отдельный островок.
-- Радиус 30dp, обводка 1dp и тень 8dp не менялись; `DockNavHeight = 64dp`, `DockMiniHeight = 56dp`, обложка 44dp и кнопка Play 48dp сохранены — на ширине 320–360dp контент помещается, навигация по-прежнему делится через `weight(1f)`.
-- Анимация мини-плеера переведена с `expandVertically`/`shrinkVertically` на `slideInVertically`/`slideOutVertically` + fade: строка выезжает из-под ряда навигации. Добавлено отдельное окно высотой 56dp над навигацией с `clipToBounds()`, чтобы во время выезда строка не рисовалась поверх иконок; фон дока растёт через `reveal` (spring NoBouncy/Medium), поэтому высота и slide синхронизированы.
-- `LocalBottomDockHeight` автоматически вырос на 4dp (нижний padding), экраны уже используют его в `contentPadding` — правок не потребовалось.
-- Тесты: 22 suites / 148 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 635 309 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РљРёРЅРµРјР°С‚РѕРіСЂР°С„РёС‡РЅР°СЏ Р°РЅРёРјР°С†РёСЏ С‚РµРєСЃС‚РѕРІ вЂ” СЃРµСЃСЃРёСЏ 50
+- `LyricLineItem`: СЂР°Р·РјРµСЂ Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ `animateFloatAsState` (spring 0.9 / MediumLow): Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° РїР»Р°РІРЅРѕ РІС‹СЂР°СЃС‚Р°РµС‚ РґРѕ 22sp, СЃРѕСЃРµРґРЅРёРµ вЂ” 17sp, РґР°Р»СЊРЅРёРµ вЂ” 15sp; `lineHeight` СЃС‡РёС‚Р°РµС‚СЃСЏ РѕС‚ С‚РµРєСѓС‰РµРіРѕ СЂР°Р·РјРµСЂР°.
+- Р¦РІРµС‚ СЃС‚СЂРѕРєРё вЂ” `animateColorAsState` 280 РјСЃ (onSurfaceVariant в†’ onSurface), РІРµСЃ РїРµСЂРµРєР»СЋС‡Р°РµС‚СЃСЏ РЅР° SemiBold Сѓ Р°РєС‚РёРІРЅРѕР№.
+- РџСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ вЂ” `tween` 300 РјСЃ; Р·РЅР°С‡РµРЅРёРµ С‡РёС‚Р°РµС‚СЃСЏ РІРЅСѓС‚СЂРё `graphicsLayer`, РїРѕСЌС‚РѕРјСѓ Р°РЅРёРјР°С†РёСЏ РЅРµ РІС‹Р·С‹РІР°РµС‚ СЂРµРєРѕРјРїРѕР·РёС†РёСЋ РЅР° РєР°Р¶РґС‹Р№ РєР°РґСЂ.
+- РџРѕР»РѕСЃРєР° РїСЂРѕРіСЂРµСЃСЃР°: `AnimatedVisibility` СЃ fade + `expandVertically`/`shrinkVertically` (220/160 РјСЃ). РџСЂРё СЃРјРµРЅРµ СЃС‚СЂРѕРєРё СЃС‚Р°СЂР°СЏ РїРѕР»РѕСЃРєР° СѓРµР·Р¶Р°РµС‚, РЅРѕРІР°СЏ РІС‹РµР·Р¶Р°РµС‚; Р·Р°Р»РёРІРєР° РІРЅСѓС‚СЂРё Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ 240 РјСЃ.
+- `LazyColumn`: Рє РєР°Р¶РґРѕР№ СЃС‚СЂРѕРєРµ РґРѕР±Р°РІР»РµРЅ `Modifier.animateItem()` вЂ” СЃРґРІРёРіРё СЃС‚СЂРѕРє РїСЂРё СЂРѕСЃС‚Рµ Р°РєС‚РёРІРЅРѕР№ Р°РЅРёРјРёСЂСѓСЋС‚СЃСЏ, Р° РЅРµ РїРµСЂРµСЃРєР°РєРёРІР°СЋС‚.
+- РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РЅРµ С‚СЂРѕРЅСѓС‚Р°: `activeIndex` РїРѕ С‚Р°Р№РјРєРѕРґСѓ Рё Р°РІС‚РѕС†РµРЅС‚СЂРёСЂРѕРІР°РЅРёРµ РѕСЃС‚Р°Р»РёСЃСЊ РїСЂРµР¶РЅРёРјРё.
+- РџСЂРѕРІРµСЂРєРё: `assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 568 986 Р±Р°Р№С‚; С‚РµСЃС‚С‹ 23 suites / 156, 0 failures/errors/skipped; СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ РЅР° 192.168.1.106:44537.
 
-## Свайп плеера: перехват первого касания вместо nestedScroll — сессия 38
-- `NestedScrollConnection` удалён полностью: `dismissNestedScrollConnection`, `Modifier.nestedScroll()`, корневой `detectVerticalDragGestures` и импорты `NestedScrollConnection`/`NestedScrollSource`/`nestedScroll`/`Velocity`/`Offset`. Причина: на тексте и пустых зонах жест не срабатывал.
-- Новый жест — `Modifier.pointerInput(Unit) { awaitEachGesture { ... } }` на корневом `Box`, который оборачивает `Scaffold` всего плеера. `awaitFirstDown(pass = PointerEventPass.Initial)` получает касание раньше `LazyColumn`/`verticalScroll`; при своём жесте изменения потребляются в Initial-проходе, поэтому drag списка отменяется (`awaitPointerSlopOrCancellation` проверяет `isConsumed`).
-- Решение о жесте принимается по накопленному `totalDy`: вверх (`totalDy <= 0`) всегда отдаётся списку/обложке; вниз двигает плеер, кроме касания внутри `LazyColumn` при уже проскролленном тексте (`isLyricsMode && inLyricsList && !lyricsListState.canScrollBackward`). Шапка, обложка и пустые зоны двигают плеер даже при проскролленном тексте.
-- Области определяются реальными границами: `controlIslandBounds` и `lyricsListBounds` через `onGloballyPositioned { it.boundsInRoot() }`; касание из острова управления игнорируется. `LazyListState` поднят из `LyricsListView` в `PlayerScreen` и проброшен через `ExpressiveHeroZone` → `LyricsForeground`; границы списка передаются callback'ом `onListBoundsChanged` и сбрасываются в `null` через `DisposableEffect`, когда список уходит из композиции.
-- Остров управления сохраняет функциональный guard `detectVerticalDragGestures { change, _ -> change.consume() }` (пустой `pointerInput` ничего не блокирует): кнопки и слайдер не запускают закрытие.
-- Порог `DISMISS_THRESHOLD = 0.45f` сохранён: `finishPlayerDrag()` закрывает при `dragOffsetPx > screenHeightPx * 0.45f`, иначе `settlePlayer()` возвращает пружиной; отмена жеста в `finally` также возвращает плеер.
-- Тесты: 22 suites / 148 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 635 309 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## Р”РёРЅР°РјРёС‡РµСЃРєРёРµ С†РІРµС‚Р° РѕР±Р»РѕР¶РєРё Рё Р°РЅРёРјР°С†РёСЏ СЃРјРµРЅС‹ С‚СЂРµРєР° вЂ” СЃРµСЃСЃРёСЏ 49
+- Р”РёРЅР°РјРёС‡РµСЃРєР°СЏ С‚РѕРЅРёСЂРѕРІРєР° СѓСЃРёР»РµРЅР°: РїСЂРё РІРєР»СЋС‡С‘РЅРЅРѕРј С‚СѓРјР±Р»РµСЂРµ С„РѕРЅ РїР»РµРµСЂР° вЂ” РІРµСЂС‚РёРєР°Р»СЊРЅС‹Р№ РіСЂР°РґРёРµРЅС‚ 28% в†’ 14% С†РІРµС‚Р° РѕР±Р»РѕР¶РєРё, РїР°РЅРµР»СЊ СѓРїСЂР°РІР»РµРЅРёСЏ РїРѕРґРєСЂР°С€РµРЅР° РЅР° 14%; СЃР»Р°Р№РґРµСЂ Рё РєРЅРѕРїРєР° Play РёСЃРїРѕР»СЊР·СѓСЋС‚ С†РІРµС‚ РѕР±Р»РѕР¶РєРё (`coverAccent`), РєРѕРЅС‚СЂР°СЃС‚ РёРєРѕРЅРєРё Play СЃС‡РёС‚Р°РµС‚СЃСЏ РїРѕ СЏСЂРєРѕСЃС‚Рё. РђРєС†РµРЅС‚ Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ 420 РјСЃ, РїРѕСЌС‚РѕРјСѓ РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР° С„РѕРЅ Рё РєРЅРѕРїРєРё РїРµСЂРµС‚РµРєР°СЋС‚ РїР»Р°РІРЅРѕ. РџСЂРё РІС‹РєР»СЋС‡РµРЅРЅРѕРј С‚СѓРјР±Р»РµСЂРµ вЂ” СЃС‚СЂРѕРіРѕ `colorScheme.background`, СЃР»Р°Р№РґРµСЂ Рё Play вЂ” Р°РєС†РµРЅС‚РѕРј С‚РµРјС‹.
+- РЎРјРµРЅР° С‚СЂРµРєР°: РѕР±Р»РѕР¶РєР° + РЅР°Р·РІР°РЅРёРµ + Р°СЂС‚РёСЃС‚ РѕР±С‘СЂРЅСѓС‚С‹ РІ `AnimatedContent` РїРѕ `TrackDisplay` (РєР»СЋС‡ С‚СЂРµРєР° + С‚РµРєСЃС‚С‹ + artwork). РЎС‚Р°СЂС‹Р№ Р±Р»РѕРє СѓС…РѕРґРёС‚ fade + slide РІРІРµСЂС…, РЅРѕРІС‹Р№ РїСЂРёС…РѕРґРёС‚ fade + slide СЃРЅРёР·Сѓ (340 РјСЃ / 220 РјСЃ, `SizeTransform(clip = false)`). Shared-element РјРѕСЂС„ РІРµС€Р°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РЅР° Р°РєС‚СѓР°Р»СЊРЅС‹Р№ С‚СЂРµРє, РїРѕСЌС‚РѕРјСѓ СЃРІРѕСЂР°С‡РёРІР°РЅРёРµ РїР»РµРµСЂР° РЅРµ Р»РѕРјР°РµС‚СЃСЏ.
+- РџСЂРѕРІРµСЂРєРё: `assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 568 967 Р±Р°Р№С‚; С‚РµСЃС‚С‹ 23 suites / 156, 0 failures/errors/skipped; СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ РЅР° 192.168.1.106:44537.
 
-## Свайп плеера: порог 45% и закрытие поверх текстов — сессия 37
-- Порог закрытия снижен с 85% до 45% высоты экрана (`DISMISS_THRESHOLD = 0.45f`). Логика отпускания вынесена в `finishPlayerDrag()` и используется обоими путями: жестом на свободной зоне и nested-scroll'ом списка текста.
-- Причина «свайп работает только за шапку»: жест с сессии 36 уже жил на корневом `Scaffold`, но `LazyColumn` текстов и `verticalScroll` обложки потребляли вертикальные изменения указателя раньше родителя, поэтому корневой `detectVerticalDragGestures` отменялся.
-- На корневой `Scaffold` добавлен `Modifier.nestedScroll(dismissNestedScrollConnection)`:
-  - `onPreScroll`: пока плеер смещён, сначала двигает плеер, а не список — контент не прокручивается под возвращающейся шторкой;
-  - `onPostScroll`: забирает остаток тяги вниз, когда список уже в начале (`available.y < 0`), — свайп работает поверх текста песни;
-  - `onPreFling`: выше порога закрывает, иначе возвращает пружиной, и гасит скорость списка, чтобы текст не улетал отдельной анимацией;
-  - программные скроллы (`SideEffect`, автоцентрирование активной строки) игнорируются.
-- Остров управления по-прежнему гасит вертикальные драги своим `pointerInput` (`controlIslandSwipeGuard`): его кнопки и слайдер не запускают закрытие. Шапка и пустые зоны обрабатываются корневым `detectVerticalDragGestures`.
-- Тесты: 22 suites / 148 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 635 282 байта. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РЎРёРЅС…СЂРѕРЅРЅС‹Рµ С‚РµРєСЃС‚С‹, Р°РєС†РµРЅС‚, РЅР°СЃС‚СЂРѕР№РєРё Рё СЃРІР°Р№Рї вЂ” СЃРµСЃСЃРёСЏ 48
+- РўРµРєСЃС‚С‹: СѓР±СЂР°РЅ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ РіСЂР°РґРёРµРЅС‚ РїРѕ Р±СѓРєРІР°Рј вЂ” РЅР° РїРµСЂРµРЅРµСЃС‘РЅРЅРѕР№ СЃС‚СЂРѕРєРµ РѕРЅ Р·Р°РєСЂР°С€РёРІР°Р» Рё РІС‚РѕСЂСѓСЋ СЃС‚СЂРѕРєСѓ С†РµР»РёРєРѕРј. РџСЂРѕРіСЂРµСЃСЃ С‚РµРїРµСЂСЊ РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ С‚РѕРЅРєРѕР№ РїРѕР»РѕСЃРѕР№ 2dp РїРѕРґ Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРѕР№; С‚РµРєСЃС‚ С†РµРЅС‚СЂРёСЂРѕРІР°РЅ, Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° 22sp SemiBold, СЃРѕСЃРµРґРЅРёРµ 17sp Medium, РґР°Р»СЊРЅРёРµ 15sp СЃ alpha-РёРµСЂР°СЂС…РёРµР№, СЃРІРµС‡РµРЅРёРµ СѓР±СЂР°РЅРѕ.
+- В«Р”РёРЅР°РјРёС‡РµСЃРєРёРµ С†РІРµС‚Р° РѕР±Р»РѕР¶РєРёВ» С‚РµРїРµСЂСЊ СЂР°Р±РѕС‚Р°СЋС‚: РїСЂРё РІРєР»СЋС‡РµРЅРёРё С„РѕРЅ РїР»РµРµСЂР° РїРѕР»СѓС‡Р°РµС‚ РјСЏРіРєСѓСЋ С‚РѕРЅРёСЂРѕРІРєСѓ С†РІРµС‚РѕРј РѕР±Р»РѕР¶РєРё (10% РІ РІРµСЂС…РЅРµР№ С‚РѕС‡РєРµ), РїСЂРё РІС‹РєР»СЋС‡РµРЅРёРё вЂ” С‡РёСЃС‚С‹Р№ `background`. РџР°Р»РёС‚СЂР° СЃС‡РёС‚Р°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё РІРєР»СЋС‡С‘РЅРЅРѕР№ РѕРїС†РёРё.
+- РђРєС†РµРЅС‚РЅС‹Р№ С†РІРµС‚: РЅРѕРІС‹Р№ С„Р»Р°Рі `accentEnabled` (`AppSettings`, `SettingsRepositoryImpl`, SharedPreferences `accent_enabled`, РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ false). Р’С‹РєР»СЋС‡РµРЅ вЂ” `MainActivity` РїРµСЂРµРґР°С‘С‚ null РІ `customAccentColor`, Рё С‚РµРјР° Р±РµСЂС‘С‚ Dynamic Color СЃ РѕР±РѕРµРІ; РІРєР»СЋС‡С‘РЅ вЂ” СЃРІРѕР№ С†РІРµС‚. РўР°Рї РїРѕ РєСЂСѓР¶РєСѓ РїР°Р»РёС‚СЂС‹ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РІРєР»СЋС‡Р°РµС‚ Р°РєС†РµРЅС‚, СЃР±СЂРѕСЃ С†РІРµС‚Р° РІС‹РєР»СЋС‡Р°РµС‚ РµРіРѕ.
+- РќР°СЃС‚СЂРѕР№РєРё: СЃРµРєС†РёРё РїРµСЂРµСЃС‚Р°РІР»РµРЅС‹ (РћС„РѕСЂРјР»РµРЅРёРµ в†’ РњРѕСЏ РІРѕР»РЅР° в†’ Р Р°Р·СЂРµС€РµРЅРёСЏ), РєР°СЂС‚РѕС‡РєРё Р±РµР· РѕР±РІРѕРґРѕРє, Р·Р°РіРѕР»РѕРІРєРё `titleSmall`, РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ Р°РєС†РµРЅС‚Р° СЃ РїРѕСЏСЃРЅРµРЅРёРµРј, РїР°Р»РёС‚СЂР° РїСЂРё РІС‹РєР»СЋС‡РµРЅРЅРѕРј Р°РєС†РµРЅС‚Рµ РїСЂРёРіР»СѓС€Р°РµС‚СЃСЏ (alpha 0.38), РіРµРѕРїРѕР·РёС†РёСЏ РїРµСЂРµРµС…Р°Р»Р° РІ В«Р Р°Р·СЂРµС€РµРЅРёСЏВ», РІ С€Р°РїРєРµ СЃС‚Р°РЅРґР°СЂС‚РЅР°СЏ СЃС‚СЂРµР»РєР° `ArrowBack`.
+- РЎРІР°Р№Рї РІРЅРёР·: РїРѕСЂРѕРі Р·Р°РєСЂС‹С‚РёСЏ СЃРЅРёР¶РµРЅ СЃ 45% РґРѕ 30% РІС‹СЃРѕС‚С‹ СЌРєСЂР°РЅР°.
+- РњРѕСЂС„ РѕР±Р»РѕР¶РєРё: СЃ СЌРєСЂР°РЅР° РїР»РµРµСЂР° Рё РјРёРЅРё-РїР»РµРµСЂР° СЃРЅСЏС‚С‹ `scaleIn`/`scaleOut` вЂ” РѕСЃС‚Р°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ fade Рё СЃР°Рј shared-element РјРѕСЂС„, РїРѕСЌС‚РѕРјСѓ РѕР±Р»РѕР¶РєР° РЅРµ В«РµРґРµС‚В» РґРІР°Р¶РґС‹; РјРёРЅРё-РїР»РµРµСЂ РїРѕСЏРІР»СЏРµС‚СЃСЏ РјСЏРіРєРёРј fade + scale 0.96.
+- РџСЂРѕРІРµСЂРєРё: `assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 568 968 Р±Р°Р№С‚; С‚РµСЃС‚С‹ 23 suites / 156, 0 failures/errors/skipped; СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ РЅР° SM-A266B (mDNS adb; Р°РґСЂРµСЃ 192.168.0.102:39883 Р±С‹Р» РЅРµРґРѕСЃС‚СѓРїРµРЅ).
 
-## Мелкие UI-фиксы, свайп вниз по всему плееру и дизлайки — сессия 36
-- Плеер, слот скачивания: у локального трека (`Source.LOCAL`) кнопка скачивания не показывается, но её место резервируется `Spacer(Modifier.size(46.dp))` — ряд «скачать/лайк/дизлайк» больше не прыгает между треками. Проброшено через `canDownload` в `ExpressiveHeroZone` → `CoverForeground` и `TrackGlassCard` (оба варианта обложки).
-- `TrackCard`: название и автор объединены в одну `Column` внутри `headlineContent` (без `supportingContent`), поэтому у коротких названий исчезла пустая дыра между строками; в `HomeScreen.ContinueListeningCard` колонка центрируется по высоте обложки (`Arrangement.Center`).
-- `TrackCard`: новый параметр `isPaused` — на паузе вместо бегущего эквалайзера рисуются три статичные точки `PausedEqualizerDots` того же размера 16dp. `LibraryViewModel.isPlaying` берётся из `PlayerController.state`, `LibraryScreen` передаёт `isPaused` для текущего трека.
-- Плеер вынесен из `NavHost` в оверлей `AppNavGraph` (`isPlayerOpen`, `AnimatedVisibility` со slide): вкладка остаётся скомпонованной под плеером и реально проглядывает при свайпе. Системный «назад» закрывает оверлей через `BackHandler`, не трогая back stack; переход «Найти на YouTube» сначала закрывает оверлей.
-- Свайп вниз: жест `detectVerticalDragGestures` живёт на всём `Scaffold` плеера, остров управления гасит вертикальные драги (`controlIslandSwipeGuard`), поэтому кнопки и слайдер не закрывают экран. Порог — `DISMISS_THRESHOLD = 0.85f` высоты экрана: ниже — возврат пружиной, на пороге и выше — `onBack()`. Смещение следует за пальцем без анимации (`snap()`), возврат — `animateFloatAsState` + `spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)`; `graphicsLayer` двигает весь плеер и плавно гасит альфу `1f - offsetY / screenHeight`, открывая вкладку под ним.
-- Room v10: новая `disliked_tracks` (`DislikedTrackEntity`: `trackId` PK, `dislikedAt`), `DislikedTrackDao` (`insert` REPLACE, `delete`, `getAll`, `isDisliked` Flow), `MIGRATION_9_10`, DAO в `DatabaseModule`, схема `10.json` сгенерирована.
-- Рекомендации: `RecommendationPlanner.filterDisliked` убирает дизлайкнутые треки; `HomeViewModel` загружает ID из DAO и фильтрует related-, fallback- и popular-кандидатов до отбора, чтобы дизлайки не занимали слоты.
-- Плеер: `PlayerViewModel.isDisliked` (Flow из DAO по текущему треку) и `toggleDislike()`; дизлайк снимает лайк и taste-фидбек, лайк снимает дизлайк. В обоих layouts добавлен `DislikeSquircle` с `Icons.Filled.ThumbDown`, красная подсветка (`errorContainer`/`error`) при активном дизлайке.
-- Тесты: 22 suites / 148 тестов, 0 failures/errors/skipped. `DatabaseMigrationTest` — новый кейс 9→10 и сквозной 1→10 с проверкой записи в `disliked_tracks`; `HomeViewModelRecommendationsTest` — фильтрация дизлайкнутого трека из выдачи. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 611 476 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## Р§РёСЃС‚С‹Р№ Material 3 вЂ” СЃРµСЃСЃРёСЏ 47
+- РџР°Р»РёС‚СЂР° РїРµСЂРµРІРµРґРµРЅР° РІ СЃС‚СЂРѕРіРѕ РЅРµР№С‚СЂР°Р»СЊРЅСѓСЋ: СЃРІРµС‚Р»Р°СЏ `#FAFAFA`, С‚С‘РјРЅР°СЏ `#121212`, РєРѕРЅС‚РµР№РЅРµСЂС‹ вЂ” С‡РёСЃС‚С‹Рµ СЃРµСЂС‹Рµ Р±РµР· С‚С‘РїР»РѕРіРѕ/Р·РµР»С‘РЅРѕРіРѕ СѓРєР»РѕРЅР° (`Color.kt`). РђРєС†РµРЅС‚ РЅР° Android 12+ Р±РµСЂС‘С‚СЃСЏ РёР· Dynamic Color (РѕР±РѕРё), fallback вЂ” Google Blue; РЅРµР№С‚СЂР°Р»СЊРЅС‹Рµ СЂРѕР»Рё РїСЂРёР±РёС‚С‹ РІ `withAiryNeutrals`, С‡С‚РѕР±С‹ РѕР±РѕРё РЅРµ РїРµСЂРµРєСЂР°С€РёРІР°Р»Рё С„РѕРЅ.
+- РўРёРїРѕРіСЂР°С„РёРєР° вЂ” РєР°РЅРѕРЅРёС‡РЅР°СЏ С€РєР°Р»Р° M3: display 57/45/36, headline 32/28/24, title 22/16/14, body 16/14/12, label 14/12/11; SemiBold РІ display/headline, Medium РІ title/label, Regular РІ body. Р СѓС‡РЅС‹С… `fontWeight` РІ СЌРєСЂР°РЅР°С… Р±РѕР»СЊС€Рµ РЅРµС‚.
+- Р¤РѕСЂРјС‹: СЃС‚СЂРѕРіРѕ 12/16/24 (`AppShapes`) РїР»СЋСЃ `PillShape` РґР»СЏ РєРЅРѕРїРѕРє. РЈР±СЂР°РЅС‹ Р°СЃРёРјРјРµС‚СЂРёСЏ РѕСЃС‚СЂРѕРІР° 44/22, РєР°СЃС‚РѕРјРЅС‹Рµ СЂР°РґРёСѓСЃС‹ Рё squircle.
+- РќР°РІРёРіР°С†РёСЏ: РІРјРµСЃС‚Рѕ РєР°СЃС‚РѕРјРЅРѕРіРѕ РґРѕРєР° вЂ” СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ `NavigationBar` + `NavigationBarItem` (`ExpressiveBottomDock.kt`); `ExpressiveNavigationBar.kt` СѓРґР°Р»С‘РЅ.
+- Home: hero-РєР°СЂС‚РѕС‡РєР° `surfaceContainerHigh` (РѕР±Р»РѕР¶РєР° 88, С‚РµРєСЃС‚, `FilledIconButton` 48); СЃРµРєС†РёРё вЂ” `titleLarge` Р±РµР· РЅР°РґР·Р°РіРѕР»РѕРІРєРѕРІ; В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ» Рё В«Р›СЋР±РёРјРѕРµВ» вЂ” РЅРµР№С‚СЂР°Р»СЊРЅС‹Рµ `surfaceContainerLow` Р±РµР· РіРёРіР°РЅС‚СЃРєРёС… С†РёС„СЂ Рё СЂР°Р·РґРµР»РёС‚РµР»РµР№.
+- РџР»РµРµСЂ: СѓР±СЂР°РЅС‹ РіСЂР°РґРёРµРЅС‚ РѕС‚ РѕР±Р»РѕР¶РєРё, СЃС‚РµРєР»Рѕ, СЃРІРµС‡РµРЅРёРµ Рё С‚РµРєСЃС‚РѕРІС‹Рµ С‚РµРЅРё; С„РѕРЅ вЂ” `colorScheme.background`, РѕР±Р»РѕР¶РєР° 24dp, РЅР°Р·РІР°РЅРёРµ `headlineSmall`, Р°СЂС‚РёСЃС‚ `bodyLarge`, РїР°РЅРµР»СЊ СѓРїСЂР°РІР»РµРЅРёСЏ вЂ” РїСЂРѕСЃС‚Р°СЏ РєР°СЂС‚РѕС‡РєР° 24dp РЅР° `surfaceContainerLow`, Play 64dp, РѕСЃС‚Р°Р»СЊРЅС‹Рµ РєРЅРѕРїРєРё 48dp. РўРµРєСЃС‚С‹ РїРµСЃРµРЅ вЂ” Р±РµР· СЃРІРµС‡РµРЅРёСЏ, Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° Р°РєС†РµРЅС‚РѕРј.
+- РћС‚СЃС‚СѓРїС‹: СЃРµС‚РєР° 16/24, РјРµР¶РґСѓ СЃРµРєС†РёСЏРјРё 32dp; РєР°СЂС‚РѕС‡РєРё `surfaceContainerLow` Р±РµР· С‚РµРЅРµР№ Рё РѕР±РІРѕРґРѕРє.
+- Р›РѕРіРёРєР° СЃРІР°Р№РїР°, С…РѕР»РѕРґРЅРѕРіРѕ СЃС‚Р°СЂС‚Р°, РЅР°РІРёРіР°С†РёРё, СЃРєР°С‡РёРІР°РЅРёСЏ Рё СЂРµРєРѕРјРµРЅРґР°С†РёР№ РЅРµ РјРµРЅСЏР»Р°СЃСЊ: `PlayerSwipeState`, `AppNavGraph`, `PlayerController`, `SettingsRepositoryImpl` РЅРµ РІ diff.
+- РџСЂРѕРІРµСЂРєРё: `assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 624 863 Р±Р°Р№С‚; С‚РµСЃС‚С‹ 23 suites / 156, 0 failures/errors/skipped; `adb install -r` РЅР° 192.168.0.102:39883 вЂ” Success.
 
-## Редизайн Пакет 4: Library/Settings + свайп вниз в плеере — сессия 35
-- `LibraryScreen`: шапка с eyebrow «КОЛЛЕКЦИЯ» (11sp Bold primary, трекинг 1.4), заголовок «Медиатека» 34sp ExtraBold (трекинг −0.5), подпись с русской плюрализацией «X трек/трека/треков · Y ч Z мин»; для пустой коллекции длительность не показывается. Быстрые действия «Слушать всё» и «Перемешать» высотой 52dp в пропорции 1.6:1, `CircleShape`. Список — `TrackCard` с обложкой 60dp и радиусом 16dp, подсветкой играющего трека (`primaryContainer` 35%) и анимированным эквалайзером. Empty state: squircle-плашка 96dp с сердечком, заголовок 22sp, пояснение и кнопка «Найти музыку» (новый `onOpenSearch` в `AppNavGraph`, переход как у вкладки Search с сохранением состояния).
-- `TrackCard`: новые параметры `isPlaying`, `artworkSize`, `artworkCornerDp` (дефолты 56/12 сохраняют вид Home/Search/Wave); `PlayingEqualizerIcon` на Canvas с `rememberInfiniteTransition` (три полоски, sin-волна, без рекомпозиций).
-- `LibraryViewModel`: `currentTrackId` из `PlayerController.state` через `map` + `distinctUntilChanged` + `stateIn(WhileSubscribed(5000))` — строка играющего трека подсвечивается без лишних эмиссий.
-- `SettingsScreen`: вертикальные отступы между секциями 32dp, заголовки секций 12sp Bold primary, карточки 30dp с тонким border 1dp (`onSurface` 4%), кнопка проверки разрешений 44dp, футер «MyMusic · версия X» из `BuildConfig.VERSION_NAME`. Горизонтальные отступы 20dp сохранены — как у Home и карточек.
-- `PlayerScreen`: свайп вниз для закрытия. Жест живёт только в верхней зоне — `TopAppBar` и hero-зона в режиме обложки; в режиме текстов список сохраняет свой скролл, при открытой шторке очереди жест отключён. `detectVerticalDragGestures`, порог 20% высоты экрана или скорость >1200 px/s (`VelocityTracker` по последним событиям, а не по одному кадру). При перетаскивании контент (шапка + hero/контролы) уезжает вниз через `graphicsLayer.translationY` и теряет до 30% альфы; градиентный фон остаётся на месте, чтобы не проглядывало пустое окно. Ниже порога — возврат пружиной `NoBouncy`/`MediumLow` (незавершённый возврат отменяется новым касанием), выше порога — `onBack`, дальше экран уезжает штатным `popExit`-слайдом NavHost, без второй анимации и пустой паузы. `BackHandler` и guard `isDismissing` защищают от двойного pop.
-- Тесты: 22 suites / 146 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 633 153 байта. Живой тест на устройстве не выполнялся по просьбе пользователя.
-- Архитектурные фиксы сессий 31–34 (Room v9 и миграции, `PlayerController`, загрузки, тексты) не тронуты.
+## Р РµРґРёР·Р°Р№РЅ В«Light Airy MD3В» вЂ” СЃРµСЃСЃРёСЏ 46
+- `Type.kt`: СѓР±СЂР°РЅ РІРµСЃ 800 РёР· СЃРµРјРµР№СЃС‚РІР°, display/headline РїРµСЂРµРІРµРґРµРЅС‹ СЃ ExtraBold РЅР° SemiBold, title* вЂ” РЅР° Medium, labelSmall вЂ” Medium СЃ С‚СЂРµРєРёРЅРіРѕРј 1.2; bodyLarge С‚СЂРµРєРёРЅРі 0.5 в†’ 0.25. РЎРЅСЏС‚Рѕ 30 СЂСѓС‡РЅС‹С… `fontWeight`-РїРµСЂРµРѕРїСЂРµРґРµР»РµРЅРёР№ РІ СЌРєСЂР°РЅР°С…, С‚РµРїРµСЂСЊ РІРµСЃ Р·Р°РґР°С‘С‚ С€РєР°Р»Р°.
+- `Color.kt`: РЅРµР№С‚СЂР°Р»СЊРЅР°СЏ РіР°РјРјР° вЂ” СЃРІРµС‚Р»С‹Р№ С„РѕРЅ `#FAF9F6`, С‚С‘РјРЅС‹Р№ `#1A1918`, РєРѕРЅС‚РµР№РЅРµСЂС‹ surfaceContainer* РїРµСЂРµРІРµРґРµРЅС‹ СЃ СЂРѕР·РѕРІС‹С… РЅР° С‚С‘РїР»С‹Рµ РЅРµР№С‚СЂР°Р»СЊРЅС‹Рµ; СЃРјСЏРіС‡РµРЅС‹ primaryContainer/secondaryContainer/tertiaryContainer.
+- `Theme.kt`: `surfaceTint = Color.Transparent` (elevation РЅРµ РїРѕРґРјРµС€РёРІР°РµС‚ Р°РєС†РµРЅС‚); РЅРѕРІР°СЏ `withAiryNeutrals()` РїСЂРёР±РёРІР°РµС‚ РЅРµР№С‚СЂР°Р»СЊРЅС‹Рµ СЂРѕР»Рё РїРѕРІРµСЂС… Р»СЋР±РѕР№ СЃС…РµРјС‹ вЂ” Dynamic Color РѕСЃС‚Р°РІР»СЏРµС‚ Р°РєС†РµРЅС‚ СЃ РѕР±РѕРµРІ, РЅРѕ РЅРµ РїРµСЂРµРєСЂР°С€РёРІР°РµС‚ С„РѕРЅ. `values/colors.xml` Рё `values-night/colors.xml` СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅС‹.
+- `Shape.kt`: РµРґРёРЅР°СЏ С€РєР°Р»Р° M3 4/8/12/16/24 (`AppShapes`) + `PillShape`; `SquircleShape`, `HeroShape`, `BentoCardShape` СѓРґР°Р»РµРЅС‹. 63 РјРµСЃС‚Р° СЃ СЂР°РґРёСѓСЃР°РјРё РїРµСЂРµРІРµРґРµРЅС‹ РЅР° `MaterialTheme.shapes.*`; Р°СЃРёРјРјРµС‚СЂРёСЏ РѕСЃС‚Р°Р»Р°СЃСЊ С‚РѕР»СЊРєРѕ Сѓ РѕСЃС‚СЂРѕРІР° СѓРїСЂР°РІР»РµРЅРёСЏ (44/22 Рё СЏР·С‹С‡РѕРє), Сѓ СЃС‚РµРєР»СЏРЅРЅРѕР№ РєР°СЂС‚РѕС‡РєРё РїР»РµРµСЂР° вЂ” СЃРёРјРјРµС‚СЂРёС‡РЅС‹Рµ 24dp.
+- РўРµРЅРё: СѓРґР°Р»РµРЅС‹ `Modifier.shadow` Сѓ РѕР±Р»РѕР¶РєРё (22dp), СЃС‚РµРєР»СЏРЅРЅРѕР№ РєР°СЂС‚РѕС‡РєРё (20dp), РѕСЃС‚СЂРѕРІР° СѓРїСЂР°РІР»РµРЅРёСЏ (26dp), РјРёРЅРё-РїР»РµРµСЂР° (8dp), РїРѕР»СЏ РїРѕРёСЃРєР° (3в†’10dp) Рё `shadowElevation` РјРµРЅСЋ (12в†’4dp). РРµСЂР°СЂС…РёСЏ С‚РµРїРµСЂСЊ РЅР° `surfaceContainer*` + hairline 1dp. РЈР±СЂР°РЅС‹ С‚РµРєСЃС‚РѕРІС‹Рµ `Shadow` Сѓ Р°СЂС‚РёСЃС‚Р° Рё Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё С‚РµРєСЃС‚Р°.
+- В«Р’РѕР·РґСѓС…В»: РєСЂР°СЏ СЌРєСЂР°РЅРѕРІ 20 в†’ 24dp, Р±Р»РѕРєРё Home 32 в†’ 40dp, РІРЅСѓС‚СЂРµРЅРЅРёРµ РїР°РґРґРёРЅРіРё РєР°СЂС‚РѕС‡РµРє 12/14/22 в†’ 18/18/26dp, СЃРїРёСЃРєРё 10вЂ“12 в†’ 14вЂ“16dp, РЅРёР· РїРѕРґ РґРѕРє СѓРЅРёС„РёС†РёСЂРѕРІР°РЅ РЅР° 24dp.
+- РџР»РµРµСЂ: Р·Р°РіРѕР»РѕРІРѕРє С‚СЂРµРєР° СЃ 40sp ExtraBold РЅР° 30sp SemiBold, СЃРІРµС‡РµРЅРёРµ РѕР±Р»РѕР¶РєРё 0.45 в†’ 0.20, РѕСЃС‚СЂРѕРІ РїРѕР»СѓС‡РёР» С‚РѕРЅР°Р»СЊРЅС‹Р№ `containerColor` С‡РµСЂРµР· `compositeOver`.
+- Р›РѕРіРёРєР° СЃРІР°Р№РїРѕРІ Рё С…РѕР»РѕРґРЅРѕРіРѕ СЃС‚Р°СЂС‚Р° РЅРµ С‚СЂРѕРЅСѓС‚Р°: `PlayerSwipeState.kt`, `AppNavGraph.kt`, `PlayerController`, `SettingsRepositoryImpl` РЅРµ РјРµРЅСЏР»РёСЃСЊ; РІСЃРµ `graphicsLayer`-Р±Р»РѕРєРё (translationY/alpha/scale) РЅР° РјРµСЃС‚Рµ.
+- РЎР±РѕСЂРєР°: `assembleDebug` вЂ” BUILD SUCCESSFUL (2m 25s), APK 27 461 047 Р±Р°Р№С‚. РўРµСЃС‚С‹: 23 suites / 156 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `adb install -r` РЅР° 192.168.1.106:45609 вЂ” Success.
 
-## Добивки аудита: скачанное, индексы Room, тексты, ошибки лайков, тесты миграций — сессия 34
-- B4 (скачанное): `observeDownloadedIds`/`observeDownloadedTracks` строят список из `getAll()` и проверяют файл на диске (`isPlayable`): мусорные записи (удалённый файл, наследие HLS) вычищаются из БД через `pruneUnplayable` и больше не светятся как «скачано»; удаление перезапускает Flow Room, следующая эмиссия приходит уже чистой.
-- C (Room): индексы `liked_tracks.season`, `liked_tracks.likedAt`, `play_history.playedAt`, `genre_weights.weight` (`Index` в сущностях); версия БД 9, `MIGRATION_8_9` создаёт четыре индекса с именами, которые Room генерирует сам; схема `9.json` сгенерирована, имена сверены с миграцией.
-- C (тексты): загрузка текстов в `PlayerViewModel` вынесена из `collect` в отдельный поток с `flatMapLatest` (`flow<Unit> { loadLyrics(track) }`): старый запрос LRCLIB отменяется при смене трека и больше не блокирует обработку следующей смены; сброс позиции и ошибок остался в параллельном collect.
-- C (ошибки лайков): `toggleLike` (плеер) и `removeLike` (медиатека) обёрнуты в `runCatching` + `rethrowCancellation`: сбой БД не крашит приложение, а показывает сообщение «Не удалось обновить лайк…» — в плеере через `uiState.error`, в медиатеке через новый `likeError` + Snackbar; taste-фидбек (`onLike`/`onUnlike`) обёрнут отдельно и только логируется.
-- B7 (тесты миграций): в `DatabaseMigrationTest` шесть изолированных тестов на raw-SQL-заглушках схем v1–v3 (в `app/schemas` они не экспортировались): 2→3 (координаты), 3→4 (сезон), 4→5 (таблицы вкусов), 5→6 (downloaded_tracks), 7→8 (recently_shown + индекс), 8→9 (четыре индекса); сквозной тест теперь 1→9 и тоже проверяет индексы.
-- Тесты: 22 suites / 146 тестов, 0 failures/errors/skipped (DatabaseMigrationTest — 8 кейсов). `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 611 487 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
 
-## Монохромный ахроматический акцент, HEX-ввод и недавние цвета — сессия 33
-- Баг «бордовый из чёрного»: у чёрного/белого/серого оттенок в HSL равен 0 (красный), а `accentColorScheme` подставлял в роли жёстко заданную насыщенность — ахроматический seed красился в бордовый. Добавлен порог `ACHROMATIC_SATURATION_THRESHOLD = 0.05f`: ниже него насыщенность ролей обнуляется (строго монохромная палитра), а светлота ролей тянется к светлоте seed на ±0.08, поэтому чёрный и белый дают различимые оттенки серого при сохранном контрасте пар. Та же защита в `PlayerPalette.computePlayerColors`: серые обложки больше не тонируются бордовым (раньше кламп принудительно поднимал насыщенность до 0.20).
-- HEX-ввод в RGB-пикере: `OutlinedTextField` рядом с превью, двусторонняя связь — корректный код (#RRGGBB или RRGGBB, регистр не важен) двигает слайдеры и превью, слайдеры переписывают код; некорректный ввод цвет не применяет, поле переходит в `isError` с подсказкой. Ввод ограничен 7 символами («#» + 6 цифр), разбор — `parseHexColor`.
-- Недавние цвета: `AppSettings.recentAccentColors` (ключ SharedPreferences `recent_accent_colors`, строка через запятую), `SettingsRepository.addRecentAccentColor` — LIFO, дедупликация, обрезка до 5 (`MAX_RECENT_ACCENTS`); вызывается из `setAccentColor` (пресеты) и `setCustomAccentColor` (не null). В секции «Оформление» над основной палитрой появился ряд «Недавние» с маленькими кружками (зона 36dp, кружок 22→26dp с галочкой на выбранном), тап применяет цвет мгновенно.
-- Тесты: новые `AccentSchemeTest` (6 кейсов: монохромность чёрного/белого/серого в обеих темах, различимость серого, сохранение hue насыщенным seed, читаемость primary) и `SettingsRepositoryImplTest` (5 кейсов: LIFO, дедупликация, обрезка до 5, персистентность). Итого 22 suites / 140 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 611 486 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РЈРґР°Р»РµРЅРёРµ motion blur вЂ” СЃРµСЃСЃРёСЏ 45
+- Р¤РёС‡Р° motion blur СѓРґР°Р»РµРЅР° РёР· РїСЂРѕРµРєС‚Р° РїРѕР»РЅРѕСЃС‚СЊСЋ РїРѕ СЂРµС€РµРЅРёСЋ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ: `core/ui/MotionBlur.kt` СЃС‚С‘СЂС‚ (`git rm`), РґСЂСѓРіРёС… РїРѕС‚СЂРµР±РёС‚РµР»РµР№ `Modifier.motionBlur` РЅРµ Р±С‹Р»Рѕ.
+- `PlayerSwipeState.kt`: СѓР±СЂР°РЅС‹ СЃРІРѕР№СЃС‚РІРѕ `blurRadius`, РєРѕРЅСЃС‚Р°РЅС‚Р° `MAX_BLUR_RADIUS = 15f` Рё СѓРїРѕРјРёРЅР°РЅРёРµ Р±Р»СЋСЂР° РІ KDoc. Р›РѕРіРёРєР° СЃРІР°Р№РїР° (`offsetPx` С‡РµСЂРµР· `mutableFloatStateOf`, `progress`, РїСЂСѓР¶РёРЅР° `settle()` РІ `settleJob`, `beginDrag/dragTo/dismiss/reset`) СЃРѕС…СЂР°РЅРµРЅР° Р±РµР· РёР·РјРµРЅРµРЅРёР№ вЂ” РЅР° РЅРµР№ РґРµСЂР¶РёС‚СЃСЏ РїР»Р°РІРЅРѕСЃС‚СЊ 120 Р“С†.
+- `AppNavGraph.kt`: СЃ `SharedTransitionLayout` СЃРЅСЏС‚ `.motionBlur { maxOf(playerSwipe.blurRadius, playerBlur.value) }` (РѕСЃС‚Р°Р»СЃСЏ С‡РёСЃС‚С‹Р№ `Modifier.fillMaxSize()`); СѓРґР°Р»РµРЅС‹ `playerVisibility`/`playerTransitionBlur`/`playerBlur` Рё РёРјРїРѕСЂС‚С‹ `animateFloat`, `rememberTransition`, `motionBlur`. `MutableTransitionState` + `SideEffect` СЃРѕС…СЂР°РЅРµРЅС‹ вЂ” `playerVisibleState` РїРѕ-РїСЂРµР¶РЅРµРјСѓ РїРµСЂРµРґР°С‘С‚СЃСЏ РІ `AnimatedVisibility(visibleState = ...)` РїР»РµРµСЂР°.
+- `PlayerScreen.kt` РЅРµ РјРµРЅСЏР»СЃСЏ: `blurRadius = 8f/18f` С‚Р°Рј вЂ” РїР°СЂР°РјРµС‚СЂС‹ `Shadow` (СЃРІРµС‡РµРЅРёРµ РёРјРµРЅРё Р°СЂС‚РёСЃС‚Р° Рё Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё С‚РµРєСЃС‚Р°), Рє motion blur РѕС‚РЅРѕС€РµРЅРёСЏ РЅРµ РёРјРµСЋС‚.
+- РћРїС‚РёРјРёР·Р°С†РёРё РЅРµ С‚СЂРѕРЅСѓС‚С‹: РѕС‚Р»РѕР¶РµРЅРЅРѕРµ РїРѕРґРєР»СЋС‡РµРЅРёРµ `PlayerController` (`delay(600)` + `ensureConnected()`), Р°СЃРёРЅС…СЂРѕРЅРЅС‹Р№ `SettingsRepositoryImpl` (lazy prefs, IO, `loaded.await()`), СЃРІР°Р№Рї С‚РѕР»СЊРєРѕ С‡РµСЂРµР· `graphicsLayer` (translationY/scale/alpha), РјРѕСЂС„ РѕР±Р»РѕР¶РєРё С‡РµСЂРµР· `SharedTransitionLayout`/`sharedElement` вЂ” РІСЃС‘ СЂР°Р±РѕС‚Р°РµС‚ Р±РµР· СЃР»РѕСЏ СЂР°Р·РјС‹С‚РёСЏ.
+- РўРµСЃС‚С‹: 23 suites / 156 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL (3m 23s), APK 27 611 487 Р±Р°Р№С‚. `adb install -r` РЅР° 192.168.1.106:45609 вЂ” Success. Р–РёРІРѕР№ РїСЂРѕРіРѕРЅ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Верстка «Акцентного цвета»: скроллируемая палитра и круг с палитрой — сессия 32
-- Баг: 7 кружков фиксированного размера (6 пресетов + «Свой цвет») лежали в обычном `Row` внутри карточки «Оформление» — на узких экранах ряд выходил за доступную ширину, последний элемент сплющивало в вертикальную полоску, зона нажатия съезжала.
-- `SettingsScreen.kt`: ряд акцентов переведён на `Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()))` — кружки сохраняют размер и скроллятся горизонтально; крайние `Spacer(8.dp)` вместе с `spacedBy(10.dp)` дают 18dp от края карточки, при скролле кружки не прилипают к границам экрана (карточка сама отстоит на 20dp). Ортогональный скролл внутри вертикального `verticalScroll` экрана работает штатно.
-- Старый `CustomAccentDot` удалён. В конце списка новый `CustomColorDot`: зона нажатия 44dp и кружок 34→40dp как у пресетов, заливка — замкнутый радужный `Brush.sweepGradient` с белой иконкой палитры; после применения своего цвета круг заливается этим цветом и получает галочку с кольцом `onSurface`. Вместо `indication = null` — штатная рябь (`clickable` без переопределения), круг читается как кнопка; тап открывает существующий RGB-диалог со слайдерами.
-- Подсказка под заголовком обновлена: «Выберите цвет из палитры или нажмите на круг с палитрой в конце списка, чтобы задать свой RGB».
-- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 645 526 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## Cold start, 120 Р“С† Рё РїРѕС‡РёРЅРєР° motion blur вЂ” СЃРµСЃСЃРёСЏ 44
+- Motion blur (`core/ui/MotionBlur.kt`): РІ `graphicsLayer` РґРѕР±Р°РІР»РµРЅ `CompositingStrategy.Offscreen`, РїРѕРєР° СЌС„С„РµРєС‚ Р°РєС‚РёРІРµРЅ (Р±РµР· СЃРѕР±СЃС‚РІРµРЅРЅРѕРіРѕ offscreen-СЃР»РѕСЏ `RenderEffect` РЅР° С‡Р°СЃС‚Рё СѓСЃС‚СЂРѕР№СЃС‚РІ РёРіРЅРѕСЂРёСЂСѓРµС‚СЃСЏ), Рё СЃР±СЂРѕСЃ РІ `Auto` РїСЂРё СЂР°РґРёСѓСЃРµ в‰¤ 0.1f. РџРѕСЏРІРёР»Р°СЃСЊ Р»СЏРјР±РґР°-РїРµСЂРµРіСЂСѓР·РєР° `motionBlur(() -> Float)`: СЂР°РґРёСѓСЃ С‡РёС‚Р°РµС‚СЃСЏ РІ layer-Р±Р»РѕРєРµ, РїРѕСЌС‚РѕРјСѓ Р°РЅРёРјР°С†РёСЏ РЅРµ РІС‹Р·С‹РІР°РµС‚ СЂРµРєРѕРјРїРѕР·РёС†РёСЋ; СЃС‚Р°СЂР°СЏ `motionBlur(Float)` РѕСЃС‚Р°Р»Р°СЃСЊ С‚РѕРЅРєРѕР№ РѕР±С‘СЂС‚РєРѕР№.
+- Р‘Р»СЋСЂ РїРµСЂРµРµС…Р°Р» РёР· `PlayerScreen` РІ `AppNavGraph` вЂ” РЅР° СЃР°Рј `SharedTransitionLayout` (Р»РёС€РЅРёР№ `Box`-РєРѕРЅС‚РµР№РЅРµСЂ РЅРµ РїРѕРЅР°РґРѕР±РёР»СЃСЏ: `modifier` Сѓ layout-С„СѓРЅРєС†РёРё СѓР¶Рµ РµСЃС‚СЊ). РЎР»РѕР№ layout Р·Р°С…РІР°С‚С‹РІР°РµС‚ Рё РєРѕРЅС‚РµРЅС‚, Рё РѕРІРµСЂР»РµР№ shared-СЌР»РµРјРµРЅС‚РѕРІ, РіРґРµ РІРѕ РІСЂРµРјСЏ РјРѕСЂС„Р° Р¶РёРІСѓС‚ РїР°РЅРµР»Рё. РС‚РѕРіРѕРІС‹Р№ СЂР°РґРёСѓСЃ вЂ” `maxOf(playerSwipe.blurRadius, playerBlur)`.
+- РќРѕРІС‹Р№ `feature/player/PlayerSwipeState.kt`: СЃРѕСЃС‚РѕСЏРЅРёРµ СЃРІР°Р№РїР° РїРѕРґРЅСЏС‚Рѕ РёР· `PlayerScreen` РІ `AppNavGraph`, С‡С‚РѕР±С‹ Рё Р±Р»СЋСЂ, Рё СЃРјРµС‰РµРЅРёРµ С‡РёС‚Р°Р»РёСЃСЊ РІ `graphicsLayer` Р±РµР· СЂРµРєРѕРјРїРѕР·РёС†РёРё С‚СЏР¶С‘Р»С‹С… РїР°РЅРµР»РµР№. `offsetPx` вЂ” `mutableFloatStateOf`, Р° РЅРµ `Animatable`: `snapTo` вЂ” suspend-С„СѓРЅРєС†РёСЏ, Р° РёР· `awaitEachGesture` (restricted suspend scope) РµС‘ РІС‹Р·С‹РІР°С‚СЊ РЅРµР»СЊР·СЏ, РєРѕРјРїРёР»СЏС‚РѕСЂ РїР°РґР°Р» СЃ В«Restricted suspending functionsвЂ¦В». РџСЂСѓР¶РёРЅР° РїРѕСЃР»Рµ РѕС‚РїСѓСЃРєР°РЅРёСЏ вЂ” `animate()` РІ `settleJob`, РЅРѕРІРѕРµ РєР°СЃР°РЅРёРµ РµС‘ РѕС‚РјРµРЅСЏРµС‚. Р•СЃС‚СЊ `progress`, `blurRadius` (`MAX_BLUR_RADIUS = 15f`), `screenWidthPx/HeightPx`, `isDragging`, `isDismissed`, `reset()`.
+- 120 Р“С†: СЃРјРµС‰РµРЅРёРµ РєРѕСЂРЅСЏ Рё РїР°РЅРµР»РµР№ вЂ” С‚РѕР»СЊРєРѕ `graphicsLayer.translationY`/`alpha`; РѕР±Р»РѕР¶РєР° вЂ” `graphicsLayer` (scale/translationX/translationY), `Modifier.offset` РІ Р¶РµСЃС‚Рµ РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ. РќР° РІСЂРµРјСЏ drag `sharedElement` РѕР±Р»РѕР¶РєРё РѕС‚РєР»СЋС‡Р°РµС‚СЃСЏ (`if (swipeState.isDragging) Modifier else coverModifier`) Рё РІРєР»СЋС‡Р°РµС‚СЃСЏ РїРѕСЃР»Рµ РѕС‚РїСѓСЃРєР°РЅРёСЏ, С‡С‚РѕР±С‹ `SharedTransitionLayout` РЅРµ РїРµСЂРµСЃС‡РёС‚С‹РІР°Р» РјРѕСЂС„ РєР°Р¶РґС‹Р№ РєР°РґСЂ.
+- Enter/exit Р±Р»СЋСЂ: `MutableTransitionState` + `rememberTransition` РѕР±СЉСЏРІР»РµРЅС‹ СЃРЅР°СЂСѓР¶Рё `AnimatedVisibility` (РїР»РµРµСЂСѓ РїРµСЂРµРґР°РЅ `visibleState = playerVisibleState`), СЂР°РґРёСѓСЃ `0f в†’ 15f` С‚РѕР»СЊРєРѕ РЅР° Р·Р°РєСЂС‹С‚РёРё; `derivedStateOf { if (playerVisibleState.isIdle) 0f else transitionBlur }` РіР°СЃРёС‚ СЌС„С„РµРєС‚ РІ РїРѕРєРѕРµ, РёРЅР°С‡Рµ СЂР°Р·РјС‹С‚С‹Рј РѕСЃС‚Р°РІР°Р»СЃСЏ РјРёРЅРё-РїР»РµРµСЂ.
+- Cold start: `PlayerController` Р±РѕР»СЊС€Рµ РЅРµ РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ Рє `MusicService` РІ `init` вЂ” `scope.launch { delay(COLD_START_CONNECT_DELAY_MS = 600); ensureConnected() }`; `ensureConnected()` РІС‹Р·С‹РІР°РµС‚СЃСЏ РёР· `playTrackAt`, `resolveAndPlay`, `play`, `pauseOrResume`. Р Р°РЅРЅРёР№ С‚Р°Рї РїРѕ С‚СЂРµРєСѓ РЅРµ С‚РµСЂСЏРµС‚СЃСЏ: `playStream` Р¶РґС‘С‚ `controllerReady`, Р° `ensureConnected()` Р·Р°РїСѓСЃРєР°РµС‚ СЃРѕРµРґРёРЅРµРЅРёРµ СЃСЂР°Р·Сѓ.
+- `SettingsRepositoryImpl`: `getSharedPreferences` вЂ” `by lazy`, С‡С‚РµРЅРёРµ РІ `Dispatchers.IO` РёР· `init`, `settings = _settings.filterNotNull()` (РґРѕ Р·Р°РіСЂСѓР·РєРё UI Р¶РёРІС‘С‚ РЅР° `initial = AppSettings()` РІ `MainActivity`). РЎРµС‚С‚РµСЂС‹ Р¶РґСѓС‚ `loaded.await()` Рё РїРёС€СѓС‚ СЃРѕСЃС‚РѕСЏРЅРёРµ Р°С‚РѕРјР°СЂРЅРѕ С‡РµСЂРµР· `update`/`updateAndGet` вЂ” РёРЅР°С‡Рµ РїР°СЂР°Р»Р»РµР»СЊРЅР°СЏ СЃРјРµРЅР° С‚РµРјС‹ Рё Р°РєС†РµРЅС‚Р° С‚РµСЂСЏР»Р°СЃСЊ (read-modify-write РїРѕ СЃРЅРёРјРєСѓ).
+- `MainActivity`, `HomeViewModel`, `ServiceStatusManager` СѓР¶Рµ СЂР°Р±РѕС‚Р°Р»Рё Р°СЃРёРЅС…СЂРѕРЅРЅРѕ (Room-С„Р»РѕСѓ РІ `viewModelScope`, РїСЂРѕРІРµСЂРєР° СЃРµСЂРІРёСЃРѕРІ РІ `Dispatchers.IO`) вЂ” РїСЂР°РІРѕРє РЅРµ РїРѕС‚СЂРµР±РѕРІР°Р»Рё.
+- РўРµСЃС‚С‹: 23 suites / 156 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 611 495 Р±Р°Р№С‚. `adb install -r` РЅР° 192.168.1.106:34187 вЂ” Success. Р–РёРІРѕР№ РїСЂРѕРіРѕРЅ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ, РІРёР·СѓР°Р»СЊРЅР°СЏ РїСЂРѕРІРµСЂРєР° Р±Р»СЋСЂР° Рё 120 Р“С† вЂ” РЅР° РЅС‘Рј.
 
-## Комплексное ревью: аудит, регрессии UI и архитектурные правки — сессия 31
-- ЭТАП 1 (аудит, отчёт выдан до правок): критично — синглтон `PlayerController` не переподключался к пересозданному `MusicService` (мёртвый binder до перезапуска процесса, `release()` — мёртвый код); провал `buildAsync()` завершал Deferred навсегда; `LocalContentColor` во всём приложении = `Color.Black` после удаления корневого Scaffold (сессия 29) — первопричина «чёрных заголовков»; `Theme.MyMusic` без values-night → белое окно; интерсептор OkHttp перезаписывал User-Agent всех запросов NewPipe; в загрузках не было `Result.retry()`/backoff. Чисто: GlobalScope/runBlocking/main-thread IO, Activity-контекст в Hilt, циклы в DI-графе, N+1, fallbackToDestructiveMigration, кэш протухших stream-URL, утечки потоков.
-- Белая вспышка: непрозрачный `background` на корневом Box в `AppNavGraph`; новый `values-night/themes.xml` и явный `android:windowBackground` (#FFF8F5 / #171210, совпадает с Color.kt) — окно больше не белое ни на холодном старте, ни в переходах вкладок.
-- Режим «Текст»: убран второй `Spacer(weight(1f))` — в режиме текстов два равных веса делили остаток пополам, остров управления уезжал в середину, снизу оставалась дыра. Теперь список занимает `weight(1f)`, остров прижат к низу (`wrapContentHeight`); в режиме обложки поведение сессии 30 сохранено.
-- Чёрные заголовки: `MyMusicTheme` провайдит `LocalContentColor = onBackground` (то, что давал удалённый Scaffold); явный `onSurface` на «Настройки» и названия секций; `contentColor = onSurface` в Scaffold плеера, иначе `contentColorFor(Color.Transparent)` = Unspecified.
-- Акцентный цвет: кружки палитры были физически выключены на Android 12+ (`enabled = !supportsDynamicColors`), тап не доходил до ViewModel. Теперь включены всегда и пишут в `customAccentColor` — он имеет высший приоритет в теме и перекрывает Dynamic Color; `accentColorArgb` остался legacy для <12. Кольцо «выбран» одно: пресет или «Свой цвет».
-- Палитра плеера: убран буст насыщенности ×1.4 (кислотные цвета на серых обложках) — ×1.15 с клампом 0.20–0.58, светлота 0.38–0.62; `onPrimaryContainer`/`onSecondaryContainer` больше не равны самому тинту (текст сливался с контейнером) — контрастная пара от светлоты; рампа фона сглажена (0.58/0.26 вместо 0.88/0.40) и получила явные colorStops 0/0.55/1; `blendPaletteWithAccent` пересчитывает контрастные роли после смешивания; `CancellationException` в `computePlayerColors` реброузится.
-- Архитектура 1 (`PlayerController`): `MediaController.Builder.setListener` + `onDisconnected` → снять слушателей, освободить мёртвый контроллер, пересоздать Deferred и переподключиться; провал подключения — ретрай с экспоненциальной задержкой (до 5 попыток) и ошибкой в state вместо вечного молчания; `release()` реально снимает слушателей. `MusicService.onTaskRemoved`: stopSelf только если ничего не играет.
-- Архитектура 2 (загрузки): транзиентные сбои (IOException, 408/425/429/5xx, несовпавший размер) → `Result.retry()` + `setBackoffCriteria(EXPONENTIAL, 30s)`, до 3 попыток; постоянные («только онлайн», нет каталога) → сразу failure. Текст из `outputData[KEY_ERROR]` доезжает до UI: `DownloadState.Error.message` → `DownloadMessages.friendly` → Snackbar плеера. `lastTapAt` → `ConcurrentHashMap` с TTL; повторный тап по качающемуся треку не обрывает RUNNING-воркер (проверка `InProgress`).
-- Архитектура 3 (сеть): заголовки подставляются только если их нет — NewPipe сохраняет браузерный User-Agent, дубли UA исключены.
-- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 526 739 байт. APK установлен на SM-A266B по WiFi (`adb install -r` — Success), живой прогон не выполнен: телефон на экране блокировки, разблокировать удалённо нельзя; `svc power stayon` возвращён в false.
-- Осталось (не критично): миграции 2→3…7→8 без изолированных тестов и неэкспортированные схемы v1–v3; индексы на `liked_tracks.season/likedAt` и `play_history.playedAt`; `loadLyrics` inline в collect (нужен `flatMapLatest`); Snackbar с причиной провала только в плеере, в медиатеке — крестик без текста; гонка `resetReplayCache` в NavigationEvents.
+## РњРѕСЂС„ РѕР±Р»РѕР¶РєРё РІРѕ РІСЂРµРјСЏ СЃРІР°Р№РїР° Рё motion blur вЂ” СЃРµСЃСЃРёСЏ 43
+- `PlayerScreen.kt`: РґРѕР±Р°РІР»РµРЅ `screenWidthPx` (РёР· `onSizeChanged`). РџСЂРѕРіСЂРµСЃСЃ СЃРІР°Р№РїР° СЃС‡РёС‚Р°РµС‚СЃСЏ РѕС‚ Р°РЅРёРјРёСЂРѕРІР°РЅРЅРѕРіРѕ `playerOffsetPx`, Р° РЅРµ РѕС‚ `dragOffsetPx`: РїРѕРєР° РїР°Р»РµС† РЅР° СЌРєСЂР°РЅРµ Р·РЅР°С‡РµРЅРёСЏ СЃРѕРІРїР°РґР°СЋС‚ (`snap`), Р° РїРѕСЃР»Рµ РѕС‚РјРµРЅС‹ Р¶РµСЃС‚Р° РїСЂСѓР¶РёРЅР° РїР»Р°РІРЅРѕ РІРѕР·РІСЂР°С‰Р°РµС‚ Рё РїР»РµРµСЂ, Рё РѕР±Р»РѕР¶РєСѓ.
+- РћР±Р»РѕР¶РєР° РїРѕР»СѓС‡РёР»Р° `coverSwipeModifier`: `scaleX/scaleY = 1f - 0.75f * progress`, `translationX = -screenWidthPx * 0.35f * progress`, `translationY = screenHeightPx * 0.4f * progress`, `clip = false`. РњРѕРґРёС„РёРєР°С‚РѕСЂ РїСЂРёРјРµРЅС‘РЅ Рє РєРѕРЅС‚РµР№РЅРµСЂСѓ РѕР±Р»РѕР¶РєРё (РІРјРµСЃС‚Рµ СЃРѕ СЃРІРµС‡РµРЅРёРµРј), Р° РЅРµ Рє `Surface` СЃ `sharedElement` вЂ” С‚Р°Рє РјРѕСЂС„ РЅРµ РЅР°С‡РёРЅР°РµС‚СЃСЏ РёР· РґРІРѕР№РЅРѕР№ С‚СЂР°РЅСЃС„РѕСЂРјР°С†РёРё.
+- Р’Р°Р¶РЅРѕ: `translationY` СЃРѕРґРµСЂР¶РёС‚ С‚РѕР»СЊРєРѕ РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Р№ СЃРґРІРёРі, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РєРѕСЂРЅРµРІРѕР№ `Box` СѓР¶Рµ РµРґРµС‚ РЅР° `playerOffsetPx`. Р¤РѕСЂРјСѓР»Р° РёР· Р·Р°РґР°С‡Рё (`dragOffsetPx + ...`) РґР°Р»Р° Р±С‹ РґРІРѕР№РЅРѕРµ СЃРјРµС‰РµРЅРёРµ Рё СѓРІРµР»Р° РѕР±Р»РѕР¶РєСѓ Р·Р° СЌРєСЂР°РЅ СЂР°РЅСЊС€Рµ РїРѕСЂРѕРіР°.
+- РџСЂРё `isDismissed` СЃРІР°Р№Рї-РїСЂРѕРіСЂРµСЃСЃ РѕР±Р»РѕР¶РєРё СЃР±СЂР°СЃС‹РІР°РµС‚СЃСЏ РІ 0: РґР°Р»СЊРЅРµР№С€РёР№ РїРѕР»С‘С‚ РІ РјРёРЅРё-РїР»РµРµСЂ РІС‹РїРѕР»РЅСЏРµС‚ shared-РїРµСЂРµС…РѕРґ.
+- РќРѕРІС‹Р№ `core/ui/MotionBlur.kt`: `Modifier.motionBlur(blurRadius)` РґР»СЏ Android 12+ (`RenderEffect.createBlurEffect` СЃ `Shader.TileMode.CLAMP`); РїСЂРё СЂР°РґРёСѓСЃРµ в‰¤ 0.1f `renderEffect = null`, РЅР° API РЅРёР¶Рµ 31 РјРѕРґРёС„РёРєР°С‚РѕСЂ РЅРёС‡РµРіРѕ РЅРµ РґРµР»Р°РµС‚.
+- Motion blur РїСЂРёРјРµРЅС‘РЅ Рє РєРѕСЂРЅРµРІРѕРјСѓ `Box` РїР»РµРµСЂР°: РїСЂРё СЃРІР°Р№РїРµ `swipeProgress * 15f`, РїСЂРё enter/exit вЂ” `transitionBlur` РёР· `AnimatedVisibilityScope.transition.animateFloat` (`EnterExitState.Visible в†’ 0`, РѕСЃС‚Р°Р»СЊРЅС‹Рµ в†’ 15), РёС‚РѕРі вЂ” `maxOf`. Р’ РїРѕРєРѕРµ СЂРѕРІРЅРѕ 0.
+- РўРµСЃС‚С‹: 23 suites / 156 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 835 081 Р±Р°Р№С‚. APK СѓСЃС‚Р°РЅРѕРІР»РµРЅ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРѕ С‡РµСЂРµР· `adb install -r` вЂ” Success; Р¶РёРІРѕР№ РїСЂРѕРіРѕРЅ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Фиксы после рефакторинга навигации + кастомизация тем — сессия 30
-- Белые экраны: после удаления корневого Scaffold (сессия 29) экраны остались без фона. В корень Home, Wave, Settings, Library и Search добавлен явный `Modifier.background(MaterialTheme.colorScheme.background)` (для Search/Library — на сам Scaffold).
-- Плеер, чёрный заголовок: название трека в стеклянной карточке стало чёрным — `contentColorFor` полупрозрачного контейнера (палитра светлой обложки) давал чёрный текст на тёмном фоне. Цвет задан явно: `onSurface` в `TrackGlassCard` и в варианте 3 (название на обложке).
-- Плеер, «дыра»: hero-зона больше не растягивается на весь свободный экран в режиме обложки — `weight(1f)` оставлен только для режима текстов (списку нужна ограниченная высота), `AnimatedContent` и `CoverForeground` оборачивают контент по высоте, а остаток высоты уходит в `Spacer(weight(1f))` под остров. Карточка трека и остров управления идут плотно, без пустого зазора между ними.
-- Темы: в `AppSettings` добавлены `themeMode` (LIGHT/DARK/SYSTEM, по умолчанию SYSTEM) и `customAccentColor` (Int?, null по умолчанию); в `SettingsRepository` — `setThemeMode`/`setCustomAccentColor`, хранение в SharedPreferences (`theme_mode`, `custom_accent_color`).
-- `MyMusicTheme`: darkTheme выбирается по `ThemeMode` (isSystemInDarkTheme только для SYSTEM); приоритет цвета — собственный акцент (все версии Android) → Dynamic Color (12+) → ручная палитра (<12) → fallback.
-- Настройки: в «Оформлении» — `SingleChoiceSegmentedButtonRow` «Светлая/Тёмная/Система» и кружок «Свой цвет», открывающий диалог с тремя RGB-слайдерами, живым превью + HEX, кнопками «Применить»/«Отмена»/«Сбросить». Собственный цвет работает на всех версиях Android и перекрывает системные цвета.
-- Палитра плеера: при заданном `customAccentColor` палитра обложки смешивается с ним на 40% (`blendPaletteWithAccent`), полупрозрачные роли сохраняют альфу — градиенты и подсветки не конфликтуют с темой.
-- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 517 791 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## Р РѕРІРЅР°СЏ РѕР±Р»РѕР¶РєР° Рё z-order РїР°РЅРµР»РµР№ РїСЂРё РјРѕСЂС„Рµ вЂ” СЃРµСЃСЃРёСЏ 42
+- `PlayerScreen.kt`: СѓР±СЂР°РЅ РЅР°РєР»РѕРЅ РѕР±Р»РѕР¶РєРё РїРѕР»РЅРѕСЃС‚СЊСЋ вЂ” РїРѕР»Рµ `HeroStyle.rotationZ` СѓРґР°Р»РµРЅРѕ, `graphicsLayer` Р±РѕР»СЊС€Рµ РЅРµ Р·Р°РґР°С‘С‚ `rotationZ` (РІР°СЂРёР°РЅС‚С‹ 2/3 С‚РѕР¶Рµ Р±РµР· РЅР°РєР»РѕРЅР°). Р¤РѕСЂРјР° РѕР±Р»РѕР¶РєРё вЂ” РµРґРёРЅС‹Р№ `RoundedCornerShape(24.dp)` РІРјРµСЃС‚Рѕ Р°СЃРёРјРјРµС‚СЂРёС‡РЅС‹С… 56/24/56/24.
+- Р’ hero-`Box` РґРѕР±Р°РІР»РµРЅС‹ СЏРІРЅС‹Рµ СЃР»РѕРё: РѕР±Р»РѕР¶РєР° `Modifier.zIndex(0f)`, `AnimatedContent` СЃ РєР°СЂС‚РѕС‡РєРѕР№ С‚СЂРµРєР°/С‚РµРєСЃС‚Р°РјРё вЂ” `Modifier.zIndex(1f)`. РџР°РЅРµР»СЊ РѕР±СЉСЏРІР»РµРЅР° РїРѕСЃР»Рµ РѕР±Р»РѕР¶РєРё, РїРѕСЌС‚РѕРјСѓ РІ РѕР±С‹С‡РЅРѕРј СЃРѕСЃС‚РѕСЏРЅРёРё РІСЃРµРіРґР° СЂРёСЃСѓРµС‚СЃСЏ РїРѕРІРµСЂС….
+- РџСЂРёС‡РёРЅР° РЅР°Р»РѕР¶РµРЅРёСЏ РїСЂРё РјРѕСЂС„Рµ: РѕРІРµСЂР»РµР№ `SharedTransitionLayout` СЂРёСЃСѓРµС‚СЃСЏ РІС‹С€Рµ РІСЃРµРіРѕ РєРѕРЅС‚РµРЅС‚Р°, Рё `zIndex` РІРЅСѓС‚СЂРё `PlayerScreen` РЅР° РЅРµРіРѕ РЅРµ РІР»РёСЏРµС‚. Р РµС€РµРЅРёРµ: РїР°РЅРµР»Рё (РєР°СЂС‚РѕС‡РєР° С‚СЂРµРєР° Рё РѕСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ) РЅР° РІСЂРµРјСЏ enter/exit РїРѕРґРЅРёРјР°СЋС‚СЃСЏ РІ РѕРІРµСЂР»РµР№ С‡РµСЂРµР· `renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f)` Рё РїРѕР»СѓС‡Р°СЋС‚ `animateEnterExit(enter = playerEnter, exit = playerExit)`.
+- `renderInOverlay = { !isPlayerOpen || animatedScope.transition.isRunning }`: РІ РѕРІРµСЂР»РµРµ РїР°РЅРµР»Рё С‚РѕР»СЊРєРѕ РІРѕ РІСЂРµРјСЏ РїРµСЂРµС…РѕРґР°, РІ РїРѕРєРѕРµ РѕРЅРё РѕСЃС‚Р°СЋС‚СЃСЏ РЅР° СЃРІРѕРёС… РјРµСЃС‚Р°С… Рё РЅРµ РїРµСЂРµРєСЂС‹РІР°СЋС‚ СЃРЅРµРєР±Р°СЂ/РјРёРЅРё-РїР»РµРµСЂ.
+- РћРІРµСЂР»РµР№ РЅРµ РЅР°СЃР»РµРґСѓРµС‚ `graphicsLayer` СЃРІР°Р№РїР°, РїРѕСЌС‚РѕРјСѓ `panelModifier` РґРѕР±Р°РІР»СЏРµС‚ `graphicsLayer` СЃ `translationY = playerOffsetPx` Рё С‚РѕР№ Р¶Рµ alpha РїСЂРё `isClosing` вЂ” РїР°РЅРµР»Рё РЅРµ РїСЂС‹РіР°СЋС‚ РїСЂРё Р·Р°РєСЂС‹С‚РёРё Р¶РµСЃС‚РѕРј.
+- Р’ РѕРІРµСЂР»РµР№ РїРѕРґРЅРёРјР°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РїР°РЅРµР»Рё, Р° РЅРµ РІСЃСЏ РєРѕР»РѕРЅРєР°: РёРЅР°С‡Рµ СЃРІРµС‡РµРЅРёРµ РѕР±Р»РѕР¶РєРё РѕРєР°Р·Р°Р»РѕСЃСЊ Р±С‹ РЅР°Рґ РЅРµР№.
+- `PlayerScreen` РїРѕР»СѓС‡РёР» РїР°СЂР°РјРµС‚СЂС‹ `foregroundModifier: Modifier = Modifier` Рё `isClosing: Boolean = false`; `ExpressiveHeroZone` вЂ” `panelModifier`. Р’ `AppNavGraph` enter/exit РїР»РµРµСЂР° РІС‹РЅРµСЃРµРЅС‹ РІ Р»РѕРєР°Р»СЊРЅС‹Рµ `playerEnter`/`playerExit` Рё РїРµСЂРµРёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ РІ `animateEnterExit`.
+- РўРµСЃС‚С‹: 23 suites / 156 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 835 081 Р±Р°Р№С‚ (РїРѕСЂСЏРґРѕРє РёРјРїРѕСЂС‚Р° РЅРµ РёР·РјРµРЅРёР» Р±Р°Р№С‚РєРѕРґ). Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ; РІРёР·СѓР°Р»СЊРЅС‹Р№ СЂРµР·СѓР»СЊС‚Р°С‚ РјРѕСЂС„Р° РЅРµ РїСЂРѕРІРµСЂСЏР»СЃСЏ.
 
-## Архитектурный фикс перехода в плеер: док-оверлей + вертикальный слайд (от Claude) — сессия 29
-- Первопричина «25-го кадра» (а не анимация): док жил в слоте `bottomBar` корневого `Scaffold`, поэтому при входе/выходе из плеера `showBottomBar` переключался, `innerPadding` прыгал, и `NavHost` переизмерял оба экрана в один кадр — отсюда «развал» (кнопки и текст исчезали, фон/обложка дёргались). Поэтому ни `ExitTransition.None` (сессия 27), ни fade (сессия 28) кадр не убирали: fade к тому же добавлял джанк, оборачивая весь тяжёлый сабтри в offscreen alpha-слой.
-- `AppNavGraph`: корневой `Scaffold` заменён на `Box`. `NavHost` теперь всегда во весь экран (`fillMaxSize`) и НЕ меняет размер при показе/скрытии дока. Док вынесен в оверлей (`AnimatedVisibility`, slide снизу + fade, выравнивание по низу). Высота дока меряется `onSizeChanged` и раздаётся вкладкам через `LocalBottomDockHeight` (новый `navigation/LocalBottomDock.kt`).
-- Переход плеера: вместо fade — вертикальный slide (`slideInVertically`/`slideOutVertically`, 300 мс, `FastOutSlowInEasing`) — дешёвая трансляция без offscreen-слоя. Нижний экран держится на месте и видимым (`fadeIn/fadeOut(alpha = 1f)` в `tabEnter/tabExitTransition` для маршрута Player) — плеер наезжает «шторкой», за ним не мелькает пустой фон.
-- `PlayerPalette`: добавлен `prewarmPlayerPalette(context, url)` — прогрев палитры обложки в кэш при тапе по треку (вызов в `openPlayer`). К первому кадру PlayerScreen цвет уже в кэше, `rememberPlayerDynamicColors` берёт его синхронно — без `isLoading` и без 400 мс анимации фона прямо во время перехода. Экстракция вынесена в общий `computePlayerColors` без дублирования логики.
-- Инсеты: корневого Scaffold больше нет, поэтому статус-бар ставят сами экраны — Home/Wave через `statusBarsPadding`/`WindowInsets.statusBars`, Search/Library через `contentWindowInsets = WindowInsets.statusBars`, Settings через `systemBarsPadding`. Нижний отступ вкладок = `LocalBottomDockHeight` (высота плавающего дока, уже включает `navigationBarsPadding`).
-- Затронуто: `AppNavGraph.kt`, `LocalBottomDock.kt` (новый), `PlayerPalette.kt`, `HomeScreen.kt`, `WaveScreen.kt`, `SearchScreen.kt`, `LibraryScreen.kt`, `SettingsScreen.kt`.
-- Сборка: `assembleDebug` — BUILD SUCCESSFUL; `testDebugUnitTest` — BUILD SUCCESSFUL (под JDK 17 из Eclipse Adoptium; JAVA_HOME задавался только для команды, т.к. AGP требует Java 17). Живой тест на устройстве — на пользователе.
+## РЎРІР°Р№Рї-РїРµСЂРµРєР»СЋС‡РµРЅРёРµ С‚СЂРµРєРѕРІ Рё РјРѕСЂС„ РѕР±Р»РѕР¶РєРё вЂ” СЃРµСЃСЃРёСЏ 41
+- `MiniPlayer.kt`: РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ СЃРІР°Р№Рї РїРµСЂРµРІРµРґС‘РЅ СЃ РїРµСЂРµРјРѕС‚РєРё РЅР° РїРµСЂРµРєР»СЋС‡РµРЅРёРµ С‚СЂРµРєРѕРІ. Р’Р»РµРІРѕ вЂ” СЃР»РµРґСѓСЋС‰РёР№ (`onNext` в†’ `PlayerViewModel.playNext()`), РІРїСЂР°РІРѕ вЂ” РїСЂРµРґС‹РґСѓС‰РёР№ (`onPrevious` в†’ `playPrevious()`); `onSeekToFraction` СѓРґР°Р»С‘РЅ.
+- РџРѕСЂРѕРі РІС‹РЅРµСЃРµРЅ РІ С‡РёСЃС‚СѓСЋ С„СѓРЅРєС†РёСЋ `swipeTrackDirection(offsetPx, widthPx, velocityX)`: 30% С€РёСЂРёРЅС‹ РѕСЃС‚СЂРѕРІРєР° РёР»Рё СЃРєРѕСЂРѕСЃС‚СЊ Р±РѕР»СЊС€Рµ 1000 px/s (`VelocityTracker`); +1 вЂ” СЃР»РµРґСѓСЋС‰РёР№, -1 вЂ” РїСЂРµРґС‹РґСѓС‰РёР№, 0 вЂ” РІРѕР·РІСЂР°С‚.
+- РћР±Р»РѕР¶РєР° Рё С‚РµРєСЃС‚ РµРґСѓС‚ Р·Р° РїР°Р»СЊС†РµРј С‡РµСЂРµР· `Animatable` + `graphicsLayer.translationX` СЃ Р»С‘РіРєРёРј fade (РґРѕ 25%), РєРЅРѕРїРєР° Play РѕСЃС‚Р°С‘С‚СЃСЏ РЅР° РјРµСЃС‚Рµ; РїРѕСЃР»Рµ РѕС‚РїСѓСЃРєР°РЅРёСЏ РёР»Рё РѕС‚РјРµРЅС‹ вЂ” `spring(DampingRatioMediumBouncy, StiffnessMediumLow)`. РќРѕРІС‹Р№ Р¶РµСЃС‚ РїСЂРµСЂС‹РІР°РµС‚ РїСЂСѓР¶РёРЅСѓ С‡РµСЂРµР· `offsetX.stop()`.
+- `AppNavGraph`: РєРѕРЅС‚РµР№РЅРµСЂ РјРёРЅРё-РїР»РµРµСЂР° Рё РїР»РµРµСЂР° РѕР±С‘СЂРЅСѓС‚ РІ `SharedTransitionLayout`; РѕР±Рµ РѕР±Р»РѕР¶РєРё РїРѕР»СѓС‡Р°СЋС‚ `Modifier.sharedElement(rememberSharedContentState(PlayerCoverSharedKey), animatedVisibilityScope)` СЃ РѕР±С‰РёРј РєР»СЋС‡РѕРј `"player-cover"`.
+- Р’С…РѕРґ РїРѕР»РЅРѕСЌРєСЂР°РЅРЅРѕРіРѕ РїР»РµРµСЂР° Р·Р°РјРµРЅС‘РЅ СЃ `slideInVertically` РЅР° `fadeIn + scaleIn(0.96f)`, С‡С‚РѕР±С‹ РѕР±Р»РѕР¶РєР° Р»РµС‚РµР»Р° РІ СѓР¶Рµ РІРёРґРёРјС‹Р№ СЌРєСЂР°РЅ; РІС‹С…РѕРґ РѕСЃС‚Р°Р»СЃСЏ `scaleOut(0.9f) + fadeOut`.
+- `PlayerScreen` Рё `FloatingMiniPlayer` РїРѕР»СѓС‡РёР»Рё РїР°СЂР°РјРµС‚СЂ `coverModifier`; РІ СЂРµР¶РёРјРµ С‚РµРєСЃС‚РѕРІ shared-element Рє СЃРєСЂС‹С‚РѕР№ РѕР±Р»РѕР¶РєРµ РЅРµ РїСЂРёРјРµРЅСЏРµС‚СЃСЏ, С‡С‚РѕР±С‹ РѕРЅР° РЅРµ В«РѕР¶РёРІР°Р»Р°В».
+- `sharedBounds` РґР»СЏ РЅР°Р·РІР°РЅРёСЏ С‚СЂРµРєР° РЅРµ РґРµР»Р°Р»Рё: СЂР°Р·РЅС‹Рµ РјР°СЃС€С‚Р°Р±С‹ С‚РёРїРѕРіСЂР°С„РёРєРё РґР°СЋС‚ Р·Р°РјРµС‚РЅС‹Р№ reflow РїСЂРё РїРµСЂРµР»С‘С‚Рµ.
+- РўРµСЃС‚С‹: 23 suites / 156 С‚РµСЃС‚РѕРІ, 0 failures/errors (РґРѕР±Р°РІР»РµРЅ `MiniPlayerSwipeTest` вЂ” 8 С‚РµСЃС‚РѕРІ РїРѕСЂРѕРіРѕРІ Рё СЃРєРѕСЂРѕСЃС‚Рё). `assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 835 081 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Фейд вместо слайда и убран blur фона — сессия 28
-- Проблема: фикс сессии 27 дал наложение экранов — полупрозрачный верх градиента фона плеера просвечивал главную при переходах; плюс при открытии плеера были просадки FPS от `Modifier.blur`.
-- `AppNavGraph`: для маршрута Player убраны None-переходы и slide — теперь быстрый кросс-фейд `fadeIn`/`fadeOut(tween(150))` в обе стороны: плеер с непрозрачным фоном перекрывает главную, а не слипается с ней. `tabEnterTransition`/`tabExitTransition` при полноэкранном маршруте тоже возвращены к fade (150 мс) вместо None. Слайд между вкладками (300 мс) и `launchSingleTop` у `openPlayer` сохранены.
-- `PlayerScreen`: полностью убран `Modifier.blur` — и с полноэкранного фона режима текста (44dp), и с hero-обложки (26dp × recede). Фон текстов теперь градиент `primary 45% → primaryContainer 22% → surface` с прежним scrim 0.65. Recede-анимация обложки сохранена (смещение, поворот, масштаб, альфа) — только без размытия.
-- Непрозрачность: тонировка фона композитится поверх surface (`compositeOver`), а градиент рисуется на самом Scaffold (включая полосу под прозрачной TopAppBar) — корневой фон плеера полностью непрозрачный, главная больше не просвечивает.
-- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 621 184 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РќР°РІРёРіР°С†РёСЏ Рё РјРёРЅРё-РїР»РµРµСЂ СЂР°Р·РґРµР»РµРЅС‹, СЃРІР°Р№Рї-РїРµСЂРµРјРѕС‚РєР° вЂ” СЃРµСЃСЃРёСЏ 40
+- `ExpressiveBottomDock` С‚РµРїРµСЂСЊ С‚РѕР»СЊРєРѕ РЅР°РІРёРіР°С†РёРѕРЅРЅС‹Р№ Р±Р°СЂ: `Surface` РІРѕ РІСЃСЋ С€РёСЂРёРЅСѓ, С„РѕРЅ `surfaceContainerHigh` (alpha 0.97) РґРѕС…РѕРґРёС‚ РґРѕ РЅРёР¶РЅРµР№ РєСЂРѕРјРєРё, `navigationBarsPadding()` РІРЅСѓС‚СЂРё, РІС‹СЃРѕС‚Р° РєРѕРЅС‚РµРЅС‚Р° `DockNavHeight = 72dp`, РѕР±РІРѕРґРєР° 1dp. РРєРѕРЅРєРё РІС‹СЂРѕСЃР»Рё СЃ 22dp РґРѕ 28dp, РїРѕРґРїРёСЃРё вЂ” СЃ 11sp РґРѕ 12sp, РёРЅРґРёРєР°С‚РѕСЂ СЃРѕРІРјРµС‰С‘РЅ СЃ РєРІР°РґСЂР°С‚РѕРј РёРєРѕРЅРєРё (`indicatorTop = 13dp`).
+- `MiniPlayer.kt` РїРµСЂРµРїРёСЃР°РЅ РІ `FloatingMiniPlayer`: РѕС‚РґРµР»СЊРЅС‹Р№ РѕСЃС‚СЂРѕРІРѕРє РІС‹СЃРѕС‚РѕР№ 64dp, СЂР°РґРёСѓСЃ 30dp, С‚РµРЅСЊ 8dp, РѕР±Р»РѕР¶РєР° 48dp, РЅР°Р·РІР°РЅРёРµ/Р°СЂС‚РёСЃС‚, РєРЅРѕРїРєР° Play/Pause 40dp (Р·РѕРЅР° 48dp), РїРѕР»РѕСЃРєР° РїСЂРѕРіСЂРµСЃСЃР° 2dp РІРЅРёР·Сѓ СЃ inset 24dp. Р‘РѕРєРѕРІС‹Рµ РѕС‚СЃС‚СѓРїС‹ 16dp Рё РїРѕР·РёС†РёСЏ РЅР°Рґ Р±Р°СЂРѕРј Р·Р°РґР°СЋС‚СЃСЏ РІ `AppNavGraph`.
+- РџРµСЂРµРјРѕС‚РєР° СЃРІР°Р№РїРѕРј: `detectHorizontalDragGestures` РЅР° РѕСЃС‚СЂРѕРІРєРµ, РїСЂРѕРіСЂРµСЃСЃ СЃР»РµРґСѓРµС‚ Р·Р° РїР°Р»СЊС†РµРј С‡РµСЂРµР· `size.width`, РїСЂРё РѕС‚РїСѓСЃРєР°РЅРёРё РІС‹Р·С‹РІР°РµС‚СЃСЏ `PlayerViewModel.seekTo(fraction)`, РїСЂРё РѕС‚РјРµРЅРµ Р¶РµСЃС‚Р° РїРѕР»РѕСЃРєР° РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ Рє СЃС‚Р°СЂС‚РѕРІРѕР№ РґРѕР»Рµ. РћРїСЂРѕСЃ РїРѕР·РёС†РёРё РѕСЃС‚Р°РЅР°РІР»РёРІР°РµС‚СЃСЏ РЅР° РІСЂРµРјСЏ Р¶РµСЃС‚Р° Рё РІРѕР·РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ С‡РµСЂРµР· 120 РјСЃ РїРѕСЃР»Рµ seek, С‡С‚РѕР±С‹ РїРѕР»РѕСЃРєР° РЅРµ РїСЂС‹РіР°Р»Р° РЅР°Р·Р°Рґ.
+- `AppNavGraph`: Р±Р°СЂ Рё РјРёРЅРё-РїР»РµРµСЂ вЂ” РґРІР° РЅРµР·Р°РІРёСЃРёРјС‹С… `AnimatedVisibility`. Р’С‹СЃРѕС‚Р° Р±Р°СЂР° РёР·РјРµСЂСЏРµС‚СЃСЏ С‡РµСЂРµР· `onSizeChanged`; РѕСЃС‚СЂРѕРІРѕРє РІРёСЃРёС‚ РЅР° `navBarHeight + 12dp`, РІРёРґРµРЅ РїСЂРё `showBottomBar && track != null && navBarHeightPx > 0`. `lastTrack` СѓРґРµСЂР¶РёРІР°РµС‚ РєРѕРЅС‚РµРЅС‚ РЅР° РІСЂРµРјСЏ exit-Р°РЅРёРјР°С†РёРё. `LocalBottomDockHeight = navBarHeight + Р°РЅРёРјРёСЂРѕРІР°РЅРЅС‹Р№ СЂРµР·РµСЂРІ (64 + 12dp)`, РїРѕСЌС‚РѕРјСѓ РєРѕРЅС‚РµРЅС‚ РІРєР»Р°РґРѕРє РЅРµ РїСЂС‹РіР°РµС‚ РїСЂРё РїРѕСЏРІР»РµРЅРёРё РѕСЃС‚СЂРѕРІРєР°.
+- РЎРІРѕСЂР°С‡РёРІР°РЅРёРµ РїР»РµРµСЂР°: exit Р·Р°РјРµРЅС‘РЅ СЃ РїРѕР»РЅРѕРіРѕ `slideOutVertically` РЅР° `scaleOut(0.9f, TransformOrigin(0.5f, 1f)) + fadeOut`; РјРёРЅРё-РїР»РµРµСЂ РІС…РѕРґРёС‚ `slideInVertically + scaleIn(0.85f, bottom origin) + fadeIn`. Р’РёР·СѓР°Р»СЊРЅРѕ СЌРєСЂР°РЅ СЃР¶РёРјР°РµС‚СЃСЏ Рє РЅРёР·Сѓ Рё С‚Р°РµС‚, Р° РѕСЃС‚СЂРѕРІРѕРє РІС‹РµР·Р¶Р°РµС‚ РёР·-РїРѕРґ Р±Р°СЂР°.
+- РўРµСЃС‚С‹: 22 suites / 148 С‚РµСЃС‚РѕРІ, 0 failures/errors. `assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 635 291 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Атомарный выход из плеера — сессия 27
-- Баг «разваливающегося» плеера (25-й кадр): при pop из PlayerScreen вкладка под ним въезжала с fade (180/120 мс), а док появлялся мгновенно и накрывал низ экрана — на промежуточных кадрах висел «полуплеер» без контролов и слайдера. Пользователь зафиксировал скриншот.
-- `AppNavGraph`: `tabEnterTransition`/`tabExitTransition` при `direction == 0` (полноэкранный маршрут с любой стороны) отдают `EnterTransition.None`/`ExitTransition.None` вместо fade — pop из плеера теперь атомарный: плеер исчезает и Home с доком появляются в одном кадре, без промежуточных состояний. Слайд между вкладками (300 мс) сохранён, вход плеера (slide снизу + fade) не тронут.
-- `openPlayer`: добавлен `launchSingleTop = true` — защита от дублей Player в стеке, где повторный pop проигрывал бы slide-вход плеера поверх самого себя.
-- `PlayerScreen`: проверены все внутренние анимации — exit-анимаций, реагирующих на закрытие экрана, нет: `AnimatedContent` героя работает только по `isLyricsMode`, `Crossfade` — по состоянию загрузки, `animate*AsState` — по контентным состояниям. Шторка очереди закрывается только мгновенным удалением из композиции (snap, без hide-анимации) — зафиксировано комментарием, чтобы анимация скрытия не вернулась.
-- Проверено по байткоду navigation-compose 2.8.4: `ExitTransition.None` у плеера применяется честно (нет дефолтного fadeOut поверх), а pop-переход при полноэкранном маршруте собирается из popEnter/popExit.
-- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 621 184 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РџР»Р°РІР°СЋС‰РёР№ РЅРёР¶РЅРёР№ РґРѕРє вЂ” СЃРµСЃСЃРёСЏ 39
+- `ExpressiveBottomDock`: Р±РѕРєРѕРІС‹Рµ РѕС‚СЃС‚СѓРїС‹ СѓРІРµР»РёС‡РµРЅС‹ СЃ 16dp РґРѕ 24dp, СЃРЅРёР·Сѓ вЂ” `navigationBarsPadding()` + 12dp (Р±С‹Р»Рѕ 8dp), СЃРІРµСЂС…Сѓ РѕСЃС‚Р°Р»РѕСЃСЊ 8dp. Р¤РѕРЅ `surfaceContainerHigh` Р±РѕР»СЊС€Рµ РЅРµ С‚СЏРЅРµС‚СЃСЏ РґРѕ РєСЂР°С‘РІ СЌРєСЂР°РЅР° Рё РЅРµ РїСЂРёР»РёРїР°РµС‚ Рє СЃРёСЃС‚РµРјРЅРѕР№ РїР°РЅРµР»Рё вЂ” РґРѕРє С‡РёС‚Р°РµС‚СЃСЏ РєР°Рє РѕС‚РґРµР»СЊРЅС‹Р№ РѕСЃС‚СЂРѕРІРѕРє.
+- Р Р°РґРёСѓСЃ 30dp, РѕР±РІРѕРґРєР° 1dp Рё С‚РµРЅСЊ 8dp РЅРµ РјРµРЅСЏР»РёСЃСЊ; `DockNavHeight = 64dp`, `DockMiniHeight = 56dp`, РѕР±Р»РѕР¶РєР° 44dp Рё РєРЅРѕРїРєР° Play 48dp СЃРѕС…СЂР°РЅРµРЅС‹ вЂ” РЅР° С€РёСЂРёРЅРµ 320вЂ“360dp РєРѕРЅС‚РµРЅС‚ РїРѕРјРµС‰Р°РµС‚СЃСЏ, РЅР°РІРёРіР°С†РёСЏ РїРѕ-РїСЂРµР¶РЅРµРјСѓ РґРµР»РёС‚СЃСЏ С‡РµСЂРµР· `weight(1f)`.
+- РђРЅРёРјР°С†РёСЏ РјРёРЅРё-РїР»РµРµСЂР° РїРµСЂРµРІРµРґРµРЅР° СЃ `expandVertically`/`shrinkVertically` РЅР° `slideInVertically`/`slideOutVertically` + fade: СЃС‚СЂРѕРєР° РІС‹РµР·Р¶Р°РµС‚ РёР·-РїРѕРґ СЂСЏРґР° РЅР°РІРёРіР°С†РёРё. Р”РѕР±Р°РІР»РµРЅРѕ РѕС‚РґРµР»СЊРЅРѕРµ РѕРєРЅРѕ РІС‹СЃРѕС‚РѕР№ 56dp РЅР°Рґ РЅР°РІРёРіР°С†РёРµР№ СЃ `clipToBounds()`, С‡С‚РѕР±С‹ РІРѕ РІСЂРµРјСЏ РІС‹РµР·РґР° СЃС‚СЂРѕРєР° РЅРµ СЂРёСЃРѕРІР°Р»Р°СЃСЊ РїРѕРІРµСЂС… РёРєРѕРЅРѕРє; С„РѕРЅ РґРѕРєР° СЂР°СЃС‚С‘С‚ С‡РµСЂРµР· `reveal` (spring NoBouncy/Medium), РїРѕСЌС‚РѕРјСѓ РІС‹СЃРѕС‚Р° Рё slide СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅС‹.
+- `LocalBottomDockHeight` Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РІС‹СЂРѕСЃ РЅР° 4dp (РЅРёР¶РЅРёР№ padding), СЌРєСЂР°РЅС‹ СѓР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚ РµРіРѕ РІ `contentPadding` вЂ” РїСЂР°РІРѕРє РЅРµ РїРѕС‚СЂРµР±РѕРІР°Р»РѕСЃСЊ.
+- РўРµСЃС‚С‹: 22 suites / 148 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 635 309 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Плавные переходы вкладок и фиксы дока — сессия 26
-- `AppNavGraph`: переходы между вкладками — горизонтальный слайд по индексу вкладки (выезд с нужной стороны на треть ширины, 300 мс, `FastOutSlowInEasing`) + fade; направление вычисляется через `tabIndex()` по `bottomNavItems`. Для полноэкранных маршрутов и возвратов с них — только мягкий fade (вход 180 мс, выход 120 мс) без слайда.
-- `PlayerScreen`: `exitTransition` и `popExitTransition` заменены на `ExitTransition.None` — тяжёлый экран (blur, большая обложка) больше не анимируется при сворачивании, просадка кадров убрана (в сессии 25 возврат из плеера давал 27.5% janky). Вход остался слайдом снизу + fade.
-- `ExpressiveBottomDock`: контент дока обёрнут в `Box` с `matchParentSize()` и `clip(shape)` — полоска прогресса мини-плеера обрезается по скруглённому контуру и не выпирает за края дока.
-- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 621 184 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РЎРІР°Р№Рї РїР»РµРµСЂР°: РїРµСЂРµС…РІР°С‚ РїРµСЂРІРѕРіРѕ РєР°СЃР°РЅРёСЏ РІРјРµСЃС‚Рѕ nestedScroll вЂ” СЃРµСЃСЃРёСЏ 38
+- `NestedScrollConnection` СѓРґР°Р»С‘РЅ РїРѕР»РЅРѕСЃС‚СЊСЋ: `dismissNestedScrollConnection`, `Modifier.nestedScroll()`, РєРѕСЂРЅРµРІРѕР№ `detectVerticalDragGestures` Рё РёРјРїРѕСЂС‚С‹ `NestedScrollConnection`/`NestedScrollSource`/`nestedScroll`/`Velocity`/`Offset`. РџСЂРёС‡РёРЅР°: РЅР° С‚РµРєСЃС‚Рµ Рё РїСѓСЃС‚С‹С… Р·РѕРЅР°С… Р¶РµСЃС‚ РЅРµ СЃСЂР°Р±Р°С‚С‹РІР°Р».
+- РќРѕРІС‹Р№ Р¶РµСЃС‚ вЂ” `Modifier.pointerInput(Unit) { awaitEachGesture { ... } }` РЅР° РєРѕСЂРЅРµРІРѕРј `Box`, РєРѕС‚РѕСЂС‹Р№ РѕР±РѕСЂР°С‡РёРІР°РµС‚ `Scaffold` РІСЃРµРіРѕ РїР»РµРµСЂР°. `awaitFirstDown(pass = PointerEventPass.Initial)` РїРѕР»СѓС‡Р°РµС‚ РєР°СЃР°РЅРёРµ СЂР°РЅСЊС€Рµ `LazyColumn`/`verticalScroll`; РїСЂРё СЃРІРѕС‘Рј Р¶РµСЃС‚Рµ РёР·РјРµРЅРµРЅРёСЏ РїРѕС‚СЂРµР±Р»СЏСЋС‚СЃСЏ РІ Initial-РїСЂРѕС…РѕРґРµ, РїРѕСЌС‚РѕРјСѓ drag СЃРїРёСЃРєР° РѕС‚РјРµРЅСЏРµС‚СЃСЏ (`awaitPointerSlopOrCancellation` РїСЂРѕРІРµСЂСЏРµС‚ `isConsumed`).
+- Р РµС€РµРЅРёРµ Рѕ Р¶РµСЃС‚Рµ РїСЂРёРЅРёРјР°РµС‚СЃСЏ РїРѕ РЅР°РєРѕРїР»РµРЅРЅРѕРјСѓ `totalDy`: РІРІРµСЂС… (`totalDy <= 0`) РІСЃРµРіРґР° РѕС‚РґР°С‘С‚СЃСЏ СЃРїРёСЃРєСѓ/РѕР±Р»РѕР¶РєРµ; РІРЅРёР· РґРІРёРіР°РµС‚ РїР»РµРµСЂ, РєСЂРѕРјРµ РєР°СЃР°РЅРёСЏ РІРЅСѓС‚СЂРё `LazyColumn` РїСЂРё СѓР¶Рµ РїСЂРѕСЃРєСЂРѕР»Р»РµРЅРЅРѕРј С‚РµРєСЃС‚Рµ (`isLyricsMode && inLyricsList && !lyricsListState.canScrollBackward`). РЁР°РїРєР°, РѕР±Р»РѕР¶РєР° Рё РїСѓСЃС‚С‹Рµ Р·РѕРЅС‹ РґРІРёРіР°СЋС‚ РїР»РµРµСЂ РґР°Р¶Рµ РїСЂРё РїСЂРѕСЃРєСЂРѕР»Р»РµРЅРЅРѕРј С‚РµРєСЃС‚Рµ.
+- РћР±Р»Р°СЃС‚Рё РѕРїСЂРµРґРµР»СЏСЋС‚СЃСЏ СЂРµР°Р»СЊРЅС‹РјРё РіСЂР°РЅРёС†Р°РјРё: `controlIslandBounds` Рё `lyricsListBounds` С‡РµСЂРµР· `onGloballyPositioned { it.boundsInRoot() }`; РєР°СЃР°РЅРёРµ РёР· РѕСЃС‚СЂРѕРІР° СѓРїСЂР°РІР»РµРЅРёСЏ РёРіРЅРѕСЂРёСЂСѓРµС‚СЃСЏ. `LazyListState` РїРѕРґРЅСЏС‚ РёР· `LyricsListView` РІ `PlayerScreen` Рё РїСЂРѕР±СЂРѕС€РµРЅ С‡РµСЂРµР· `ExpressiveHeroZone` в†’ `LyricsForeground`; РіСЂР°РЅРёС†С‹ СЃРїРёСЃРєР° РїРµСЂРµРґР°СЋС‚СЃСЏ callback'РѕРј `onListBoundsChanged` Рё СЃР±СЂР°СЃС‹РІР°СЋС‚СЃСЏ РІ `null` С‡РµСЂРµР· `DisposableEffect`, РєРѕРіРґР° СЃРїРёСЃРѕРє СѓС…РѕРґРёС‚ РёР· РєРѕРјРїРѕР·РёС†РёРё.
+- РћСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ СЃРѕС…СЂР°РЅСЏРµС‚ С„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Р№ guard `detectVerticalDragGestures { change, _ -> change.consume() }` (РїСѓСЃС‚РѕР№ `pointerInput` РЅРёС‡РµРіРѕ РЅРµ Р±Р»РѕРєРёСЂСѓРµС‚): РєРЅРѕРїРєРё Рё СЃР»Р°Р№РґРµСЂ РЅРµ Р·Р°РїСѓСЃРєР°СЋС‚ Р·Р°РєСЂС‹С‚РёРµ.
+- РџРѕСЂРѕРі `DISMISS_THRESHOLD = 0.45f` СЃРѕС…СЂР°РЅС‘РЅ: `finishPlayerDrag()` Р·Р°РєСЂС‹РІР°РµС‚ РїСЂРё `dragOffsetPx > screenHeightPx * 0.45f`, РёРЅР°С‡Рµ `settlePlayer()` РІРѕР·РІСЂР°С‰Р°РµС‚ РїСЂСѓР¶РёРЅРѕР№; РѕС‚РјРµРЅР° Р¶РµСЃС‚Р° РІ `finally` С‚Р°РєР¶Рµ РІРѕР·РІСЂР°С‰Р°РµС‚ РїР»РµРµСЂ.
+- РўРµСЃС‚С‹: 22 suites / 148 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 635 309 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Полировка анимаций нижнего дока — сессия 25
-- `ExpressiveBottomDock`: ряд навигации закреплён у нижней кромки и больше не участвует в анимации мини-плеера. Фоновая поверхность `DockBackground` растёт отдельно (64 → 120dp), читая `State<Float>` только внутри себя; мини-плеер раскрывается через `AnimatedVisibility` (`expandVertically` + `fadeIn`, выход — `shrinkVertically` + `fadeOut`). Высота дока вместе с детьми не анимируется, навигация не смещается.
-- Пружины: индикатор — `Spring.DampingRatioNoBouncy` / `StiffnessMediumLow` (как просил пользователь), иконка — NoBouncy / Medium, раскрытие дока и мини-плеера — NoBouncy / Medium. Убраны отскок 0.58 и рассинхрон фаз.
-- `ExpressiveNavigationBar`: смещение индикатора читается в `graphicsLayer` (фаза отрисовки), поэтому ряд не рекомпозируется на каждом кадре; масштаб иконки и альфа подписи — тоже `graphicsLayer`. Градиент индикатора запоминается, колбэки вкладок стабильны (`remember` + `rememberUpdatedState`), индекс — `remember(items, selectedRoute)`.
-- `AppNavGraph`: `selectedRoute` и `showBottomBar` вычисляются через `derivedStateOf`; `onTabSelect` и `onDockExpand` стабильны (`remember(navController)`).
-- `MiniPlayer`: прогресс больше не опрашивается на паузе (`while (isPlaying)`), первый замер выполняется сразу.
-- Тень дока перенесена с `Modifier.shadow(..., clip = false)` на `Surface(shadowElevation = 8.dp)` — один слой вместо двух.
-- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 515 714 байт.
-- Live SM-A266B: APK установлен, приложение запущено. Появление мини-плеера через «Мою волну» (без перехода в плеер): 599 кадров, 1.5% janky, 95-й перцентиль 14 мс. Переключения вкладок с открытым мини-плеером: 5.9% janky, 90-й 9 мс; серия из 5 быстрых тапов: 3.4% janky, 95-й 12 мс. Крашей и `FATAL EXCEPTION` нет. Возврат из полноэкранного плеера даёт 27.5% janky — это тяжёлый slide/fade всего `PlayerScreen`, а не док; изолированный док даёт 1.5%.
-- Скрытие мини-плеера отдельно не воспроизведено: в приложении нет действия «стоп/очистить» (только пауза), а очистка очереди доступна лишь на экране плеера, где док скрыт. Выход использует симметричный `shrinkVertically` + `fadeOut`.
+## РЎРІР°Р№Рї РїР»РµРµСЂР°: РїРѕСЂРѕРі 45% Рё Р·Р°РєСЂС‹С‚РёРµ РїРѕРІРµСЂС… С‚РµРєСЃС‚РѕРІ вЂ” СЃРµСЃСЃРёСЏ 37
+- РџРѕСЂРѕРі Р·Р°РєСЂС‹С‚РёСЏ СЃРЅРёР¶РµРЅ СЃ 85% РґРѕ 45% РІС‹СЃРѕС‚С‹ СЌРєСЂР°РЅР° (`DISMISS_THRESHOLD = 0.45f`). Р›РѕРіРёРєР° РѕС‚РїСѓСЃРєР°РЅРёСЏ РІС‹РЅРµСЃРµРЅР° РІ `finishPlayerDrag()` Рё РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РѕР±РѕРёРјРё РїСѓС‚СЏРјРё: Р¶РµСЃС‚РѕРј РЅР° СЃРІРѕР±РѕРґРЅРѕР№ Р·РѕРЅРµ Рё nested-scroll'РѕРј СЃРїРёСЃРєР° С‚РµРєСЃС‚Р°.
+- РџСЂРёС‡РёРЅР° В«СЃРІР°Р№Рї СЂР°Р±РѕС‚Р°РµС‚ С‚РѕР»СЊРєРѕ Р·Р° С€Р°РїРєСѓВ»: Р¶РµСЃС‚ СЃ СЃРµСЃСЃРёРё 36 СѓР¶Рµ Р¶РёР» РЅР° РєРѕСЂРЅРµРІРѕРј `Scaffold`, РЅРѕ `LazyColumn` С‚РµРєСЃС‚РѕРІ Рё `verticalScroll` РѕР±Р»РѕР¶РєРё РїРѕС‚СЂРµР±Р»СЏР»Рё РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ РёР·РјРµРЅРµРЅРёСЏ СѓРєР°Р·Р°С‚РµР»СЏ СЂР°РЅСЊС€Рµ СЂРѕРґРёС‚РµР»СЏ, РїРѕСЌС‚РѕРјСѓ РєРѕСЂРЅРµРІРѕР№ `detectVerticalDragGestures` РѕС‚РјРµРЅСЏР»СЃСЏ.
+- РќР° РєРѕСЂРЅРµРІРѕР№ `Scaffold` РґРѕР±Р°РІР»РµРЅ `Modifier.nestedScroll(dismissNestedScrollConnection)`:
+  - `onPreScroll`: РїРѕРєР° РїР»РµРµСЂ СЃРјРµС‰С‘РЅ, СЃРЅР°С‡Р°Р»Р° РґРІРёРіР°РµС‚ РїР»РµРµСЂ, Р° РЅРµ СЃРїРёСЃРѕРє вЂ” РєРѕРЅС‚РµРЅС‚ РЅРµ РїСЂРѕРєСЂСѓС‡РёРІР°РµС‚СЃСЏ РїРѕРґ РІРѕР·РІСЂР°С‰Р°СЋС‰РµР№СЃСЏ С€С‚РѕСЂРєРѕР№;
+  - `onPostScroll`: Р·Р°Р±РёСЂР°РµС‚ РѕСЃС‚Р°С‚РѕРє С‚СЏРіРё РІРЅРёР·, РєРѕРіРґР° СЃРїРёСЃРѕРє СѓР¶Рµ РІ РЅР°С‡Р°Р»Рµ (`available.y < 0`), вЂ” СЃРІР°Р№Рї СЂР°Р±РѕС‚Р°РµС‚ РїРѕРІРµСЂС… С‚РµРєСЃС‚Р° РїРµСЃРЅРё;
+  - `onPreFling`: РІС‹С€Рµ РїРѕСЂРѕРіР° Р·Р°РєСЂС‹РІР°РµС‚, РёРЅР°С‡Рµ РІРѕР·РІСЂР°С‰Р°РµС‚ РїСЂСѓР¶РёРЅРѕР№, Рё РіР°СЃРёС‚ СЃРєРѕСЂРѕСЃС‚СЊ СЃРїРёСЃРєР°, С‡С‚РѕР±С‹ С‚РµРєСЃС‚ РЅРµ СѓР»РµС‚Р°Р» РѕС‚РґРµР»СЊРЅРѕР№ Р°РЅРёРјР°С†РёРµР№;
+  - РїСЂРѕРіСЂР°РјРјРЅС‹Рµ СЃРєСЂРѕР»Р»С‹ (`SideEffect`, Р°РІС‚РѕС†РµРЅС‚СЂРёСЂРѕРІР°РЅРёРµ Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё) РёРіРЅРѕСЂРёСЂСѓСЋС‚СЃСЏ.
+- РћСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ РїРѕ-РїСЂРµР¶РЅРµРјСѓ РіР°СЃРёС‚ РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ РґСЂР°РіРё СЃРІРѕРёРј `pointerInput` (`controlIslandSwipeGuard`): РµРіРѕ РєРЅРѕРїРєРё Рё СЃР»Р°Р№РґРµСЂ РЅРµ Р·Р°РїСѓСЃРєР°СЋС‚ Р·Р°РєСЂС‹С‚РёРµ. РЁР°РїРєР° Рё РїСѓСЃС‚С‹Рµ Р·РѕРЅС‹ РѕР±СЂР°Р±Р°С‚С‹РІР°СЋС‚СЃСЏ РєРѕСЂРЅРµРІС‹Рј `detectVerticalDragGestures`.
+- РўРµСЃС‚С‹: 22 suites / 148 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 635 282 Р±Р°Р№С‚Р°. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Редизайн Пакет 1 (Home) + Пакет 3 (единый нижний док) — сессия 24
-- Home получил трёхуровневую иерархию: `HomeSectionHeader` с eyebrow 11sp Bold в `primary` (трекинг 1.4) и заголовком 22sp Bold. Тексты: «РЕКОМЕНДАЦИИ / Для вас», «ИСТОРИЯ / Недавнее», «АРХИВ / Воспоминания», «КОЛЛЕКЦИЯ / Любимое». `BlockGap` увеличен с 26 до 32dp.
-- Hero «Продолжить»: радиус 30dp, градиент `primaryContainer` 45% → `surfaceContainerHigh`, обложка 96dp squircle, заголовок `headlineSmall` (26sp) максимум в 2 строки, Play 48dp с иконкой 24dp. Eyebrow сокращён до «ПРОДОЛЖИТЬ», иначе обрезался на узких экранах.
-- «Недавнее»: убрана чёрная плашка с белым текстом; обложка 132dp с радиусом 22dp, подписи под обложкой 13sp SemiBold / 11sp.
-- «Воспоминания»: радиус 30dp, превью 3 трека (`MEMORY_PREVIEW_LIMIT = 3`), сезон 26sp, счётчик `displaySmall` 40sp, вертикальные отступы между блоками 32dp. `LikedCard` приведён к тому же стилю: радиус 22dp, внешний заголовок, внутренняя подпись убрана.
-- Новый `ExpressiveBottomDock.kt`: один объект с отступами 16dp, радиусом 30dp, тенью 8dp, фоном `surfaceContainerHigh` 96% и бордером 1dp `onSurface` 6%. Внутри — mini-player и ряд навигации; появление трека анимируется ростом на 56dp (пружина 0.8 / MediumLow), навигация остаётся на месте.
-- `MiniPlayer.kt` переписан на `internal MiniPlayerRow` высотой 56dp: обложка 44dp (радиус 14dp), название 14sp SemiBold, артист 11sp, Play 40dp с зоной касания 48dp, прогресс 2dp внутри клипа, разделитель 1dp с inset 16dp. Собственной панели и тени больше нет.
-- `ExpressiveNavigationBar.kt` стал рядом 64dp без фона и тени: пружинный индикатор damping 0.58 / `StiffnessMedium`, иконка выбранного 1.18, подпись 11sp с `lineHeight = 16.sp` для точной укладки в 64dp.
-- `AppNavGraph.kt` подключает `ExpressiveBottomDock` вместо пары `MiniPlayer` + `ExpressiveNavigationBar`. `PlayerScreen`, `LibraryScreen`, `SettingsScreen` не тронуты.
-- Тесты: 20 suites / 129 тестов, 0 failures/errors/skipped (UI-тестов нет, изменения проверены сборкой). `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 616 075 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РњРµР»РєРёРµ UI-С„РёРєСЃС‹, СЃРІР°Р№Рї РІРЅРёР· РїРѕ РІСЃРµРјСѓ РїР»РµРµСЂСѓ Рё РґРёР·Р»Р°Р№РєРё вЂ” СЃРµСЃСЃРёСЏ 36
+- РџР»РµРµСЂ, СЃР»РѕС‚ СЃРєР°С‡РёРІР°РЅРёСЏ: Сѓ Р»РѕРєР°Р»СЊРЅРѕРіРѕ С‚СЂРµРєР° (`Source.LOCAL`) РєРЅРѕРїРєР° СЃРєР°С‡РёРІР°РЅРёСЏ РЅРµ РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ, РЅРѕ РµС‘ РјРµСЃС‚Рѕ СЂРµР·РµСЂРІРёСЂСѓРµС‚СЃСЏ `Spacer(Modifier.size(46.dp))` вЂ” СЂСЏРґ В«СЃРєР°С‡Р°С‚СЊ/Р»Р°Р№Рє/РґРёР·Р»Р°Р№РєВ» Р±РѕР»СЊС€Рµ РЅРµ РїСЂС‹РіР°РµС‚ РјРµР¶РґСѓ С‚СЂРµРєР°РјРё. РџСЂРѕР±СЂРѕС€РµРЅРѕ С‡РµСЂРµР· `canDownload` РІ `ExpressiveHeroZone` в†’ `CoverForeground` Рё `TrackGlassCard` (РѕР±Р° РІР°СЂРёР°РЅС‚Р° РѕР±Р»РѕР¶РєРё).
+- `TrackCard`: РЅР°Р·РІР°РЅРёРµ Рё Р°РІС‚РѕСЂ РѕР±СЉРµРґРёРЅРµРЅС‹ РІ РѕРґРЅСѓ `Column` РІРЅСѓС‚СЂРё `headlineContent` (Р±РµР· `supportingContent`), РїРѕСЌС‚РѕРјСѓ Сѓ РєРѕСЂРѕС‚РєРёС… РЅР°Р·РІР°РЅРёР№ РёСЃС‡РµР·Р»Р° РїСѓСЃС‚Р°СЏ РґС‹СЂР° РјРµР¶РґСѓ СЃС‚СЂРѕРєР°РјРё; РІ `HomeScreen.ContinueListeningCard` РєРѕР»РѕРЅРєР° С†РµРЅС‚СЂРёСЂСѓРµС‚СЃСЏ РїРѕ РІС‹СЃРѕС‚Рµ РѕР±Р»РѕР¶РєРё (`Arrangement.Center`).
+- `TrackCard`: РЅРѕРІС‹Р№ РїР°СЂР°РјРµС‚СЂ `isPaused` вЂ” РЅР° РїР°СѓР·Рµ РІРјРµСЃС‚Рѕ Р±РµРіСѓС‰РµРіРѕ СЌРєРІР°Р»Р°Р№Р·РµСЂР° СЂРёСЃСѓСЋС‚СЃСЏ С‚СЂРё СЃС‚Р°С‚РёС‡РЅС‹Рµ С‚РѕС‡РєРё `PausedEqualizerDots` С‚РѕРіРѕ Р¶Рµ СЂР°Р·РјРµСЂР° 16dp. `LibraryViewModel.isPlaying` Р±РµСЂС‘С‚СЃСЏ РёР· `PlayerController.state`, `LibraryScreen` РїРµСЂРµРґР°С‘С‚ `isPaused` РґР»СЏ С‚РµРєСѓС‰РµРіРѕ С‚СЂРµРєР°.
+- РџР»РµРµСЂ РІС‹РЅРµСЃРµРЅ РёР· `NavHost` РІ РѕРІРµСЂР»РµР№ `AppNavGraph` (`isPlayerOpen`, `AnimatedVisibility` СЃРѕ slide): РІРєР»Р°РґРєР° РѕСЃС‚Р°С‘С‚СЃСЏ СЃРєРѕРјРїРѕРЅРѕРІР°РЅРЅРѕР№ РїРѕРґ РїР»РµРµСЂРѕРј Рё СЂРµР°Р»СЊРЅРѕ РїСЂРѕРіР»СЏРґС‹РІР°РµС‚ РїСЂРё СЃРІР°Р№РїРµ. РЎРёСЃС‚РµРјРЅС‹Р№ В«РЅР°Р·Р°РґВ» Р·Р°РєСЂС‹РІР°РµС‚ РѕРІРµСЂР»РµР№ С‡РµСЂРµР· `BackHandler`, РЅРµ С‚СЂРѕРіР°СЏ back stack; РїРµСЂРµС…РѕРґ В«РќР°Р№С‚Рё РЅР° YouTubeВ» СЃРЅР°С‡Р°Р»Р° Р·Р°РєСЂС‹РІР°РµС‚ РѕРІРµСЂР»РµР№.
+- РЎРІР°Р№Рї РІРЅРёР·: Р¶РµСЃС‚ `detectVerticalDragGestures` Р¶РёРІС‘С‚ РЅР° РІСЃС‘Рј `Scaffold` РїР»РµРµСЂР°, РѕСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ РіР°СЃРёС‚ РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ РґСЂР°РіРё (`controlIslandSwipeGuard`), РїРѕСЌС‚РѕРјСѓ РєРЅРѕРїРєРё Рё СЃР»Р°Р№РґРµСЂ РЅРµ Р·Р°РєСЂС‹РІР°СЋС‚ СЌРєСЂР°РЅ. РџРѕСЂРѕРі вЂ” `DISMISS_THRESHOLD = 0.85f` РІС‹СЃРѕС‚С‹ СЌРєСЂР°РЅР°: РЅРёР¶Рµ вЂ” РІРѕР·РІСЂР°С‚ РїСЂСѓР¶РёРЅРѕР№, РЅР° РїРѕСЂРѕРіРµ Рё РІС‹С€Рµ вЂ” `onBack()`. РЎРјРµС‰РµРЅРёРµ СЃР»РµРґСѓРµС‚ Р·Р° РїР°Р»СЊС†РµРј Р±РµР· Р°РЅРёРјР°С†РёРё (`snap()`), РІРѕР·РІСЂР°С‚ вЂ” `animateFloatAsState` + `spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)`; `graphicsLayer` РґРІРёРіР°РµС‚ РІРµСЃСЊ РїР»РµРµСЂ Рё РїР»Р°РІРЅРѕ РіР°СЃРёС‚ Р°Р»СЊС„Сѓ `1f - offsetY / screenHeight`, РѕС‚РєСЂС‹РІР°СЏ РІРєР»Р°РґРєСѓ РїРѕРґ РЅРёРј.
+- Room v10: РЅРѕРІР°СЏ `disliked_tracks` (`DislikedTrackEntity`: `trackId` PK, `dislikedAt`), `DislikedTrackDao` (`insert` REPLACE, `delete`, `getAll`, `isDisliked` Flow), `MIGRATION_9_10`, DAO РІ `DatabaseModule`, СЃС…РµРјР° `10.json` СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅР°.
+- Р РµРєРѕРјРµРЅРґР°С†РёРё: `RecommendationPlanner.filterDisliked` СѓР±РёСЂР°РµС‚ РґРёР·Р»Р°Р№РєРЅСѓС‚С‹Рµ С‚СЂРµРєРё; `HomeViewModel` Р·Р°РіСЂСѓР¶Р°РµС‚ ID РёР· DAO Рё С„РёР»СЊС‚СЂСѓРµС‚ related-, fallback- Рё popular-РєР°РЅРґРёРґР°С‚РѕРІ РґРѕ РѕС‚Р±РѕСЂР°, С‡С‚РѕР±С‹ РґРёР·Р»Р°Р№РєРё РЅРµ Р·Р°РЅРёРјР°Р»Рё СЃР»РѕС‚С‹.
+- РџР»РµРµСЂ: `PlayerViewModel.isDisliked` (Flow РёР· DAO РїРѕ С‚РµРєСѓС‰РµРјСѓ С‚СЂРµРєСѓ) Рё `toggleDislike()`; РґРёР·Р»Р°Р№Рє СЃРЅРёРјР°РµС‚ Р»Р°Р№Рє Рё taste-С„РёРґР±РµРє, Р»Р°Р№Рє СЃРЅРёРјР°РµС‚ РґРёР·Р»Р°Р№Рє. Р’ РѕР±РѕРёС… layouts РґРѕР±Р°РІР»РµРЅ `DislikeSquircle` СЃ `Icons.Filled.ThumbDown`, РєСЂР°СЃРЅР°СЏ РїРѕРґСЃРІРµС‚РєР° (`errorContainer`/`error`) РїСЂРё Р°РєС‚РёРІРЅРѕРј РґРёР·Р»Р°Р№РєРµ.
+- РўРµСЃС‚С‹: 22 suites / 148 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `DatabaseMigrationTest` вЂ” РЅРѕРІС‹Р№ РєРµР№СЃ 9в†’10 Рё СЃРєРІРѕР·РЅРѕР№ 1в†’10 СЃ РїСЂРѕРІРµСЂРєРѕР№ Р·Р°РїРёСЃРё РІ `disliked_tracks`; `HomeViewModelRecommendationsTest` вЂ” С„РёР»СЊС‚СЂР°С†РёСЏ РґРёР·Р»Р°Р№РєРЅСѓС‚РѕРіРѕ С‚СЂРµРєР° РёР· РІС‹РґР°С‡Рё. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 611 476 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## SoundCloud progressive + умный fallback YouTube — сессия 23
-- `SoundCloudRepositoryImpl.downloadCapability` переведён с `HLS_ONLY` на `PROGRESSIVE`. `SoundCloudDownloadSource` уже вызывает `resolveStreamUrl(requireProgressive = true)`, поэтому SC-трек с progressive MP3 качается напрямую, без обращения к YouTube. Если у трека только HLS, resolve возвращает ошибку, и резолвер переключается на YouTube.
-- `DownloadSourceResolver`: после строгого матча для YouTube выполняется нестрогий поиск. Запрос `Артист Название` очищается от `official audio`, `remaster`, `feat.` и других служебных пометок; берутся топ-10 результатов; кандидат принимается, если `abs(durationMs - seed.durationMs) <= 15_000` (при неизвестной длительности seed фильтр не применяется, кандидат без длительности отбрасывается) и имя артиста встречается в названии видео или имени канала без учёта регистра. Резолвится первый подходящий кандидат.
-- Если очищенный запрос совпадает со строгим, второй сетевой запрос не делается — используется уже полученная выдача. `RecentlyFailedSources.markFailed` вызывается только после неудачи и строгого, и нестрогого матчей.
-- Единый текст ошибки: `DownloadMessages.SOURCE_NOT_FOUND` = «Не удалось найти этот трек на YouTube для скачивания. Возможно, он удален или доступен только в SoundCloud». Он же используется как дефолт `DownloadSourceUnavailableException` и в Snackbar SoundCloud в `PlayerScreen`; действие «Найти» сохранено для ручного поиска.
-- Тесты: `DownloadSourceResolverTest` — 16 кейсов (SC progressive без YouTube, SC HLS-only → YouTube, строгие матчи, нестрогий матч с разницей 5 с, отказ при разнице >15 с, артист в названии/канале, HLS-результат, TTL, точный текст ошибки); новый `SoundCloudRepositoryCapabilityTest` — 1 кейс. Всего 20 suites / 129 тестов, 0 failures/errors/skipped.
-- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 508 441 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## Р РµРґРёР·Р°Р№РЅ РџР°РєРµС‚ 4: Library/Settings + СЃРІР°Р№Рї РІРЅРёР· РІ РїР»РµРµСЂРµ вЂ” СЃРµСЃСЃРёСЏ 35
+- `LibraryScreen`: С€Р°РїРєР° СЃ eyebrow В«РљРћР›Р›Р•РљР¦РРЇВ» (11sp Bold primary, С‚СЂРµРєРёРЅРі 1.4), Р·Р°РіРѕР»РѕРІРѕРє В«РњРµРґРёР°С‚РµРєР°В» 34sp ExtraBold (С‚СЂРµРєРёРЅРі в€’0.5), РїРѕРґРїРёСЃСЊ СЃ СЂСѓСЃСЃРєРѕР№ РїР»СЋСЂР°Р»РёР·Р°С†РёРµР№ В«X С‚СЂРµРє/С‚СЂРµРєР°/С‚СЂРµРєРѕРІ В· Y С‡ Z РјРёРЅВ»; РґР»СЏ РїСѓСЃС‚РѕР№ РєРѕР»Р»РµРєС†РёРё РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ РЅРµ РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ. Р‘С‹СЃС‚СЂС‹Рµ РґРµР№СЃС‚РІРёСЏ В«РЎР»СѓС€Р°С‚СЊ РІСЃС‘В» Рё В«РџРµСЂРµРјРµС€Р°С‚СЊВ» РІС‹СЃРѕС‚РѕР№ 52dp РІ РїСЂРѕРїРѕСЂС†РёРё 1.6:1, `CircleShape`. РЎРїРёСЃРѕРє вЂ” `TrackCard` СЃ РѕР±Р»РѕР¶РєРѕР№ 60dp Рё СЂР°РґРёСѓСЃРѕРј 16dp, РїРѕРґСЃРІРµС‚РєРѕР№ РёРіСЂР°СЋС‰РµРіРѕ С‚СЂРµРєР° (`primaryContainer` 35%) Рё Р°РЅРёРјРёСЂРѕРІР°РЅРЅС‹Рј СЌРєРІР°Р»Р°Р№Р·РµСЂРѕРј. Empty state: squircle-РїР»Р°С€РєР° 96dp СЃ СЃРµСЂРґРµС‡РєРѕРј, Р·Р°РіРѕР»РѕРІРѕРє 22sp, РїРѕСЏСЃРЅРµРЅРёРµ Рё РєРЅРѕРїРєР° В«РќР°Р№С‚Рё РјСѓР·С‹РєСѓВ» (РЅРѕРІС‹Р№ `onOpenSearch` РІ `AppNavGraph`, РїРµСЂРµС…РѕРґ РєР°Рє Сѓ РІРєР»Р°РґРєРё Search СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј СЃРѕСЃС‚РѕСЏРЅРёСЏ).
+- `TrackCard`: РЅРѕРІС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ `isPlaying`, `artworkSize`, `artworkCornerDp` (РґРµС„РѕР»С‚С‹ 56/12 СЃРѕС…СЂР°РЅСЏСЋС‚ РІРёРґ Home/Search/Wave); `PlayingEqualizerIcon` РЅР° Canvas СЃ `rememberInfiniteTransition` (С‚СЂРё РїРѕР»РѕСЃРєРё, sin-РІРѕР»РЅР°, Р±РµР· СЂРµРєРѕРјРїРѕР·РёС†РёР№).
+- `LibraryViewModel`: `currentTrackId` РёР· `PlayerController.state` С‡РµСЂРµР· `map` + `distinctUntilChanged` + `stateIn(WhileSubscribed(5000))` вЂ” СЃС‚СЂРѕРєР° РёРіСЂР°СЋС‰РµРіРѕ С‚СЂРµРєР° РїРѕРґСЃРІРµС‡РёРІР°РµС‚СЃСЏ Р±РµР· Р»РёС€РЅРёС… СЌРјРёСЃСЃРёР№.
+- `SettingsScreen`: РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ РѕС‚СЃС‚СѓРїС‹ РјРµР¶РґСѓ СЃРµРєС†РёСЏРјРё 32dp, Р·Р°РіРѕР»РѕРІРєРё СЃРµРєС†РёР№ 12sp Bold primary, РєР°СЂС‚РѕС‡РєРё 30dp СЃ С‚РѕРЅРєРёРј border 1dp (`onSurface` 4%), РєРЅРѕРїРєР° РїСЂРѕРІРµСЂРєРё СЂР°Р·СЂРµС€РµРЅРёР№ 44dp, С„СѓС‚РµСЂ В«MyMusic В· РІРµСЂСЃРёСЏ XВ» РёР· `BuildConfig.VERSION_NAME`. Р“РѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Рµ РѕС‚СЃС‚СѓРїС‹ 20dp СЃРѕС…СЂР°РЅРµРЅС‹ вЂ” РєР°Рє Сѓ Home Рё РєР°СЂС‚РѕС‡РµРє.
+- `PlayerScreen`: СЃРІР°Р№Рї РІРЅРёР· РґР»СЏ Р·Р°РєСЂС‹С‚РёСЏ. Р–РµСЃС‚ Р¶РёРІС‘С‚ С‚РѕР»СЊРєРѕ РІ РІРµСЂС…РЅРµР№ Р·РѕРЅРµ вЂ” `TopAppBar` Рё hero-Р·РѕРЅР° РІ СЂРµР¶РёРјРµ РѕР±Р»РѕР¶РєРё; РІ СЂРµР¶РёРјРµ С‚РµРєСЃС‚РѕРІ СЃРїРёСЃРѕРє СЃРѕС…СЂР°РЅСЏРµС‚ СЃРІРѕР№ СЃРєСЂРѕР»Р», РїСЂРё РѕС‚РєСЂС‹С‚РѕР№ С€С‚РѕСЂРєРµ РѕС‡РµСЂРµРґРё Р¶РµСЃС‚ РѕС‚РєР»СЋС‡С‘РЅ. `detectVerticalDragGestures`, РїРѕСЂРѕРі 20% РІС‹СЃРѕС‚С‹ СЌРєСЂР°РЅР° РёР»Рё СЃРєРѕСЂРѕСЃС‚СЊ >1200 px/s (`VelocityTracker` РїРѕ РїРѕСЃР»РµРґРЅРёРј СЃРѕР±С‹С‚РёСЏРј, Р° РЅРµ РїРѕ РѕРґРЅРѕРјСѓ РєР°РґСЂСѓ). РџСЂРё РїРµСЂРµС‚Р°СЃРєРёРІР°РЅРёРё РєРѕРЅС‚РµРЅС‚ (С€Р°РїРєР° + hero/РєРѕРЅС‚СЂРѕР»С‹) СѓРµР·Р¶Р°РµС‚ РІРЅРёР· С‡РµСЂРµР· `graphicsLayer.translationY` Рё С‚РµСЂСЏРµС‚ РґРѕ 30% Р°Р»СЊС„С‹; РіСЂР°РґРёРµРЅС‚РЅС‹Р№ С„РѕРЅ РѕСЃС‚Р°С‘С‚СЃСЏ РЅР° РјРµСЃС‚Рµ, С‡С‚РѕР±С‹ РЅРµ РїСЂРѕРіР»СЏРґС‹РІР°Р»Рѕ РїСѓСЃС‚РѕРµ РѕРєРЅРѕ. РќРёР¶Рµ РїРѕСЂРѕРіР° вЂ” РІРѕР·РІСЂР°С‚ РїСЂСѓР¶РёРЅРѕР№ `NoBouncy`/`MediumLow` (РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Р№ РІРѕР·РІСЂР°С‚ РѕС‚РјРµРЅСЏРµС‚СЃСЏ РЅРѕРІС‹Рј РєР°СЃР°РЅРёРµРј), РІС‹С€Рµ РїРѕСЂРѕРіР° вЂ” `onBack`, РґР°Р»СЊС€Рµ СЌРєСЂР°РЅ СѓРµР·Р¶Р°РµС‚ С€С‚Р°С‚РЅС‹Рј `popExit`-СЃР»Р°Р№РґРѕРј NavHost, Р±РµР· РІС‚РѕСЂРѕР№ Р°РЅРёРјР°С†РёРё Рё РїСѓСЃС‚РѕР№ РїР°СѓР·С‹. `BackHandler` Рё guard `isDismissing` Р·Р°С‰РёС‰Р°СЋС‚ РѕС‚ РґРІРѕР№РЅРѕРіРѕ pop.
+- РўРµСЃС‚С‹: 22 suites / 146 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 633 153 Р±Р°Р№С‚Р°. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+- РђСЂС…РёС‚РµРєС‚СѓСЂРЅС‹Рµ С„РёРєСЃС‹ СЃРµСЃСЃРёР№ 31вЂ“34 (Room v9 Рё РјРёРіСЂР°С†РёРё, `PlayerController`, Р·Р°РіСЂСѓР·РєРё, С‚РµРєСЃС‚С‹) РЅРµ С‚СЂРѕРЅСѓС‚С‹.
 
-## Фиксы скачивания: свежий резолв, атомарная запись, отмена — сессия 22
-- `DownloadManager` больше не резолвит источник до постановки задачи: в WorkData передаются только идентичность трека и ссылки для резолва; ключи `KEY_DIRECT_STREAM_URL`, `KEY_DIRECT_MIME_TYPE`, `KEY_RESOLVED_SOURCE` удалены. Ошибки источника теперь приходят через FAILED WorkInfo.
-- `DownloadTrackWorker` стал тонким: получает `DownloadSourceResolver` через `DownloadWorkerEntryPoint` и делегирует скачивание в новый `DownloadEngine`.
-- `DownloadEngine`: перед каждой попыткой заново резолвит URL; при HTTP 403/410 делает ровно один повторный резолв и одну повторную загрузку, затем возвращает `HttpStatusException` с кодом. HLS, пустой файл и недоступный каталог дают понятную `DownloadException`.
-- Запись: `.part` с уникальным `workId` → проверка `Content-Length` и ненулевого размера → `Files.move(REPLACE_EXISTING, ATOMIC_MOVE)` поверх целевого файла. Room обновляется только после rename; при любой ошибке удаляется только `.part`, старый рабочий файл не трогается. При ошибке сохранения в Room готовый файл не удаляется.
-- Отмена: `DownloadEngine.downloadToFile` вешает `Job.invokeOnCompletion` → `Call.cancel()`; `NewPipeDownloader.withCancellation` через ThreadLocal отменяет активные NewPipe `Call`. Все вызовы `SearchInfo`/`StreamInfo`/`KioskInfo.getInfo` в SoundCloud, YouTube и чартах обёрнуты в него; отмена не логируется как сетевая ошибка.
-- `NetworkModule`: `HttpLoggingInterceptor` (BASIC) подключается только при `BuildConfig.DEBUG`; в release токены и подписанные URL не попадают в логи.
-- Тесты: новый `DownloadEngineTest` — 4 кейса: 403 → повторный резолв и успех; повторный 403 → failure после одной попытки; HTTP 500 → старый файл цел, Room не обновлён, `.part` удалён; успешная атомарная замена существующего файла. 19 suites / 121 тест, 0 failures/errors/skipped.
-- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 503 796 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## Р”РѕР±РёРІРєРё Р°СѓРґРёС‚Р°: СЃРєР°С‡Р°РЅРЅРѕРµ, РёРЅРґРµРєСЃС‹ Room, С‚РµРєСЃС‚С‹, РѕС€РёР±РєРё Р»Р°Р№РєРѕРІ, С‚РµСЃС‚С‹ РјРёРіСЂР°С†РёР№ вЂ” СЃРµСЃСЃРёСЏ 34
+- B4 (СЃРєР°С‡Р°РЅРЅРѕРµ): `observeDownloadedIds`/`observeDownloadedTracks` СЃС‚СЂРѕСЏС‚ СЃРїРёСЃРѕРє РёР· `getAll()` Рё РїСЂРѕРІРµСЂСЏСЋС‚ С„Р°Р№Р» РЅР° РґРёСЃРєРµ (`isPlayable`): РјСѓСЃРѕСЂРЅС‹Рµ Р·Р°РїРёСЃРё (СѓРґР°Р»С‘РЅРЅС‹Р№ С„Р°Р№Р», РЅР°СЃР»РµРґРёРµ HLS) РІС‹С‡РёС‰Р°СЋС‚СЃСЏ РёР· Р‘Р” С‡РµСЂРµР· `pruneUnplayable` Рё Р±РѕР»СЊС€Рµ РЅРµ СЃРІРµС‚СЏС‚СЃСЏ РєР°Рє В«СЃРєР°С‡Р°РЅРѕВ»; СѓРґР°Р»РµРЅРёРµ РїРµСЂРµР·Р°РїСѓСЃРєР°РµС‚ Flow Room, СЃР»РµРґСѓСЋС‰Р°СЏ СЌРјРёСЃСЃРёСЏ РїСЂРёС…РѕРґРёС‚ СѓР¶Рµ С‡РёСЃС‚РѕР№.
+- C (Room): РёРЅРґРµРєСЃС‹ `liked_tracks.season`, `liked_tracks.likedAt`, `play_history.playedAt`, `genre_weights.weight` (`Index` РІ СЃСѓС‰РЅРѕСЃС‚СЏС…); РІРµСЂСЃРёСЏ Р‘Р” 9, `MIGRATION_8_9` СЃРѕР·РґР°С‘С‚ С‡РµС‚С‹СЂРµ РёРЅРґРµРєСЃР° СЃ РёРјРµРЅР°РјРё, РєРѕС‚РѕСЂС‹Рµ Room РіРµРЅРµСЂРёСЂСѓРµС‚ СЃР°Рј; СЃС…РµРјР° `9.json` СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅР°, РёРјРµРЅР° СЃРІРµСЂРµРЅС‹ СЃ РјРёРіСЂР°С†РёРµР№.
+- C (С‚РµРєСЃС‚С‹): Р·Р°РіСЂСѓР·РєР° С‚РµРєСЃС‚РѕРІ РІ `PlayerViewModel` РІС‹РЅРµСЃРµРЅР° РёР· `collect` РІ РѕС‚РґРµР»СЊРЅС‹Р№ РїРѕС‚РѕРє СЃ `flatMapLatest` (`flow<Unit> { loadLyrics(track) }`): СЃС‚Р°СЂС‹Р№ Р·Р°РїСЂРѕСЃ LRCLIB РѕС‚РјРµРЅСЏРµС‚СЃСЏ РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР° Рё Р±РѕР»СЊС€Рµ РЅРµ Р±Р»РѕРєРёСЂСѓРµС‚ РѕР±СЂР°Р±РѕС‚РєСѓ СЃР»РµРґСѓСЋС‰РµР№ СЃРјРµРЅС‹; СЃР±СЂРѕСЃ РїРѕР·РёС†РёРё Рё РѕС€РёР±РѕРє РѕСЃС‚Р°Р»СЃСЏ РІ РїР°СЂР°Р»Р»РµР»СЊРЅРѕРј collect.
+- C (РѕС€РёР±РєРё Р»Р°Р№РєРѕРІ): `toggleLike` (РїР»РµРµСЂ) Рё `removeLike` (РјРµРґРёР°С‚РµРєР°) РѕР±С‘СЂРЅСѓС‚С‹ РІ `runCatching` + `rethrowCancellation`: СЃР±РѕР№ Р‘Р” РЅРµ РєСЂР°С€РёС‚ РїСЂРёР»РѕР¶РµРЅРёРµ, Р° РїРѕРєР°Р·С‹РІР°РµС‚ СЃРѕРѕР±С‰РµРЅРёРµ В«РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ Р»Р°Р№РєвЂ¦В» вЂ” РІ РїР»РµРµСЂРµ С‡РµСЂРµР· `uiState.error`, РІ РјРµРґРёР°С‚РµРєРµ С‡РµСЂРµР· РЅРѕРІС‹Р№ `likeError` + Snackbar; taste-С„РёРґР±РµРє (`onLike`/`onUnlike`) РѕР±С‘СЂРЅСѓС‚ РѕС‚РґРµР»СЊРЅРѕ Рё С‚РѕР»СЊРєРѕ Р»РѕРіРёСЂСѓРµС‚СЃСЏ.
+- B7 (С‚РµСЃС‚С‹ РјРёРіСЂР°С†РёР№): РІ `DatabaseMigrationTest` С€РµСЃС‚СЊ РёР·РѕР»РёСЂРѕРІР°РЅРЅС‹С… С‚РµСЃС‚РѕРІ РЅР° raw-SQL-Р·Р°РіР»СѓС€РєР°С… СЃС…РµРј v1вЂ“v3 (РІ `app/schemas` РѕРЅРё РЅРµ СЌРєСЃРїРѕСЂС‚РёСЂРѕРІР°Р»РёСЃСЊ): 2в†’3 (РєРѕРѕСЂРґРёРЅР°С‚С‹), 3в†’4 (СЃРµР·РѕРЅ), 4в†’5 (С‚Р°Р±Р»РёС†С‹ РІРєСѓСЃРѕРІ), 5в†’6 (downloaded_tracks), 7в†’8 (recently_shown + РёРЅРґРµРєСЃ), 8в†’9 (С‡РµС‚С‹СЂРµ РёРЅРґРµРєСЃР°); СЃРєРІРѕР·РЅРѕР№ С‚РµСЃС‚ С‚РµРїРµСЂСЊ 1в†’9 Рё С‚РѕР¶Рµ РїСЂРѕРІРµСЂСЏРµС‚ РёРЅРґРµРєСЃС‹.
+- РўРµСЃС‚С‹: 22 suites / 146 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped (DatabaseMigrationTest вЂ” 8 РєРµР№СЃРѕРІ). `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 611 487 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Полный откат DSP и визуализатора — сессия 21
-- Удалены `AudioDsp.kt`, `AudioEnergy.kt`, `AudioDspTest.kt` и `PlaybackAudioSession.kt`; из `MusicService` убрана публикация аудиосессии.
-- `ExpressivePlayerSlider`: волна Phase B с постоянной амплитудой 9dp, длина 44dp, сужение к краям, круглый бегунок на гребне. Амплитуда больше не зависит от звука; на паузе волна плавно выпрямляется за 500 мс, фаза замирает. Обёртка Material3 Slider с drag-cancel, тапами и свайпами сохранена.
-- `PlayerScreen`: удалены запрос RECORD_AUDIO, `AudioPermissionGate`, `rememberAudioEnergy` и параметры `canVisualize`/`visualizerDelayMs`.
-- `SettingsRepository`/`AppSettings`, `SettingsRepositoryImpl`, `SettingsViewModel`, `SettingsScreen`: удалена настройка задержки визуализации и секция «Визуализация».
-- `AndroidManifest.xml`: удалено разрешение RECORD_AUDIO.
-- Тесты: `AudioDspTest` удалён; 18 suites / 117 тестов, 0 failures/errors/skipped.
-- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 406 945 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РњРѕРЅРѕС…СЂРѕРјРЅС‹Р№ Р°С…СЂРѕРјР°С‚РёС‡РµСЃРєРёР№ Р°РєС†РµРЅС‚, HEX-РІРІРѕРґ Рё РЅРµРґР°РІРЅРёРµ С†РІРµС‚Р° вЂ” СЃРµСЃСЃРёСЏ 33
+- Р‘Р°Рі В«Р±РѕСЂРґРѕРІС‹Р№ РёР· С‡С‘СЂРЅРѕРіРѕВ»: Сѓ С‡С‘СЂРЅРѕРіРѕ/Р±РµР»РѕРіРѕ/СЃРµСЂРѕРіРѕ РѕС‚С‚РµРЅРѕРє РІ HSL СЂР°РІРµРЅ 0 (РєСЂР°СЃРЅС‹Р№), Р° `accentColorScheme` РїРѕРґСЃС‚Р°РІР»СЏР» РІ СЂРѕР»Рё Р¶С‘СЃС‚РєРѕ Р·Р°РґР°РЅРЅСѓСЋ РЅР°СЃС‹С‰РµРЅРЅРѕСЃС‚СЊ вЂ” Р°С…СЂРѕРјР°С‚РёС‡РµСЃРєРёР№ seed РєСЂР°СЃРёР»СЃСЏ РІ Р±РѕСЂРґРѕРІС‹Р№. Р”РѕР±Р°РІР»РµРЅ РїРѕСЂРѕРі `ACHROMATIC_SATURATION_THRESHOLD = 0.05f`: РЅРёР¶Рµ РЅРµРіРѕ РЅР°СЃС‹С‰РµРЅРЅРѕСЃС‚СЊ СЂРѕР»РµР№ РѕР±РЅСѓР»СЏРµС‚СЃСЏ (СЃС‚СЂРѕРіРѕ РјРѕРЅРѕС…СЂРѕРјРЅР°СЏ РїР°Р»РёС‚СЂР°), Р° СЃРІРµС‚Р»РѕС‚Р° СЂРѕР»РµР№ С‚СЏРЅРµС‚СЃСЏ Рє СЃРІРµС‚Р»РѕС‚Рµ seed РЅР° В±0.08, РїРѕСЌС‚РѕРјСѓ С‡С‘СЂРЅС‹Р№ Рё Р±РµР»С‹Р№ РґР°СЋС‚ СЂР°Р·Р»РёС‡РёРјС‹Рµ РѕС‚С‚РµРЅРєРё СЃРµСЂРѕРіРѕ РїСЂРё СЃРѕС…СЂР°РЅРЅРѕРј РєРѕРЅС‚СЂР°СЃС‚Рµ РїР°СЂ. РўР° Р¶Рµ Р·Р°С‰РёС‚Р° РІ `PlayerPalette.computePlayerColors`: СЃРµСЂС‹Рµ РѕР±Р»РѕР¶РєРё Р±РѕР»СЊС€Рµ РЅРµ С‚РѕРЅРёСЂСѓСЋС‚СЃСЏ Р±РѕСЂРґРѕРІС‹Рј (СЂР°РЅСЊС€Рµ РєР»Р°РјРї РїСЂРёРЅСѓРґРёС‚РµР»СЊРЅРѕ РїРѕРґРЅРёРјР°Р» РЅР°СЃС‹С‰РµРЅРЅРѕСЃС‚СЊ РґРѕ 0.20).
+- HEX-РІРІРѕРґ РІ RGB-РїРёРєРµСЂРµ: `OutlinedTextField` СЂСЏРґРѕРј СЃ РїСЂРµРІСЊСЋ, РґРІСѓСЃС‚РѕСЂРѕРЅРЅСЏСЏ СЃРІСЏР·СЊ вЂ” РєРѕСЂСЂРµРєС‚РЅС‹Р№ РєРѕРґ (#RRGGBB РёР»Рё RRGGBB, СЂРµРіРёСЃС‚СЂ РЅРµ РІР°Р¶РµРЅ) РґРІРёРіР°РµС‚ СЃР»Р°Р№РґРµСЂС‹ Рё РїСЂРµРІСЊСЋ, СЃР»Р°Р№РґРµСЂС‹ РїРµСЂРµРїРёСЃС‹РІР°СЋС‚ РєРѕРґ; РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РІРІРѕРґ С†РІРµС‚ РЅРµ РїСЂРёРјРµРЅСЏРµС‚, РїРѕР»Рµ РїРµСЂРµС…РѕРґРёС‚ РІ `isError` СЃ РїРѕРґСЃРєР°Р·РєРѕР№. Р’РІРѕРґ РѕРіСЂР°РЅРёС‡РµРЅ 7 СЃРёРјРІРѕР»Р°РјРё (В«#В» + 6 С†РёС„СЂ), СЂР°Р·Р±РѕСЂ вЂ” `parseHexColor`.
+- РќРµРґР°РІРЅРёРµ С†РІРµС‚Р°: `AppSettings.recentAccentColors` (РєР»СЋС‡ SharedPreferences `recent_accent_colors`, СЃС‚СЂРѕРєР° С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ), `SettingsRepository.addRecentAccentColor` вЂ” LIFO, РґРµРґСѓРїР»РёРєР°С†РёСЏ, РѕР±СЂРµР·РєР° РґРѕ 5 (`MAX_RECENT_ACCENTS`); РІС‹Р·С‹РІР°РµС‚СЃСЏ РёР· `setAccentColor` (РїСЂРµСЃРµС‚С‹) Рё `setCustomAccentColor` (РЅРµ null). Р’ СЃРµРєС†РёРё В«РћС„РѕСЂРјР»РµРЅРёРµВ» РЅР°Рґ РѕСЃРЅРѕРІРЅРѕР№ РїР°Р»РёС‚СЂРѕР№ РїРѕСЏРІРёР»СЃСЏ СЂСЏРґ В«РќРµРґР°РІРЅРёРµВ» СЃ РјР°Р»РµРЅСЊРєРёРјРё РєСЂСѓР¶РєР°РјРё (Р·РѕРЅР° 36dp, РєСЂСѓР¶РѕРє 22в†’26dp СЃ РіР°Р»РѕС‡РєРѕР№ РЅР° РІС‹Р±СЂР°РЅРЅРѕРј), С‚Р°Рї РїСЂРёРјРµРЅСЏРµС‚ С†РІРµС‚ РјРіРЅРѕРІРµРЅРЅРѕ.
+- РўРµСЃС‚С‹: РЅРѕРІС‹Рµ `AccentSchemeTest` (6 РєРµР№СЃРѕРІ: РјРѕРЅРѕС…СЂРѕРјРЅРѕСЃС‚СЊ С‡С‘СЂРЅРѕРіРѕ/Р±РµР»РѕРіРѕ/СЃРµСЂРѕРіРѕ РІ РѕР±РµРёС… С‚РµРјР°С…, СЂР°Р·Р»РёС‡РёРјРѕСЃС‚СЊ СЃРµСЂРѕРіРѕ, СЃРѕС…СЂР°РЅРµРЅРёРµ hue РЅР°СЃС‹С‰РµРЅРЅС‹Рј seed, С‡РёС‚Р°РµРјРѕСЃС‚СЊ primary) Рё `SettingsRepositoryImplTest` (5 РєРµР№СЃРѕРІ: LIFO, РґРµРґСѓРїР»РёРєР°С†РёСЏ, РѕР±СЂРµР·РєР° РґРѕ 5, РїРµСЂСЃРёСЃС‚РµРЅС‚РЅРѕСЃС‚СЊ). РС‚РѕРіРѕ 22 suites / 140 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 611 486 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Калибровка задержки волны — сессия 20
-- `AppSettings.visualizerDelayMs` (по умолчанию 0, диапазон -200..+200) хранится в SharedPreferences `mymusic_settings` под ключом `visualizer_delay_ms`; при загрузке значение ограничивается диапазоном, `SettingsRepository.setVisualizerDelayMs` пишет его в IO-диспетчере.
-- `SettingsScreen`: новая секция «ВИЗУАЛИЗАЦИЯ» со слайдером «Задержка визуализации» -200..+200 мс, живой подписью и локальным draft — в настройки значение пишется по отпусканию ползунка.
-- `AudioDsp.EnergyDelayBuffer`: кольцевой буфер на 500 мс (64 слота) с монотонными таймстампами; `push` вытесняет старые кадры, `valueAt(now, delayMs)` отдаёт самый свежий кадр не позже `now - delay`; пустой буфер и задержка больше окна — 0; отрицательная задержка читает самый свежий кадр.
-- `AudioEnergy`: каждый FFT-кадр пишется в буфер с `SystemClock.elapsedRealtimeNanos`; при отрисовке читается `sampler.energyAt(now, visualizerDelayMs)`. Если FFT не приходил дольше 120 мс — 0. Буфер очищается в `start()`/`release()` (пауза, смена трека, потеря разрешения, lifecycle).
-- `PlayerScreen`: `visualizerDelayMs` из `appSettings` прокинут в `PlayerProgressSection` → `rememberAudioEnergy`; `ExpressivePlayerSlider` получает уже задержанное `State<Float>`, его визуальная формула не менялась.
-- Тесты: 6 новых в `AudioDspTest` — чтение значения 100 мс назад, вытеснение за окно 500 мс, сохранение кадров внутри окна, пустой буфер/reset, отрицательная задержка и санитизация. 19 suites / 144 теста, 0 failures/errors/skipped.
-- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 406 941 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## Р’РµСЂСЃС‚РєР° В«РђРєС†РµРЅС‚РЅРѕРіРѕ С†РІРµС‚Р°В»: СЃРєСЂРѕР»Р»РёСЂСѓРµРјР°СЏ РїР°Р»РёС‚СЂР° Рё РєСЂСѓРі СЃ РїР°Р»РёС‚СЂРѕР№ вЂ” СЃРµСЃСЃРёСЏ 32
+- Р‘Р°Рі: 7 РєСЂСѓР¶РєРѕРІ С„РёРєСЃРёСЂРѕРІР°РЅРЅРѕРіРѕ СЂР°Р·РјРµСЂР° (6 РїСЂРµСЃРµС‚РѕРІ + В«РЎРІРѕР№ С†РІРµС‚В») Р»РµР¶Р°Р»Рё РІ РѕР±С‹С‡РЅРѕРј `Row` РІРЅСѓС‚СЂРё РєР°СЂС‚РѕС‡РєРё В«РћС„РѕСЂРјР»РµРЅРёРµВ» вЂ” РЅР° СѓР·РєРёС… СЌРєСЂР°РЅР°С… СЂСЏРґ РІС‹С…РѕРґРёР» Р·Р° РґРѕСЃС‚СѓРїРЅСѓСЋ С€РёСЂРёРЅСѓ, РїРѕСЃР»РµРґРЅРёР№ СЌР»РµРјРµРЅС‚ СЃРїР»СЋС‰РёРІР°Р»Рѕ РІ РІРµСЂС‚РёРєР°Р»СЊРЅСѓСЋ РїРѕР»РѕСЃРєСѓ, Р·РѕРЅР° РЅР°Р¶Р°С‚РёСЏ СЃСЉРµР·Р¶Р°Р»Р°.
+- `SettingsScreen.kt`: СЂСЏРґ Р°РєС†РµРЅС‚РѕРІ РїРµСЂРµРІРµРґС‘РЅ РЅР° `Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()))` вЂ” РєСЂСѓР¶РєРё СЃРѕС…СЂР°РЅСЏСЋС‚ СЂР°Р·РјРµСЂ Рё СЃРєСЂРѕР»Р»СЏС‚СЃСЏ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅРѕ; РєСЂР°Р№РЅРёРµ `Spacer(8.dp)` РІРјРµСЃС‚Рµ СЃ `spacedBy(10.dp)` РґР°СЋС‚ 18dp РѕС‚ РєСЂР°СЏ РєР°СЂС‚РѕС‡РєРё, РїСЂРё СЃРєСЂРѕР»Р»Рµ РєСЂСѓР¶РєРё РЅРµ РїСЂРёР»РёРїР°СЋС‚ Рє РіСЂР°РЅРёС†Р°Рј СЌРєСЂР°РЅР° (РєР°СЂС‚РѕС‡РєР° СЃР°РјР° РѕС‚СЃС‚РѕРёС‚ РЅР° 20dp). РћСЂС‚РѕРіРѕРЅР°Р»СЊРЅС‹Р№ СЃРєСЂРѕР»Р» РІРЅСѓС‚СЂРё РІРµСЂС‚РёРєР°Р»СЊРЅРѕРіРѕ `verticalScroll` СЌРєСЂР°РЅР° СЂР°Р±РѕС‚Р°РµС‚ С€С‚Р°С‚РЅРѕ.
+- РЎС‚Р°СЂС‹Р№ `CustomAccentDot` СѓРґР°Р»С‘РЅ. Р’ РєРѕРЅС†Рµ СЃРїРёСЃРєР° РЅРѕРІС‹Р№ `CustomColorDot`: Р·РѕРЅР° РЅР°Р¶Р°С‚РёСЏ 44dp Рё РєСЂСѓР¶РѕРє 34в†’40dp РєР°Рє Сѓ РїСЂРµСЃРµС‚РѕРІ, Р·Р°Р»РёРІРєР° вЂ” Р·Р°РјРєРЅСѓС‚С‹Р№ СЂР°РґСѓР¶РЅС‹Р№ `Brush.sweepGradient` СЃ Р±РµР»РѕР№ РёРєРѕРЅРєРѕР№ РїР°Р»РёС‚СЂС‹; РїРѕСЃР»Рµ РїСЂРёРјРµРЅРµРЅРёСЏ СЃРІРѕРµРіРѕ С†РІРµС‚Р° РєСЂСѓРі Р·Р°Р»РёРІР°РµС‚СЃСЏ СЌС‚РёРј С†РІРµС‚РѕРј Рё РїРѕР»СѓС‡Р°РµС‚ РіР°Р»РѕС‡РєСѓ СЃ РєРѕР»СЊС†РѕРј `onSurface`. Р’РјРµСЃС‚Рѕ `indication = null` вЂ” С€С‚Р°С‚РЅР°СЏ СЂСЏР±СЊ (`clickable` Р±РµР· РїРµСЂРµРѕРїСЂРµРґРµР»РµРЅРёСЏ), РєСЂСѓРі С‡РёС‚Р°РµС‚СЃСЏ РєР°Рє РєРЅРѕРїРєР°; С‚Р°Рї РѕС‚РєСЂС‹РІР°РµС‚ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ RGB-РґРёР°Р»РѕРі СЃРѕ СЃР»Р°Р№РґРµСЂР°РјРё.
+- РџРѕРґСЃРєР°Р·РєР° РїРѕРґ Р·Р°РіРѕР»РѕРІРєРѕРј РѕР±РЅРѕРІР»РµРЅР°: В«Р’С‹Р±РµСЂРёС‚Рµ С†РІРµС‚ РёР· РїР°Р»РёС‚СЂС‹ РёР»Рё РЅР°Р¶РјРёС‚Рµ РЅР° РєСЂСѓРі СЃ РїР°Р»РёС‚СЂРѕР№ РІ РєРѕРЅС†Рµ СЃРїРёСЃРєР°, С‡С‚РѕР±С‹ Р·Р°РґР°С‚СЊ СЃРІРѕР№ RGBВ».
+- РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 645 526 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Адаптивный порог и музыкальные полосы — сессия 19
-- `AudioDsp`: полосы переделаны под ритм — Kick 30–120 Гц (бочка/бас), Snare_Vocal 150–600 Гц (снейр/клэп/тело вокала), Presence 1500–6000 Гц (щелчок снейра и согласные). Промежутки 120–150 и 600–1500 Гц не учитываются.
-- Веса spectral flux: 1.2 / 1.5 / 1.0 — небольшой акцент на снейре и вокале.
-- `TransientDetector` хранит скользящее среднее энергии за 12 кадров (~600 мс при 20 Гц FFT). Ударом считается только рост, где текущая энергия выше среднего в 1.5 раза и выше нижнего порога 0.04; слабый фон и мелкий шум волну не двигают.
-- `AudioEnvelope`: атака 8 мс, спад 200 мс — волна резко подпрыгивает на удар и плавно опускается, без мелкой вибрации.
-- Визуальная формула `ExpressivePlayerSlider` не менялась: `0.55 + 1.30 * sqrt(live)`, ограничение 1.65. Сильный удар даёт ~1.5x амплитуды, presence добавляет мягкий акцент.
-- Тесты: 21 в `AudioDspTest` — новые границы полос, веса flux, игнорирование слабого шума, отсечение слабого роста адаптивным порогом, сильный удар и плавное затухание. 19 suites / 138 тестов, 0 failures/errors/skipped.
-- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 502 039 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## РљРѕРјРїР»РµРєСЃРЅРѕРµ СЂРµРІСЊСЋ: Р°СѓРґРёС‚, СЂРµРіСЂРµСЃСЃРёРё UI Рё Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹Рµ РїСЂР°РІРєРё вЂ” СЃРµСЃСЃРёСЏ 31
+- Р­РўРђРџ 1 (Р°СѓРґРёС‚, РѕС‚С‡С‘С‚ РІС‹РґР°РЅ РґРѕ РїСЂР°РІРѕРє): РєСЂРёС‚РёС‡РЅРѕ вЂ” СЃРёРЅРіР»С‚РѕРЅ `PlayerController` РЅРµ РїРµСЂРµРїРѕРґРєР»СЋС‡Р°Р»СЃСЏ Рє РїРµСЂРµСЃРѕР·РґР°РЅРЅРѕРјСѓ `MusicService` (РјС‘СЂС‚РІС‹Р№ binder РґРѕ РїРµСЂРµР·Р°РїСѓСЃРєР° РїСЂРѕС†РµСЃСЃР°, `release()` вЂ” РјС‘СЂС‚РІС‹Р№ РєРѕРґ); РїСЂРѕРІР°Р» `buildAsync()` Р·Р°РІРµСЂС€Р°Р» Deferred РЅР°РІСЃРµРіРґР°; `LocalContentColor` РІРѕ РІСЃС‘Рј РїСЂРёР»РѕР¶РµРЅРёРё = `Color.Black` РїРѕСЃР»Рµ СѓРґР°Р»РµРЅРёСЏ РєРѕСЂРЅРµРІРѕРіРѕ Scaffold (СЃРµСЃСЃРёСЏ 29) вЂ” РїРµСЂРІРѕРїСЂРёС‡РёРЅР° В«С‡С‘СЂРЅС‹С… Р·Р°РіРѕР»РѕРІРєРѕРІВ»; `Theme.MyMusic` Р±РµР· values-night в†’ Р±РµР»РѕРµ РѕРєРЅРѕ; РёРЅС‚РµСЂСЃРµРїС‚РѕСЂ OkHttp РїРµСЂРµР·Р°РїРёСЃС‹РІР°Р» User-Agent РІСЃРµС… Р·Р°РїСЂРѕСЃРѕРІ NewPipe; РІ Р·Р°РіСЂСѓР·РєР°С… РЅРµ Р±С‹Р»Рѕ `Result.retry()`/backoff. Р§РёСЃС‚Рѕ: GlobalScope/runBlocking/main-thread IO, Activity-РєРѕРЅС‚РµРєСЃС‚ РІ Hilt, С†РёРєР»С‹ РІ DI-РіСЂР°С„Рµ, N+1, fallbackToDestructiveMigration, РєСЌС€ РїСЂРѕС‚СѓС…С€РёС… stream-URL, СѓС‚РµС‡РєРё РїРѕС‚РѕРєРѕРІ.
+- Р‘РµР»Р°СЏ РІСЃРїС‹С€РєР°: РЅРµРїСЂРѕР·СЂР°С‡РЅС‹Р№ `background` РЅР° РєРѕСЂРЅРµРІРѕРј Box РІ `AppNavGraph`; РЅРѕРІС‹Р№ `values-night/themes.xml` Рё СЏРІРЅС‹Р№ `android:windowBackground` (#FFF8F5 / #171210, СЃРѕРІРїР°РґР°РµС‚ СЃ Color.kt) вЂ” РѕРєРЅРѕ Р±РѕР»СЊС€Рµ РЅРµ Р±РµР»РѕРµ РЅРё РЅР° С…РѕР»РѕРґРЅРѕРј СЃС‚Р°СЂС‚Рµ, РЅРё РІ РїРµСЂРµС…РѕРґР°С… РІРєР»Р°РґРѕРє.
+- Р РµР¶РёРј В«РўРµРєСЃС‚В»: СѓР±СЂР°РЅ РІС‚РѕСЂРѕР№ `Spacer(weight(1f))` вЂ” РІ СЂРµР¶РёРјРµ С‚РµРєСЃС‚РѕРІ РґРІР° СЂР°РІРЅС‹С… РІРµСЃР° РґРµР»РёР»Рё РѕСЃС‚Р°С‚РѕРє РїРѕРїРѕР»Р°Рј, РѕСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ СѓРµР·Р¶Р°Р» РІ СЃРµСЂРµРґРёРЅСѓ, СЃРЅРёР·Сѓ РѕСЃС‚Р°РІР°Р»Р°СЃСЊ РґС‹СЂР°. РўРµРїРµСЂСЊ СЃРїРёСЃРѕРє Р·Р°РЅРёРјР°РµС‚ `weight(1f)`, РѕСЃС‚СЂРѕРІ РїСЂРёР¶Р°С‚ Рє РЅРёР·Сѓ (`wrapContentHeight`); РІ СЂРµР¶РёРјРµ РѕР±Р»РѕР¶РєРё РїРѕРІРµРґРµРЅРёРµ СЃРµСЃСЃРёРё 30 СЃРѕС…СЂР°РЅРµРЅРѕ.
+- Р§С‘СЂРЅС‹Рµ Р·Р°РіРѕР»РѕРІРєРё: `MyMusicTheme` РїСЂРѕРІР°Р№РґРёС‚ `LocalContentColor = onBackground` (С‚Рѕ, С‡С‚Рѕ РґР°РІР°Р» СѓРґР°Р»С‘РЅРЅС‹Р№ Scaffold); СЏРІРЅС‹Р№ `onSurface` РЅР° В«РќР°СЃС‚СЂРѕР№РєРёВ» Рё РЅР°Р·РІР°РЅРёСЏ СЃРµРєС†РёР№; `contentColor = onSurface` РІ Scaffold РїР»РµРµСЂР°, РёРЅР°С‡Рµ `contentColorFor(Color.Transparent)` = Unspecified.
+- РђРєС†РµРЅС‚РЅС‹Р№ С†РІРµС‚: РєСЂСѓР¶РєРё РїР°Р»РёС‚СЂС‹ Р±С‹Р»Рё С„РёР·РёС‡РµСЃРєРё РІС‹РєР»СЋС‡РµРЅС‹ РЅР° Android 12+ (`enabled = !supportsDynamicColors`), С‚Р°Рї РЅРµ РґРѕС…РѕРґРёР» РґРѕ ViewModel. РўРµРїРµСЂСЊ РІРєР»СЋС‡РµРЅС‹ РІСЃРµРіРґР° Рё РїРёС€СѓС‚ РІ `customAccentColor` вЂ” РѕРЅ РёРјРµРµС‚ РІС‹СЃС€РёР№ РїСЂРёРѕСЂРёС‚РµС‚ РІ С‚РµРјРµ Рё РїРµСЂРµРєСЂС‹РІР°РµС‚ Dynamic Color; `accentColorArgb` РѕСЃС‚Р°Р»СЃСЏ legacy РґР»СЏ <12. РљРѕР»СЊС†Рѕ В«РІС‹Р±СЂР°РЅВ» РѕРґРЅРѕ: РїСЂРµСЃРµС‚ РёР»Рё В«РЎРІРѕР№ С†РІРµС‚В».
+- РџР°Р»РёС‚СЂР° РїР»РµРµСЂР°: СѓР±СЂР°РЅ Р±СѓСЃС‚ РЅР°СЃС‹С‰РµРЅРЅРѕСЃС‚Рё Г—1.4 (РєРёСЃР»РѕС‚РЅС‹Рµ С†РІРµС‚Р° РЅР° СЃРµСЂС‹С… РѕР±Р»РѕР¶РєР°С…) вЂ” Г—1.15 СЃ РєР»Р°РјРїРѕРј 0.20вЂ“0.58, СЃРІРµС‚Р»РѕС‚Р° 0.38вЂ“0.62; `onPrimaryContainer`/`onSecondaryContainer` Р±РѕР»СЊС€Рµ РЅРµ СЂР°РІРЅС‹ СЃР°РјРѕРјСѓ С‚РёРЅС‚Сѓ (С‚РµРєСЃС‚ СЃР»РёРІР°Р»СЃСЏ СЃ РєРѕРЅС‚РµР№РЅРµСЂРѕРј) вЂ” РєРѕРЅС‚СЂР°СЃС‚РЅР°СЏ РїР°СЂР° РѕС‚ СЃРІРµС‚Р»РѕС‚С‹; СЂР°РјРїР° С„РѕРЅР° СЃРіР»Р°Р¶РµРЅР° (0.58/0.26 РІРјРµСЃС‚Рѕ 0.88/0.40) Рё РїРѕР»СѓС‡РёР»Р° СЏРІРЅС‹Рµ colorStops 0/0.55/1; `blendPaletteWithAccent` РїРµСЂРµСЃС‡РёС‚С‹РІР°РµС‚ РєРѕРЅС‚СЂР°СЃС‚РЅС‹Рµ СЂРѕР»Рё РїРѕСЃР»Рµ СЃРјРµС€РёРІР°РЅРёСЏ; `CancellationException` РІ `computePlayerColors` СЂРµР±СЂРѕСѓР·РёС‚СЃСЏ.
+- РђСЂС…РёС‚РµРєС‚СѓСЂР° 1 (`PlayerController`): `MediaController.Builder.setListener` + `onDisconnected` в†’ СЃРЅСЏС‚СЊ СЃР»СѓС€Р°С‚РµР»РµР№, РѕСЃРІРѕР±РѕРґРёС‚СЊ РјС‘СЂС‚РІС‹Р№ РєРѕРЅС‚СЂРѕР»Р»РµСЂ, РїРµСЂРµСЃРѕР·РґР°С‚СЊ Deferred Рё РїРµСЂРµРїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ; РїСЂРѕРІР°Р» РїРѕРґРєР»СЋС‡РµРЅРёСЏ вЂ” СЂРµС‚СЂР°Р№ СЃ СЌРєСЃРїРѕРЅРµРЅС†РёР°Р»СЊРЅРѕР№ Р·Р°РґРµСЂР¶РєРѕР№ (РґРѕ 5 РїРѕРїС‹С‚РѕРє) Рё РѕС€РёР±РєРѕР№ РІ state РІРјРµСЃС‚Рѕ РІРµС‡РЅРѕРіРѕ РјРѕР»С‡Р°РЅРёСЏ; `release()` СЂРµР°Р»СЊРЅРѕ СЃРЅРёРјР°РµС‚ СЃР»СѓС€Р°С‚РµР»РµР№. `MusicService.onTaskRemoved`: stopSelf С‚РѕР»СЊРєРѕ РµСЃР»Рё РЅРёС‡РµРіРѕ РЅРµ РёРіСЂР°РµС‚.
+- РђСЂС…РёС‚РµРєС‚СѓСЂР° 2 (Р·Р°РіСЂСѓР·РєРё): С‚СЂР°РЅР·РёРµРЅС‚РЅС‹Рµ СЃР±РѕРё (IOException, 408/425/429/5xx, РЅРµСЃРѕРІРїР°РІС€РёР№ СЂР°Р·РјРµСЂ) в†’ `Result.retry()` + `setBackoffCriteria(EXPONENTIAL, 30s)`, РґРѕ 3 РїРѕРїС‹С‚РѕРє; РїРѕСЃС‚РѕСЏРЅРЅС‹Рµ (В«С‚РѕР»СЊРєРѕ РѕРЅР»Р°Р№РЅВ», РЅРµС‚ РєР°С‚Р°Р»РѕРіР°) в†’ СЃСЂР°Р·Сѓ failure. РўРµРєСЃС‚ РёР· `outputData[KEY_ERROR]` РґРѕРµР·Р¶Р°РµС‚ РґРѕ UI: `DownloadState.Error.message` в†’ `DownloadMessages.friendly` в†’ Snackbar РїР»РµРµСЂР°. `lastTapAt` в†’ `ConcurrentHashMap` СЃ TTL; РїРѕРІС‚РѕСЂРЅС‹Р№ С‚Р°Рї РїРѕ РєР°С‡Р°СЋС‰РµРјСѓСЃСЏ С‚СЂРµРєСѓ РЅРµ РѕР±СЂС‹РІР°РµС‚ RUNNING-РІРѕСЂРєРµСЂ (РїСЂРѕРІРµСЂРєР° `InProgress`).
+- РђСЂС…РёС‚РµРєС‚СѓСЂР° 3 (СЃРµС‚СЊ): Р·Р°РіРѕР»РѕРІРєРё РїРѕРґСЃС‚Р°РІР»СЏСЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РµСЃР»Рё РёС… РЅРµС‚ вЂ” NewPipe СЃРѕС…СЂР°РЅСЏРµС‚ Р±СЂР°СѓР·РµСЂРЅС‹Р№ User-Agent, РґСѓР±Р»Рё UA РёСЃРєР»СЋС‡РµРЅС‹.
+- РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 526 739 Р±Р°Р№С‚. APK СѓСЃС‚Р°РЅРѕРІР»РµРЅ РЅР° SM-A266B РїРѕ WiFi (`adb install -r` вЂ” Success), Р¶РёРІРѕР№ РїСЂРѕРіРѕРЅ РЅРµ РІС‹РїРѕР»РЅРµРЅ: С‚РµР»РµС„РѕРЅ РЅР° СЌРєСЂР°РЅРµ Р±Р»РѕРєРёСЂРѕРІРєРё, СЂР°Р·Р±Р»РѕРєРёСЂРѕРІР°С‚СЊ СѓРґР°Р»С‘РЅРЅРѕ РЅРµР»СЊР·СЏ; `svc power stayon` РІРѕР·РІСЂР°С‰С‘РЅ РІ false.
+- РћСЃС‚Р°Р»РѕСЃСЊ (РЅРµ РєСЂРёС‚РёС‡РЅРѕ): РјРёРіСЂР°С†РёРё 2в†’3вЂ¦7в†’8 Р±РµР· РёР·РѕР»РёСЂРѕРІР°РЅРЅС‹С… С‚РµСЃС‚РѕРІ Рё РЅРµСЌРєСЃРїРѕСЂС‚РёСЂРѕРІР°РЅРЅС‹Рµ СЃС…РµРјС‹ v1вЂ“v3; РёРЅРґРµРєСЃС‹ РЅР° `liked_tracks.season/likedAt` Рё `play_history.playedAt`; `loadLyrics` inline РІ collect (РЅСѓР¶РµРЅ `flatMapLatest`); Snackbar СЃ РїСЂРёС‡РёРЅРѕР№ РїСЂРѕРІР°Р»Р° С‚РѕР»СЊРєРѕ РІ РїР»РµРµСЂРµ, РІ РјРµРґРёР°С‚РµРєРµ вЂ” РєСЂРµСЃС‚РёРє Р±РµР· С‚РµРєСЃС‚Р°; РіРѕРЅРєР° `resetReplayCache` РІ NavigationEvents.
 
-## Транзиенты вместо общей громкости — сессия 18
-- `AudioDsp`: вместо Full Spectrum RMS — три полосы: Low 40–150 Гц (бочка/бас), Mid 150–1000 Гц (снейр/клэп/вокал), High 3000–10000 Гц (хэты/тарелки). Для каждой считается средний RMS комплексных бинов; 150 Гц отнесено к Low.
-- `spectralFlux` суммирует только положительные приросты полос с весами 1.0/1.3/2.0 (компенсация числа бинов и спада высоких частот), результат ограничен 0..1. Падение и неизменная энергия вклада не дают — без нового удара значение сразу возвращается к нулю.
-- `TransientDetector` хранит энергию предыдущего FFT-кадра; первый кадр задаёт базу, `reset()` очищает историю при смене трека, сессии и освобождении Visualizer.
-- `AudioEnvelope`: атака 8 мс, спад 100 мс — волна резко подпрыгивает на удар и быстро опадает. `AudioSample` живёт 120 мс (запас на два пропущенных FFT-кадра при 20 Гц).
-- `AudioEnergy`: `AudioSampler` использует `TransientDetector`, сброс детектора в `start()`/`release()`; логика Visualizer, разрешения, lifecycle и ambient-фолбэка не менялась.
-- `ExpressivePlayerSlider`: амплитуда `9dp * waveHeight * (0.55 + 1.30 * sqrt(live))` с ограничением 1.65; корневая кривая поднимает тихие хэты, на паузе `waveHeight` за 500 мс уходит в 0.
-- Тесты: 18 в `AudioDspTest`, включая разбиение по полосам, границы 40/150/1000/3000/10000 Гц, веса flux, детектор «удар → тишина» и сценарий «пик → быстрое затухание». 19 suites / 135 тестов, 0 failures/errors/skipped.
-- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 502 039 байт. Живой тест на устройстве не выполнялся по просьбе пользователя.
+## Р¤РёРєСЃС‹ РїРѕСЃР»Рµ СЂРµС„Р°РєС‚РѕСЂРёРЅРіР° РЅР°РІРёРіР°С†РёРё + РєР°СЃС‚РѕРјРёР·Р°С†РёСЏ С‚РµРј вЂ” СЃРµСЃСЃРёСЏ 30
+- Р‘РµР»С‹Рµ СЌРєСЂР°РЅС‹: РїРѕСЃР»Рµ СѓРґР°Р»РµРЅРёСЏ РєРѕСЂРЅРµРІРѕРіРѕ Scaffold (СЃРµСЃСЃРёСЏ 29) СЌРєСЂР°РЅС‹ РѕСЃС‚Р°Р»РёСЃСЊ Р±РµР· С„РѕРЅР°. Р’ РєРѕСЂРµРЅСЊ Home, Wave, Settings, Library Рё Search РґРѕР±Р°РІР»РµРЅ СЏРІРЅС‹Р№ `Modifier.background(MaterialTheme.colorScheme.background)` (РґР»СЏ Search/Library вЂ” РЅР° СЃР°Рј Scaffold).
+- РџР»РµРµСЂ, С‡С‘СЂРЅС‹Р№ Р·Р°РіРѕР»РѕРІРѕРє: РЅР°Р·РІР°РЅРёРµ С‚СЂРµРєР° РІ СЃС‚РµРєР»СЏРЅРЅРѕР№ РєР°СЂС‚РѕС‡РєРµ СЃС‚Р°Р»Рѕ С‡С‘СЂРЅС‹Рј вЂ” `contentColorFor` РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅРѕРіРѕ РєРѕРЅС‚РµР№РЅРµСЂР° (РїР°Р»РёС‚СЂР° СЃРІРµС‚Р»РѕР№ РѕР±Р»РѕР¶РєРё) РґР°РІР°Р» С‡С‘СЂРЅС‹Р№ С‚РµРєСЃС‚ РЅР° С‚С‘РјРЅРѕРј С„РѕРЅРµ. Р¦РІРµС‚ Р·Р°РґР°РЅ СЏРІРЅРѕ: `onSurface` РІ `TrackGlassCard` Рё РІ РІР°СЂРёР°РЅС‚Рµ 3 (РЅР°Р·РІР°РЅРёРµ РЅР° РѕР±Р»РѕР¶РєРµ).
+- РџР»РµРµСЂ, В«РґС‹СЂР°В»: hero-Р·РѕРЅР° Р±РѕР»СЊС€Рµ РЅРµ СЂР°СЃС‚СЏРіРёРІР°РµС‚СЃСЏ РЅР° РІРµСЃСЊ СЃРІРѕР±РѕРґРЅС‹Р№ СЌРєСЂР°РЅ РІ СЂРµР¶РёРјРµ РѕР±Р»РѕР¶РєРё вЂ” `weight(1f)` РѕСЃС‚Р°РІР»РµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ СЂРµР¶РёРјР° С‚РµРєСЃС‚РѕРІ (СЃРїРёСЃРєСѓ РЅСѓР¶РЅР° РѕРіСЂР°РЅРёС‡РµРЅРЅР°СЏ РІС‹СЃРѕС‚Р°), `AnimatedContent` Рё `CoverForeground` РѕР±РѕСЂР°С‡РёРІР°СЋС‚ РєРѕРЅС‚РµРЅС‚ РїРѕ РІС‹СЃРѕС‚Рµ, Р° РѕСЃС‚Р°С‚РѕРє РІС‹СЃРѕС‚С‹ СѓС…РѕРґРёС‚ РІ `Spacer(weight(1f))` РїРѕРґ РѕСЃС‚СЂРѕРІ. РљР°СЂС‚РѕС‡РєР° С‚СЂРµРєР° Рё РѕСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ РёРґСѓС‚ РїР»РѕС‚РЅРѕ, Р±РµР· РїСѓСЃС‚РѕРіРѕ Р·Р°Р·РѕСЂР° РјРµР¶РґСѓ РЅРёРјРё.
+- РўРµРјС‹: РІ `AppSettings` РґРѕР±Р°РІР»РµРЅС‹ `themeMode` (LIGHT/DARK/SYSTEM, РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ SYSTEM) Рё `customAccentColor` (Int?, null РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ); РІ `SettingsRepository` вЂ” `setThemeMode`/`setCustomAccentColor`, С…СЂР°РЅРµРЅРёРµ РІ SharedPreferences (`theme_mode`, `custom_accent_color`).
+- `MyMusicTheme`: darkTheme РІС‹Р±РёСЂР°РµС‚СЃСЏ РїРѕ `ThemeMode` (isSystemInDarkTheme С‚РѕР»СЊРєРѕ РґР»СЏ SYSTEM); РїСЂРёРѕСЂРёС‚РµС‚ С†РІРµС‚Р° вЂ” СЃРѕР±СЃС‚РІРµРЅРЅС‹Р№ Р°РєС†РµРЅС‚ (РІСЃРµ РІРµСЂСЃРёРё Android) в†’ Dynamic Color (12+) в†’ СЂСѓС‡РЅР°СЏ РїР°Р»РёС‚СЂР° (<12) в†’ fallback.
+- РќР°СЃС‚СЂРѕР№РєРё: РІ В«РћС„РѕСЂРјР»РµРЅРёРёВ» вЂ” `SingleChoiceSegmentedButtonRow` В«РЎРІРµС‚Р»Р°СЏ/РўС‘РјРЅР°СЏ/РЎРёСЃС‚РµРјР°В» Рё РєСЂСѓР¶РѕРє В«РЎРІРѕР№ С†РІРµС‚В», РѕС‚РєСЂС‹РІР°СЋС‰РёР№ РґРёР°Р»РѕРі СЃ С‚СЂРµРјСЏ RGB-СЃР»Р°Р№РґРµСЂР°РјРё, Р¶РёРІС‹Рј РїСЂРµРІСЊСЋ + HEX, РєРЅРѕРїРєР°РјРё В«РџСЂРёРјРµРЅРёС‚СЊВ»/В«РћС‚РјРµРЅР°В»/В«РЎР±СЂРѕСЃРёС‚СЊВ». РЎРѕР±СЃС‚РІРµРЅРЅС‹Р№ С†РІРµС‚ СЂР°Р±РѕС‚Р°РµС‚ РЅР° РІСЃРµС… РІРµСЂСЃРёСЏС… Android Рё РїРµСЂРµРєСЂС‹РІР°РµС‚ СЃРёСЃС‚РµРјРЅС‹Рµ С†РІРµС‚Р°.
+- РџР°Р»РёС‚СЂР° РїР»РµРµСЂР°: РїСЂРё Р·Р°РґР°РЅРЅРѕРј `customAccentColor` РїР°Р»РёС‚СЂР° РѕР±Р»РѕР¶РєРё СЃРјРµС€РёРІР°РµС‚СЃСЏ СЃ РЅРёРј РЅР° 40% (`blendPaletteWithAccent`), РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅС‹Рµ СЂРѕР»Рё СЃРѕС…СЂР°РЅСЏСЋС‚ Р°Р»СЊС„Сѓ вЂ” РіСЂР°РґРёРµРЅС‚С‹ Рё РїРѕРґСЃРІРµС‚РєРё РЅРµ РєРѕРЅС„Р»РёРєС‚СѓСЋС‚ СЃ С‚РµРјРѕР№.
+- РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 517 791 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Полный спектр вместо баса в пульсации волны — сессия 17
-- `BassDsp.kt` → `AudioDsp.kt`, `BassEnergy.kt` → `AudioEnergy.kt`, `BassDspTest.kt` → `AudioDspTest.kt`; старые имена удалены.
-- `audioRms`: средний RMS комплексных signed-бинов в полосе 40 Гц–16 кГц (корень из суммы квадратов, делённый на число бинов), DC и Nyquist исключены, нормализация на 128 и clamp 0..1. Теперь вклад дают синты и хэты, а не только низы.
-- `AudioEnvelope` сохранил атаку 15 мс и спад 140 мс — волна дышит плавно, без судорожных скачков.
-- `rememberAudioEnergy`/`AudioSampler` заменили bass-версии; тег логов `AudioEnergy`, логика Visualizer, ambient-фолбэка, разрешения и жизненного цикла не менялась.
-- `ExpressivePlayerSlider`: параметр `energy` → `audioEnergy`; амплитуда `9dp * waveHeight * (0.65 + 1.20 * sqrt(live))` с ограничением 1.65. Корневая кривая компенсирует то, что средний RMS широкой полосы ниже узкополосного басового; на паузе `waveHeight` по-прежнему за 500 мс уходит в 0.
-- Тесты: `AudioDspTest` проверяет высокочастотные бины (5 и 10 кГц), равенство вклада низов и верхов, границы 40 Гц/16 кГц, среднее по 371 бину, насыщение, DC/Nyquist и envelope. 19 suites / 134 теста, 0 failures/errors/skipped.
-- `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, APK 27 502 061 байт. Живой тест на устройстве не выполнялся по просьбе пользователя — проверка на телефоне за ним.
+## РђСЂС…РёС‚РµРєС‚СѓСЂРЅС‹Р№ С„РёРєСЃ РїРµСЂРµС…РѕРґР° РІ РїР»РµРµСЂ: РґРѕРє-РѕРІРµСЂР»РµР№ + РІРµСЂС‚РёРєР°Р»СЊРЅС‹Р№ СЃР»Р°Р№Рґ (РѕС‚ Claude) вЂ” СЃРµСЃСЃРёСЏ 29
+- РџРµСЂРІРѕРїСЂРёС‡РёРЅР° В«25-РіРѕ РєР°РґСЂР°В» (Р° РЅРµ Р°РЅРёРјР°С†РёСЏ): РґРѕРє Р¶РёР» РІ СЃР»РѕС‚Рµ `bottomBar` РєРѕСЂРЅРµРІРѕРіРѕ `Scaffold`, РїРѕСЌС‚РѕРјСѓ РїСЂРё РІС…РѕРґРµ/РІС‹С…РѕРґРµ РёР· РїР»РµРµСЂР° `showBottomBar` РїРµСЂРµРєР»СЋС‡Р°Р»СЃСЏ, `innerPadding` РїСЂС‹РіР°Р», Рё `NavHost` РїРµСЂРµРёР·РјРµСЂСЏР» РѕР±Р° СЌРєСЂР°РЅР° РІ РѕРґРёРЅ РєР°РґСЂ вЂ” РѕС‚СЃСЋРґР° В«СЂР°Р·РІР°Р»В» (РєРЅРѕРїРєРё Рё С‚РµРєСЃС‚ РёСЃС‡РµР·Р°Р»Рё, С„РѕРЅ/РѕР±Р»РѕР¶РєР° РґС‘СЂРіР°Р»РёСЃСЊ). РџРѕСЌС‚РѕРјСѓ РЅРё `ExitTransition.None` (СЃРµСЃСЃРёСЏ 27), РЅРё fade (СЃРµСЃСЃРёСЏ 28) РєР°РґСЂ РЅРµ СѓР±РёСЂР°Р»Рё: fade Рє С‚РѕРјСѓ Р¶Рµ РґРѕР±Р°РІР»СЏР» РґР¶Р°РЅРє, РѕР±РѕСЂР°С‡РёРІР°СЏ РІРµСЃСЊ С‚СЏР¶С‘Р»С‹Р№ СЃР°Р±С‚СЂРё РІ offscreen alpha-СЃР»РѕР№.
+- `AppNavGraph`: РєРѕСЂРЅРµРІРѕР№ `Scaffold` Р·Р°РјРµРЅС‘РЅ РЅР° `Box`. `NavHost` С‚РµРїРµСЂСЊ РІСЃРµРіРґР° РІРѕ РІРµСЃСЊ СЌРєСЂР°РЅ (`fillMaxSize`) Рё РќР• РјРµРЅСЏРµС‚ СЂР°Р·РјРµСЂ РїСЂРё РїРѕРєР°Р·Рµ/СЃРєСЂС‹С‚РёРё РґРѕРєР°. Р”РѕРє РІС‹РЅРµСЃРµРЅ РІ РѕРІРµСЂР»РµР№ (`AnimatedVisibility`, slide СЃРЅРёР·Сѓ + fade, РІС‹СЂР°РІРЅРёРІР°РЅРёРµ РїРѕ РЅРёР·Сѓ). Р’С‹СЃРѕС‚Р° РґРѕРєР° РјРµСЂСЏРµС‚СЃСЏ `onSizeChanged` Рё СЂР°Р·РґР°С‘С‚СЃСЏ РІРєР»Р°РґРєР°Рј С‡РµСЂРµР· `LocalBottomDockHeight` (РЅРѕРІС‹Р№ `navigation/LocalBottomDock.kt`).
+- РџРµСЂРµС…РѕРґ РїР»РµРµСЂР°: РІРјРµСЃС‚Рѕ fade вЂ” РІРµСЂС‚РёРєР°Р»СЊРЅС‹Р№ slide (`slideInVertically`/`slideOutVertically`, 300 РјСЃ, `FastOutSlowInEasing`) вЂ” РґРµС€С‘РІР°СЏ С‚СЂР°РЅСЃР»СЏС†РёСЏ Р±РµР· offscreen-СЃР»РѕСЏ. РќРёР¶РЅРёР№ СЌРєСЂР°РЅ РґРµСЂР¶РёС‚СЃСЏ РЅР° РјРµСЃС‚Рµ Рё РІРёРґРёРјС‹Рј (`fadeIn/fadeOut(alpha = 1f)` РІ `tabEnter/tabExitTransition` РґР»СЏ РјР°СЂС€СЂСѓС‚Р° Player) вЂ” РїР»РµРµСЂ РЅР°РµР·Р¶Р°РµС‚ В«С€С‚РѕСЂРєРѕР№В», Р·Р° РЅРёРј РЅРµ РјРµР»СЊРєР°РµС‚ РїСѓСЃС‚РѕР№ С„РѕРЅ.
+- `PlayerPalette`: РґРѕР±Р°РІР»РµРЅ `prewarmPlayerPalette(context, url)` вЂ” РїСЂРѕРіСЂРµРІ РїР°Р»РёС‚СЂС‹ РѕР±Р»РѕР¶РєРё РІ РєСЌС€ РїСЂРё С‚Р°РїРµ РїРѕ С‚СЂРµРєСѓ (РІС‹Р·РѕРІ РІ `openPlayer`). Рљ РїРµСЂРІРѕРјСѓ РєР°РґСЂСѓ PlayerScreen С†РІРµС‚ СѓР¶Рµ РІ РєСЌС€Рµ, `rememberPlayerDynamicColors` Р±РµСЂС‘С‚ РµРіРѕ СЃРёРЅС…СЂРѕРЅРЅРѕ вЂ” Р±РµР· `isLoading` Рё Р±РµР· 400 РјСЃ Р°РЅРёРјР°С†РёРё С„РѕРЅР° РїСЂСЏРјРѕ РІРѕ РІСЂРµРјСЏ РїРµСЂРµС…РѕРґР°. Р­РєСЃС‚СЂР°РєС†РёСЏ РІС‹РЅРµСЃРµРЅР° РІ РѕР±С‰РёР№ `computePlayerColors` Р±РµР· РґСѓР±Р»РёСЂРѕРІР°РЅРёСЏ Р»РѕРіРёРєРё.
+- РРЅСЃРµС‚С‹: РєРѕСЂРЅРµРІРѕРіРѕ Scaffold Р±РѕР»СЊС€Рµ РЅРµС‚, РїРѕСЌС‚РѕРјСѓ СЃС‚Р°С‚СѓСЃ-Р±Р°СЂ СЃС‚Р°РІСЏС‚ СЃР°РјРё СЌРєСЂР°РЅС‹ вЂ” Home/Wave С‡РµСЂРµР· `statusBarsPadding`/`WindowInsets.statusBars`, Search/Library С‡РµСЂРµР· `contentWindowInsets = WindowInsets.statusBars`, Settings С‡РµСЂРµР· `systemBarsPadding`. РќРёР¶РЅРёР№ РѕС‚СЃС‚СѓРї РІРєР»Р°РґРѕРє = `LocalBottomDockHeight` (РІС‹СЃРѕС‚Р° РїР»Р°РІР°СЋС‰РµРіРѕ РґРѕРєР°, СѓР¶Рµ РІРєР»СЋС‡Р°РµС‚ `navigationBarsPadding`).
+- Р—Р°С‚СЂРѕРЅСѓС‚Рѕ: `AppNavGraph.kt`, `LocalBottomDock.kt` (РЅРѕРІС‹Р№), `PlayerPalette.kt`, `HomeScreen.kt`, `WaveScreen.kt`, `SearchScreen.kt`, `LibraryScreen.kt`, `SettingsScreen.kt`.
+- РЎР±РѕСЂРєР°: `assembleDebug` вЂ” BUILD SUCCESSFUL; `testDebugUnitTest` вЂ” BUILD SUCCESSFUL (РїРѕРґ JDK 17 РёР· Eclipse Adoptium; JAVA_HOME Р·Р°РґР°РІР°Р»СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ РєРѕРјР°РЅРґС‹, С‚.Рє. AGP С‚СЂРµР±СѓРµС‚ Java 17). Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ вЂ” РЅР° РїРѕР»СЊР·РѕРІР°С‚РµР»Рµ.
 
-## Возврат волны Phase B внутрь Material3 Slider — сессия 16
-- Пользователь отклонил прямую линию сессии 15: визуал таймлайна снова волна Phase B, но техническая обёртка Material3 `Slider` сохранена без изменений.
-- `ExpressivePlayerSlider`: Canvas в слоте `track` высотой 38dp рисует синусоиду с длиной волны 44dp и сужением `sin(PI*u)` к краям, stroke 3dp с круглыми концами. Непропетанная часть — серая волна, буфер — та же волна плотнее, пропетанная — волна в акценте; клипы по `startX`/`progressX`/`bufferX` учитывают RTL через `trackX`.
-- Thumb Material3 заменён прозрачным `Spacer(20.dp)` — он держит отступ дорожки и зону касания; видимый круглый бегунок 5dp рисуется в `track` на гребне волны по той же формуле синуса. При захвате работает пружина `spring(0.35f, StiffnessLow)` и ореол, как в Phase B.
-- Басовый импульс (`BassDsp`, 40–180 Гц, envelope) меняет только амплитуду: `9.dp * waveHeight * (0.72f + 0.88f * live)`, форма синусоиды не искажается. На паузе `waveHeight` за 500 мс уходит в 0 (волна выпрямляется), фаза `rememberPlaybackPhase` замирает на текущем значении.
-- `PlayerScreen`: позиция и буфер по-прежнему сбрасываются на смену `trackId` — морф `LinearProgressIndicator` ↔ `Slider` работает.
-- Проверка: `gradlew testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, 19 suites / 133 теста, 0 failures/errors/skipped; APK 27 502 061 байт.
-- Live SM-A266B: волна плавная и равномерная, бегунок круглый на гребне, амплитуда дышит 22.5→37 px при басе и 5 px на паузе, drag следует за пальцем с ореолом, tap-перемотка работает, `BassEnergy: Visualizer: сессия 4001/4033`.
+## Р¤РµР№Рґ РІРјРµСЃС‚Рѕ СЃР»Р°Р№РґР° Рё СѓР±СЂР°РЅ blur С„РѕРЅР° вЂ” СЃРµСЃСЃРёСЏ 28
+- РџСЂРѕР±Р»РµРјР°: С„РёРєСЃ СЃРµСЃСЃРёРё 27 РґР°Р» РЅР°Р»РѕР¶РµРЅРёРµ СЌРєСЂР°РЅРѕРІ вЂ” РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅС‹Р№ РІРµСЂС… РіСЂР°РґРёРµРЅС‚Р° С„РѕРЅР° РїР»РµРµСЂР° РїСЂРѕСЃРІРµС‡РёРІР°Р» РіР»Р°РІРЅСѓСЋ РїСЂРё РїРµСЂРµС…РѕРґР°С…; РїР»СЋСЃ РїСЂРё РѕС‚РєСЂС‹С‚РёРё РїР»РµРµСЂР° Р±С‹Р»Рё РїСЂРѕСЃР°РґРєРё FPS РѕС‚ `Modifier.blur`.
+- `AppNavGraph`: РґР»СЏ РјР°СЂС€СЂСѓС‚Р° Player СѓР±СЂР°РЅС‹ None-РїРµСЂРµС…РѕРґС‹ Рё slide вЂ” С‚РµРїРµСЂСЊ Р±С‹СЃС‚СЂС‹Р№ РєСЂРѕСЃСЃ-С„РµР№Рґ `fadeIn`/`fadeOut(tween(150))` РІ РѕР±Рµ СЃС‚РѕСЂРѕРЅС‹: РїР»РµРµСЂ СЃ РЅРµРїСЂРѕР·СЂР°С‡РЅС‹Рј С„РѕРЅРѕРј РїРµСЂРµРєСЂС‹РІР°РµС‚ РіР»Р°РІРЅСѓСЋ, Р° РЅРµ СЃР»РёРїР°РµС‚СЃСЏ СЃ РЅРµР№. `tabEnterTransition`/`tabExitTransition` РїСЂРё РїРѕР»РЅРѕСЌРєСЂР°РЅРЅРѕРј РјР°СЂС€СЂСѓС‚Рµ С‚РѕР¶Рµ РІРѕР·РІСЂР°С‰РµРЅС‹ Рє fade (150 РјСЃ) РІРјРµСЃС‚Рѕ None. РЎР»Р°Р№Рґ РјРµР¶РґСѓ РІРєР»Р°РґРєР°РјРё (300 РјСЃ) Рё `launchSingleTop` Сѓ `openPlayer` СЃРѕС…СЂР°РЅРµРЅС‹.
+- `PlayerScreen`: РїРѕР»РЅРѕСЃС‚СЊСЋ СѓР±СЂР°РЅ `Modifier.blur` вЂ” Рё СЃ РїРѕР»РЅРѕСЌРєСЂР°РЅРЅРѕРіРѕ С„РѕРЅР° СЂРµР¶РёРјР° С‚РµРєСЃС‚Р° (44dp), Рё СЃ hero-РѕР±Р»РѕР¶РєРё (26dp Г— recede). Р¤РѕРЅ С‚РµРєСЃС‚РѕРІ С‚РµРїРµСЂСЊ РіСЂР°РґРёРµРЅС‚ `primary 45% в†’ primaryContainer 22% в†’ surface` СЃ РїСЂРµР¶РЅРёРј scrim 0.65. Recede-Р°РЅРёРјР°С†РёСЏ РѕР±Р»РѕР¶РєРё СЃРѕС…СЂР°РЅРµРЅР° (СЃРјРµС‰РµРЅРёРµ, РїРѕРІРѕСЂРѕС‚, РјР°СЃС€С‚Р°Р±, Р°Р»СЊС„Р°) вЂ” С‚РѕР»СЊРєРѕ Р±РµР· СЂР°Р·РјС‹С‚РёСЏ.
+- РќРµРїСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ: С‚РѕРЅРёСЂРѕРІРєР° С„РѕРЅР° РєРѕРјРїРѕР·РёС‚РёС‚СЃСЏ РїРѕРІРµСЂС… surface (`compositeOver`), Р° РіСЂР°РґРёРµРЅС‚ СЂРёСЃСѓРµС‚СЃСЏ РЅР° СЃР°РјРѕРј Scaffold (РІРєР»СЋС‡Р°СЏ РїРѕР»РѕСЃСѓ РїРѕРґ РїСЂРѕР·СЂР°С‡РЅРѕР№ TopAppBar) вЂ” РєРѕСЂРЅРµРІРѕР№ С„РѕРЅ РїР»РµРµСЂР° РїРѕР»РЅРѕСЃС‚СЊСЋ РЅРµРїСЂРѕР·СЂР°С‡РЅС‹Р№, РіР»Р°РІРЅР°СЏ Р±РѕР»СЊС€Рµ РЅРµ РїСЂРѕСЃРІРµС‡РёРІР°РµС‚.
+- РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 621 184 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Откат визуала таймлайна к Phase B — сессия 15
-- Пользователь отклонил волновой Canvas сессии 14: синусоида на всю ширину дорожки и вертикальный thumb-«палка» вернулись к спокойному виду Phase B.
-- `ExpressivePlayerSlider` сохранил обёртку Material3 1.3.1 `Slider` (interactionSource, semantics, клавиатура, RTL, drag-cancel, минимальная зона 48dp) и слот `track`: непропетанная часть — серая линия 2.5dp, буфер — та же линия плотнее, пропетанная — сплошная заливка `primary`. Форма линии больше не искажается.
-- Басовый импульс (`BassDsp`, 40–180 Гц, одна временная envelope) привязан к толщине 2.5→3dp и мягкому двухслойному свечению (alpha 0.10/0.14 от энергии). На паузе `calm`-анимация 500 мс и спад envelope возвращают линию к покою: свечение и утолщение исчезают без скачка.
-- Thumb — собственный круглый бегунок 11dp с пружинным ростом 30% и ореолом при захвате (как в Phase B), вместо вертикального handle Material3.
-- Морф `LinearProgressIndicator` ↔ `Slider` восстановлен: на смене трека позиция и буфер обнуляются (`remember(trackId) { 0 }`), иначе старая позиция переезжала в новый трек и `hasStarted` защёлкивался сразу, не давая показать индикатор.
-- `SinePulseBar.kt` переименован в `BassEnergy.kt` (отдельной полосы над слайдером больше нет); добавлены логи `BassEnergy` для проверки источника энергии на устройстве.
-- Проверка: `gradlew testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, 133 JVM-теста, 0 failures/errors/skipped; APK 27 502 042 байт.
-- Live SM-A266B: линия ровная, thumb круглый, свечение дышит (яркость ореола 37→66→104 при басе, 0 на паузе), drag и tap-перемотка работают, индикатор загрузки появляется на старте трека и морфит в слайдер, `BassEnergy: Visualizer: сессия 3961`.
+## РђС‚РѕРјР°СЂРЅС‹Р№ РІС‹С…РѕРґ РёР· РїР»РµРµСЂР° вЂ” СЃРµСЃСЃРёСЏ 27
+- Р‘Р°Рі В«СЂР°Р·РІР°Р»РёРІР°СЋС‰РµРіРѕСЃСЏВ» РїР»РµРµСЂР° (25-Р№ РєР°РґСЂ): РїСЂРё pop РёР· PlayerScreen РІРєР»Р°РґРєР° РїРѕРґ РЅРёРј РІСЉРµР·Р¶Р°Р»Р° СЃ fade (180/120 РјСЃ), Р° РґРѕРє РїРѕСЏРІР»СЏР»СЃСЏ РјРіРЅРѕРІРµРЅРЅРѕ Рё РЅР°РєСЂС‹РІР°Р» РЅРёР· СЌРєСЂР°РЅР° вЂ” РЅР° РїСЂРѕРјРµР¶СѓС‚РѕС‡РЅС‹С… РєР°РґСЂР°С… РІРёСЃРµР» В«РїРѕР»СѓРїР»РµРµСЂВ» Р±РµР· РєРѕРЅС‚СЂРѕР»РѕРІ Рё СЃР»Р°Р№РґРµСЂР°. РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ Р·Р°С„РёРєСЃРёСЂРѕРІР°Р» СЃРєСЂРёРЅС€РѕС‚.
+- `AppNavGraph`: `tabEnterTransition`/`tabExitTransition` РїСЂРё `direction == 0` (РїРѕР»РЅРѕСЌРєСЂР°РЅРЅС‹Р№ РјР°СЂС€СЂСѓС‚ СЃ Р»СЋР±РѕР№ СЃС‚РѕСЂРѕРЅС‹) РѕС‚РґР°СЋС‚ `EnterTransition.None`/`ExitTransition.None` РІРјРµСЃС‚Рѕ fade вЂ” pop РёР· РїР»РµРµСЂР° С‚РµРїРµСЂСЊ Р°С‚РѕРјР°СЂРЅС‹Р№: РїР»РµРµСЂ РёСЃС‡РµР·Р°РµС‚ Рё Home СЃ РґРѕРєРѕРј РїРѕСЏРІР»СЏСЋС‚СЃСЏ РІ РѕРґРЅРѕРј РєР°РґСЂРµ, Р±РµР· РїСЂРѕРјРµР¶СѓС‚РѕС‡РЅС‹С… СЃРѕСЃС‚РѕСЏРЅРёР№. РЎР»Р°Р№Рґ РјРµР¶РґСѓ РІРєР»Р°РґРєР°РјРё (300 РјСЃ) СЃРѕС…СЂР°РЅС‘РЅ, РІС…РѕРґ РїР»РµРµСЂР° (slide СЃРЅРёР·Сѓ + fade) РЅРµ С‚СЂРѕРЅСѓС‚.
+- `openPlayer`: РґРѕР±Р°РІР»РµРЅ `launchSingleTop = true` вЂ” Р·Р°С‰РёС‚Р° РѕС‚ РґСѓР±Р»РµР№ Player РІ СЃС‚РµРєРµ, РіРґРµ РїРѕРІС‚РѕСЂРЅС‹Р№ pop РїСЂРѕРёРіСЂС‹РІР°Р» Р±С‹ slide-РІС…РѕРґ РїР»РµРµСЂР° РїРѕРІРµСЂС… СЃР°РјРѕРіРѕ СЃРµР±СЏ.
+- `PlayerScreen`: РїСЂРѕРІРµСЂРµРЅС‹ РІСЃРµ РІРЅСѓС‚СЂРµРЅРЅРёРµ Р°РЅРёРјР°С†РёРё вЂ” exit-Р°РЅРёРјР°С†РёР№, СЂРµР°РіРёСЂСѓСЋС‰РёС… РЅР° Р·Р°РєСЂС‹С‚РёРµ СЌРєСЂР°РЅР°, РЅРµС‚: `AnimatedContent` РіРµСЂРѕСЏ СЂР°Р±РѕС‚Р°РµС‚ С‚РѕР»СЊРєРѕ РїРѕ `isLyricsMode`, `Crossfade` вЂ” РїРѕ СЃРѕСЃС‚РѕСЏРЅРёСЋ Р·Р°РіСЂСѓР·РєРё, `animate*AsState` вЂ” РїРѕ РєРѕРЅС‚РµРЅС‚РЅС‹Рј СЃРѕСЃС‚РѕСЏРЅРёСЏРј. РЁС‚РѕСЂРєР° РѕС‡РµСЂРµРґРё Р·Р°РєСЂС‹РІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РјРіРЅРѕРІРµРЅРЅС‹Рј СѓРґР°Р»РµРЅРёРµРј РёР· РєРѕРјРїРѕР·РёС†РёРё (snap, Р±РµР· hide-Р°РЅРёРјР°С†РёРё) вЂ” Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅРѕ РєРѕРјРјРµРЅС‚Р°СЂРёРµРј, С‡С‚РѕР±С‹ Р°РЅРёРјР°С†РёСЏ СЃРєСЂС‹С‚РёСЏ РЅРµ РІРµСЂРЅСѓР»Р°СЃСЊ.
+- РџСЂРѕРІРµСЂРµРЅРѕ РїРѕ Р±Р°Р№С‚РєРѕРґСѓ navigation-compose 2.8.4: `ExitTransition.None` Сѓ РїР»РµРµСЂР° РїСЂРёРјРµРЅСЏРµС‚СЃСЏ С‡РµСЃС‚РЅРѕ (РЅРµС‚ РґРµС„РѕР»С‚РЅРѕРіРѕ fadeOut РїРѕРІРµСЂС…), Р° pop-РїРµСЂРµС…РѕРґ РїСЂРё РїРѕР»РЅРѕСЌРєСЂР°РЅРЅРѕРј РјР°СЂС€СЂСѓС‚Рµ СЃРѕР±РёСЂР°РµС‚СЃСЏ РёР· popEnter/popExit.
+- РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 621 184 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## Финальный фикс таймлайна и FFT — сессия 14
-- Вместо самописных жестов используется Material3 1.3.1 `Slider`: Canvas только в `track`, штатные thumb, semantics, клавиатура, RTL, disabled и минимальная зона 48dp. Отдельная полоса над слайдером удалена, активная волна сходится к центру thumb; буфер и неактивная дорожка используют те же координаты.
-- Общая модель `PlayerSliderState` для preview и таймкода. Start/Stop/Cancel и finish проходят через один interactionSource в порядке FIFO; Cancel возвращает текущий playback без seek. `key(trackId)` пересоздаёт жест, проверка актуального trackId не позволяет старому release перемотать новый трек. Accessibility change не включает drag.
-- `BassDsp.kt`: signed complex RMS только бинов 1..N/2-1 в 40–180 Гц, fs из callback samplingRate/1000, N=fft.size. Нормализация на 128 — относительный масштаб signed-byte, не измерение громкости. Единственная временная envelope: attack 15 мс, release 140 мс, alpha=1-exp(-dt/tau), монотонный elapsedRealtimeNanos; tween энергии удалён. FFT без callbacks более 250 мс затухает к нулю.
-- Visualizer освобождается при pause, уходе из RESUMED, смене опубликованного sessionId/трека, потере разрешения и disposal. Частично созданный экземпляр очищается при исключении; поздние FFT отсекает generation. Разрешение проверяется на resume и каждые 250 мс в foreground; без RECORD_AUDIO — плавный декоративный ambient. Энергия читается в draw, callback не пишет Compose-state; beat sync не заявляется.
-- Ограничение: неизменённый `PlaybackAudioSession` не публикует Flow, не слушает audio-session callback и не сбрасывает id в 0. UI опрашивает только опубликованный фактический id и использует его как ключ ресурса; смену сессии, которую provider не опубликовал, гарантировать нельзя. Движок, service/provider, поиск, скачивание и зависимости не менялись.
-- Проверка: JDK 17 `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`, `gradlew.bat :app:tasks --all` — exit 0. Все запуски с `--console=plain --max-workers=1 -Dorg.gradle.jvmargs="-Xmx2048m -Dfile.encoding=UTF-8"`.
-- `gradlew.bat testDebugUnitTest assembleDebug lintDebug`: JVM-тесты и APK реально выполнены; общий exit 1 только из-за lint. XML: 133 testcase / 133 executed, 0 failures, 0 errors, 0 skipped (24 новых DSP/state/RTL-теста). `lintDebug`: 2 UnsafeOptInUsageError в неизменённых `PlaybackAudioSession.kt:30` и `PlayerController.kt:153`, 25 warnings; правила не ослаблялись, запрещённый движок не правился. Отдельное подтверждение `gradlew.bat testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, exit 0, 5 секунд, 53 up-to-date (не повторное исполнение тестов).
-- APK проверен: `D:\MyMusic\app\build\outputs\apk\debug\app-debug.apk`, 27 502 042 байт, создан 26.10.2026 18:28:28 +03:00. `git diff --check` без ошибок. Первая попытка tasks использовала системную Java 11 и упала; исправлено только окружение. Одна промежуточная сборка упала на ещё не объявленном SliderFinishInteraction; после завершения правки компиляция прошла. Лимит повторных одинаковых ошибок не достигнут.
-- Compose UI-тесты не добавлялись: в проекте нет androidTest и compose-ui-test зависимости; новые зависимости запрещены. На телефоне остаются Cancel/перехват жеста, смена трека до release, TalkBack/клавиатура, RTL/disabled, соседние кнопки, pause/background/resume, отзыв разрешения, реальные FFT/ROM и смена session. Успешные JVM-тесты не заменяют эти проверки.
-- Ветка `main`; без commit/push. Пользовательские `.opencode/`, `.postman/`, `postman/` не затронуты; появившаяся в status `.kotlin/` содержит локальные служебные файлы компилятора и не включается в публикацию.
+## РџР»Р°РІРЅС‹Рµ РїРµСЂРµС…РѕРґС‹ РІРєР»Р°РґРѕРє Рё С„РёРєСЃС‹ РґРѕРєР° вЂ” СЃРµСЃСЃРёСЏ 26
+- `AppNavGraph`: РїРµСЂРµС…РѕРґС‹ РјРµР¶РґСѓ РІРєР»Р°РґРєР°РјРё вЂ” РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ СЃР»Р°Р№Рґ РїРѕ РёРЅРґРµРєСЃСѓ РІРєР»Р°РґРєРё (РІС‹РµР·Рґ СЃ РЅСѓР¶РЅРѕР№ СЃС‚РѕСЂРѕРЅС‹ РЅР° С‚СЂРµС‚СЊ С€РёСЂРёРЅС‹, 300 РјСЃ, `FastOutSlowInEasing`) + fade; РЅР°РїСЂР°РІР»РµРЅРёРµ РІС‹С‡РёСЃР»СЏРµС‚СЃСЏ С‡РµСЂРµР· `tabIndex()` РїРѕ `bottomNavItems`. Р”Р»СЏ РїРѕР»РЅРѕСЌРєСЂР°РЅРЅС‹С… РјР°СЂС€СЂСѓС‚РѕРІ Рё РІРѕР·РІСЂР°С‚РѕРІ СЃ РЅРёС… вЂ” С‚РѕР»СЊРєРѕ РјСЏРіРєРёР№ fade (РІС…РѕРґ 180 РјСЃ, РІС‹С…РѕРґ 120 РјСЃ) Р±РµР· СЃР»Р°Р№РґР°.
+- `PlayerScreen`: `exitTransition` Рё `popExitTransition` Р·Р°РјРµРЅРµРЅС‹ РЅР° `ExitTransition.None` вЂ” С‚СЏР¶С‘Р»С‹Р№ СЌРєСЂР°РЅ (blur, Р±РѕР»СЊС€Р°СЏ РѕР±Р»РѕР¶РєР°) Р±РѕР»СЊС€Рµ РЅРµ Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ РїСЂРё СЃРІРѕСЂР°С‡РёРІР°РЅРёРё, РїСЂРѕСЃР°РґРєР° РєР°РґСЂРѕРІ СѓР±СЂР°РЅР° (РІ СЃРµСЃСЃРёРё 25 РІРѕР·РІСЂР°С‚ РёР· РїР»РµРµСЂР° РґР°РІР°Р» 27.5% janky). Р’С…РѕРґ РѕСЃС‚Р°Р»СЃСЏ СЃР»Р°Р№РґРѕРј СЃРЅРёР·Сѓ + fade.
+- `ExpressiveBottomDock`: РєРѕРЅС‚РµРЅС‚ РґРѕРєР° РѕР±С‘СЂРЅСѓС‚ РІ `Box` СЃ `matchParentSize()` Рё `clip(shape)` вЂ” РїРѕР»РѕСЃРєР° РїСЂРѕРіСЂРµСЃСЃР° РјРёРЅРё-РїР»РµРµСЂР° РѕР±СЂРµР·Р°РµС‚СЃСЏ РїРѕ СЃРєСЂСѓРіР»С‘РЅРЅРѕРјСѓ РєРѕРЅС‚СѓСЂСѓ Рё РЅРµ РІС‹РїРёСЂР°РµС‚ Р·Р° РєСЂР°СЏ РґРѕРєР°.
+- РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 621 184 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
-## 📌 Актуальный срез
-- 129 реально выполненных JVM-тестов (20 suites), 0 failures/errors/skipped; `assembleDebug` подтверждён, APK 27 508 441 байт. Lint в этой сессии не запускался.
-- Room v8, схемы `4.json`–`8.json`; ONNX/YAMNet и `core/audio` удалены revert-коммитом `9e74fb6`.
-- «Для вас»: related-треки YouTube/SoundCloud через NewPipe, 4–6 треков-сидов, кап 2/3, fallback только при <10 и только по строгому артисту; глобальный популярный запрос — только на пустой истории.
-- Скачивание: `DownloadSourceResolver` выбирает только progressive-источник; SoundCloud — PROGRESSIVE (HLS-only трек падает и уходит на YouTube), YouTube — PROGRESSIVE. Сначала строгий матч артиста и названия; для YouTube — нестрогий fallback: запрос без служебных пометок, топ-10, разница длительности ≤15 с, артист в названии или канале. TTL 30 мин для неудачных источников. Резолв свежего URL выполняется в `DownloadTrackWorker` перед каждой попыткой; при 403/410 — один повторный резолв. Запись `.part` → атомарный rename, Room после rename; отмена отменяет OkHttp/NewPipe `Call`; HTTP BASIC-логи только в debug. Кнопка скачивания есть в медиатеке и полноэкранном плеере.
-- Плеер: режим текста отполирован в Phase A — спокойный фон (scrim `surface` 0.65 поверх размытой обложки), иерархия строк 24/18/16sp, горизонтальная караоке-заливка, подъём активной строки на 24dp. Таймлайн — волна Phase B на Material3 Slider: серая синусоида с длиной 44dp и сужением к краям, пропетанная часть в `primary`, круглый бегунок на гребне; амплитуда постоянная 9dp, на паузе волна плавно выпрямляется. DSP/Visualizer удалены в сессии 21, `RECORD_AUDIO` в манифесте нет.
+## РџРѕР»РёСЂРѕРІРєР° Р°РЅРёРјР°С†РёР№ РЅРёР¶РЅРµРіРѕ РґРѕРєР° вЂ” СЃРµСЃСЃРёСЏ 25
+- `ExpressiveBottomDock`: СЂСЏРґ РЅР°РІРёРіР°С†РёРё Р·Р°РєСЂРµРїР»С‘РЅ Сѓ РЅРёР¶РЅРµР№ РєСЂРѕРјРєРё Рё Р±РѕР»СЊС€Рµ РЅРµ СѓС‡Р°СЃС‚РІСѓРµС‚ РІ Р°РЅРёРјР°С†РёРё РјРёРЅРё-РїР»РµРµСЂР°. Р¤РѕРЅРѕРІР°СЏ РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ `DockBackground` СЂР°СЃС‚С‘С‚ РѕС‚РґРµР»СЊРЅРѕ (64 в†’ 120dp), С‡РёС‚Р°СЏ `State<Float>` С‚РѕР»СЊРєРѕ РІРЅСѓС‚СЂРё СЃРµР±СЏ; РјРёРЅРё-РїР»РµРµСЂ СЂР°СЃРєСЂС‹РІР°РµС‚СЃСЏ С‡РµСЂРµР· `AnimatedVisibility` (`expandVertically` + `fadeIn`, РІС‹С…РѕРґ вЂ” `shrinkVertically` + `fadeOut`). Р’С‹СЃРѕС‚Р° РґРѕРєР° РІРјРµСЃС‚Рµ СЃ РґРµС‚СЊРјРё РЅРµ Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ, РЅР°РІРёРіР°С†РёСЏ РЅРµ СЃРјРµС‰Р°РµС‚СЃСЏ.
+- РџСЂСѓР¶РёРЅС‹: РёРЅРґРёРєР°С‚РѕСЂ вЂ” `Spring.DampingRatioNoBouncy` / `StiffnessMediumLow` (РєР°Рє РїСЂРѕСЃРёР» РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ), РёРєРѕРЅРєР° вЂ” NoBouncy / Medium, СЂР°СЃРєСЂС‹С‚РёРµ РґРѕРєР° Рё РјРёРЅРё-РїР»РµРµСЂР° вЂ” NoBouncy / Medium. РЈР±СЂР°РЅС‹ РѕС‚СЃРєРѕРє 0.58 Рё СЂР°СЃСЃРёРЅС…СЂРѕРЅ С„Р°Р·.
+- `ExpressiveNavigationBar`: СЃРјРµС‰РµРЅРёРµ РёРЅРґРёРєР°С‚РѕСЂР° С‡РёС‚Р°РµС‚СЃСЏ РІ `graphicsLayer` (С„Р°Р·Р° РѕС‚СЂРёСЃРѕРІРєРё), РїРѕСЌС‚РѕРјСѓ СЂСЏРґ РЅРµ СЂРµРєРѕРјРїРѕР·РёСЂСѓРµС‚СЃСЏ РЅР° РєР°Р¶РґРѕРј РєР°РґСЂРµ; РјР°СЃС€С‚Р°Р± РёРєРѕРЅРєРё Рё Р°Р»СЊС„Р° РїРѕРґРїРёСЃРё вЂ” С‚РѕР¶Рµ `graphicsLayer`. Р“СЂР°РґРёРµРЅС‚ РёРЅРґРёРєР°С‚РѕСЂР° Р·Р°РїРѕРјРёРЅР°РµС‚СЃСЏ, РєРѕР»Р±СЌРєРё РІРєР»Р°РґРѕРє СЃС‚Р°Р±РёР»СЊРЅС‹ (`remember` + `rememberUpdatedState`), РёРЅРґРµРєСЃ вЂ” `remember(items, selectedRoute)`.
+- `AppNavGraph`: `selectedRoute` Рё `showBottomBar` РІС‹С‡РёСЃР»СЏСЋС‚СЃСЏ С‡РµСЂРµР· `derivedStateOf`; `onTabSelect` Рё `onDockExpand` СЃС‚Р°Р±РёР»СЊРЅС‹ (`remember(navController)`).
+- `MiniPlayer`: РїСЂРѕРіСЂРµСЃСЃ Р±РѕР»СЊС€Рµ РЅРµ РѕРїСЂР°С€РёРІР°РµС‚СЃСЏ РЅР° РїР°СѓР·Рµ (`while (isPlaying)`), РїРµСЂРІС‹Р№ Р·Р°РјРµСЂ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ СЃСЂР°Р·Сѓ.
+- РўРµРЅСЊ РґРѕРєР° РїРµСЂРµРЅРµСЃРµРЅР° СЃ `Modifier.shadow(..., clip = false)` РЅР° `Surface(shadowElevation = 8.dp)` вЂ” РѕРґРёРЅ СЃР»РѕР№ РІРјРµСЃС‚Рѕ РґРІСѓС….
+- РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped. `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 515 714 Р±Р°Р№С‚.
+- Live SM-A266B: APK СѓСЃС‚Р°РЅРѕРІР»РµРЅ, РїСЂРёР»РѕР¶РµРЅРёРµ Р·Р°РїСѓС‰РµРЅРѕ. РџРѕСЏРІР»РµРЅРёРµ РјРёРЅРё-РїР»РµРµСЂР° С‡РµСЂРµР· В«РњРѕСЋ РІРѕР»РЅСѓВ» (Р±РµР· РїРµСЂРµС…РѕРґР° РІ РїР»РµРµСЂ): 599 РєР°РґСЂРѕРІ, 1.5% janky, 95-Р№ РїРµСЂС†РµРЅС‚РёР»СЊ 14 РјСЃ. РџРµСЂРµРєР»СЋС‡РµРЅРёСЏ РІРєР»Р°РґРѕРє СЃ РѕС‚РєСЂС‹С‚С‹Рј РјРёРЅРё-РїР»РµРµСЂРѕРј: 5.9% janky, 90-Р№ 9 РјСЃ; СЃРµСЂРёСЏ РёР· 5 Р±С‹СЃС‚СЂС‹С… С‚Р°РїРѕРІ: 3.4% janky, 95-Р№ 12 РјСЃ. РљСЂР°С€РµР№ Рё `FATAL EXCEPTION` РЅРµС‚. Р’РѕР·РІСЂР°С‚ РёР· РїРѕР»РЅРѕСЌРєСЂР°РЅРЅРѕРіРѕ РїР»РµРµСЂР° РґР°С‘С‚ 27.5% janky вЂ” СЌС‚Рѕ С‚СЏР¶С‘Р»С‹Р№ slide/fade РІСЃРµРіРѕ `PlayerScreen`, Р° РЅРµ РґРѕРє; РёР·РѕР»РёСЂРѕРІР°РЅРЅС‹Р№ РґРѕРє РґР°С‘С‚ 1.5%.
+- РЎРєСЂС‹С‚РёРµ РјРёРЅРё-РїР»РµРµСЂР° РѕС‚РґРµР»СЊРЅРѕ РЅРµ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРѕ: РІ РїСЂРёР»РѕР¶РµРЅРёРё РЅРµС‚ РґРµР№СЃС‚РІРёСЏ В«СЃС‚РѕРї/РѕС‡РёСЃС‚РёС‚СЊВ» (С‚РѕР»СЊРєРѕ РїР°СѓР·Р°), Р° РѕС‡РёСЃС‚РєР° РѕС‡РµСЂРµРґРё РґРѕСЃС‚СѓРїРЅР° Р»РёС€СЊ РЅР° СЌРєСЂР°РЅРµ РїР»РµРµСЂР°, РіРґРµ РґРѕРє СЃРєСЂС‹С‚. Р’С‹С…РѕРґ РёСЃРїРѕР»СЊР·СѓРµС‚ СЃРёРјРјРµС‚СЂРёС‡РЅС‹Р№ `shrinkVertically` + `fadeOut`.
+
+## Р РµРґРёР·Р°Р№РЅ РџР°РєРµС‚ 1 (Home) + РџР°РєРµС‚ 3 (РµРґРёРЅС‹Р№ РЅРёР¶РЅРёР№ РґРѕРє) вЂ” СЃРµСЃСЃРёСЏ 24
+- Home РїРѕР»СѓС‡РёР» С‚СЂС‘С…СѓСЂРѕРІРЅРµРІСѓСЋ РёРµСЂР°СЂС…РёСЋ: `HomeSectionHeader` СЃ eyebrow 11sp Bold РІ `primary` (С‚СЂРµРєРёРЅРі 1.4) Рё Р·Р°РіРѕР»РѕРІРєРѕРј 22sp Bold. РўРµРєСЃС‚С‹: В«Р Р•РљРћРњР•РќР”РђР¦РР / Р”Р»СЏ РІР°СЃВ», В«РРЎРўРћР РРЇ / РќРµРґР°РІРЅРµРµВ», В«РђР РҐРР’ / Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ», В«РљРћР›Р›Р•РљР¦РРЇ / Р›СЋР±РёРјРѕРµВ». `BlockGap` СѓРІРµР»РёС‡РµРЅ СЃ 26 РґРѕ 32dp.
+- Hero В«РџСЂРѕРґРѕР»Р¶РёС‚СЊВ»: СЂР°РґРёСѓСЃ 30dp, РіСЂР°РґРёРµРЅС‚ `primaryContainer` 45% в†’ `surfaceContainerHigh`, РѕР±Р»РѕР¶РєР° 96dp squircle, Р·Р°РіРѕР»РѕРІРѕРє `headlineSmall` (26sp) РјР°РєСЃРёРјСѓРј РІ 2 СЃС‚СЂРѕРєРё, Play 48dp СЃ РёРєРѕРЅРєРѕР№ 24dp. Eyebrow СЃРѕРєСЂР°С‰С‘РЅ РґРѕ В«РџР РћР”РћР›Р–РРўР¬В», РёРЅР°С‡Рµ РѕР±СЂРµР·Р°Р»СЃСЏ РЅР° СѓР·РєРёС… СЌРєСЂР°РЅР°С….
+- В«РќРµРґР°РІРЅРµРµВ»: СѓР±СЂР°РЅР° С‡С‘СЂРЅР°СЏ РїР»Р°С€РєР° СЃ Р±РµР»С‹Рј С‚РµРєСЃС‚РѕРј; РѕР±Р»РѕР¶РєР° 132dp СЃ СЂР°РґРёСѓСЃРѕРј 22dp, РїРѕРґРїРёСЃРё РїРѕРґ РѕР±Р»РѕР¶РєРѕР№ 13sp SemiBold / 11sp.
+- В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ»: СЂР°РґРёСѓСЃ 30dp, РїСЂРµРІСЊСЋ 3 С‚СЂРµРєР° (`MEMORY_PREVIEW_LIMIT = 3`), СЃРµР·РѕРЅ 26sp, СЃС‡С‘С‚С‡РёРє `displaySmall` 40sp, РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ РѕС‚СЃС‚СѓРїС‹ РјРµР¶РґСѓ Р±Р»РѕРєР°РјРё 32dp. `LikedCard` РїСЂРёРІРµРґС‘РЅ Рє С‚РѕРјСѓ Р¶Рµ СЃС‚РёР»СЋ: СЂР°РґРёСѓСЃ 22dp, РІРЅРµС€РЅРёР№ Р·Р°РіРѕР»РѕРІРѕРє, РІРЅСѓС‚СЂРµРЅРЅСЏСЏ РїРѕРґРїРёСЃСЊ СѓР±СЂР°РЅР°.
+- РќРѕРІС‹Р№ `ExpressiveBottomDock.kt`: РѕРґРёРЅ РѕР±СЉРµРєС‚ СЃ РѕС‚СЃС‚СѓРїР°РјРё 16dp, СЂР°РґРёСѓСЃРѕРј 30dp, С‚РµРЅСЊСЋ 8dp, С„РѕРЅРѕРј `surfaceContainerHigh` 96% Рё Р±РѕСЂРґРµСЂРѕРј 1dp `onSurface` 6%. Р’РЅСѓС‚СЂРё вЂ” mini-player Рё СЂСЏРґ РЅР°РІРёРіР°С†РёРё; РїРѕСЏРІР»РµРЅРёРµ С‚СЂРµРєР° Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ СЂРѕСЃС‚РѕРј РЅР° 56dp (РїСЂСѓР¶РёРЅР° 0.8 / MediumLow), РЅР°РІРёРіР°С†РёСЏ РѕСЃС‚Р°С‘С‚СЃСЏ РЅР° РјРµСЃС‚Рµ.
+- `MiniPlayer.kt` РїРµСЂРµРїРёСЃР°РЅ РЅР° `internal MiniPlayerRow` РІС‹СЃРѕС‚РѕР№ 56dp: РѕР±Р»РѕР¶РєР° 44dp (СЂР°РґРёСѓСЃ 14dp), РЅР°Р·РІР°РЅРёРµ 14sp SemiBold, Р°СЂС‚РёСЃС‚ 11sp, Play 40dp СЃ Р·РѕРЅРѕР№ РєР°СЃР°РЅРёСЏ 48dp, РїСЂРѕРіСЂРµСЃСЃ 2dp РІРЅСѓС‚СЂРё РєР»РёРїР°, СЂР°Р·РґРµР»РёС‚РµР»СЊ 1dp СЃ inset 16dp. РЎРѕР±СЃС‚РІРµРЅРЅРѕР№ РїР°РЅРµР»Рё Рё С‚РµРЅРё Р±РѕР»СЊС€Рµ РЅРµС‚.
+- `ExpressiveNavigationBar.kt` СЃС‚Р°Р» СЂСЏРґРѕРј 64dp Р±РµР· С„РѕРЅР° Рё С‚РµРЅРё: РїСЂСѓР¶РёРЅРЅС‹Р№ РёРЅРґРёРєР°С‚РѕСЂ damping 0.58 / `StiffnessMedium`, РёРєРѕРЅРєР° РІС‹Р±СЂР°РЅРЅРѕРіРѕ 1.18, РїРѕРґРїРёСЃСЊ 11sp СЃ `lineHeight = 16.sp` РґР»СЏ С‚РѕС‡РЅРѕР№ СѓРєР»Р°РґРєРё РІ 64dp.
+- `AppNavGraph.kt` РїРѕРґРєР»СЋС‡Р°РµС‚ `ExpressiveBottomDock` РІРјРµСЃС‚Рѕ РїР°СЂС‹ `MiniPlayer` + `ExpressiveNavigationBar`. `PlayerScreen`, `LibraryScreen`, `SettingsScreen` РЅРµ С‚СЂРѕРЅСѓС‚С‹.
+- РўРµСЃС‚С‹: 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped (UI-С‚РµСЃС‚РѕРІ РЅРµС‚, РёР·РјРµРЅРµРЅРёСЏ РїСЂРѕРІРµСЂРµРЅС‹ СЃР±РѕСЂРєРѕР№). `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 616 075 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+
+## SoundCloud progressive + СѓРјРЅС‹Р№ fallback YouTube вЂ” СЃРµСЃСЃРёСЏ 23
+- `SoundCloudRepositoryImpl.downloadCapability` РїРµСЂРµРІРµРґС‘РЅ СЃ `HLS_ONLY` РЅР° `PROGRESSIVE`. `SoundCloudDownloadSource` СѓР¶Рµ РІС‹Р·С‹РІР°РµС‚ `resolveStreamUrl(requireProgressive = true)`, РїРѕСЌС‚РѕРјСѓ SC-С‚СЂРµРє СЃ progressive MP3 РєР°С‡Р°РµС‚СЃСЏ РЅР°РїСЂСЏРјСѓСЋ, Р±РµР· РѕР±СЂР°С‰РµРЅРёСЏ Рє YouTube. Р•СЃР»Рё Сѓ С‚СЂРµРєР° С‚РѕР»СЊРєРѕ HLS, resolve РІРѕР·РІСЂР°С‰Р°РµС‚ РѕС€РёР±РєСѓ, Рё СЂРµР·РѕР»РІРµСЂ РїРµСЂРµРєР»СЋС‡Р°РµС‚СЃСЏ РЅР° YouTube.
+- `DownloadSourceResolver`: РїРѕСЃР»Рµ СЃС‚СЂРѕРіРѕРіРѕ РјР°С‚С‡Р° РґР»СЏ YouTube РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ РЅРµСЃС‚СЂРѕРіРёР№ РїРѕРёСЃРє. Р—Р°РїСЂРѕСЃ `РђСЂС‚РёСЃС‚ РќР°Р·РІР°РЅРёРµ` РѕС‡РёС‰Р°РµС‚СЃСЏ РѕС‚ `official audio`, `remaster`, `feat.` Рё РґСЂСѓРіРёС… СЃР»СѓР¶РµР±РЅС‹С… РїРѕРјРµС‚РѕРє; Р±РµСЂСѓС‚СЃСЏ С‚РѕРї-10 СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ; РєР°РЅРґРёРґР°С‚ РїСЂРёРЅРёРјР°РµС‚СЃСЏ, РµСЃР»Рё `abs(durationMs - seed.durationMs) <= 15_000` (РїСЂРё РЅРµРёР·РІРµСЃС‚РЅРѕР№ РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё seed С„РёР»СЊС‚СЂ РЅРµ РїСЂРёРјРµРЅСЏРµС‚СЃСЏ, РєР°РЅРґРёРґР°С‚ Р±РµР· РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё РѕС‚Р±СЂР°СЃС‹РІР°РµС‚СЃСЏ) Рё РёРјСЏ Р°СЂС‚РёСЃС‚Р° РІСЃС‚СЂРµС‡Р°РµС‚СЃСЏ РІ РЅР°Р·РІР°РЅРёРё РІРёРґРµРѕ РёР»Рё РёРјРµРЅРё РєР°РЅР°Р»Р° Р±РµР· СѓС‡С‘С‚Р° СЂРµРіРёСЃС‚СЂР°. Р РµР·РѕР»РІРёС‚СЃСЏ РїРµСЂРІС‹Р№ РїРѕРґС…РѕРґСЏС‰РёР№ РєР°РЅРґРёРґР°С‚.
+- Р•СЃР»Рё РѕС‡РёС‰РµРЅРЅС‹Р№ Р·Р°РїСЂРѕСЃ СЃРѕРІРїР°РґР°РµС‚ СЃРѕ СЃС‚СЂРѕРіРёРј, РІС‚РѕСЂРѕР№ СЃРµС‚РµРІРѕР№ Р·Р°РїСЂРѕСЃ РЅРµ РґРµР»Р°РµС‚СЃСЏ вЂ” РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ СѓР¶Рµ РїРѕР»СѓС‡РµРЅРЅР°СЏ РІС‹РґР°С‡Р°. `RecentlyFailedSources.markFailed` РІС‹Р·С‹РІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ РЅРµСѓРґР°С‡Рё Рё СЃС‚СЂРѕРіРѕРіРѕ, Рё РЅРµСЃС‚СЂРѕРіРѕРіРѕ РјР°С‚С‡РµР№.
+- Р•РґРёРЅС‹Р№ С‚РµРєСЃС‚ РѕС€РёР±РєРё: `DownloadMessages.SOURCE_NOT_FOUND` = В«РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё СЌС‚РѕС‚ С‚СЂРµРє РЅР° YouTube РґР»СЏ СЃРєР°С‡РёРІР°РЅРёСЏ. Р’РѕР·РјРѕР¶РЅРѕ, РѕРЅ СѓРґР°Р»РµРЅ РёР»Рё РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РІ SoundCloudВ». РћРЅ Р¶Рµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РєР°Рє РґРµС„РѕР»С‚ `DownloadSourceUnavailableException` Рё РІ Snackbar SoundCloud РІ `PlayerScreen`; РґРµР№СЃС‚РІРёРµ В«РќР°Р№С‚РёВ» СЃРѕС…СЂР°РЅРµРЅРѕ РґР»СЏ СЂСѓС‡РЅРѕРіРѕ РїРѕРёСЃРєР°.
+- РўРµСЃС‚С‹: `DownloadSourceResolverTest` вЂ” 16 РєРµР№СЃРѕРІ (SC progressive Р±РµР· YouTube, SC HLS-only в†’ YouTube, СЃС‚СЂРѕРіРёРµ РјР°С‚С‡Рё, РЅРµСЃС‚СЂРѕРіРёР№ РјР°С‚С‡ СЃ СЂР°Р·РЅРёС†РµР№ 5 СЃ, РѕС‚РєР°Р· РїСЂРё СЂР°Р·РЅРёС†Рµ >15 СЃ, Р°СЂС‚РёСЃС‚ РІ РЅР°Р·РІР°РЅРёРё/РєР°РЅР°Р»Рµ, HLS-СЂРµР·СѓР»СЊС‚Р°С‚, TTL, С‚РѕС‡РЅС‹Р№ С‚РµРєСЃС‚ РѕС€РёР±РєРё); РЅРѕРІС‹Р№ `SoundCloudRepositoryCapabilityTest` вЂ” 1 РєРµР№СЃ. Р’СЃРµРіРѕ 20 suites / 129 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 508 441 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+
+## Р¤РёРєСЃС‹ СЃРєР°С‡РёРІР°РЅРёСЏ: СЃРІРµР¶РёР№ СЂРµР·РѕР»РІ, Р°С‚РѕРјР°СЂРЅР°СЏ Р·Р°РїРёСЃСЊ, РѕС‚РјРµРЅР° вЂ” СЃРµСЃСЃРёСЏ 22
+- `DownloadManager` Р±РѕР»СЊС€Рµ РЅРµ СЂРµР·РѕР»РІРёС‚ РёСЃС‚РѕС‡РЅРёРє РґРѕ РїРѕСЃС‚Р°РЅРѕРІРєРё Р·Р°РґР°С‡Рё: РІ WorkData РїРµСЂРµРґР°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РёРґРµРЅС‚РёС‡РЅРѕСЃС‚СЊ С‚СЂРµРєР° Рё СЃСЃС‹Р»РєРё РґР»СЏ СЂРµР·РѕР»РІР°; РєР»СЋС‡Рё `KEY_DIRECT_STREAM_URL`, `KEY_DIRECT_MIME_TYPE`, `KEY_RESOLVED_SOURCE` СѓРґР°Р»РµРЅС‹. РћС€РёР±РєРё РёСЃС‚РѕС‡РЅРёРєР° С‚РµРїРµСЂСЊ РїСЂРёС…РѕРґСЏС‚ С‡РµСЂРµР· FAILED WorkInfo.
+- `DownloadTrackWorker` СЃС‚Р°Р» С‚РѕРЅРєРёРј: РїРѕР»СѓС‡Р°РµС‚ `DownloadSourceResolver` С‡РµСЂРµР· `DownloadWorkerEntryPoint` Рё РґРµР»РµРіРёСЂСѓРµС‚ СЃРєР°С‡РёРІР°РЅРёРµ РІ РЅРѕРІС‹Р№ `DownloadEngine`.
+- `DownloadEngine`: РїРµСЂРµРґ РєР°Р¶РґРѕР№ РїРѕРїС‹С‚РєРѕР№ Р·Р°РЅРѕРІРѕ СЂРµР·РѕР»РІРёС‚ URL; РїСЂРё HTTP 403/410 РґРµР»Р°РµС‚ СЂРѕРІРЅРѕ РѕРґРёРЅ РїРѕРІС‚РѕСЂРЅС‹Р№ СЂРµР·РѕР»РІ Рё РѕРґРЅСѓ РїРѕРІС‚РѕСЂРЅСѓСЋ Р·Р°РіСЂСѓР·РєСѓ, Р·Р°С‚РµРј РІРѕР·РІСЂР°С‰Р°РµС‚ `HttpStatusException` СЃ РєРѕРґРѕРј. HLS, РїСѓСЃС‚РѕР№ С„Р°Р№Р» Рё РЅРµРґРѕСЃС‚СѓРїРЅС‹Р№ РєР°С‚Р°Р»РѕРі РґР°СЋС‚ РїРѕРЅСЏС‚РЅСѓСЋ `DownloadException`.
+- Р—Р°РїРёСЃСЊ: `.part` СЃ СѓРЅРёРєР°Р»СЊРЅС‹Рј `workId` в†’ РїСЂРѕРІРµСЂРєР° `Content-Length` Рё РЅРµРЅСѓР»РµРІРѕРіРѕ СЂР°Р·РјРµСЂР° в†’ `Files.move(REPLACE_EXISTING, ATOMIC_MOVE)` РїРѕРІРµСЂС… С†РµР»РµРІРѕРіРѕ С„Р°Р№Р»Р°. Room РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ rename; РїСЂРё Р»СЋР±РѕР№ РѕС€РёР±РєРµ СѓРґР°Р»СЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ `.part`, СЃС‚Р°СЂС‹Р№ СЂР°Р±РѕС‡РёР№ С„Р°Р№Р» РЅРµ С‚СЂРѕРіР°РµС‚СЃСЏ. РџСЂРё РѕС€РёР±РєРµ СЃРѕС…СЂР°РЅРµРЅРёСЏ РІ Room РіРѕС‚РѕРІС‹Р№ С„Р°Р№Р» РЅРµ СѓРґР°Р»СЏРµС‚СЃСЏ.
+- РћС‚РјРµРЅР°: `DownloadEngine.downloadToFile` РІРµС€Р°РµС‚ `Job.invokeOnCompletion` в†’ `Call.cancel()`; `NewPipeDownloader.withCancellation` С‡РµСЂРµР· ThreadLocal РѕС‚РјРµРЅСЏРµС‚ Р°РєС‚РёРІРЅС‹Рµ NewPipe `Call`. Р’СЃРµ РІС‹Р·РѕРІС‹ `SearchInfo`/`StreamInfo`/`KioskInfo.getInfo` РІ SoundCloud, YouTube Рё С‡Р°СЂС‚Р°С… РѕР±С‘СЂРЅСѓС‚С‹ РІ РЅРµРіРѕ; РѕС‚РјРµРЅР° РЅРµ Р»РѕРіРёСЂСѓРµС‚СЃСЏ РєР°Рє СЃРµС‚РµРІР°СЏ РѕС€РёР±РєР°.
+- `NetworkModule`: `HttpLoggingInterceptor` (BASIC) РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё `BuildConfig.DEBUG`; РІ release С‚РѕРєРµРЅС‹ Рё РїРѕРґРїРёСЃР°РЅРЅС‹Рµ URL РЅРµ РїРѕРїР°РґР°СЋС‚ РІ Р»РѕРіРё.
+- РўРµСЃС‚С‹: РЅРѕРІС‹Р№ `DownloadEngineTest` вЂ” 4 РєРµР№СЃР°: 403 в†’ РїРѕРІС‚РѕСЂРЅС‹Р№ СЂРµР·РѕР»РІ Рё СѓСЃРїРµС…; РїРѕРІС‚РѕСЂРЅС‹Р№ 403 в†’ failure РїРѕСЃР»Рµ РѕРґРЅРѕР№ РїРѕРїС‹С‚РєРё; HTTP 500 в†’ СЃС‚Р°СЂС‹Р№ С„Р°Р№Р» С†РµР», Room РЅРµ РѕР±РЅРѕРІР»С‘РЅ, `.part` СѓРґР°Р»С‘РЅ; СѓСЃРїРµС€РЅР°СЏ Р°С‚РѕРјР°СЂРЅР°СЏ Р·Р°РјРµРЅР° СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ С„Р°Р№Р»Р°. 19 suites / 121 С‚РµСЃС‚, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 503 796 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+
+## РџРѕР»РЅС‹Р№ РѕС‚РєР°С‚ DSP Рё РІРёР·СѓР°Р»РёР·Р°С‚РѕСЂР° вЂ” СЃРµСЃСЃРёСЏ 21
+- РЈРґР°Р»РµРЅС‹ `AudioDsp.kt`, `AudioEnergy.kt`, `AudioDspTest.kt` Рё `PlaybackAudioSession.kt`; РёР· `MusicService` СѓР±СЂР°РЅР° РїСѓР±Р»РёРєР°С†РёСЏ Р°СѓРґРёРѕСЃРµСЃСЃРёРё.
+- `ExpressivePlayerSlider`: РІРѕР»РЅР° Phase B СЃ РїРѕСЃС‚РѕСЏРЅРЅРѕР№ Р°РјРїР»РёС‚СѓРґРѕР№ 9dp, РґР»РёРЅР° 44dp, СЃСѓР¶РµРЅРёРµ Рє РєСЂР°СЏРј, РєСЂСѓРіР»С‹Р№ Р±РµРіСѓРЅРѕРє РЅР° РіСЂРµР±РЅРµ. РђРјРїР»РёС‚СѓРґР° Р±РѕР»СЊС€Рµ РЅРµ Р·Р°РІРёСЃРёС‚ РѕС‚ Р·РІСѓРєР°; РЅР° РїР°СѓР·Рµ РІРѕР»РЅР° РїР»Р°РІРЅРѕ РІС‹РїСЂСЏРјР»СЏРµС‚СЃСЏ Р·Р° 500 РјСЃ, С„Р°Р·Р° Р·Р°РјРёСЂР°РµС‚. РћР±С‘СЂС‚РєР° Material3 Slider СЃ drag-cancel, С‚Р°РїР°РјРё Рё СЃРІР°Р№РїР°РјРё СЃРѕС…СЂР°РЅРµРЅР°.
+- `PlayerScreen`: СѓРґР°Р»РµРЅС‹ Р·Р°РїСЂРѕСЃ RECORD_AUDIO, `AudioPermissionGate`, `rememberAudioEnergy` Рё РїР°СЂР°РјРµС‚СЂС‹ `canVisualize`/`visualizerDelayMs`.
+- `SettingsRepository`/`AppSettings`, `SettingsRepositoryImpl`, `SettingsViewModel`, `SettingsScreen`: СѓРґР°Р»РµРЅР° РЅР°СЃС‚СЂРѕР№РєР° Р·Р°РґРµСЂР¶РєРё РІРёР·СѓР°Р»РёР·Р°С†РёРё Рё СЃРµРєС†РёСЏ В«Р’РёР·СѓР°Р»РёР·Р°С†РёСЏВ».
+- `AndroidManifest.xml`: СѓРґР°Р»РµРЅРѕ СЂР°Р·СЂРµС€РµРЅРёРµ RECORD_AUDIO.
+- РўРµСЃС‚С‹: `AudioDspTest` СѓРґР°Р»С‘РЅ; 18 suites / 117 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 406 945 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+
+## РљР°Р»РёР±СЂРѕРІРєР° Р·Р°РґРµСЂР¶РєРё РІРѕР»РЅС‹ вЂ” СЃРµСЃСЃРёСЏ 20
+- `AppSettings.visualizerDelayMs` (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ 0, РґРёР°РїР°Р·РѕРЅ -200..+200) С…СЂР°РЅРёС‚СЃСЏ РІ SharedPreferences `mymusic_settings` РїРѕРґ РєР»СЋС‡РѕРј `visualizer_delay_ms`; РїСЂРё Р·Р°РіСЂСѓР·РєРµ Р·РЅР°С‡РµРЅРёРµ РѕРіСЂР°РЅРёС‡РёРІР°РµС‚СЃСЏ РґРёР°РїР°Р·РѕРЅРѕРј, `SettingsRepository.setVisualizerDelayMs` РїРёС€РµС‚ РµРіРѕ РІ IO-РґРёСЃРїРµС‚С‡РµСЂРµ.
+- `SettingsScreen`: РЅРѕРІР°СЏ СЃРµРєС†РёСЏ В«Р’РР—РЈРђР›РР—РђР¦РРЇВ» СЃРѕ СЃР»Р°Р№РґРµСЂРѕРј В«Р—Р°РґРµСЂР¶РєР° РІРёР·СѓР°Р»РёР·Р°С†РёРёВ» -200..+200 РјСЃ, Р¶РёРІРѕР№ РїРѕРґРїРёСЃСЊСЋ Рё Р»РѕРєР°Р»СЊРЅС‹Рј draft вЂ” РІ РЅР°СЃС‚СЂРѕР№РєРё Р·РЅР°С‡РµРЅРёРµ РїРёС€РµС‚СЃСЏ РїРѕ РѕС‚РїСѓСЃРєР°РЅРёСЋ РїРѕР»Р·СѓРЅРєР°.
+- `AudioDsp.EnergyDelayBuffer`: РєРѕР»СЊС†РµРІРѕР№ Р±СѓС„РµСЂ РЅР° 500 РјСЃ (64 СЃР»РѕС‚Р°) СЃ РјРѕРЅРѕС‚РѕРЅРЅС‹РјРё С‚Р°Р№РјСЃС‚Р°РјРїР°РјРё; `push` РІС‹С‚РµСЃРЅСЏРµС‚ СЃС‚Р°СЂС‹Рµ РєР°РґСЂС‹, `valueAt(now, delayMs)` РѕС‚РґР°С‘С‚ СЃР°РјС‹Р№ СЃРІРµР¶РёР№ РєР°РґСЂ РЅРµ РїРѕР·Р¶Рµ `now - delay`; РїСѓСЃС‚РѕР№ Р±СѓС„РµСЂ Рё Р·Р°РґРµСЂР¶РєР° Р±РѕР»СЊС€Рµ РѕРєРЅР° вЂ” 0; РѕС‚СЂРёС†Р°С‚РµР»СЊРЅР°СЏ Р·Р°РґРµСЂР¶РєР° С‡РёС‚Р°РµС‚ СЃР°РјС‹Р№ СЃРІРµР¶РёР№ РєР°РґСЂ.
+- `AudioEnergy`: РєР°Р¶РґС‹Р№ FFT-РєР°РґСЂ РїРёС€РµС‚СЃСЏ РІ Р±СѓС„РµСЂ СЃ `SystemClock.elapsedRealtimeNanos`; РїСЂРё РѕС‚СЂРёСЃРѕРІРєРµ С‡РёС‚Р°РµС‚СЃСЏ `sampler.energyAt(now, visualizerDelayMs)`. Р•СЃР»Рё FFT РЅРµ РїСЂРёС…РѕРґРёР» РґРѕР»СЊС€Рµ 120 РјСЃ вЂ” 0. Р‘СѓС„РµСЂ РѕС‡РёС‰Р°РµС‚СЃСЏ РІ `start()`/`release()` (РїР°СѓР·Р°, СЃРјРµРЅР° С‚СЂРµРєР°, РїРѕС‚РµСЂСЏ СЂР°Р·СЂРµС€РµРЅРёСЏ, lifecycle).
+- `PlayerScreen`: `visualizerDelayMs` РёР· `appSettings` РїСЂРѕРєРёРЅСѓС‚ РІ `PlayerProgressSection` в†’ `rememberAudioEnergy`; `ExpressivePlayerSlider` РїРѕР»СѓС‡Р°РµС‚ СѓР¶Рµ Р·Р°РґРµСЂР¶Р°РЅРЅРѕРµ `State<Float>`, РµРіРѕ РІРёР·СѓР°Р»СЊРЅР°СЏ С„РѕСЂРјСѓР»Р° РЅРµ РјРµРЅСЏР»Р°СЃСЊ.
+- РўРµСЃС‚С‹: 6 РЅРѕРІС‹С… РІ `AudioDspTest` вЂ” С‡С‚РµРЅРёРµ Р·РЅР°С‡РµРЅРёСЏ 100 РјСЃ РЅР°Р·Р°Рґ, РІС‹С‚РµСЃРЅРµРЅРёРµ Р·Р° РѕРєРЅРѕ 500 РјСЃ, СЃРѕС…СЂР°РЅРµРЅРёРµ РєР°РґСЂРѕРІ РІРЅСѓС‚СЂРё РѕРєРЅР°, РїСѓСЃС‚РѕР№ Р±СѓС„РµСЂ/reset, РѕС‚СЂРёС†Р°С‚РµР»СЊРЅР°СЏ Р·Р°РґРµСЂР¶РєР° Рё СЃР°РЅРёС‚РёР·Р°С†РёСЏ. 19 suites / 144 С‚РµСЃС‚Р°, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 406 941 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+
+## РђРґР°РїС‚РёРІРЅС‹Р№ РїРѕСЂРѕРі Рё РјСѓР·С‹РєР°Р»СЊРЅС‹Рµ РїРѕР»РѕСЃС‹ вЂ” СЃРµСЃСЃРёСЏ 19
+- `AudioDsp`: РїРѕР»РѕСЃС‹ РїРµСЂРµРґРµР»Р°РЅС‹ РїРѕРґ СЂРёС‚Рј вЂ” Kick 30вЂ“120 Р“С† (Р±РѕС‡РєР°/Р±Р°СЃ), Snare_Vocal 150вЂ“600 Р“С† (СЃРЅРµР№СЂ/РєР»СЌРї/С‚РµР»Рѕ РІРѕРєР°Р»Р°), Presence 1500вЂ“6000 Р“С† (С‰РµР»С‡РѕРє СЃРЅРµР№СЂР° Рё СЃРѕРіР»Р°СЃРЅС‹Рµ). РџСЂРѕРјРµР¶СѓС‚РєРё 120вЂ“150 Рё 600вЂ“1500 Р“С† РЅРµ СѓС‡РёС‚С‹РІР°СЋС‚СЃСЏ.
+- Р’РµСЃР° spectral flux: 1.2 / 1.5 / 1.0 вЂ” РЅРµР±РѕР»СЊС€РѕР№ Р°РєС†РµРЅС‚ РЅР° СЃРЅРµР№СЂРµ Рё РІРѕРєР°Р»Рµ.
+- `TransientDetector` С…СЂР°РЅРёС‚ СЃРєРѕР»СЊР·СЏС‰РµРµ СЃСЂРµРґРЅРµРµ СЌРЅРµСЂРіРёРё Р·Р° 12 РєР°РґСЂРѕРІ (~600 РјСЃ РїСЂРё 20 Р“С† FFT). РЈРґР°СЂРѕРј СЃС‡РёС‚Р°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ СЂРѕСЃС‚, РіРґРµ С‚РµРєСѓС‰Р°СЏ СЌРЅРµСЂРіРёСЏ РІС‹С€Рµ СЃСЂРµРґРЅРµРіРѕ РІ 1.5 СЂР°Р·Р° Рё РІС‹С€Рµ РЅРёР¶РЅРµРіРѕ РїРѕСЂРѕРіР° 0.04; СЃР»Р°Р±С‹Р№ С„РѕРЅ Рё РјРµР»РєРёР№ С€СѓРј РІРѕР»РЅСѓ РЅРµ РґРІРёРіР°СЋС‚.
+- `AudioEnvelope`: Р°С‚Р°РєР° 8 РјСЃ, СЃРїР°Рґ 200 РјСЃ вЂ” РІРѕР»РЅР° СЂРµР·РєРѕ РїРѕРґРїСЂС‹РіРёРІР°РµС‚ РЅР° СѓРґР°СЂ Рё РїР»Р°РІРЅРѕ РѕРїСѓСЃРєР°РµС‚СЃСЏ, Р±РµР· РјРµР»РєРѕР№ РІРёР±СЂР°С†РёРё.
+- Р’РёР·СѓР°Р»СЊРЅР°СЏ С„РѕСЂРјСѓР»Р° `ExpressivePlayerSlider` РЅРµ РјРµРЅСЏР»Р°СЃСЊ: `0.55 + 1.30 * sqrt(live)`, РѕРіСЂР°РЅРёС‡РµРЅРёРµ 1.65. РЎРёР»СЊРЅС‹Р№ СѓРґР°СЂ РґР°С‘С‚ ~1.5x Р°РјРїР»РёС‚СѓРґС‹, presence РґРѕР±Р°РІР»СЏРµС‚ РјСЏРіРєРёР№ Р°РєС†РµРЅС‚.
+- РўРµСЃС‚С‹: 21 РІ `AudioDspTest` вЂ” РЅРѕРІС‹Рµ РіСЂР°РЅРёС†С‹ РїРѕР»РѕСЃ, РІРµСЃР° flux, РёРіРЅРѕСЂРёСЂРѕРІР°РЅРёРµ СЃР»Р°Р±РѕРіРѕ С€СѓРјР°, РѕС‚СЃРµС‡РµРЅРёРµ СЃР»Р°Р±РѕРіРѕ СЂРѕСЃС‚Р° Р°РґР°РїС‚РёРІРЅС‹Рј РїРѕСЂРѕРіРѕРј, СЃРёР»СЊРЅС‹Р№ СѓРґР°СЂ Рё РїР»Р°РІРЅРѕРµ Р·Р°С‚СѓС…Р°РЅРёРµ. 19 suites / 138 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 502 039 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+
+## РўСЂР°РЅР·РёРµРЅС‚С‹ РІРјРµСЃС‚Рѕ РѕР±С‰РµР№ РіСЂРѕРјРєРѕСЃС‚Рё вЂ” СЃРµСЃСЃРёСЏ 18
+- `AudioDsp`: РІРјРµСЃС‚Рѕ Full Spectrum RMS вЂ” С‚СЂРё РїРѕР»РѕСЃС‹: Low 40вЂ“150 Р“С† (Р±РѕС‡РєР°/Р±Р°СЃ), Mid 150вЂ“1000 Р“С† (СЃРЅРµР№СЂ/РєР»СЌРї/РІРѕРєР°Р»), High 3000вЂ“10000 Р“С† (С…СЌС‚С‹/С‚Р°СЂРµР»РєРё). Р”Р»СЏ РєР°Р¶РґРѕР№ СЃС‡РёС‚Р°РµС‚СЃСЏ СЃСЂРµРґРЅРёР№ RMS РєРѕРјРїР»РµРєСЃРЅС‹С… Р±РёРЅРѕРІ; 150 Р“С† РѕС‚РЅРµСЃРµРЅРѕ Рє Low.
+- `spectralFlux` СЃСѓРјРјРёСЂСѓРµС‚ С‚РѕР»СЊРєРѕ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рµ РїСЂРёСЂРѕСЃС‚С‹ РїРѕР»РѕСЃ СЃ РІРµСЃР°РјРё 1.0/1.3/2.0 (РєРѕРјРїРµРЅСЃР°С†РёСЏ С‡РёСЃР»Р° Р±РёРЅРѕРІ Рё СЃРїР°РґР° РІС‹СЃРѕРєРёС… С‡Р°СЃС‚РѕС‚), СЂРµР·СѓР»СЊС‚Р°С‚ РѕРіСЂР°РЅРёС‡РµРЅ 0..1. РџР°РґРµРЅРёРµ Рё РЅРµРёР·РјРµРЅРЅР°СЏ СЌРЅРµСЂРіРёСЏ РІРєР»Р°РґР° РЅРµ РґР°СЋС‚ вЂ” Р±РµР· РЅРѕРІРѕРіРѕ СѓРґР°СЂР° Р·РЅР°С‡РµРЅРёРµ СЃСЂР°Р·Сѓ РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ Рє РЅСѓР»СЋ.
+- `TransientDetector` С…СЂР°РЅРёС‚ СЌРЅРµСЂРіРёСЋ РїСЂРµРґС‹РґСѓС‰РµРіРѕ FFT-РєР°РґСЂР°; РїРµСЂРІС‹Р№ РєР°РґСЂ Р·Р°РґР°С‘С‚ Р±Р°Р·Сѓ, `reset()` РѕС‡РёС‰Р°РµС‚ РёСЃС‚РѕСЂРёСЋ РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР°, СЃРµСЃСЃРёРё Рё РѕСЃРІРѕР±РѕР¶РґРµРЅРёРё Visualizer.
+- `AudioEnvelope`: Р°С‚Р°РєР° 8 РјСЃ, СЃРїР°Рґ 100 РјСЃ вЂ” РІРѕР»РЅР° СЂРµР·РєРѕ РїРѕРґРїСЂС‹РіРёРІР°РµС‚ РЅР° СѓРґР°СЂ Рё Р±С‹СЃС‚СЂРѕ РѕРїР°РґР°РµС‚. `AudioSample` Р¶РёРІС‘С‚ 120 РјСЃ (Р·Р°РїР°СЃ РЅР° РґРІР° РїСЂРѕРїСѓС‰РµРЅРЅС‹С… FFT-РєР°РґСЂР° РїСЂРё 20 Р“С†).
+- `AudioEnergy`: `AudioSampler` РёСЃРїРѕР»СЊР·СѓРµС‚ `TransientDetector`, СЃР±СЂРѕСЃ РґРµС‚РµРєС‚РѕСЂР° РІ `start()`/`release()`; Р»РѕРіРёРєР° Visualizer, СЂР°Р·СЂРµС€РµРЅРёСЏ, lifecycle Рё ambient-С„РѕР»Р±СЌРєР° РЅРµ РјРµРЅСЏР»Р°СЃСЊ.
+- `ExpressivePlayerSlider`: Р°РјРїР»РёС‚СѓРґР° `9dp * waveHeight * (0.55 + 1.30 * sqrt(live))` СЃ РѕРіСЂР°РЅРёС‡РµРЅРёРµРј 1.65; РєРѕСЂРЅРµРІР°СЏ РєСЂРёРІР°СЏ РїРѕРґРЅРёРјР°РµС‚ С‚РёС…РёРµ С…СЌС‚С‹, РЅР° РїР°СѓР·Рµ `waveHeight` Р·Р° 500 РјСЃ СѓС…РѕРґРёС‚ РІ 0.
+- РўРµСЃС‚С‹: 18 РІ `AudioDspTest`, РІРєР»СЋС‡Р°СЏ СЂР°Р·Р±РёРµРЅРёРµ РїРѕ РїРѕР»РѕСЃР°Рј, РіСЂР°РЅРёС†С‹ 40/150/1000/3000/10000 Р“С†, РІРµСЃР° flux, РґРµС‚РµРєС‚РѕСЂ В«СѓРґР°СЂ в†’ С‚РёС€РёРЅР°В» Рё СЃС†РµРЅР°СЂРёР№ В«РїРёРє в†’ Р±С‹СЃС‚СЂРѕРµ Р·Р°С‚СѓС…Р°РЅРёРµВ». 19 suites / 135 С‚РµСЃС‚РѕРІ, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 502 039 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+
+## РџРѕР»РЅС‹Р№ СЃРїРµРєС‚СЂ РІРјРµСЃС‚Рѕ Р±Р°СЃР° РІ РїСѓР»СЊСЃР°С†РёРё РІРѕР»РЅС‹ вЂ” СЃРµСЃСЃРёСЏ 17
+- `BassDsp.kt` в†’ `AudioDsp.kt`, `BassEnergy.kt` в†’ `AudioEnergy.kt`, `BassDspTest.kt` в†’ `AudioDspTest.kt`; СЃС‚Р°СЂС‹Рµ РёРјРµРЅР° СѓРґР°Р»РµРЅС‹.
+- `audioRms`: СЃСЂРµРґРЅРёР№ RMS РєРѕРјРїР»РµРєСЃРЅС‹С… signed-Р±РёРЅРѕРІ РІ РїРѕР»РѕСЃРµ 40 Р“С†вЂ“16 РєР“С† (РєРѕСЂРµРЅСЊ РёР· СЃСѓРјРјС‹ РєРІР°РґСЂР°С‚РѕРІ, РґРµР»С‘РЅРЅС‹Р№ РЅР° С‡РёСЃР»Рѕ Р±РёРЅРѕРІ), DC Рё Nyquist РёСЃРєР»СЋС‡РµРЅС‹, РЅРѕСЂРјР°Р»РёР·Р°С†РёСЏ РЅР° 128 Рё clamp 0..1. РўРµРїРµСЂСЊ РІРєР»Р°Рґ РґР°СЋС‚ СЃРёРЅС‚С‹ Рё С…СЌС‚С‹, Р° РЅРµ С‚РѕР»СЊРєРѕ РЅРёР·С‹.
+- `AudioEnvelope` СЃРѕС…СЂР°РЅРёР» Р°С‚Р°РєСѓ 15 РјСЃ Рё СЃРїР°Рґ 140 РјСЃ вЂ” РІРѕР»РЅР° РґС‹С€РёС‚ РїР»Р°РІРЅРѕ, Р±РµР· СЃСѓРґРѕСЂРѕР¶РЅС‹С… СЃРєР°С‡РєРѕРІ.
+- `rememberAudioEnergy`/`AudioSampler` Р·Р°РјРµРЅРёР»Рё bass-РІРµСЂСЃРёРё; С‚РµРі Р»РѕРіРѕРІ `AudioEnergy`, Р»РѕРіРёРєР° Visualizer, ambient-С„РѕР»Р±СЌРєР°, СЂР°Р·СЂРµС€РµРЅРёСЏ Рё Р¶РёР·РЅРµРЅРЅРѕРіРѕ С†РёРєР»Р° РЅРµ РјРµРЅСЏР»Р°СЃСЊ.
+- `ExpressivePlayerSlider`: РїР°СЂР°РјРµС‚СЂ `energy` в†’ `audioEnergy`; Р°РјРїР»РёС‚СѓРґР° `9dp * waveHeight * (0.65 + 1.20 * sqrt(live))` СЃ РѕРіСЂР°РЅРёС‡РµРЅРёРµРј 1.65. РљРѕСЂРЅРµРІР°СЏ РєСЂРёРІР°СЏ РєРѕРјРїРµРЅСЃРёСЂСѓРµС‚ С‚Рѕ, С‡С‚Рѕ СЃСЂРµРґРЅРёР№ RMS С€РёСЂРѕРєРѕР№ РїРѕР»РѕСЃС‹ РЅРёР¶Рµ СѓР·РєРѕРїРѕР»РѕСЃРЅРѕРіРѕ Р±Р°СЃРѕРІРѕРіРѕ; РЅР° РїР°СѓР·Рµ `waveHeight` РїРѕ-РїСЂРµР¶РЅРµРјСѓ Р·Р° 500 РјСЃ СѓС…РѕРґРёС‚ РІ 0.
+- РўРµСЃС‚С‹: `AudioDspTest` РїСЂРѕРІРµСЂСЏРµС‚ РІС‹СЃРѕРєРѕС‡Р°СЃС‚РѕС‚РЅС‹Рµ Р±РёРЅС‹ (5 Рё 10 РєР“С†), СЂР°РІРµРЅСЃС‚РІРѕ РІРєР»Р°РґР° РЅРёР·РѕРІ Рё РІРµСЂС…РѕРІ, РіСЂР°РЅРёС†С‹ 40 Р“С†/16 РєР“С†, СЃСЂРµРґРЅРµРµ РїРѕ 371 Р±РёРЅСѓ, РЅР°СЃС‹С‰РµРЅРёРµ, DC/Nyquist Рё envelope. 19 suites / 134 С‚РµСЃС‚Р°, 0 failures/errors/skipped.
+- `testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, APK 27 502 061 Р±Р°Р№С‚. Р–РёРІРѕР№ С‚РµСЃС‚ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РЅРµ РІС‹РїРѕР»РЅСЏР»СЃСЏ РїРѕ РїСЂРѕСЃСЊР±Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ вЂ” РїСЂРѕРІРµСЂРєР° РЅР° С‚РµР»РµС„РѕРЅРµ Р·Р° РЅРёРј.
+
+## Р’РѕР·РІСЂР°С‚ РІРѕР»РЅС‹ Phase B РІРЅСѓС‚СЂСЊ Material3 Slider вЂ” СЃРµСЃСЃРёСЏ 16
+- РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РѕС‚РєР»РѕРЅРёР» РїСЂСЏРјСѓСЋ Р»РёРЅРёСЋ СЃРµСЃСЃРёРё 15: РІРёР·СѓР°Р» С‚Р°Р№РјР»Р°Р№РЅР° СЃРЅРѕРІР° РІРѕР»РЅР° Phase B, РЅРѕ С‚РµС…РЅРёС‡РµСЃРєР°СЏ РѕР±С‘СЂС‚РєР° Material3 `Slider` СЃРѕС…СЂР°РЅРµРЅР° Р±РµР· РёР·РјРµРЅРµРЅРёР№.
+- `ExpressivePlayerSlider`: Canvas РІ СЃР»РѕС‚Рµ `track` РІС‹СЃРѕС‚РѕР№ 38dp СЂРёСЃСѓРµС‚ СЃРёРЅСѓСЃРѕРёРґСѓ СЃ РґР»РёРЅРѕР№ РІРѕР»РЅС‹ 44dp Рё СЃСѓР¶РµРЅРёРµРј `sin(PI*u)` Рє РєСЂР°СЏРј, stroke 3dp СЃ РєСЂСѓРіР»С‹РјРё РєРѕРЅС†Р°РјРё. РќРµРїСЂРѕРїРµС‚Р°РЅРЅР°СЏ С‡Р°СЃС‚СЊ вЂ” СЃРµСЂР°СЏ РІРѕР»РЅР°, Р±СѓС„РµСЂ вЂ” С‚Р° Р¶Рµ РІРѕР»РЅР° РїР»РѕС‚РЅРµРµ, РїСЂРѕРїРµС‚Р°РЅРЅР°СЏ вЂ” РІРѕР»РЅР° РІ Р°РєС†РµРЅС‚Рµ; РєР»РёРїС‹ РїРѕ `startX`/`progressX`/`bufferX` СѓС‡РёС‚С‹РІР°СЋС‚ RTL С‡РµСЂРµР· `trackX`.
+- Thumb Material3 Р·Р°РјРµРЅС‘РЅ РїСЂРѕР·СЂР°С‡РЅС‹Рј `Spacer(20.dp)` вЂ” РѕРЅ РґРµСЂР¶РёС‚ РѕС‚СЃС‚СѓРї РґРѕСЂРѕР¶РєРё Рё Р·РѕРЅСѓ РєР°СЃР°РЅРёСЏ; РІРёРґРёРјС‹Р№ РєСЂСѓРіР»С‹Р№ Р±РµРіСѓРЅРѕРє 5dp СЂРёСЃСѓРµС‚СЃСЏ РІ `track` РЅР° РіСЂРµР±РЅРµ РІРѕР»РЅС‹ РїРѕ С‚РѕР№ Р¶Рµ С„РѕСЂРјСѓР»Рµ СЃРёРЅСѓСЃР°. РџСЂРё Р·Р°С…РІР°С‚Рµ СЂР°Р±РѕС‚Р°РµС‚ РїСЂСѓР¶РёРЅР° `spring(0.35f, StiffnessLow)` Рё РѕСЂРµРѕР», РєР°Рє РІ Phase B.
+- Р‘Р°СЃРѕРІС‹Р№ РёРјРїСѓР»СЊСЃ (`BassDsp`, 40вЂ“180 Р“С†, envelope) РјРµРЅСЏРµС‚ С‚РѕР»СЊРєРѕ Р°РјРїР»РёС‚СѓРґСѓ: `9.dp * waveHeight * (0.72f + 0.88f * live)`, С„РѕСЂРјР° СЃРёРЅСѓСЃРѕРёРґС‹ РЅРµ РёСЃРєР°Р¶Р°РµС‚СЃСЏ. РќР° РїР°СѓР·Рµ `waveHeight` Р·Р° 500 РјСЃ СѓС…РѕРґРёС‚ РІ 0 (РІРѕР»РЅР° РІС‹РїСЂСЏРјР»СЏРµС‚СЃСЏ), С„Р°Р·Р° `rememberPlaybackPhase` Р·Р°РјРёСЂР°РµС‚ РЅР° С‚РµРєСѓС‰РµРј Р·РЅР°С‡РµРЅРёРё.
+- `PlayerScreen`: РїРѕР·РёС†РёСЏ Рё Р±СѓС„РµСЂ РїРѕ-РїСЂРµР¶РЅРµРјСѓ СЃР±СЂР°СЃС‹РІР°СЋС‚СЃСЏ РЅР° СЃРјРµРЅСѓ `trackId` вЂ” РјРѕСЂС„ `LinearProgressIndicator` в†” `Slider` СЂР°Р±РѕС‚Р°РµС‚.
+- РџСЂРѕРІРµСЂРєР°: `gradlew testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, 19 suites / 133 С‚РµСЃС‚Р°, 0 failures/errors/skipped; APK 27 502 061 Р±Р°Р№С‚.
+- Live SM-A266B: РІРѕР»РЅР° РїР»Р°РІРЅР°СЏ Рё СЂР°РІРЅРѕРјРµСЂРЅР°СЏ, Р±РµРіСѓРЅРѕРє РєСЂСѓРіР»С‹Р№ РЅР° РіСЂРµР±РЅРµ, Р°РјРїР»РёС‚СѓРґР° РґС‹С€РёС‚ 22.5в†’37 px РїСЂРё Р±Р°СЃРµ Рё 5 px РЅР° РїР°СѓР·Рµ, drag СЃР»РµРґСѓРµС‚ Р·Р° РїР°Р»СЊС†РµРј СЃ РѕСЂРµРѕР»РѕРј, tap-РїРµСЂРµРјРѕС‚РєР° СЂР°Р±РѕС‚Р°РµС‚, `BassEnergy: Visualizer: СЃРµСЃСЃРёСЏ 4001/4033`.
+
+## РћС‚РєР°С‚ РІРёР·СѓР°Р»Р° С‚Р°Р№РјР»Р°Р№РЅР° Рє Phase B вЂ” СЃРµСЃСЃРёСЏ 15
+- РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РѕС‚РєР»РѕРЅРёР» РІРѕР»РЅРѕРІРѕР№ Canvas СЃРµСЃСЃРёРё 14: СЃРёРЅСѓСЃРѕРёРґР° РЅР° РІСЃСЋ С€РёСЂРёРЅСѓ РґРѕСЂРѕР¶РєРё Рё РІРµСЂС‚РёРєР°Р»СЊРЅС‹Р№ thumb-В«РїР°Р»РєР°В» РІРµСЂРЅСѓР»РёСЃСЊ Рє СЃРїРѕРєРѕР№РЅРѕРјСѓ РІРёРґСѓ Phase B.
+- `ExpressivePlayerSlider` СЃРѕС…СЂР°РЅРёР» РѕР±С‘СЂС‚РєСѓ Material3 1.3.1 `Slider` (interactionSource, semantics, РєР»Р°РІРёР°С‚СѓСЂР°, RTL, drag-cancel, РјРёРЅРёРјР°Р»СЊРЅР°СЏ Р·РѕРЅР° 48dp) Рё СЃР»РѕС‚ `track`: РЅРµРїСЂРѕРїРµС‚Р°РЅРЅР°СЏ С‡Р°СЃС‚СЊ вЂ” СЃРµСЂР°СЏ Р»РёРЅРёСЏ 2.5dp, Р±СѓС„РµСЂ вЂ” С‚Р° Р¶Рµ Р»РёРЅРёСЏ РїР»РѕС‚РЅРµРµ, РїСЂРѕРїРµС‚Р°РЅРЅР°СЏ вЂ” СЃРїР»РѕС€РЅР°СЏ Р·Р°Р»РёРІРєР° `primary`. Р¤РѕСЂРјР° Р»РёРЅРёРё Р±РѕР»СЊС€Рµ РЅРµ РёСЃРєР°Р¶Р°РµС‚СЃСЏ.
+- Р‘Р°СЃРѕРІС‹Р№ РёРјРїСѓР»СЊСЃ (`BassDsp`, 40вЂ“180 Р“С†, РѕРґРЅР° РІСЂРµРјРµРЅРЅР°СЏ envelope) РїСЂРёРІСЏР·Р°РЅ Рє С‚РѕР»С‰РёРЅРµ 2.5в†’3dp Рё РјСЏРіРєРѕРјСѓ РґРІСѓС…СЃР»РѕР№РЅРѕРјСѓ СЃРІРµС‡РµРЅРёСЋ (alpha 0.10/0.14 РѕС‚ СЌРЅРµСЂРіРёРё). РќР° РїР°СѓР·Рµ `calm`-Р°РЅРёРјР°С†РёСЏ 500 РјСЃ Рё СЃРїР°Рґ envelope РІРѕР·РІСЂР°С‰Р°СЋС‚ Р»РёРЅРёСЋ Рє РїРѕРєРѕСЋ: СЃРІРµС‡РµРЅРёРµ Рё СѓС‚РѕР»С‰РµРЅРёРµ РёСЃС‡РµР·Р°СЋС‚ Р±РµР· СЃРєР°С‡РєР°.
+- Thumb вЂ” СЃРѕР±СЃС‚РІРµРЅРЅС‹Р№ РєСЂСѓРіР»С‹Р№ Р±РµРіСѓРЅРѕРє 11dp СЃ РїСЂСѓР¶РёРЅРЅС‹Рј СЂРѕСЃС‚РѕРј 30% Рё РѕСЂРµРѕР»РѕРј РїСЂРё Р·Р°С…РІР°С‚Рµ (РєР°Рє РІ Phase B), РІРјРµСЃС‚Рѕ РІРµСЂС‚РёРєР°Р»СЊРЅРѕРіРѕ handle Material3.
+- РњРѕСЂС„ `LinearProgressIndicator` в†” `Slider` РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅ: РЅР° СЃРјРµРЅРµ С‚СЂРµРєР° РїРѕР·РёС†РёСЏ Рё Р±СѓС„РµСЂ РѕР±РЅСѓР»СЏСЋС‚СЃСЏ (`remember(trackId) { 0 }`), РёРЅР°С‡Рµ СЃС‚Р°СЂР°СЏ РїРѕР·РёС†РёСЏ РїРµСЂРµРµР·Р¶Р°Р»Р° РІ РЅРѕРІС‹Р№ С‚СЂРµРє Рё `hasStarted` Р·Р°С‰С‘Р»РєРёРІР°Р»СЃСЏ СЃСЂР°Р·Сѓ, РЅРµ РґР°РІР°СЏ РїРѕРєР°Р·Р°С‚СЊ РёРЅРґРёРєР°С‚РѕСЂ.
+- `SinePulseBar.kt` РїРµСЂРµРёРјРµРЅРѕРІР°РЅ РІ `BassEnergy.kt` (РѕС‚РґРµР»СЊРЅРѕР№ РїРѕР»РѕСЃС‹ РЅР°Рґ СЃР»Р°Р№РґРµСЂРѕРј Р±РѕР»СЊС€Рµ РЅРµС‚); РґРѕР±Р°РІР»РµРЅС‹ Р»РѕРіРё `BassEnergy` РґР»СЏ РїСЂРѕРІРµСЂРєРё РёСЃС‚РѕС‡РЅРёРєР° СЌРЅРµСЂРіРёРё РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ.
+- РџСЂРѕРІРµСЂРєР°: `gradlew testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, 133 JVM-С‚РµСЃС‚Р°, 0 failures/errors/skipped; APK 27 502 042 Р±Р°Р№С‚.
+- Live SM-A266B: Р»РёРЅРёСЏ СЂРѕРІРЅР°СЏ, thumb РєСЂСѓРіР»С‹Р№, СЃРІРµС‡РµРЅРёРµ РґС‹С€РёС‚ (СЏСЂРєРѕСЃС‚СЊ РѕСЂРµРѕР»Р° 37в†’66в†’104 РїСЂРё Р±Р°СЃРµ, 0 РЅР° РїР°СѓР·Рµ), drag Рё tap-РїРµСЂРµРјРѕС‚РєР° СЂР°Р±РѕС‚Р°СЋС‚, РёРЅРґРёРєР°С‚РѕСЂ Р·Р°РіСЂСѓР·РєРё РїРѕСЏРІР»СЏРµС‚СЃСЏ РЅР° СЃС‚Р°СЂС‚Рµ С‚СЂРµРєР° Рё РјРѕСЂС„РёС‚ РІ СЃР»Р°Р№РґРµСЂ, `BassEnergy: Visualizer: СЃРµСЃСЃРёСЏ 3961`.
+
+## Р¤РёРЅР°Р»СЊРЅС‹Р№ С„РёРєСЃ С‚Р°Р№РјР»Р°Р№РЅР° Рё FFT вЂ” СЃРµСЃСЃРёСЏ 14
+- Р’РјРµСЃС‚Рѕ СЃР°РјРѕРїРёСЃРЅС‹С… Р¶РµСЃС‚РѕРІ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ Material3 1.3.1 `Slider`: Canvas С‚РѕР»СЊРєРѕ РІ `track`, С€С‚Р°С‚РЅС‹Рµ thumb, semantics, РєР»Р°РІРёР°С‚СѓСЂР°, RTL, disabled Рё РјРёРЅРёРјР°Р»СЊРЅР°СЏ Р·РѕРЅР° 48dp. РћС‚РґРµР»СЊРЅР°СЏ РїРѕР»РѕСЃР° РЅР°Рґ СЃР»Р°Р№РґРµСЂРѕРј СѓРґР°Р»РµРЅР°, Р°РєС‚РёРІРЅР°СЏ РІРѕР»РЅР° СЃС…РѕРґРёС‚СЃСЏ Рє С†РµРЅС‚СЂСѓ thumb; Р±СѓС„РµСЂ Рё РЅРµР°РєС‚РёРІРЅР°СЏ РґРѕСЂРѕР¶РєР° РёСЃРїРѕР»СЊР·СѓСЋС‚ С‚Рµ Р¶Рµ РєРѕРѕСЂРґРёРЅР°С‚С‹.
+- РћР±С‰Р°СЏ РјРѕРґРµР»СЊ `PlayerSliderState` РґР»СЏ preview Рё С‚Р°Р№РјРєРѕРґР°. Start/Stop/Cancel Рё finish РїСЂРѕС…РѕРґСЏС‚ С‡РµСЂРµР· РѕРґРёРЅ interactionSource РІ РїРѕСЂСЏРґРєРµ FIFO; Cancel РІРѕР·РІСЂР°С‰Р°РµС‚ С‚РµРєСѓС‰РёР№ playback Р±РµР· seek. `key(trackId)` РїРµСЂРµСЃРѕР·РґР°С‘С‚ Р¶РµСЃС‚, РїСЂРѕРІРµСЂРєР° Р°РєС‚СѓР°Р»СЊРЅРѕРіРѕ trackId РЅРµ РїРѕР·РІРѕР»СЏРµС‚ СЃС‚Р°СЂРѕРјСѓ release РїРµСЂРµРјРѕС‚Р°С‚СЊ РЅРѕРІС‹Р№ С‚СЂРµРє. Accessibility change РЅРµ РІРєР»СЋС‡Р°РµС‚ drag.
+- `BassDsp.kt`: signed complex RMS С‚РѕР»СЊРєРѕ Р±РёРЅРѕРІ 1..N/2-1 РІ 40вЂ“180 Р“С†, fs РёР· callback samplingRate/1000, N=fft.size. РќРѕСЂРјР°Р»РёР·Р°С†РёСЏ РЅР° 128 вЂ” РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅС‹Р№ РјР°СЃС€С‚Р°Р± signed-byte, РЅРµ РёР·РјРµСЂРµРЅРёРµ РіСЂРѕРјРєРѕСЃС‚Рё. Р•РґРёРЅСЃС‚РІРµРЅРЅР°СЏ РІСЂРµРјРµРЅРЅР°СЏ envelope: attack 15 РјСЃ, release 140 РјСЃ, alpha=1-exp(-dt/tau), РјРѕРЅРѕС‚РѕРЅРЅС‹Р№ elapsedRealtimeNanos; tween СЌРЅРµСЂРіРёРё СѓРґР°Р»С‘РЅ. FFT Р±РµР· callbacks Р±РѕР»РµРµ 250 РјСЃ Р·Р°С‚СѓС…Р°РµС‚ Рє РЅСѓР»СЋ.
+- Visualizer РѕСЃРІРѕР±РѕР¶РґР°РµС‚СЃСЏ РїСЂРё pause, СѓС…РѕРґРµ РёР· RESUMED, СЃРјРµРЅРµ РѕРїСѓР±Р»РёРєРѕРІР°РЅРЅРѕРіРѕ sessionId/С‚СЂРµРєР°, РїРѕС‚РµСЂРµ СЂР°Р·СЂРµС€РµРЅРёСЏ Рё disposal. Р§Р°СЃС‚РёС‡РЅРѕ СЃРѕР·РґР°РЅРЅС‹Р№ СЌРєР·РµРјРїР»СЏСЂ РѕС‡РёС‰Р°РµС‚СЃСЏ РїСЂРё РёСЃРєР»СЋС‡РµРЅРёРё; РїРѕР·РґРЅРёРµ FFT РѕС‚СЃРµРєР°РµС‚ generation. Р Р°Р·СЂРµС€РµРЅРёРµ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ РЅР° resume Рё РєР°Р¶РґС‹Рµ 250 РјСЃ РІ foreground; Р±РµР· RECORD_AUDIO вЂ” РїР»Р°РІРЅС‹Р№ РґРµРєРѕСЂР°С‚РёРІРЅС‹Р№ ambient. Р­РЅРµСЂРіРёСЏ С‡РёС‚Р°РµС‚СЃСЏ РІ draw, callback РЅРµ РїРёС€РµС‚ Compose-state; beat sync РЅРµ Р·Р°СЏРІР»СЏРµС‚СЃСЏ.
+- РћРіСЂР°РЅРёС‡РµРЅРёРµ: РЅРµРёР·РјРµРЅС‘РЅРЅС‹Р№ `PlaybackAudioSession` РЅРµ РїСѓР±Р»РёРєСѓРµС‚ Flow, РЅРµ СЃР»СѓС€Р°РµС‚ audio-session callback Рё РЅРµ СЃР±СЂР°СЃС‹РІР°РµС‚ id РІ 0. UI РѕРїСЂР°С€РёРІР°РµС‚ С‚РѕР»СЊРєРѕ РѕРїСѓР±Р»РёРєРѕРІР°РЅРЅС‹Р№ С„Р°РєС‚РёС‡РµСЃРєРёР№ id Рё РёСЃРїРѕР»СЊР·СѓРµС‚ РµРіРѕ РєР°Рє РєР»СЋС‡ СЂРµСЃСѓСЂСЃР°; СЃРјРµРЅСѓ СЃРµСЃСЃРёРё, РєРѕС‚РѕСЂСѓСЋ provider РЅРµ РѕРїСѓР±Р»РёРєРѕРІР°Р», РіР°СЂР°РЅС‚РёСЂРѕРІР°С‚СЊ РЅРµР»СЊР·СЏ. Р”РІРёР¶РѕРє, service/provider, РїРѕРёСЃРє, СЃРєР°С‡РёРІР°РЅРёРµ Рё Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РЅРµ РјРµРЅСЏР»РёСЃСЊ.
+- РџСЂРѕРІРµСЂРєР°: JDK 17 `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`, `gradlew.bat :app:tasks --all` вЂ” exit 0. Р’СЃРµ Р·Р°РїСѓСЃРєРё СЃ `--console=plain --max-workers=1 -Dorg.gradle.jvmargs="-Xmx2048m -Dfile.encoding=UTF-8"`.
+- `gradlew.bat testDebugUnitTest assembleDebug lintDebug`: JVM-С‚РµСЃС‚С‹ Рё APK СЂРµР°Р»СЊРЅРѕ РІС‹РїРѕР»РЅРµРЅС‹; РѕР±С‰РёР№ exit 1 С‚РѕР»СЊРєРѕ РёР·-Р·Р° lint. XML: 133 testcase / 133 executed, 0 failures, 0 errors, 0 skipped (24 РЅРѕРІС‹С… DSP/state/RTL-С‚РµСЃС‚Р°). `lintDebug`: 2 UnsafeOptInUsageError РІ РЅРµРёР·РјРµРЅС‘РЅРЅС‹С… `PlaybackAudioSession.kt:30` Рё `PlayerController.kt:153`, 25 warnings; РїСЂР°РІРёР»Р° РЅРµ РѕСЃР»Р°Р±Р»СЏР»РёСЃСЊ, Р·Р°РїСЂРµС‰С‘РЅРЅС‹Р№ РґРІРёР¶РѕРє РЅРµ РїСЂР°РІРёР»СЃСЏ. РћС‚РґРµР»СЊРЅРѕРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ `gradlew.bat testDebugUnitTest assembleDebug` вЂ” BUILD SUCCESSFUL, exit 0, 5 СЃРµРєСѓРЅРґ, 53 up-to-date (РЅРµ РїРѕРІС‚РѕСЂРЅРѕРµ РёСЃРїРѕР»РЅРµРЅРёРµ С‚РµСЃС‚РѕРІ).
+- APK РїСЂРѕРІРµСЂРµРЅ: `D:\MyMusic\app\build\outputs\apk\debug\app-debug.apk`, 27 502 042 Р±Р°Р№С‚, СЃРѕР·РґР°РЅ 26.10.2026 18:28:28 +03:00. `git diff --check` Р±РµР· РѕС€РёР±РѕРє. РџРµСЂРІР°СЏ РїРѕРїС‹С‚РєР° tasks РёСЃРїРѕР»СЊР·РѕРІР°Р»Р° СЃРёСЃС‚РµРјРЅСѓСЋ Java 11 Рё СѓРїР°Р»Р°; РёСЃРїСЂР°РІР»РµРЅРѕ С‚РѕР»СЊРєРѕ РѕРєСЂСѓР¶РµРЅРёРµ. РћРґРЅР° РїСЂРѕРјРµР¶СѓС‚РѕС‡РЅР°СЏ СЃР±РѕСЂРєР° СѓРїР°Р»Р° РЅР° РµС‰С‘ РЅРµ РѕР±СЉСЏРІР»РµРЅРЅРѕРј SliderFinishInteraction; РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ РїСЂР°РІРєРё РєРѕРјРїРёР»СЏС†РёСЏ РїСЂРѕС€Р»Р°. Р›РёРјРёС‚ РїРѕРІС‚РѕСЂРЅС‹С… РѕРґРёРЅР°РєРѕРІС‹С… РѕС€РёР±РѕРє РЅРµ РґРѕСЃС‚РёРіРЅСѓС‚.
+- Compose UI-С‚РµСЃС‚С‹ РЅРµ РґРѕР±Р°РІР»СЏР»РёСЃСЊ: РІ РїСЂРѕРµРєС‚Рµ РЅРµС‚ androidTest Рё compose-ui-test Р·Р°РІРёСЃРёРјРѕСЃС‚Рё; РЅРѕРІС‹Рµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё Р·Р°РїСЂРµС‰РµРЅС‹. РќР° С‚РµР»РµС„РѕРЅРµ РѕСЃС‚Р°СЋС‚СЃСЏ Cancel/РїРµСЂРµС…РІР°С‚ Р¶РµСЃС‚Р°, СЃРјРµРЅР° С‚СЂРµРєР° РґРѕ release, TalkBack/РєР»Р°РІРёР°С‚СѓСЂР°, RTL/disabled, СЃРѕСЃРµРґРЅРёРµ РєРЅРѕРїРєРё, pause/background/resume, РѕС‚Р·С‹РІ СЂР°Р·СЂРµС€РµРЅРёСЏ, СЂРµР°Р»СЊРЅС‹Рµ FFT/ROM Рё СЃРјРµРЅР° session. РЈСЃРїРµС€РЅС‹Рµ JVM-С‚РµСЃС‚С‹ РЅРµ Р·Р°РјРµРЅСЏСЋС‚ СЌС‚Рё РїСЂРѕРІРµСЂРєРё.
+- Р’РµС‚РєР° `main`; Р±РµР· commit/push. РџРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ `.opencode/`, `.postman/`, `postman/` РЅРµ Р·Р°С‚СЂРѕРЅСѓС‚С‹; РїРѕСЏРІРёРІС€Р°СЏСЃСЏ РІ status `.kotlin/` СЃРѕРґРµСЂР¶РёС‚ Р»РѕРєР°Р»СЊРЅС‹Рµ СЃР»СѓР¶РµР±РЅС‹Рµ С„Р°Р№Р»С‹ РєРѕРјРїРёР»СЏС‚РѕСЂР° Рё РЅРµ РІРєР»СЋС‡Р°РµС‚СЃСЏ РІ РїСѓР±Р»РёРєР°С†РёСЋ.
+
+## рџ“Њ РђРєС‚СѓР°Р»СЊРЅС‹Р№ СЃСЂРµР·
+- 129 СЂРµР°Р»СЊРЅРѕ РІС‹РїРѕР»РЅРµРЅРЅС‹С… JVM-С‚РµСЃС‚РѕРІ (20 suites), 0 failures/errors/skipped; `assembleDebug` РїРѕРґС‚РІРµСЂР¶РґС‘РЅ, APK 27 508 441 Р±Р°Р№С‚. Lint РІ СЌС‚РѕР№ СЃРµСЃСЃРёРё РЅРµ Р·Р°РїСѓСЃРєР°Р»СЃСЏ.
+- Room v8, СЃС…РµРјС‹ `4.json`вЂ“`8.json`; ONNX/YAMNet Рё `core/audio` СѓРґР°Р»РµРЅС‹ revert-РєРѕРјРјРёС‚РѕРј `9e74fb6`.
+- В«Р”Р»СЏ РІР°СЃВ»: related-С‚СЂРµРєРё YouTube/SoundCloud С‡РµСЂРµР· NewPipe, 4вЂ“6 С‚СЂРµРєРѕРІ-СЃРёРґРѕРІ, РєР°Рї 2/3, fallback С‚РѕР»СЊРєРѕ РїСЂРё <10 Рё С‚РѕР»СЊРєРѕ РїРѕ СЃС‚СЂРѕРіРѕРјСѓ Р°СЂС‚РёСЃС‚Сѓ; РіР»РѕР±Р°Р»СЊРЅС‹Р№ РїРѕРїСѓР»СЏСЂРЅС‹Р№ Р·Р°РїСЂРѕСЃ вЂ” С‚РѕР»СЊРєРѕ РЅР° РїСѓСЃС‚РѕР№ РёСЃС‚РѕСЂРёРё.
+- РЎРєР°С‡РёРІР°РЅРёРµ: `DownloadSourceResolver` РІС‹Р±РёСЂР°РµС‚ С‚РѕР»СЊРєРѕ progressive-РёСЃС‚РѕС‡РЅРёРє; SoundCloud вЂ” PROGRESSIVE (HLS-only С‚СЂРµРє РїР°РґР°РµС‚ Рё СѓС…РѕРґРёС‚ РЅР° YouTube), YouTube вЂ” PROGRESSIVE. РЎРЅР°С‡Р°Р»Р° СЃС‚СЂРѕРіРёР№ РјР°С‚С‡ Р°СЂС‚РёСЃС‚Р° Рё РЅР°Р·РІР°РЅРёСЏ; РґР»СЏ YouTube вЂ” РЅРµСЃС‚СЂРѕРіРёР№ fallback: Р·Р°РїСЂРѕСЃ Р±РµР· СЃР»СѓР¶РµР±РЅС‹С… РїРѕРјРµС‚РѕРє, С‚РѕРї-10, СЂР°Р·РЅРёС†Р° РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё в‰¤15 СЃ, Р°СЂС‚РёСЃС‚ РІ РЅР°Р·РІР°РЅРёРё РёР»Рё РєР°РЅР°Р»Рµ. TTL 30 РјРёРЅ РґР»СЏ РЅРµСѓРґР°С‡РЅС‹С… РёСЃС‚РѕС‡РЅРёРєРѕРІ. Р РµР·РѕР»РІ СЃРІРµР¶РµРіРѕ URL РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ РІ `DownloadTrackWorker` РїРµСЂРµРґ РєР°Р¶РґРѕР№ РїРѕРїС‹С‚РєРѕР№; РїСЂРё 403/410 вЂ” РѕРґРёРЅ РїРѕРІС‚РѕСЂРЅС‹Р№ СЂРµР·РѕР»РІ. Р—Р°РїРёСЃСЊ `.part` в†’ Р°С‚РѕРјР°СЂРЅС‹Р№ rename, Room РїРѕСЃР»Рµ rename; РѕС‚РјРµРЅР° РѕС‚РјРµРЅСЏРµС‚ OkHttp/NewPipe `Call`; HTTP BASIC-Р»РѕРіРё С‚РѕР»СЊРєРѕ РІ debug. РљРЅРѕРїРєР° СЃРєР°С‡РёРІР°РЅРёСЏ РµСЃС‚СЊ РІ РјРµРґРёР°С‚РµРєРµ Рё РїРѕР»РЅРѕСЌРєСЂР°РЅРЅРѕРј РїР»РµРµСЂРµ.
+- РџР»РµРµСЂ: СЂРµР¶РёРј С‚РµРєСЃС‚Р° РѕС‚РїРѕР»РёСЂРѕРІР°РЅ РІ Phase A вЂ” СЃРїРѕРєРѕР№РЅС‹Р№ С„РѕРЅ (scrim `surface` 0.65 РїРѕРІРµСЂС… СЂР°Р·РјС‹С‚РѕР№ РѕР±Р»РѕР¶РєРё), РёРµСЂР°СЂС…РёСЏ СЃС‚СЂРѕРє 24/18/16sp, РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅР°СЏ РєР°СЂР°РѕРєРµ-Р·Р°Р»РёРІРєР°, РїРѕРґСЉС‘Рј Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё РЅР° 24dp. РўР°Р№РјР»Р°Р№РЅ вЂ” РІРѕР»РЅР° Phase B РЅР° Material3 Slider: СЃРµСЂР°СЏ СЃРёРЅСѓСЃРѕРёРґР° СЃ РґР»РёРЅРѕР№ 44dp Рё СЃСѓР¶РµРЅРёРµРј Рє РєСЂР°СЏРј, РїСЂРѕРїРµС‚Р°РЅРЅР°СЏ С‡Р°СЃС‚СЊ РІ `primary`, РєСЂСѓРіР»С‹Р№ Р±РµРіСѓРЅРѕРє РЅР° РіСЂРµР±РЅРµ; Р°РјРїР»РёС‚СѓРґР° РїРѕСЃС‚РѕСЏРЅРЅР°СЏ 9dp, РЅР° РїР°СѓР·Рµ РІРѕР»РЅР° РїР»Р°РІРЅРѕ РІС‹РїСЂСЏРјР»СЏРµС‚СЃСЏ. DSP/Visualizer СѓРґР°Р»РµРЅС‹ РІ СЃРµСЃСЃРёРё 21, `RECORD_AUDIO` РІ РјР°РЅРёС„РµСЃС‚Рµ РЅРµС‚.
 
 ---
 
-## ✅ Сессия 1 — Скелет проекта (15.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 1 вЂ” РЎРєРµР»РµС‚ РїСЂРѕРµРєС‚Р° (15.10.2026)
 
-### Что сделано
-- Настроен стек зависимостей: Hilt 2.52, Media3 1.5.0, Room 2.6.1, Retrofit, Coil 3, NewPipe Extractor v0.24.3
-- Создана тема Material 3 с Dynamic Color (Android 12+) и violet-purple палитрой для старых версий
-- Реализована навигация: `BottomNavigationBar` (4 вкладки) + full-screen плеер со slide-up анимацией
-- Созданы заглушки всех экранов: Home, Search, Library, Wave, Player
-- `MyMusicApp` (`@HiltAndroidApp`) инициализирует NewPipe
-- Настроен edge-to-edge режим
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+- РќР°СЃС‚СЂРѕРµРЅ СЃС‚РµРє Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№: Hilt 2.52, Media3 1.5.0, Room 2.6.1, Retrofit, Coil 3, NewPipe Extractor v0.24.3
+- РЎРѕР·РґР°РЅР° С‚РµРјР° Material 3 СЃ Dynamic Color (Android 12+) Рё violet-purple РїР°Р»РёС‚СЂРѕР№ РґР»СЏ СЃС‚Р°СЂС‹С… РІРµСЂСЃРёР№
+- Р РµР°Р»РёР·РѕРІР°РЅР° РЅР°РІРёРіР°С†РёСЏ: `BottomNavigationBar` (4 РІРєР»Р°РґРєРё) + full-screen РїР»РµРµСЂ СЃРѕ slide-up Р°РЅРёРјР°С†РёРµР№
+- РЎРѕР·РґР°РЅС‹ Р·Р°РіР»СѓС€РєРё РІСЃРµС… СЌРєСЂР°РЅРѕРІ: Home, Search, Library, Wave, Player
+- `MyMusicApp` (`@HiltAndroidApp`) РёРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚ NewPipe
+- РќР°СЃС‚СЂРѕРµРЅ edge-to-edge СЂРµР¶РёРј
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 MyMusicApp.kt, MainActivity.kt
 navigation/Screen.kt, navigation/AppNavGraph.kt
@@ -400,23 +411,23 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## ✅ Сессия 2 — SoundCloud поиск через NewPipe (15.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 2 вЂ” SoundCloud РїРѕРёСЃРє С‡РµСЂРµР· NewPipe (15.10.2026)
 
-### Что сделано
-- Реализован слой данных для SoundCloud:
-  - `SoundCloudRepository` (интерфейс): `search()` + `resolveStreamUrl()`
-  - `SoundCloudRepositoryImpl`: использует `SearchInfo.getInfo()` и `StreamInfo.getInfo()` из NewPipe
-  - `NewPipeDownloader`: OkHttp-реализация `Downloader` для NewPipe
-- Hilt модули: `NetworkModule` (OkHttp, Retrofit для LRCLIB), `RepositoryModule` (@Binds)
-- `SearchViewModel`: debounce 400 мс на Flow запросов, минимум 2 символа
-- `SearchScreen`: 4 состояния UI (подсказка / загрузка / ошибка+повтор / список)
-- `TrackCard`: переиспользуемый компонент (M3 ListItem + Coil AsyncImage)
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+- Р РµР°Р»РёР·РѕРІР°РЅ СЃР»РѕР№ РґР°РЅРЅС‹С… РґР»СЏ SoundCloud:
+  - `SoundCloudRepository` (РёРЅС‚РµСЂС„РµР№СЃ): `search()` + `resolveStreamUrl()`
+  - `SoundCloudRepositoryImpl`: РёСЃРїРѕР»СЊР·СѓРµС‚ `SearchInfo.getInfo()` Рё `StreamInfo.getInfo()` РёР· NewPipe
+  - `NewPipeDownloader`: OkHttp-СЂРµР°Р»РёР·Р°С†РёСЏ `Downloader` РґР»СЏ NewPipe
+- Hilt РјРѕРґСѓР»Рё: `NetworkModule` (OkHttp, Retrofit РґР»СЏ LRCLIB), `RepositoryModule` (@Binds)
+- `SearchViewModel`: debounce 400 РјСЃ РЅР° Flow Р·Р°РїСЂРѕСЃРѕРІ, РјРёРЅРёРјСѓРј 2 СЃРёРјРІРѕР»Р°
+- `SearchScreen`: 4 СЃРѕСЃС‚РѕСЏРЅРёСЏ UI (РїРѕРґСЃРєР°Р·РєР° / Р·Р°РіСЂСѓР·РєР° / РѕС€РёР±РєР°+РїРѕРІС‚РѕСЂ / СЃРїРёСЃРѕРє)
+- `TrackCard`: РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Р№ РєРѕРјРїРѕРЅРµРЅС‚ (M3 ListItem + Coil AsyncImage)
 
-### Отказались от
-- Самописного парсера `client_id` из JS-бандлов SC (нестабилен, SC меняет структуру)
-- Retrofit для SoundCloud (заменён NewPipe)
+### РћС‚РєР°Р·Р°Р»РёСЃСЊ РѕС‚
+- РЎР°РјРѕРїРёСЃРЅРѕРіРѕ РїР°СЂСЃРµСЂР° `client_id` РёР· JS-Р±Р°РЅРґР»РѕРІ SC (РЅРµСЃС‚Р°Р±РёР»РµРЅ, SC РјРµРЅСЏРµС‚ СЃС‚СЂСѓРєС‚СѓСЂСѓ)
+- Retrofit РґР»СЏ SoundCloud (Р·Р°РјРµРЅС‘РЅ NewPipe)
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 data/model/Track.kt
 data/repository/SoundCloudRepository.kt
@@ -425,44 +436,44 @@ core/network/NewPipeDownloader.kt
 core/network/NetworkModule.kt
 core/di/RepositoryModule.kt
 feature/search/SearchViewModel.kt
-feature/search/SearchScreen.kt (обновлён)
+feature/search/SearchScreen.kt (РѕР±РЅРѕРІР»С‘РЅ)
 core/ui/components/TrackCard.kt
 ```
 
 ---
 
-## ✅ Сессия 3 — Media3 HLS воспроизведение (16.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 3 вЂ” Media3 HLS РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ (16.10.2026)
 
-### Что сделано
-- Добавлена зависимость `media3-exoplayer-hls:1.5.0`
-- Обновлён NewPipe Extractor до `v0.26.5`
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+- Р”РѕР±Р°РІР»РµРЅР° Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ `media3-exoplayer-hls:1.5.0`
+- РћР±РЅРѕРІР»С‘РЅ NewPipe Extractor РґРѕ `v0.26.5`
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts, AGENTS.md
 ```
 
-### Текущее состояние
-- Поиск SoundCloud + HLS-воспроизведение работают, треки играют в фоне
+### РўРµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ
+- РџРѕРёСЃРє SoundCloud + HLS-РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ СЂР°Р±РѕС‚Р°СЋС‚, С‚СЂРµРєРё РёРіСЂР°СЋС‚ РІ С„РѕРЅРµ
 
 ---
 
-## ✅ Сессия 4 — Полировка UI по чек-листу (16.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 4 вЂ” РџРѕР»РёСЂРѕРІРєР° UI РїРѕ С‡РµРє-Р»РёСЃС‚Сѓ (16.10.2026)
 
-### Что сделано
-1. **Coil (TrackCard, PlayerScreen, MiniPlayer)**: подключён `crossfade(200)`, фиксированные контейнеры (`Modifier.size`), тонированные плейсхолдеры (`surfaceVariant`) и error-плейсхолдер с векторной иконкой ноты (`Icons.Rounded.MusicNote`). Скачки лейаута исключены.
-2. **Слайдер плеера**: обновление позиции троттлится (~6-7 раз/сек, 150 мс); во время перетаскивания значение удерживается в локальном state без конфликтов с пальцем, seek вызывается строго в `onValueChangeFinished`.
-3. **MiniPlayer**: анимированное появление и скрытие через `AnimatedVisibility` (slide + fade, 250 мс), список результатов поиска не перекрывается благодаря `contentPadding` (80.dp).
-4. **Переключение вкладок**: настроен плавный `fadeIn/fadeOut` (200 мс); состояние сохраняется через `saveState`/`restoreState` и `launchSingleTop`.
-5. **Открытие/закрытие плеера**: плавная slide-up / slide-down анимация (300 мс) с fade без мерцаний и дублирования.
-6. **Поиск**: внедрены скелетон-карточки при загрузке вместо одиночного спиннера; сохранено состояние ошибки с кнопкой повтора.
-7. **LazyColumn**: задан `key = { it.id }`, межкартчные отступы через `Arrangement.spacedBy(4.dp)`, `contentPadding` снизу с учётом высоты `MiniPlayer`.
-8. **Рекомпозиции**: секция слайдера и таймеров вынесена в изолированный `@Composable` (`PlayerProgressSection`), тик прогресса не триггерит рекомпозицию обложки и всей страницы.
-9. **Отступы и типографика**: приведены к токенам `MaterialTheme.typography` и `MaterialTheme.colorScheme`, устранены хардкод-размеры.
-10. **Edge-to-edge**: проверены и гармонизированы системные insets (TopAppBar с padding в Scaffold).
-11. **Точечные фиксы производительности**: `SubcomposeAsyncImage` заменён на легковесный `AsyncImage` с `placeholder = ColorPainter(surfaceVariant)` и вектором ноты для `error` (устранены лишние фазы субкомпозиции в списках); скелетоны поиска выполнены статичными без шиммер-нагрузки; анимация вкладок облегчена до `fadeIn(200)` на enter и `ExitTransition.None` на exit; `contentPadding` списков синхронизирован со `Scaffold`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Coil (TrackCard, PlayerScreen, MiniPlayer)**: РїРѕРґРєР»СЋС‡С‘РЅ `crossfade(200)`, С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Рµ РєРѕРЅС‚РµР№РЅРµСЂС‹ (`Modifier.size`), С‚РѕРЅРёСЂРѕРІР°РЅРЅС‹Рµ РїР»РµР№СЃС…РѕР»РґРµСЂС‹ (`surfaceVariant`) Рё error-РїР»РµР№СЃС…РѕР»РґРµСЂ СЃ РІРµРєС‚РѕСЂРЅРѕР№ РёРєРѕРЅРєРѕР№ РЅРѕС‚С‹ (`Icons.Rounded.MusicNote`). РЎРєР°С‡РєРё Р»РµР№Р°СѓС‚Р° РёСЃРєР»СЋС‡РµРЅС‹.
+2. **РЎР»Р°Р№РґРµСЂ РїР»РµРµСЂР°**: РѕР±РЅРѕРІР»РµРЅРёРµ РїРѕР·РёС†РёРё С‚СЂРѕС‚С‚Р»РёС‚СЃСЏ (~6-7 СЂР°Р·/СЃРµРє, 150 РјСЃ); РІРѕ РІСЂРµРјСЏ РїРµСЂРµС‚Р°СЃРєРёРІР°РЅРёСЏ Р·РЅР°С‡РµРЅРёРµ СѓРґРµСЂР¶РёРІР°РµС‚СЃСЏ РІ Р»РѕРєР°Р»СЊРЅРѕРј state Р±РµР· РєРѕРЅС„Р»РёРєС‚РѕРІ СЃ РїР°Р»СЊС†РµРј, seek РІС‹Р·С‹РІР°РµС‚СЃСЏ СЃС‚СЂРѕРіРѕ РІ `onValueChangeFinished`.
+3. **MiniPlayer**: Р°РЅРёРјРёСЂРѕРІР°РЅРЅРѕРµ РїРѕСЏРІР»РµРЅРёРµ Рё СЃРєСЂС‹С‚РёРµ С‡РµСЂРµР· `AnimatedVisibility` (slide + fade, 250 РјСЃ), СЃРїРёСЃРѕРє СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ РїРѕРёСЃРєР° РЅРµ РїРµСЂРµРєСЂС‹РІР°РµС‚СЃСЏ Р±Р»Р°РіРѕРґР°СЂСЏ `contentPadding` (80.dp).
+4. **РџРµСЂРµРєР»СЋС‡РµРЅРёРµ РІРєР»Р°РґРѕРє**: РЅР°СЃС‚СЂРѕРµРЅ РїР»Р°РІРЅС‹Р№ `fadeIn/fadeOut` (200 РјСЃ); СЃРѕСЃС‚РѕСЏРЅРёРµ СЃРѕС…СЂР°РЅСЏРµС‚СЃСЏ С‡РµСЂРµР· `saveState`/`restoreState` Рё `launchSingleTop`.
+5. **РћС‚РєСЂС‹С‚РёРµ/Р·Р°РєСЂС‹С‚РёРµ РїР»РµРµСЂР°**: РїР»Р°РІРЅР°СЏ slide-up / slide-down Р°РЅРёРјР°С†РёСЏ (300 РјСЃ) СЃ fade Р±РµР· РјРµСЂС†Р°РЅРёР№ Рё РґСѓР±Р»РёСЂРѕРІР°РЅРёСЏ.
+6. **РџРѕРёСЃРє**: РІРЅРµРґСЂРµРЅС‹ СЃРєРµР»РµС‚РѕРЅ-РєР°СЂС‚РѕС‡РєРё РїСЂРё Р·Р°РіСЂСѓР·РєРµ РІРјРµСЃС‚Рѕ РѕРґРёРЅРѕС‡РЅРѕРіРѕ СЃРїРёРЅРЅРµСЂР°; СЃРѕС…СЂР°РЅРµРЅРѕ СЃРѕСЃС‚РѕСЏРЅРёРµ РѕС€РёР±РєРё СЃ РєРЅРѕРїРєРѕР№ РїРѕРІС‚РѕСЂР°.
+7. **LazyColumn**: Р·Р°РґР°РЅ `key = { it.id }`, РјРµР¶РєР°СЂС‚С‡РЅС‹Рµ РѕС‚СЃС‚СѓРїС‹ С‡РµСЂРµР· `Arrangement.spacedBy(4.dp)`, `contentPadding` СЃРЅРёР·Сѓ СЃ СѓС‡С‘С‚РѕРј РІС‹СЃРѕС‚С‹ `MiniPlayer`.
+8. **Р РµРєРѕРјРїРѕР·РёС†РёРё**: СЃРµРєС†РёСЏ СЃР»Р°Р№РґРµСЂР° Рё С‚Р°Р№РјРµСЂРѕРІ РІС‹РЅРµСЃРµРЅР° РІ РёР·РѕР»РёСЂРѕРІР°РЅРЅС‹Р№ `@Composable` (`PlayerProgressSection`), С‚РёРє РїСЂРѕРіСЂРµСЃСЃР° РЅРµ С‚СЂРёРіРіРµСЂРёС‚ СЂРµРєРѕРјРїРѕР·РёС†РёСЋ РѕР±Р»РѕР¶РєРё Рё РІСЃРµР№ СЃС‚СЂР°РЅРёС†С‹.
+9. **РћС‚СЃС‚СѓРїС‹ Рё С‚РёРїРѕРіСЂР°С„РёРєР°**: РїСЂРёРІРµРґРµРЅС‹ Рє С‚РѕРєРµРЅР°Рј `MaterialTheme.typography` Рё `MaterialTheme.colorScheme`, СѓСЃС‚СЂР°РЅРµРЅС‹ С…Р°СЂРґРєРѕРґ-СЂР°Р·РјРµСЂС‹.
+10. **Edge-to-edge**: РїСЂРѕРІРµСЂРµРЅС‹ Рё РіР°СЂРјРѕРЅРёР·РёСЂРѕРІР°РЅС‹ СЃРёСЃС‚РµРјРЅС‹Рµ insets (TopAppBar СЃ padding РІ Scaffold).
+11. **РўРѕС‡РµС‡РЅС‹Рµ С„РёРєСЃС‹ РїСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚Рё**: `SubcomposeAsyncImage` Р·Р°РјРµРЅС‘РЅ РЅР° Р»РµРіРєРѕРІРµСЃРЅС‹Р№ `AsyncImage` СЃ `placeholder = ColorPainter(surfaceVariant)` Рё РІРµРєС‚РѕСЂРѕРј РЅРѕС‚С‹ РґР»СЏ `error` (СѓСЃС‚СЂР°РЅРµРЅС‹ Р»РёС€РЅРёРµ С„Р°Р·С‹ СЃСѓР±РєРѕРјРїРѕР·РёС†РёРё РІ СЃРїРёСЃРєР°С…); СЃРєРµР»РµС‚РѕРЅС‹ РїРѕРёСЃРєР° РІС‹РїРѕР»РЅРµРЅС‹ СЃС‚Р°С‚РёС‡РЅС‹РјРё Р±РµР· С€РёРјРјРµСЂ-РЅР°РіСЂСѓР·РєРё; Р°РЅРёРјР°С†РёСЏ РІРєР»Р°РґРѕРє РѕР±Р»РµРіС‡РµРЅР° РґРѕ `fadeIn(200)` РЅР° enter Рё `ExitTransition.None` РЅР° exit; `contentPadding` СЃРїРёСЃРєРѕРІ СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅ СЃРѕ `Scaffold`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 core/ui/components/TrackCard.kt
 core/ui/components/MiniPlayer.kt
@@ -473,59 +484,59 @@ navigation/AppNavGraph.kt
 
 ---
 
-## 📊 Текущее состояние
+## рџ“Љ РўРµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ
 
-> Блок актуален с 21.10.2026. Ранее здесь висело описание времён сессии 4 — очередь, волна и плейлисты там значились как нереализованные, это устарело.
+> Р‘Р»РѕРє Р°РєС‚СѓР°Р»РµРЅ СЃ 21.10.2026. Р Р°РЅРµРµ Р·РґРµСЃСЊ РІРёСЃРµР»Рѕ РѕРїРёСЃР°РЅРёРµ РІСЂРµРјС‘РЅ СЃРµСЃСЃРёРё 4 вЂ” РѕС‡РµСЂРµРґСЊ, РІРѕР»РЅР° Рё РїР»РµР№Р»РёСЃС‚С‹ С‚Р°Рј Р·РЅР°С‡РёР»РёСЃСЊ РєР°Рє РЅРµСЂРµР°Р»РёР·РѕРІР°РЅРЅС‹Рµ, СЌС‚Рѕ СѓСЃС‚Р°СЂРµР»Рѕ.
 
-### Работает
-- ✅ Сборка (`assembleDebug`) и 53 JVM-теста (`.\gradlew test`, Robolectric + MockK, без эмулятора)
-- ✅ Навигация между вкладками с плавными анимациями, edge-to-edge, фиолетовая Material 3 Expressive тема
-- ✅ Поиск SoundCloud через NewPipe Extractor (без client_id), скелетоны и состояния ошибки
-- ✅ Главная: Top 10 SoundCloud с кэшем в Room (TTL 30 мин), «Продолжить», «Воспоминания» по сезону, недавние, любимые, секции по жанрам
-- ✅ Плеер: ExoPlayer живёт только в `MediaSessionService`, UI работает через `MediaController`; HLS, фоновое воспроизведение, уведомление с обложкой, audio focus, wake mode
-- ✅ Очередь: шторка `PlayerQueueSheet`, shuffle, repeat OFF/ALL/ONE, скорость 0.5–2.0×, удаление треков, переход к выбранному
-- ✅ Тексты LRCLIB: синхронный караоке-режим, автоцентрирование, тап по строке = перемотка
-- ✅ Лайки в Room v5 с геопозицией и сезоном, миграции 1→5 с экспортом схем (без destructive fallback)
-- ✅ Офлайн-режим: скачивание треков через WorkManager в `filesDir/downloads`, Room v6 (`downloaded_tracks`), локальный файл в приоритете воспроизведения, кнопка скачивания в плеере и галочка в карточках
-- ✅ «Моя волна»: бесконечная сессия, Last.fm + лайки + история + жанры (40/30/20/10), локальный feedback вкусов, автодозагрузка пачками по 12, RU-приоритет с языковой фильтрацией
-- ✅ Слайдер-волна с корректной зоной касания (фикс клика Play/Pause)
+### Р Р°Р±РѕС‚Р°РµС‚
+- вњ… РЎР±РѕСЂРєР° (`assembleDebug`) Рё 53 JVM-С‚РµСЃС‚Р° (`.\gradlew test`, Robolectric + MockK, Р±РµР· СЌРјСѓР»СЏС‚РѕСЂР°)
+- вњ… РќР°РІРёРіР°С†РёСЏ РјРµР¶РґСѓ РІРєР»Р°РґРєР°РјРё СЃ РїР»Р°РІРЅС‹РјРё Р°РЅРёРјР°С†РёСЏРјРё, edge-to-edge, С„РёРѕР»РµС‚РѕРІР°СЏ Material 3 Expressive С‚РµРјР°
+- вњ… РџРѕРёСЃРє SoundCloud С‡РµСЂРµР· NewPipe Extractor (Р±РµР· client_id), СЃРєРµР»РµС‚РѕРЅС‹ Рё СЃРѕСЃС‚РѕСЏРЅРёСЏ РѕС€РёР±РєРё
+- вњ… Р“Р»Р°РІРЅР°СЏ: Top 10 SoundCloud СЃ РєСЌС€РµРј РІ Room (TTL 30 РјРёРЅ), В«РџСЂРѕРґРѕР»Р¶РёС‚СЊВ», В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ» РїРѕ СЃРµР·РѕРЅСѓ, РЅРµРґР°РІРЅРёРµ, Р»СЋР±РёРјС‹Рµ, СЃРµРєС†РёРё РїРѕ Р¶Р°РЅСЂР°Рј
+- вњ… РџР»РµРµСЂ: ExoPlayer Р¶РёРІС‘С‚ С‚РѕР»СЊРєРѕ РІ `MediaSessionService`, UI СЂР°Р±РѕС‚Р°РµС‚ С‡РµСЂРµР· `MediaController`; HLS, С„РѕРЅРѕРІРѕРµ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ, СѓРІРµРґРѕРјР»РµРЅРёРµ СЃ РѕР±Р»РѕР¶РєРѕР№, audio focus, wake mode
+- вњ… РћС‡РµСЂРµРґСЊ: С€С‚РѕСЂРєР° `PlayerQueueSheet`, shuffle, repeat OFF/ALL/ONE, СЃРєРѕСЂРѕСЃС‚СЊ 0.5вЂ“2.0Г—, СѓРґР°Р»РµРЅРёРµ С‚СЂРµРєРѕРІ, РїРµСЂРµС…РѕРґ Рє РІС‹Р±СЂР°РЅРЅРѕРјСѓ
+- вњ… РўРµРєСЃС‚С‹ LRCLIB: СЃРёРЅС…СЂРѕРЅРЅС‹Р№ РєР°СЂР°РѕРєРµ-СЂРµР¶РёРј, Р°РІС‚РѕС†РµРЅС‚СЂРёСЂРѕРІР°РЅРёРµ, С‚Р°Рї РїРѕ СЃС‚СЂРѕРєРµ = РїРµСЂРµРјРѕС‚РєР°
+- вњ… Р›Р°Р№РєРё РІ Room v5 СЃ РіРµРѕРїРѕР·РёС†РёРµР№ Рё СЃРµР·РѕРЅРѕРј, РјРёРіСЂР°С†РёРё 1в†’5 СЃ СЌРєСЃРїРѕСЂС‚РѕРј СЃС…РµРј (Р±РµР· destructive fallback)
+- вњ… РћС„Р»Р°Р№РЅ-СЂРµР¶РёРј: СЃРєР°С‡РёРІР°РЅРёРµ С‚СЂРµРєРѕРІ С‡РµСЂРµР· WorkManager РІ `filesDir/downloads`, Room v6 (`downloaded_tracks`), Р»РѕРєР°Р»СЊРЅС‹Р№ С„Р°Р№Р» РІ РїСЂРёРѕСЂРёС‚РµС‚Рµ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ, РєРЅРѕРїРєР° СЃРєР°С‡РёРІР°РЅРёСЏ РІ РїР»РµРµСЂРµ Рё РіР°Р»РѕС‡РєР° РІ РєР°СЂС‚РѕС‡РєР°С…
+- вњ… В«РњРѕСЏ РІРѕР»РЅР°В»: Р±РµСЃРєРѕРЅРµС‡РЅР°СЏ СЃРµСЃСЃРёСЏ, Last.fm + Р»Р°Р№РєРё + РёСЃС‚РѕСЂРёСЏ + Р¶Р°РЅСЂС‹ (40/30/20/10), Р»РѕРєР°Р»СЊРЅС‹Р№ feedback РІРєСѓСЃРѕРІ, Р°РІС‚РѕРґРѕР·Р°РіСЂСѓР·РєР° РїР°С‡РєР°РјРё РїРѕ 12, RU-РїСЂРёРѕСЂРёС‚РµС‚ СЃ СЏР·С‹РєРѕРІРѕР№ С„РёР»СЊС‚СЂР°С†РёРµР№
+- вњ… РЎР»Р°Р№РґРµСЂ-РІРѕР»РЅР° СЃ РєРѕСЂСЂРµРєС‚РЅРѕР№ Р·РѕРЅРѕР№ РєР°СЃР°РЅРёСЏ (С„РёРєСЃ РєР»РёРєР° Play/Pause)
 
-### Пока не реализовано
-- ❌ Управление скачанным: удаление из UI, лимит хранилища, отдельный экран «Скачанное»
-- ❌ Плейлисты (нет ни в UI, ни в БД) — это v2
-- ❌ Настроения волны («Бодрая / Спокойная / По любимым / Открытия»)
-- ❌ Показ координат и сезона в карточках «Воспоминаний», действие «Открыть на карте»
-- ❌ Источники Spotify, Яндекс Музыка, ВК Музыка, YouTube Music (v2)
+### РџРѕРєР° РЅРµ СЂРµР°Р»РёР·РѕРІР°РЅРѕ
+- вќЊ РЈРїСЂР°РІР»РµРЅРёРµ СЃРєР°С‡Р°РЅРЅС‹Рј: СѓРґР°Р»РµРЅРёРµ РёР· UI, Р»РёРјРёС‚ С…СЂР°РЅРёР»РёС‰Р°, РѕС‚РґРµР»СЊРЅС‹Р№ СЌРєСЂР°РЅ В«РЎРєР°С‡Р°РЅРЅРѕРµВ»
+- вќЊ РџР»РµР№Р»РёСЃС‚С‹ (РЅРµС‚ РЅРё РІ UI, РЅРё РІ Р‘Р”) вЂ” СЌС‚Рѕ v2
+- вќЊ РќР°СЃС‚СЂРѕРµРЅРёСЏ РІРѕР»РЅС‹ (В«Р‘РѕРґСЂР°СЏ / РЎРїРѕРєРѕР№РЅР°СЏ / РџРѕ Р»СЋР±РёРјС‹Рј / РћС‚РєСЂС‹С‚РёСЏВ»)
+- вќЊ РџРѕРєР°Р· РєРѕРѕСЂРґРёРЅР°С‚ Рё СЃРµР·РѕРЅР° РІ РєР°СЂС‚РѕС‡РєР°С… В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёР№В», РґРµР№СЃС‚РІРёРµ В«РћС‚РєСЂС‹С‚СЊ РЅР° РєР°СЂС‚РµВ»
+- вќЊ РСЃС‚РѕС‡РЅРёРєРё Spotify, РЇРЅРґРµРєСЃ РњСѓР·С‹РєР°, Р’Рљ РњСѓР·С‹РєР°, YouTube Music (v2)
 
 ---
 
-## ✅ Сессия 7 — плеер и тексты по референсу exteraless (16.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 7 вЂ” РїР»РµРµСЂ Рё С‚РµРєСЃС‚С‹ РїРѕ СЂРµС„РµСЂРµРЅСЃСѓ exteraless (16.10.2026)
 
-Выжимка архитектурных решений, метрик, цветовых ролей и алгоритмов зафиксирована в [reference-notes.md](file:///D:/MyMusic/docs/reference-notes.md).
+Р’С‹Р¶РёРјРєР° Р°СЂС…РёС‚РµРєС‚СѓСЂРЅС‹С… СЂРµС€РµРЅРёР№, РјРµС‚СЂРёРє, С†РІРµС‚РѕРІС‹С… СЂРѕР»РµР№ Рё Р°Р»РіРѕСЂРёС‚РјРѕРІ Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅР° РІ [reference-notes.md](file:///D:/MyMusic/docs/reference-notes.md).
 
-### Что сделано
-1. **Изучение референса**:
-   - Исследован форк Telegram `exteraless` (компоненты `Md3Player`, `PlayerSheet`, `LyricsView`, `Lyrics`, `ControlsRow`, `PlayerMiniView`).
-   - Паттерны, метрики и алгоритмы задокументированы в `docs/reference-notes.md` без прямого копирования кода (GPL).
-2. **Слой данных текстов песен (LRC & LRCLIB)**:
-   - Создана модель `LyricLine` и `LyricsResult` в `data/model/LyricLine.kt`.
-   - Реализован устойчивый парсер `LrcParser` с поддержкой `[mm:ss.xx]`, `[mm:ss.xxx]`, `[offset:+-ms]`, очисткой тегов слогов и фолбэком на несинхронный текст.
-   - Подключён клиент `LrclibApi` и репозиторий `LyricsRepositoryImpl` (сначала точный поиск `get?track_name=&artist_name=&duration=`, затем фолбэк на `search`).
-3. **Редизайн PlayerScreen**:
-   - **Шапка**: двухстрочный заголовок ("СЕЙЧАС ИГРАЕТ" + название трека), кнопка назад и меню опций.
-   - **Обложка и режим текста**:
-     - В обычном режиме: полноразмерная обложка 280dp со скруглением 28dp и тенью.
-     - В режиме текста: обложка плавно схлопывается в компактную миниатюру 56×56 dp (скругление 16dp), освобождая пространство для списка строк `LazyColumn`.
-     - Альфа-градиент строк: активная 1.0f (bold), соседняя 0.52f, остальные 0.35f; плавный автоскролл к текущей строке.
-     - Интерактивность: тап по строке = немедленный переход `seekTo(line.timeMs)`. Подпись "Синхронный текст · LRCLIB".
-   - **Лайк**: сквиркл 48×48 dp с радиусом 24dp рядом с названием и артистом.
-   - **Управление (ControlsRow)**: центральная кнопка Play/Pause с динамическим морфингом радиуса (44dp в паузе / 28dp в воспроизведении).
-   - **Пилюли действий**: контейнер высотой 52dp из 3 элементов:
-     - Скорость (1× / 1.25× / 1.5× / 2× / 0.5×) с реальным переключением в `ExoPlayer` через `setPlaybackSpeed`.
-     - Текст (пилюля подсвечивается `secondaryContainer` при активном режиме).
-     - Далее (кнопка очереди).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РР·СѓС‡РµРЅРёРµ СЂРµС„РµСЂРµРЅСЃР°**:
+   - РСЃСЃР»РµРґРѕРІР°РЅ С„РѕСЂРє Telegram `exteraless` (РєРѕРјРїРѕРЅРµРЅС‚С‹ `Md3Player`, `PlayerSheet`, `LyricsView`, `Lyrics`, `ControlsRow`, `PlayerMiniView`).
+   - РџР°С‚С‚РµСЂРЅС‹, РјРµС‚СЂРёРєРё Рё Р°Р»РіРѕСЂРёС‚РјС‹ Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅС‹ РІ `docs/reference-notes.md` Р±РµР· РїСЂСЏРјРѕРіРѕ РєРѕРїРёСЂРѕРІР°РЅРёСЏ РєРѕРґР° (GPL).
+2. **РЎР»РѕР№ РґР°РЅРЅС‹С… С‚РµРєСЃС‚РѕРІ РїРµСЃРµРЅ (LRC & LRCLIB)**:
+   - РЎРѕР·РґР°РЅР° РјРѕРґРµР»СЊ `LyricLine` Рё `LyricsResult` РІ `data/model/LyricLine.kt`.
+   - Р РµР°Р»РёР·РѕРІР°РЅ СѓСЃС‚РѕР№С‡РёРІС‹Р№ РїР°СЂСЃРµСЂ `LrcParser` СЃ РїРѕРґРґРµСЂР¶РєРѕР№ `[mm:ss.xx]`, `[mm:ss.xxx]`, `[offset:+-ms]`, РѕС‡РёСЃС‚РєРѕР№ С‚РµРіРѕРІ СЃР»РѕРіРѕРІ Рё С„РѕР»Р±СЌРєРѕРј РЅР° РЅРµСЃРёРЅС…СЂРѕРЅРЅС‹Р№ С‚РµРєСЃС‚.
+   - РџРѕРґРєР»СЋС‡С‘РЅ РєР»РёРµРЅС‚ `LrclibApi` Рё СЂРµРїРѕР·РёС‚РѕСЂРёР№ `LyricsRepositoryImpl` (СЃРЅР°С‡Р°Р»Р° С‚РѕС‡РЅС‹Р№ РїРѕРёСЃРє `get?track_name=&artist_name=&duration=`, Р·Р°С‚РµРј С„РѕР»Р±СЌРє РЅР° `search`).
+3. **Р РµРґРёР·Р°Р№РЅ PlayerScreen**:
+   - **РЁР°РїРєР°**: РґРІСѓС…СЃС‚СЂРѕС‡РЅС‹Р№ Р·Р°РіРѕР»РѕРІРѕРє ("РЎР•Р™Р§РђРЎ РР“Р РђР•Рў" + РЅР°Р·РІР°РЅРёРµ С‚СЂРµРєР°), РєРЅРѕРїРєР° РЅР°Р·Р°Рґ Рё РјРµРЅСЋ РѕРїС†РёР№.
+   - **РћР±Р»РѕР¶РєР° Рё СЂРµР¶РёРј С‚РµРєСЃС‚Р°**:
+     - Р’ РѕР±С‹С‡РЅРѕРј СЂРµР¶РёРјРµ: РїРѕР»РЅРѕСЂР°Р·РјРµСЂРЅР°СЏ РѕР±Р»РѕР¶РєР° 280dp СЃРѕ СЃРєСЂСѓРіР»РµРЅРёРµРј 28dp Рё С‚РµРЅСЊСЋ.
+     - Р’ СЂРµР¶РёРјРµ С‚РµРєСЃС‚Р°: РѕР±Р»РѕР¶РєР° РїР»Р°РІРЅРѕ СЃС…Р»РѕРїС‹РІР°РµС‚СЃСЏ РІ РєРѕРјРїР°РєС‚РЅСѓСЋ РјРёРЅРёР°С‚СЋСЂСѓ 56Г—56 dp (СЃРєСЂСѓРіР»РµРЅРёРµ 16dp), РѕСЃРІРѕР±РѕР¶РґР°СЏ РїСЂРѕСЃС‚СЂР°РЅСЃС‚РІРѕ РґР»СЏ СЃРїРёСЃРєР° СЃС‚СЂРѕРє `LazyColumn`.
+     - РђР»СЊС„Р°-РіСЂР°РґРёРµРЅС‚ СЃС‚СЂРѕРє: Р°РєС‚РёРІРЅР°СЏ 1.0f (bold), СЃРѕСЃРµРґРЅСЏСЏ 0.52f, РѕСЃС‚Р°Р»СЊРЅС‹Рµ 0.35f; РїР»Р°РІРЅС‹Р№ Р°РІС‚РѕСЃРєСЂРѕР»Р» Рє С‚РµРєСѓС‰РµР№ СЃС‚СЂРѕРєРµ.
+     - РРЅС‚РµСЂР°РєС‚РёРІРЅРѕСЃС‚СЊ: С‚Р°Рї РїРѕ СЃС‚СЂРѕРєРµ = РЅРµРјРµРґР»РµРЅРЅС‹Р№ РїРµСЂРµС…РѕРґ `seekTo(line.timeMs)`. РџРѕРґРїРёСЃСЊ "РЎРёРЅС…СЂРѕРЅРЅС‹Р№ С‚РµРєСЃС‚ В· LRCLIB".
+   - **Р›Р°Р№Рє**: СЃРєРІРёСЂРєР» 48Г—48 dp СЃ СЂР°РґРёСѓСЃРѕРј 24dp СЂСЏРґРѕРј СЃ РЅР°Р·РІР°РЅРёРµРј Рё Р°СЂС‚РёСЃС‚РѕРј.
+   - **РЈРїСЂР°РІР»РµРЅРёРµ (ControlsRow)**: С†РµРЅС‚СЂР°Р»СЊРЅР°СЏ РєРЅРѕРїРєР° Play/Pause СЃ РґРёРЅР°РјРёС‡РµСЃРєРёРј РјРѕСЂС„РёРЅРіРѕРј СЂР°РґРёСѓСЃР° (44dp РІ РїР°СѓР·Рµ / 28dp РІ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРё).
+   - **РџРёР»СЋР»Рё РґРµР№СЃС‚РІРёР№**: РєРѕРЅС‚РµР№РЅРµСЂ РІС‹СЃРѕС‚РѕР№ 52dp РёР· 3 СЌР»РµРјРµРЅС‚РѕРІ:
+     - РЎРєРѕСЂРѕСЃС‚СЊ (1Г— / 1.25Г— / 1.5Г— / 2Г— / 0.5Г—) СЃ СЂРµР°Р»СЊРЅС‹Рј РїРµСЂРµРєР»СЋС‡РµРЅРёРµРј РІ `ExoPlayer` С‡РµСЂРµР· `setPlaybackSpeed`.
+     - РўРµРєСЃС‚ (РїРёР»СЋР»СЏ РїРѕРґСЃРІРµС‡РёРІР°РµС‚СЃСЏ `secondaryContainer` РїСЂРё Р°РєС‚РёРІРЅРѕРј СЂРµР¶РёРјРµ).
+     - Р”Р°Р»РµРµ (РєРЅРѕРїРєР° РѕС‡РµСЂРµРґРё).
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 docs/reference-notes.md
 data/model/LyricLine.kt
@@ -542,27 +553,27 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## ✅ Сессия 8 — Анимации и тонирование плеера (16.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 8 вЂ” РђРЅРёРјР°С†РёРё Рё С‚РѕРЅРёСЂРѕРІР°РЅРёРµ РїР»РµРµСЂР° (16.10.2026)
 
-### Что сделано
-1. **Динамическое тонирование фона (Palette)**:
-   - Добавлена зависимость `androidx.palette:palette-ktx:1.0.0`.
-   - Создан утилитный компонент `PlayerPalette.kt` (`rememberPlayerDynamicColors`) с кэшированием палитры по `artworkUrl` на IO-диспетчере, предотвращающим повторные пересчёты на тиках прогресса.
-   - Фон плеера плавно тонируется градиентом от доминантного цвета обложки к системному фону `surface`.
-2. **Анимированное схлопывание обложки**:
-   - Реализована плавная трансформация размера обложки: 280dp $\leftrightarrow$ 56dp (`animateDpAsState`, 320 мс, `FastOutSlowInEasing`).
-   - Скругление анимируется от 28dp до 16dp. В режиме текста миниатюра обложки органично встаёт в строку с названием и артистом.
-3. **Геометрия и элементы управления по референсу `exteraless`**:
-   - Кнопка «Лайк»: сквиркл `RoundedCornerShape(18.dp)`.
-   - Кнопки «Prev» и «Next»: залитые кнопки размером `64.dp`.
-   - Оставшееся время справа отображается в формате со знаком минус (`"-m:ss"`).
-4. **Синхронизированные тексты**:
-   - Плавный автоскролл к текущей строке через `animateScrollToItem`.
-   - Неоновое свечение активной строки через `TextStyle(shadow = Shadow(color, blurRadius = 8f))`.
-5. **Плавность навигации**:
-   - Синхронизированы переходы вкладок и slide-up/down появление плеера (300 мс).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р”РёРЅР°РјРёС‡РµСЃРєРѕРµ С‚РѕРЅРёСЂРѕРІР°РЅРёРµ С„РѕРЅР° (Palette)**:
+   - Р”РѕР±Р°РІР»РµРЅР° Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ `androidx.palette:palette-ktx:1.0.0`.
+   - РЎРѕР·РґР°РЅ СѓС‚РёР»РёС‚РЅС‹Р№ РєРѕРјРїРѕРЅРµРЅС‚ `PlayerPalette.kt` (`rememberPlayerDynamicColors`) СЃ РєСЌС€РёСЂРѕРІР°РЅРёРµРј РїР°Р»РёС‚СЂС‹ РїРѕ `artworkUrl` РЅР° IO-РґРёСЃРїРµС‚С‡РµСЂРµ, РїСЂРµРґРѕС‚РІСЂР°С‰Р°СЋС‰РёРј РїРѕРІС‚РѕСЂРЅС‹Рµ РїРµСЂРµСЃС‡С‘С‚С‹ РЅР° С‚РёРєР°С… РїСЂРѕРіСЂРµСЃСЃР°.
+   - Р¤РѕРЅ РїР»РµРµСЂР° РїР»Р°РІРЅРѕ С‚РѕРЅРёСЂСѓРµС‚СЃСЏ РіСЂР°РґРёРµРЅС‚РѕРј РѕС‚ РґРѕРјРёРЅР°РЅС‚РЅРѕРіРѕ С†РІРµС‚Р° РѕР±Р»РѕР¶РєРё Рє СЃРёСЃС‚РµРјРЅРѕРјСѓ С„РѕРЅСѓ `surface`.
+2. **РђРЅРёРјРёСЂРѕРІР°РЅРЅРѕРµ СЃС…Р»РѕРїС‹РІР°РЅРёРµ РѕР±Р»РѕР¶РєРё**:
+   - Р РµР°Р»РёР·РѕРІР°РЅР° РїР»Р°РІРЅР°СЏ С‚СЂР°РЅСЃС„РѕСЂРјР°С†РёСЏ СЂР°Р·РјРµСЂР° РѕР±Р»РѕР¶РєРё: 280dp $\leftrightarrow$ 56dp (`animateDpAsState`, 320 РјСЃ, `FastOutSlowInEasing`).
+   - РЎРєСЂСѓРіР»РµРЅРёРµ Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ РѕС‚ 28dp РґРѕ 16dp. Р’ СЂРµР¶РёРјРµ С‚РµРєСЃС‚Р° РјРёРЅРёР°С‚СЋСЂР° РѕР±Р»РѕР¶РєРё РѕСЂРіР°РЅРёС‡РЅРѕ РІСЃС‚Р°С‘С‚ РІ СЃС‚СЂРѕРєСѓ СЃ РЅР°Р·РІР°РЅРёРµРј Рё Р°СЂС‚РёСЃС‚РѕРј.
+3. **Р“РµРѕРјРµС‚СЂРёСЏ Рё СЌР»РµРјРµРЅС‚С‹ СѓРїСЂР°РІР»РµРЅРёСЏ РїРѕ СЂРµС„РµСЂРµРЅСЃСѓ `exteraless`**:
+   - РљРЅРѕРїРєР° В«Р›Р°Р№РєВ»: СЃРєРІРёСЂРєР» `RoundedCornerShape(18.dp)`.
+   - РљРЅРѕРїРєРё В«PrevВ» Рё В«NextВ»: Р·Р°Р»РёС‚С‹Рµ РєРЅРѕРїРєРё СЂР°Р·РјРµСЂРѕРј `64.dp`.
+   - РћСЃС‚Р°РІС€РµРµСЃСЏ РІСЂРµРјСЏ СЃРїСЂР°РІР° РѕС‚РѕР±СЂР°Р¶Р°РµС‚СЃСЏ РІ С„РѕСЂРјР°С‚Рµ СЃРѕ Р·РЅР°РєРѕРј РјРёРЅСѓСЃ (`"-m:ss"`).
+4. **РЎРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅРЅС‹Рµ С‚РµРєСЃС‚С‹**:
+   - РџР»Р°РІРЅС‹Р№ Р°РІС‚РѕСЃРєСЂРѕР»Р» Рє С‚РµРєСѓС‰РµР№ СЃС‚СЂРѕРєРµ С‡РµСЂРµР· `animateScrollToItem`.
+   - РќРµРѕРЅРѕРІРѕРµ СЃРІРµС‡РµРЅРёРµ Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё С‡РµСЂРµР· `TextStyle(shadow = Shadow(color, blurRadius = 8f))`.
+5. **РџР»Р°РІРЅРѕСЃС‚СЊ РЅР°РІРёРіР°С†РёРё**:
+   - РЎРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅС‹ РїРµСЂРµС…РѕРґС‹ РІРєР»Р°РґРѕРє Рё slide-up/down РїРѕСЏРІР»РµРЅРёРµ РїР»РµРµСЂР° (300 РјСЃ).
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
 core/ui/theme/PlayerPalette.kt
@@ -572,27 +583,27 @@ navigation/AppNavGraph.kt
 
 ---
 
-## 🐛 Фикс LRCLIB (16.10.2026, поздняя сессия)
+## рџђ› Р¤РёРєСЃ LRCLIB (16.10.2026, РїРѕР·РґРЅСЏСЏ СЃРµСЃСЃРёСЏ)
 
-### Что было сломано
-1. **Отсутствие User-Agent**: `OkHttpClient` отправлял дефолтный `User-Agent: okhttp/...`, из-за чего Cloudflare/LRCLIB возвращал `429 Too Many Requests` (RateLimited / Bot detection).
-2. **Шум в метаданных SoundCloud**: названия треков на SoundCloud часто имеют вид `"Artist - Title (Official Video)"` или содержат суффиксы `[HD]`, `(Audio)`, а `uploaderName` может быть неофициальным каналом. Запросы в `/api/get` и `/api/search` с «сырыми» строками отдавали 404 или пустой список.
-3. **Бросание HttpException**: методы `LrclibApi` возвращали модель напрямую, и штатный 404 (трек не найден) падал в общий catch без доступа к коду ответа и `errorBody`.
-4. **Отсутствие retry/ленивой подгрузки**: если плеер открывался из мини-плеера или первый запрос падал, пользователь не мог повторить поиск текста без перезапуска трека.
+### Р§С‚Рѕ Р±С‹Р»Рѕ СЃР»РѕРјР°РЅРѕ
+1. **РћС‚СЃСѓС‚СЃС‚РІРёРµ User-Agent**: `OkHttpClient` РѕС‚РїСЂР°РІР»СЏР» РґРµС„РѕР»С‚РЅС‹Р№ `User-Agent: okhttp/...`, РёР·-Р·Р° С‡РµРіРѕ Cloudflare/LRCLIB РІРѕР·РІСЂР°С‰Р°Р» `429 Too Many Requests` (RateLimited / Bot detection).
+2. **РЁСѓРј РІ РјРµС‚Р°РґР°РЅРЅС‹С… SoundCloud**: РЅР°Р·РІР°РЅРёСЏ С‚СЂРµРєРѕРІ РЅР° SoundCloud С‡Р°СЃС‚Рѕ РёРјРµСЋС‚ РІРёРґ `"Artist - Title (Official Video)"` РёР»Рё СЃРѕРґРµСЂР¶Р°С‚ СЃСѓС„С„РёРєСЃС‹ `[HD]`, `(Audio)`, Р° `uploaderName` РјРѕР¶РµС‚ Р±С‹С‚СЊ РЅРµРѕС„РёС†РёР°Р»СЊРЅС‹Рј РєР°РЅР°Р»РѕРј. Р—Р°РїСЂРѕСЃС‹ РІ `/api/get` Рё `/api/search` СЃ В«СЃС‹СЂС‹РјРёВ» СЃС‚СЂРѕРєР°РјРё РѕС‚РґР°РІР°Р»Рё 404 РёР»Рё РїСѓСЃС‚РѕР№ СЃРїРёСЃРѕРє.
+3. **Р‘СЂРѕСЃР°РЅРёРµ HttpException**: РјРµС‚РѕРґС‹ `LrclibApi` РІРѕР·РІСЂР°С‰Р°Р»Рё РјРѕРґРµР»СЊ РЅР°РїСЂСЏРјСѓСЋ, Рё С€С‚Р°С‚РЅС‹Р№ 404 (С‚СЂРµРє РЅРµ РЅР°Р№РґРµРЅ) РїР°РґР°Р» РІ РѕР±С‰РёР№ catch Р±РµР· РґРѕСЃС‚СѓРїР° Рє РєРѕРґСѓ РѕС‚РІРµС‚Р° Рё `errorBody`.
+4. **РћС‚СЃСѓС‚СЃС‚РІРёРµ retry/Р»РµРЅРёРІРѕР№ РїРѕРґРіСЂСѓР·РєРё**: РµСЃР»Рё РїР»РµРµСЂ РѕС‚РєСЂС‹РІР°Р»СЃСЏ РёР· РјРёРЅРё-РїР»РµРµСЂР° РёР»Рё РїРµСЂРІС‹Р№ Р·Р°РїСЂРѕСЃ РїР°РґР°Р», РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РјРѕРі РїРѕРІС‚РѕСЂРёС‚СЊ РїРѕРёСЃРє С‚РµРєСЃС‚Р° Р±РµР· РїРµСЂРµР·Р°РїСѓСЃРєР° С‚СЂРµРєР°.
 
-### Как починено
-1. **Сетевой слой (`NetworkModule.kt`)**: добавлен интерцептор с кастомным `User-Agent: MyMusicApp/1.0 (https://github.com/souler/mymusic)` и заголовком `Accept: application/json`.
-2. **Retrofit API (`LrclibApi.kt`)**: эндпоинты обёрнуты в `Response<...>`, добавлен параметр `q` для полнотекстового поиска.
-3. **Очистка метаданных и каскадный поиск (`LyricsRepositoryImpl.kt`)**:
-   - `cleanTrackMetadata`: извлечение исполнителя из формата `"Artist - Title"`, удаление мусорных суффиксов `(Official Video)`, `(Audio)`, `(Remastered)` и суффикса `"Official"` у артиста.
-   - Каскадный поиск: точный `GET /api/get` с длительностью $\to$ `GET /api/get` без длительности (на SC хронометраж часто расходится на пару секунд) $\to$ `GET /api/search?track_name=&artist_name=` $\to$ полнотекстовый `GET /api/search?q=Artist Title` $\to$ фолбэк на исходные строки.
-   - Детальное логирование с тегом `LRCLIB`: `Requesting`, `Response code + body preview`, `No lyrics found`, `Error: errorBody`.
-4. **ViewModel и UI (`PlayerViewModel.kt`, `PlayerScreen.kt`)**:
-   - Метод `loadLyricsIfNeeded(track)` для догрузки текстов при открытии экрана или тапе на пилюлю «Текст».
-   - `LaunchedEffect(track?.id)` в `PlayerScreen` гарантирует инициализацию загрузки текста.
-   - Добавлена кнопка «Повторить поиск текста» в состоянии ошибки / отсутствия текста.
+### РљР°Рє РїРѕС‡РёРЅРµРЅРѕ
+1. **РЎРµС‚РµРІРѕР№ СЃР»РѕР№ (`NetworkModule.kt`)**: РґРѕР±Р°РІР»РµРЅ РёРЅС‚РµСЂС†РµРїС‚РѕСЂ СЃ РєР°СЃС‚РѕРјРЅС‹Рј `User-Agent: MyMusicApp/1.0 (https://github.com/souler/mymusic)` Рё Р·Р°РіРѕР»РѕРІРєРѕРј `Accept: application/json`.
+2. **Retrofit API (`LrclibApi.kt`)**: СЌРЅРґРїРѕРёРЅС‚С‹ РѕР±С‘СЂРЅСѓС‚С‹ РІ `Response<...>`, РґРѕР±Р°РІР»РµРЅ РїР°СЂР°РјРµС‚СЂ `q` РґР»СЏ РїРѕР»РЅРѕС‚РµРєСЃС‚РѕРІРѕРіРѕ РїРѕРёСЃРєР°.
+3. **РћС‡РёСЃС‚РєР° РјРµС‚Р°РґР°РЅРЅС‹С… Рё РєР°СЃРєР°РґРЅС‹Р№ РїРѕРёСЃРє (`LyricsRepositoryImpl.kt`)**:
+   - `cleanTrackMetadata`: РёР·РІР»РµС‡РµРЅРёРµ РёСЃРїРѕР»РЅРёС‚РµР»СЏ РёР· С„РѕСЂРјР°С‚Р° `"Artist - Title"`, СѓРґР°Р»РµРЅРёРµ РјСѓСЃРѕСЂРЅС‹С… СЃСѓС„С„РёРєСЃРѕРІ `(Official Video)`, `(Audio)`, `(Remastered)` Рё СЃСѓС„С„РёРєСЃР° `"Official"` Сѓ Р°СЂС‚РёСЃС‚Р°.
+   - РљР°СЃРєР°РґРЅС‹Р№ РїРѕРёСЃРє: С‚РѕС‡РЅС‹Р№ `GET /api/get` СЃ РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊСЋ $\to$ `GET /api/get` Р±РµР· РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё (РЅР° SC С…СЂРѕРЅРѕРјРµС‚СЂР°Р¶ С‡Р°СЃС‚Рѕ СЂР°СЃС…РѕРґРёС‚СЃСЏ РЅР° РїР°СЂСѓ СЃРµРєСѓРЅРґ) $\to$ `GET /api/search?track_name=&artist_name=` $\to$ РїРѕР»РЅРѕС‚РµРєСЃС‚РѕРІС‹Р№ `GET /api/search?q=Artist Title` $\to$ С„РѕР»Р±СЌРє РЅР° РёСЃС…РѕРґРЅС‹Рµ СЃС‚СЂРѕРєРё.
+   - Р”РµС‚Р°Р»СЊРЅРѕРµ Р»РѕРіРёСЂРѕРІР°РЅРёРµ СЃ С‚РµРіРѕРј `LRCLIB`: `Requesting`, `Response code + body preview`, `No lyrics found`, `Error: errorBody`.
+4. **ViewModel Рё UI (`PlayerViewModel.kt`, `PlayerScreen.kt`)**:
+   - РњРµС‚РѕРґ `loadLyricsIfNeeded(track)` РґР»СЏ РґРѕРіСЂСѓР·РєРё С‚РµРєСЃС‚РѕРІ РїСЂРё РѕС‚РєСЂС‹С‚РёРё СЌРєСЂР°РЅР° РёР»Рё С‚Р°РїРµ РЅР° РїРёР»СЋР»СЋ В«РўРµРєСЃС‚В».
+   - `LaunchedEffect(track?.id)` РІ `PlayerScreen` РіР°СЂР°РЅС‚РёСЂСѓРµС‚ РёРЅРёС†РёР°Р»РёР·Р°С†РёСЋ Р·Р°РіСЂСѓР·РєРё С‚РµРєСЃС‚Р°.
+   - Р”РѕР±Р°РІР»РµРЅР° РєРЅРѕРїРєР° В«РџРѕРІС‚РѕСЂРёС‚СЊ РїРѕРёСЃРє С‚РµРєСЃС‚Р°В» РІ СЃРѕСЃС‚РѕСЏРЅРёРё РѕС€РёР±РєРё / РѕС‚СЃСѓС‚СЃС‚РІРёСЏ С‚РµРєСЃС‚Р°.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 core/network/NetworkModule.kt
 data/source/lyrics/LrclibApi.kt
@@ -603,78 +614,78 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## 📊 Текущее состояние
+## рџ“Љ РўРµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ
 
-### Работает
-- ✅ Сборка проекта (`BUILD SUCCESSFUL`)
-- ✅ Навигация между вкладками с плавными анимациями (200 мс)
-- ✅ Material 3 тема (Dynamic Color + fallback палитра)
-- ✅ Поиск SoundCloud через NewPipe Extractor (без client_id)
-- ✅ Отображение результатов с плавной загрузкой обложек (Coil crossfade, error-нота, скелетоны)
-- ✅ 4 состояния SearchScreen (пусто / скелетон-загрузка / ошибка / список)
-- ✅ Плавный переход в full-screen плеер (slide-up + fade, 300 мс)
-- ✅ Реальное воспроизведение треков (ExoPlayer/Media3 + HLS в фоне)
-- ✅ MiniPlayer с анимацией slide + fade (250 мс) и изолированным прогресс-баром
-- ✅ Плавный слайдер плеера без дёрганий и лишних рекомпозиций
-- ✅ Динамический градиентный фон плеера от обложки (Palette API с кэшированием)
-- ✅ Переход «Обложка ↔ Текст» через AnimatedContent (spring slide + fade), обложка 248dp со свечением и параллаксом
-- ✅ Нативный PlayerSlider (Canvas, буфер, пружинный ползунок) вместо внешней библиотеки WaveSlider
-- ✅ Сквиркл-лайк (18dp), круглые кнопки Prev/Next (56dp), Play 84dp с морфом, время `"-m:ss"`
-- ✅ Синхронизированные и обычные тексты песен через LRCLIB со свечением активной строки и перемоткой по тапу
-- ✅ Переключение скорости воспроизведения (0.5× – 2.0×) через ExoPlayer
+### Р Р°Р±РѕС‚Р°РµС‚
+- вњ… РЎР±РѕСЂРєР° РїСЂРѕРµРєС‚Р° (`BUILD SUCCESSFUL`)
+- вњ… РќР°РІРёРіР°С†РёСЏ РјРµР¶РґСѓ РІРєР»Р°РґРєР°РјРё СЃ РїР»Р°РІРЅС‹РјРё Р°РЅРёРјР°С†РёСЏРјРё (200 РјСЃ)
+- вњ… Material 3 С‚РµРјР° (Dynamic Color + fallback РїР°Р»РёС‚СЂР°)
+- вњ… РџРѕРёСЃРє SoundCloud С‡РµСЂРµР· NewPipe Extractor (Р±РµР· client_id)
+- вњ… РћС‚РѕР±СЂР°Р¶РµРЅРёРµ СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ СЃ РїР»Р°РІРЅРѕР№ Р·Р°РіСЂСѓР·РєРѕР№ РѕР±Р»РѕР¶РµРє (Coil crossfade, error-РЅРѕС‚Р°, СЃРєРµР»РµС‚РѕРЅС‹)
+- вњ… 4 СЃРѕСЃС‚РѕСЏРЅРёСЏ SearchScreen (РїСѓСЃС‚Рѕ / СЃРєРµР»РµС‚РѕРЅ-Р·Р°РіСЂСѓР·РєР° / РѕС€РёР±РєР° / СЃРїРёСЃРѕРє)
+- вњ… РџР»Р°РІРЅС‹Р№ РїРµСЂРµС…РѕРґ РІ full-screen РїР»РµРµСЂ (slide-up + fade, 300 РјСЃ)
+- вњ… Р РµР°Р»СЊРЅРѕРµ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ С‚СЂРµРєРѕРІ (ExoPlayer/Media3 + HLS РІ С„РѕРЅРµ)
+- вњ… MiniPlayer СЃ Р°РЅРёРјР°С†РёРµР№ slide + fade (250 РјСЃ) Рё РёР·РѕР»РёСЂРѕРІР°РЅРЅС‹Рј РїСЂРѕРіСЂРµСЃСЃ-Р±Р°СЂРѕРј
+- вњ… РџР»Р°РІРЅС‹Р№ СЃР»Р°Р№РґРµСЂ РїР»РµРµСЂР° Р±РµР· РґС‘СЂРіР°РЅРёР№ Рё Р»РёС€РЅРёС… СЂРµРєРѕРјРїРѕР·РёС†РёР№
+- вњ… Р”РёРЅР°РјРёС‡РµСЃРєРёР№ РіСЂР°РґРёРµРЅС‚РЅС‹Р№ С„РѕРЅ РїР»РµРµСЂР° РѕС‚ РѕР±Р»РѕР¶РєРё (Palette API СЃ РєСЌС€РёСЂРѕРІР°РЅРёРµРј)
+- вњ… РџРµСЂРµС…РѕРґ В«РћР±Р»РѕР¶РєР° в†” РўРµРєСЃС‚В» С‡РµСЂРµР· AnimatedContent (spring slide + fade), РѕР±Р»РѕР¶РєР° 248dp СЃРѕ СЃРІРµС‡РµРЅРёРµРј Рё РїР°СЂР°Р»Р»Р°РєСЃРѕРј
+- вњ… РќР°С‚РёРІРЅС‹Р№ PlayerSlider (Canvas, Р±СѓС„РµСЂ, РїСЂСѓР¶РёРЅРЅС‹Р№ РїРѕР»Р·СѓРЅРѕРє) РІРјРµСЃС‚Рѕ РІРЅРµС€РЅРµР№ Р±РёР±Р»РёРѕС‚РµРєРё WaveSlider
+- вњ… РЎРєРІРёСЂРєР»-Р»Р°Р№Рє (18dp), РєСЂСѓРіР»С‹Рµ РєРЅРѕРїРєРё Prev/Next (56dp), Play 84dp СЃ РјРѕСЂС„РѕРј, РІСЂРµРјСЏ `"-m:ss"`
+- вњ… РЎРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅРЅС‹Рµ Рё РѕР±С‹С‡РЅС‹Рµ С‚РµРєСЃС‚С‹ РїРµСЃРµРЅ С‡РµСЂРµР· LRCLIB СЃРѕ СЃРІРµС‡РµРЅРёРµРј Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё Рё РїРµСЂРµРјРѕС‚РєРѕР№ РїРѕ С‚Р°РїСѓ
+- вњ… РџРµСЂРµРєР»СЋС‡РµРЅРёРµ СЃРєРѕСЂРѕСЃС‚Рё РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ (0.5Г— вЂ“ 2.0Г—) С‡РµСЂРµР· ExoPlayer
 
-### НЕ работает (заглушки)
-- ❌ Очередь воспроизведения (Next/Previous/Shuffle/Repeat)
-- ❌ «Моя волна» (алгоритм не реализован)
-- ❌ Плейлисты и библиотека (Room не настроен)
-- ❌ Другие источники (Spotify, Яндекс, VK) — запланированы на v2
+### РќР• СЂР°Р±РѕС‚Р°РµС‚ (Р·Р°РіР»СѓС€РєРё)
+- вќЊ РћС‡РµСЂРµРґСЊ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ (Next/Previous/Shuffle/Repeat)
+- вќЊ В«РњРѕСЏ РІРѕР»РЅР°В» (Р°Р»РіРѕСЂРёС‚Рј РЅРµ СЂРµР°Р»РёР·РѕРІР°РЅ)
+- вќЊ РџР»РµР№Р»РёСЃС‚С‹ Рё Р±РёР±Р»РёРѕС‚РµРєР° (Room РЅРµ РЅР°СЃС‚СЂРѕРµРЅ)
+- вќЊ Р”СЂСѓРіРёРµ РёСЃС‚РѕС‡РЅРёРєРё (Spotify, РЇРЅРґРµРєСЃ, VK) вЂ” Р·Р°РїР»Р°РЅРёСЂРѕРІР°РЅС‹ РЅР° v2
 
 ---
 
-## ✅ Фаза 0 — Рисёрч, дизайн-спека M3 Expressive + творческая свобода (16.10.2026)
+## вњ… Р¤Р°Р·Р° 0 вЂ” Р РёСЃС‘СЂС‡, РґРёР·Р°Р№РЅ-СЃРїРµРєР° M3 Expressive + С‚РІРѕСЂС‡РµСЃРєР°СЏ СЃРІРѕР±РѕРґР° (16.10.2026)
 
-### Что сделано
-1. **Изучение актуального Material 3 Expressive**:
-   - Проанализированы обновления M3 Expressive (2025–2026), кинематика пружин (Spring Physics), система скруглений (Shape Scale) и семантические роли контейнеров (`surfaceContainerLowest` ... `surfaceContainerHighest`).
-2. **Дизайн-спецификация (`docs/design-spec.md`)**:
-   - Зафиксирована целостная система визуального языка для всех экранов приложения: Home, Search, Library, Wave, Player, MiniPlayer, QueueSheet, NavigationBar.
-   - Описаны палитры, формы (сквирклы 18dp, радиусы 28dp, сегментированные пилюли 52dp), типографическая шкала и параметры физики анимаций (длительности, кривые `FastOutSlowInEasing`, пружины с `dampingRatio = 0.82f`).
-3. **Творческие решения с обоснованием**:
-   - Номерные плакатные карточки для чартов «Top 50» с полупрозрачными позициями треков.
-   - Сегментированный тактильный бар пилюль в плеере по референсу `exteraless`.
-   - Выразительный сквиркл лайка (18dp) с динамическим акцентным заполнением.
-   - Динамический градиент фона плеера от обложки (Palette API).
-   - Живая Canvas-синусоида для тизера «Моя волна» вместо статичной заглушки.
-4. **Аудит зависимостей**:
-   - Подтверждена 100% совместимость требований Expressive-спецификации с текущим Compose BOM 2024.11.00 без изменения версий библиотек (сохранение стабильности сборки на AGP 8.5.2 и Kotlin 2.0.21).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РР·СѓС‡РµРЅРёРµ Р°РєС‚СѓР°Р»СЊРЅРѕРіРѕ Material 3 Expressive**:
+   - РџСЂРѕР°РЅР°Р»РёР·РёСЂРѕРІР°РЅС‹ РѕР±РЅРѕРІР»РµРЅРёСЏ M3 Expressive (2025вЂ“2026), РєРёРЅРµРјР°С‚РёРєР° РїСЂСѓР¶РёРЅ (Spring Physics), СЃРёСЃС‚РµРјР° СЃРєСЂСѓРіР»РµРЅРёР№ (Shape Scale) Рё СЃРµРјР°РЅС‚РёС‡РµСЃРєРёРµ СЂРѕР»Рё РєРѕРЅС‚РµР№РЅРµСЂРѕРІ (`surfaceContainerLowest` ... `surfaceContainerHighest`).
+2. **Р”РёР·Р°Р№РЅ-СЃРїРµС†РёС„РёРєР°С†РёСЏ (`docs/design-spec.md`)**:
+   - Р—Р°С„РёРєСЃРёСЂРѕРІР°РЅР° С†РµР»РѕСЃС‚РЅР°СЏ СЃРёСЃС‚РµРјР° РІРёР·СѓР°Р»СЊРЅРѕРіРѕ СЏР·С‹РєР° РґР»СЏ РІСЃРµС… СЌРєСЂР°РЅРѕРІ РїСЂРёР»РѕР¶РµРЅРёСЏ: Home, Search, Library, Wave, Player, MiniPlayer, QueueSheet, NavigationBar.
+   - РћРїРёСЃР°РЅС‹ РїР°Р»РёС‚СЂС‹, С„РѕСЂРјС‹ (СЃРєРІРёСЂРєР»С‹ 18dp, СЂР°РґРёСѓСЃС‹ 28dp, СЃРµРіРјРµРЅС‚РёСЂРѕРІР°РЅРЅС‹Рµ РїРёР»СЋР»Рё 52dp), С‚РёРїРѕРіСЂР°С„РёС‡РµСЃРєР°СЏ С€РєР°Р»Р° Рё РїР°СЂР°РјРµС‚СЂС‹ С„РёР·РёРєРё Р°РЅРёРјР°С†РёР№ (РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё, РєСЂРёРІС‹Рµ `FastOutSlowInEasing`, РїСЂСѓР¶РёРЅС‹ СЃ `dampingRatio = 0.82f`).
+3. **РўРІРѕСЂС‡РµСЃРєРёРµ СЂРµС€РµРЅРёСЏ СЃ РѕР±РѕСЃРЅРѕРІР°РЅРёРµРј**:
+   - РќРѕРјРµСЂРЅС‹Рµ РїР»Р°РєР°С‚РЅС‹Рµ РєР°СЂС‚РѕС‡РєРё РґР»СЏ С‡Р°СЂС‚РѕРІ В«Top 50В» СЃ РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅС‹РјРё РїРѕР·РёС†РёСЏРјРё С‚СЂРµРєРѕРІ.
+   - РЎРµРіРјРµРЅС‚РёСЂРѕРІР°РЅРЅС‹Р№ С‚Р°РєС‚РёР»СЊРЅС‹Р№ Р±Р°СЂ РїРёР»СЋР»СЊ РІ РїР»РµРµСЂРµ РїРѕ СЂРµС„РµСЂРµРЅСЃСѓ `exteraless`.
+   - Р’С‹СЂР°Р·РёС‚РµР»СЊРЅС‹Р№ СЃРєРІРёСЂРєР» Р»Р°Р№РєР° (18dp) СЃ РґРёРЅР°РјРёС‡РµСЃРєРёРј Р°РєС†РµРЅС‚РЅС‹Рј Р·Р°РїРѕР»РЅРµРЅРёРµРј.
+   - Р”РёРЅР°РјРёС‡РµСЃРєРёР№ РіСЂР°РґРёРµРЅС‚ С„РѕРЅР° РїР»РµРµСЂР° РѕС‚ РѕР±Р»РѕР¶РєРё (Palette API).
+   - Р–РёРІР°СЏ Canvas-СЃРёРЅСѓСЃРѕРёРґР° РґР»СЏ С‚РёР·РµСЂР° В«РњРѕСЏ РІРѕР»РЅР°В» РІРјРµСЃС‚Рѕ СЃС‚Р°С‚РёС‡РЅРѕР№ Р·Р°РіР»СѓС€РєРё.
+4. **РђСѓРґРёС‚ Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№**:
+   - РџРѕРґС‚РІРµСЂР¶РґРµРЅР° 100% СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚СЊ С‚СЂРµР±РѕРІР°РЅРёР№ Expressive-СЃРїРµС†РёС„РёРєР°С†РёРё СЃ С‚РµРєСѓС‰РёРј Compose BOM 2024.11.00 Р±РµР· РёР·РјРµРЅРµРЅРёСЏ РІРµСЂСЃРёР№ Р±РёР±Р»РёРѕС‚РµРє (СЃРѕС…СЂР°РЅРµРЅРёРµ СЃС‚Р°Р±РёР»СЊРЅРѕСЃС‚Рё СЃР±РѕСЂРєРё РЅР° AGP 8.5.2 Рё Kotlin 2.0.21).
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 docs/design-spec.md
 ```
 
 ---
 
-## ✅ Фаза 1 — Room: лайки и история (16.10.2026)
+## вњ… Р¤Р°Р·Р° 1 вЂ” Room: Р»Р°Р№РєРё Рё РёСЃС‚РѕСЂРёСЏ (16.10.2026)
 
-### Что сделано
-1. **База данных Room 2.6.1 (`AppDatabase.kt`)**:
-   - Создана база данных `mymusic.db` с fallback-миграцией.
-   - Таблица `liked_tracks` (`LikedTrackEntity`): сохранение ID, источника, названия, артиста, обложки, длительности, жанра, URL транскодинга и timestamp лайка `likedAt`.
-   - Таблица `play_history` (`PlayHistoryEntity`): сохранение истории воспроизведения с автоматическим триммингом до последних 50 записей через `@Transaction` в `PlayHistoryDao`.
-2. **Слой доступа к данным (DAO)**:
-   - `LikedTracksDao`: реактивный поток `getLikedTracks()`, проверка `isLiked(id): Flow<Boolean>`, вставка и удаление.
-   - `PlayHistoryDao`: реактивный поток `getPlayHistory(limit = 50)`, метод `recordPlay` (вставка + очистка старых записей сверх лимита 50).
-3. **Репозитории и DI (`data/local/`, `core/di/`)**:
-   - Интерфейсы: `LikedTracksRepository` и `PlayHistoryRepository` в `data/repository/`.
-   - Реализации: `LikedTracksRepositoryImpl` и `PlayHistoryRepositoryImpl` с маппингом `LikedTrackEntity`/`PlayHistoryEntity` $\leftrightarrow$ доменная модель `Track`.
-   - Hilt-модули: `DatabaseModule` (`@Provides` для БД и DAO) и обновлённый `RepositoryModule` (`@Binds` для репозиториев).
-4. **Связка с плеером**:
-   - `PlayerViewModel`: реактивное свойство `isLiked: StateFlow<Boolean>`, отслеживающее статус текущего трека в БД через `flatMapLatest`; метод `toggleLike()` для добавления/удаления трека в Room; автоматическая запись трека в `play_history` при старте воспроизведения (`loadAndPlay`).
-   - `PlayerScreen`: кнопка-сквиркл лайка подключена к `viewModel.isLiked` и `viewModel.toggleLike()`.
-5. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р‘Р°Р·Р° РґР°РЅРЅС‹С… Room 2.6.1 (`AppDatabase.kt`)**:
+   - РЎРѕР·РґР°РЅР° Р±Р°Р·Р° РґР°РЅРЅС‹С… `mymusic.db` СЃ fallback-РјРёРіСЂР°С†РёРµР№.
+   - РўР°Р±Р»РёС†Р° `liked_tracks` (`LikedTrackEntity`): СЃРѕС…СЂР°РЅРµРЅРёРµ ID, РёСЃС‚РѕС‡РЅРёРєР°, РЅР°Р·РІР°РЅРёСЏ, Р°СЂС‚РёСЃС‚Р°, РѕР±Р»РѕР¶РєРё, РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё, Р¶Р°РЅСЂР°, URL С‚СЂР°РЅСЃРєРѕРґРёРЅРіР° Рё timestamp Р»Р°Р№РєР° `likedAt`.
+   - РўР°Р±Р»РёС†Р° `play_history` (`PlayHistoryEntity`): СЃРѕС…СЂР°РЅРµРЅРёРµ РёСЃС‚РѕСЂРёРё РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ СЃ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРёРј С‚СЂРёРјРјРёРЅРіРѕРј РґРѕ РїРѕСЃР»РµРґРЅРёС… 50 Р·Р°РїРёСЃРµР№ С‡РµСЂРµР· `@Transaction` РІ `PlayHistoryDao`.
+2. **РЎР»РѕР№ РґРѕСЃС‚СѓРїР° Рє РґР°РЅРЅС‹Рј (DAO)**:
+   - `LikedTracksDao`: СЂРµР°РєС‚РёРІРЅС‹Р№ РїРѕС‚РѕРє `getLikedTracks()`, РїСЂРѕРІРµСЂРєР° `isLiked(id): Flow<Boolean>`, РІСЃС‚Р°РІРєР° Рё СѓРґР°Р»РµРЅРёРµ.
+   - `PlayHistoryDao`: СЂРµР°РєС‚РёРІРЅС‹Р№ РїРѕС‚РѕРє `getPlayHistory(limit = 50)`, РјРµС‚РѕРґ `recordPlay` (РІСЃС‚Р°РІРєР° + РѕС‡РёСЃС‚РєР° СЃС‚Р°СЂС‹С… Р·Р°РїРёСЃРµР№ СЃРІРµСЂС… Р»РёРјРёС‚Р° 50).
+3. **Р РµРїРѕР·РёС‚РѕСЂРёРё Рё DI (`data/local/`, `core/di/`)**:
+   - РРЅС‚РµСЂС„РµР№СЃС‹: `LikedTracksRepository` Рё `PlayHistoryRepository` РІ `data/repository/`.
+   - Р РµР°Р»РёР·Р°С†РёРё: `LikedTracksRepositoryImpl` Рё `PlayHistoryRepositoryImpl` СЃ РјР°РїРїРёРЅРіРѕРј `LikedTrackEntity`/`PlayHistoryEntity` $\leftrightarrow$ РґРѕРјРµРЅРЅР°СЏ РјРѕРґРµР»СЊ `Track`.
+   - Hilt-РјРѕРґСѓР»Рё: `DatabaseModule` (`@Provides` РґР»СЏ Р‘Р” Рё DAO) Рё РѕР±РЅРѕРІР»С‘РЅРЅС‹Р№ `RepositoryModule` (`@Binds` РґР»СЏ СЂРµРїРѕР·РёС‚РѕСЂРёРµРІ).
+4. **РЎРІСЏР·РєР° СЃ РїР»РµРµСЂРѕРј**:
+   - `PlayerViewModel`: СЂРµР°РєС‚РёРІРЅРѕРµ СЃРІРѕР№СЃС‚РІРѕ `isLiked: StateFlow<Boolean>`, РѕС‚СЃР»РµР¶РёРІР°СЋС‰РµРµ СЃС‚Р°С‚СѓСЃ С‚РµРєСѓС‰РµРіРѕ С‚СЂРµРєР° РІ Р‘Р” С‡РµСЂРµР· `flatMapLatest`; РјРµС‚РѕРґ `toggleLike()` РґР»СЏ РґРѕР±Р°РІР»РµРЅРёСЏ/СѓРґР°Р»РµРЅРёСЏ С‚СЂРµРєР° РІ Room; Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєР°СЏ Р·Р°РїРёСЃСЊ С‚СЂРµРєР° РІ `play_history` РїСЂРё СЃС‚Р°СЂС‚Рµ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ (`loadAndPlay`).
+   - `PlayerScreen`: РєРЅРѕРїРєР°-СЃРєРІРёСЂРєР» Р»Р°Р№РєР° РїРѕРґРєР»СЋС‡РµРЅР° Рє `viewModel.isLiked` Рё `viewModel.toggleLike()`.
+5. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 data/local/entity/LikedTrackEntity.kt
 data/local/entity/PlayHistoryEntity.kt
@@ -693,31 +704,31 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## ✅ Фаза 2 — Очередь воспроизведения (17.10.2026)
+## вњ… Р¤Р°Р·Р° 2 вЂ” РћС‡РµСЂРµРґСЊ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ (17.10.2026)
 
-### Что сделано
-1. **Управление очередью в PlayerController**:
-   - Полноценная очередь `List<Track>` с отслеживанием текущего индекса `currentIndex`.
-   - Режимы повтора `repeatMode` (`OFF` $\to$ `ALL` $\to$ `ONE` $\to$ `OFF`) и воспроизведения после окончания трека (`onTrackEnded`).
-   - Режим перемешивания `isShuffle` с сохранением `originalQueue` для корректного восстановления исходного порядка треков при выключении.
-   - Методы перехода: `playNext(loop)` и `playPrevious()` с логикой возврата в начало трека, если прошло более 3 секунд.
-   - Метод удаления трека `removeTrackAt(index)` с автокоррекцией текущего индекса и остановкой плеера при опустошении очереди.
-2. **Интеграция с системным сервисом и уведомлением (MusicService)**:
-   - В `ForwardingPlayer` переопределены и объявлены доступными команды `SEEK_TO_NEXT`, `SEEK_TO_NEXT_MEDIA_ITEM`, `SEEK_TO_PREVIOUS`, `SEEK_TO_PREVIOUS_MEDIA_ITEM`.
-   - Кнопки переключения треков в шторке уведомлений и на заблокированном экране вызывают методы очереди `playerController.playNext()` и `playerController.playPrevious()`.
-3. **Шторка очереди воспроизведения (PlayerQueueSheet)**:
-   - Модальная шторка `ModalBottomSheet` высотой 78% экрана со скруглением верхних углов 28dp и drag handle 32×4 dp.
-   - Заголовок «Очередь» с количеством треков и кнопками быстрого включения/выключения Shuffle и Repeat.
-   - Список треков с автоскроллом к активному элементу при открытии.
-   - Активный трек визуально выделен тонированной плашкой `primaryContainer` и иконкой Play.
-   - Двусторонний свайп влево и вправо для быстрого удаления трека из очереди (`SwipeToDismissBox`) с анимацией красной подложки и корзины.
-4. **Связка с UI плеера и поиском**:
-   - Пилюля «Далее» в сегментированном баре `PlayerScreen` открывает `PlayerQueueSheet`.
-   - При выборе трека в результатах поиска (`SearchScreen`) в плеер передаётся полный список найденных треков как контекстная очередь.
-   - Кнопки «Prev» и «Next» в `PlayerScreen` вызывают `viewModel.playPrevious()` и `viewModel.playNext()`.
-5. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЈРїСЂР°РІР»РµРЅРёРµ РѕС‡РµСЂРµРґСЊСЋ РІ PlayerController**:
+   - РџРѕР»РЅРѕС†РµРЅРЅР°СЏ РѕС‡РµСЂРµРґСЊ `List<Track>` СЃ РѕС‚СЃР»РµР¶РёРІР°РЅРёРµРј С‚РµРєСѓС‰РµРіРѕ РёРЅРґРµРєСЃР° `currentIndex`.
+   - Р РµР¶РёРјС‹ РїРѕРІС‚РѕСЂР° `repeatMode` (`OFF` $\to$ `ALL` $\to$ `ONE` $\to$ `OFF`) Рё РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ РїРѕСЃР»Рµ РѕРєРѕРЅС‡Р°РЅРёСЏ С‚СЂРµРєР° (`onTrackEnded`).
+   - Р РµР¶РёРј РїРµСЂРµРјРµС€РёРІР°РЅРёСЏ `isShuffle` СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј `originalQueue` РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕРіРѕ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РёСЃС…РѕРґРЅРѕРіРѕ РїРѕСЂСЏРґРєР° С‚СЂРµРєРѕРІ РїСЂРё РІС‹РєР»СЋС‡РµРЅРёРё.
+   - РњРµС‚РѕРґС‹ РїРµСЂРµС…РѕРґР°: `playNext(loop)` Рё `playPrevious()` СЃ Р»РѕРіРёРєРѕР№ РІРѕР·РІСЂР°С‚Р° РІ РЅР°С‡Р°Р»Рѕ С‚СЂРµРєР°, РµСЃР»Рё РїСЂРѕС€Р»Рѕ Р±РѕР»РµРµ 3 СЃРµРєСѓРЅРґ.
+   - РњРµС‚РѕРґ СѓРґР°Р»РµРЅРёСЏ С‚СЂРµРєР° `removeTrackAt(index)` СЃ Р°РІС‚РѕРєРѕСЂСЂРµРєС†РёРµР№ С‚РµРєСѓС‰РµРіРѕ РёРЅРґРµРєСЃР° Рё РѕСЃС‚Р°РЅРѕРІРєРѕР№ РїР»РµРµСЂР° РїСЂРё РѕРїСѓСЃС‚РѕС€РµРЅРёРё РѕС‡РµСЂРµРґРё.
+2. **РРЅС‚РµРіСЂР°С†РёСЏ СЃ СЃРёСЃС‚РµРјРЅС‹Рј СЃРµСЂРІРёСЃРѕРј Рё СѓРІРµРґРѕРјР»РµРЅРёРµРј (MusicService)**:
+   - Р’ `ForwardingPlayer` РїРµСЂРµРѕРїСЂРµРґРµР»РµРЅС‹ Рё РѕР±СЉСЏРІР»РµРЅС‹ РґРѕСЃС‚СѓРїРЅС‹РјРё РєРѕРјР°РЅРґС‹ `SEEK_TO_NEXT`, `SEEK_TO_NEXT_MEDIA_ITEM`, `SEEK_TO_PREVIOUS`, `SEEK_TO_PREVIOUS_MEDIA_ITEM`.
+   - РљРЅРѕРїРєРё РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ С‚СЂРµРєРѕРІ РІ С€С‚РѕСЂРєРµ СѓРІРµРґРѕРјР»РµРЅРёР№ Рё РЅР° Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅРЅРѕРј СЌРєСЂР°РЅРµ РІС‹Р·С‹РІР°СЋС‚ РјРµС‚РѕРґС‹ РѕС‡РµСЂРµРґРё `playerController.playNext()` Рё `playerController.playPrevious()`.
+3. **РЁС‚РѕСЂРєР° РѕС‡РµСЂРµРґРё РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ (PlayerQueueSheet)**:
+   - РњРѕРґР°Р»СЊРЅР°СЏ С€С‚РѕСЂРєР° `ModalBottomSheet` РІС‹СЃРѕС‚РѕР№ 78% СЌРєСЂР°РЅР° СЃРѕ СЃРєСЂСѓРіР»РµРЅРёРµРј РІРµСЂС…РЅРёС… СѓРіР»РѕРІ 28dp Рё drag handle 32Г—4 dp.
+   - Р—Р°РіРѕР»РѕРІРѕРє В«РћС‡РµСЂРµРґСЊВ» СЃ РєРѕР»РёС‡РµСЃС‚РІРѕРј С‚СЂРµРєРѕРІ Рё РєРЅРѕРїРєР°РјРё Р±С‹СЃС‚СЂРѕРіРѕ РІРєР»СЋС‡РµРЅРёСЏ/РІС‹РєР»СЋС‡РµРЅРёСЏ Shuffle Рё Repeat.
+   - РЎРїРёСЃРѕРє С‚СЂРµРєРѕРІ СЃ Р°РІС‚РѕСЃРєСЂРѕР»Р»РѕРј Рє Р°РєС‚РёРІРЅРѕРјСѓ СЌР»РµРјРµРЅС‚Сѓ РїСЂРё РѕС‚РєСЂС‹С‚РёРё.
+   - РђРєС‚РёРІРЅС‹Р№ С‚СЂРµРє РІРёР·СѓР°Р»СЊРЅРѕ РІС‹РґРµР»РµРЅ С‚РѕРЅРёСЂРѕРІР°РЅРЅРѕР№ РїР»Р°С€РєРѕР№ `primaryContainer` Рё РёРєРѕРЅРєРѕР№ Play.
+   - Р”РІСѓСЃС‚РѕСЂРѕРЅРЅРёР№ СЃРІР°Р№Рї РІР»РµРІРѕ Рё РІРїСЂР°РІРѕ РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ СѓРґР°Р»РµРЅРёСЏ С‚СЂРµРєР° РёР· РѕС‡РµСЂРµРґРё (`SwipeToDismissBox`) СЃ Р°РЅРёРјР°С†РёРµР№ РєСЂР°СЃРЅРѕР№ РїРѕРґР»РѕР¶РєРё Рё РєРѕСЂР·РёРЅС‹.
+4. **РЎРІСЏР·РєР° СЃ UI РїР»РµРµСЂР° Рё РїРѕРёСЃРєРѕРј**:
+   - РџРёР»СЋР»СЏ В«Р”Р°Р»РµРµВ» РІ СЃРµРіРјРµРЅС‚РёСЂРѕРІР°РЅРЅРѕРј Р±Р°СЂРµ `PlayerScreen` РѕС‚РєСЂС‹РІР°РµС‚ `PlayerQueueSheet`.
+   - РџСЂРё РІС‹Р±РѕСЂРµ С‚СЂРµРєР° РІ СЂРµР·СѓР»СЊС‚Р°С‚Р°С… РїРѕРёСЃРєР° (`SearchScreen`) РІ РїР»РµРµСЂ РїРµСЂРµРґР°С‘С‚СЃСЏ РїРѕР»РЅС‹Р№ СЃРїРёСЃРѕРє РЅР°Р№РґРµРЅРЅС‹С… С‚СЂРµРєРѕРІ РєР°Рє РєРѕРЅС‚РµРєСЃС‚РЅР°СЏ РѕС‡РµСЂРµРґСЊ.
+   - РљРЅРѕРїРєРё В«PrevВ» Рё В«NextВ» РІ `PlayerScreen` РІС‹Р·С‹РІР°СЋС‚ `viewModel.playPrevious()` Рё `viewModel.playNext()`.
+5. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 core/player/RepeatMode.kt
 core/player/PlayerController.kt
@@ -731,31 +742,31 @@ navigation/AppNavGraph.kt
 
 ---
 
-## ✅ Фаза 2.5 — Хотфикс плеера (18.10.2026)
+## вњ… Р¤Р°Р·Р° 2.5 вЂ” РҐРѕС‚С„РёРєСЃ РїР»РµРµСЂР° (18.10.2026)
 
-### Что сделано
-1. **Починена кнопка Play/Pause в развернутом плеере (`PlayerScreen.kt`)**:
-   - Устранено блокирующее условие `enabled = !isResolving`, из-за которого кнопка зависала в отключенном состоянии после загрузки трека.
-   - Кнопка 88dp кликабельна всегда и переключает воспроизведение через `viewModel.togglePlayPause()`.
-   - Иконка корректно синхронизирована с состоянием `isPlaying` (`PlayArrow` / `Pause`).
-2. **Мгновенный сброс позиции при смене трека**:
-   - В `PlayerViewModel`: при смене трека через `loadAndPlay` или очередь UI-состояние позиции немедленно обнуляется (`positionMs = 0L`).
-   - В `PlayerProgressSection`: при изменении `trackId` значения слайдера (`playbackFraction`, `playbackPositionMs`, `dragPosition`) мгновенно сбрасываются в 0, исключая зависание старого таймкода.
-   - В `PlayerController`: перед вызовом `prepare()` при запуске трека явно вызывается `seekTo(0)`.
-3. **Починена зависающая полоска буферизации**:
-   - В `PlayerController` и `PlayerViewModel` реализован отдельный поток `isBuffering: StateFlow<Boolean>`, отслеживающий состояние `Player.STATE_BUFFERING`.
-   - В `PlayerScreen` спиннер в центральной кнопке крутится ТОЛЬКО когда `isBuffering == true`.
-   - Старый `LinearProgressIndicator` полностью удалён из разметки.
-4. **Бесшовный переход буферизации в таймлайн (кастомный M3 Slider)**:
-   - В `PlayerProgressSection` применён кастомный параметр `track` у `Slider` из Material 3:
-     1. Базовый неактивный слой (общая длительность) цвета `surfaceVariant`.
-     2. Полупрозрачный слой буферизации `primary.copy(alpha = 0.38f)` пропорционально `bufferedPosition / duration`.
-     3. Активный слой прогресса воспроизведения акцентного цвета `primary`.
-5. **Оптимизация сетевых запросов и таймаутов (`NetworkModule.kt`)**:
-   - В `OkHttpClient` таймауты подключения, чтения и записи установлены в 10 секунд, общий `callTimeout` в 15 секунд, что предотвращает блокировку интерфейса при нестабильной сети.
-6. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РџРѕС‡РёРЅРµРЅР° РєРЅРѕРїРєР° Play/Pause РІ СЂР°Р·РІРµСЂРЅСѓС‚РѕРј РїР»РµРµСЂРµ (`PlayerScreen.kt`)**:
+   - РЈСЃС‚СЂР°РЅРµРЅРѕ Р±Р»РѕРєРёСЂСѓСЋС‰РµРµ СѓСЃР»РѕРІРёРµ `enabled = !isResolving`, РёР·-Р·Р° РєРѕС‚РѕСЂРѕРіРѕ РєРЅРѕРїРєР° Р·Р°РІРёСЃР°Р»Р° РІ РѕС‚РєР»СЋС‡РµРЅРЅРѕРј СЃРѕСЃС‚РѕСЏРЅРёРё РїРѕСЃР»Рµ Р·Р°РіСЂСѓР·РєРё С‚СЂРµРєР°.
+   - РљРЅРѕРїРєР° 88dp РєР»РёРєР°Р±РµР»СЊРЅР° РІСЃРµРіРґР° Рё РїРµСЂРµРєР»СЋС‡Р°РµС‚ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ С‡РµСЂРµР· `viewModel.togglePlayPause()`.
+   - РРєРѕРЅРєР° РєРѕСЂСЂРµРєС‚РЅРѕ СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅР° СЃ СЃРѕСЃС‚РѕСЏРЅРёРµРј `isPlaying` (`PlayArrow` / `Pause`).
+2. **РњРіРЅРѕРІРµРЅРЅС‹Р№ СЃР±СЂРѕСЃ РїРѕР·РёС†РёРё РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР°**:
+   - Р’ `PlayerViewModel`: РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР° С‡РµСЂРµР· `loadAndPlay` РёР»Рё РѕС‡РµСЂРµРґСЊ UI-СЃРѕСЃС‚РѕСЏРЅРёРµ РїРѕР·РёС†РёРё РЅРµРјРµРґР»РµРЅРЅРѕ РѕР±РЅСѓР»СЏРµС‚СЃСЏ (`positionMs = 0L`).
+   - Р’ `PlayerProgressSection`: РїСЂРё РёР·РјРµРЅРµРЅРёРё `trackId` Р·РЅР°С‡РµРЅРёСЏ СЃР»Р°Р№РґРµСЂР° (`playbackFraction`, `playbackPositionMs`, `dragPosition`) РјРіРЅРѕРІРµРЅРЅРѕ СЃР±СЂР°СЃС‹РІР°СЋС‚СЃСЏ РІ 0, РёСЃРєР»СЋС‡Р°СЏ Р·Р°РІРёСЃР°РЅРёРµ СЃС‚Р°СЂРѕРіРѕ С‚Р°Р№РјРєРѕРґР°.
+   - Р’ `PlayerController`: РїРµСЂРµРґ РІС‹Р·РѕРІРѕРј `prepare()` РїСЂРё Р·Р°РїСѓСЃРєРµ С‚СЂРµРєР° СЏРІРЅРѕ РІС‹Р·С‹РІР°РµС‚СЃСЏ `seekTo(0)`.
+3. **РџРѕС‡РёРЅРµРЅР° Р·Р°РІРёСЃР°СЋС‰Р°СЏ РїРѕР»РѕСЃРєР° Р±СѓС„РµСЂРёР·Р°С†РёРё**:
+   - Р’ `PlayerController` Рё `PlayerViewModel` СЂРµР°Р»РёР·РѕРІР°РЅ РѕС‚РґРµР»СЊРЅС‹Р№ РїРѕС‚РѕРє `isBuffering: StateFlow<Boolean>`, РѕС‚СЃР»РµР¶РёРІР°СЋС‰РёР№ СЃРѕСЃС‚РѕСЏРЅРёРµ `Player.STATE_BUFFERING`.
+   - Р’ `PlayerScreen` СЃРїРёРЅРЅРµСЂ РІ С†РµРЅС‚СЂР°Р»СЊРЅРѕР№ РєРЅРѕРїРєРµ РєСЂСѓС‚РёС‚СЃСЏ РўРћР›Р¬РљРћ РєРѕРіРґР° `isBuffering == true`.
+   - РЎС‚Р°СЂС‹Р№ `LinearProgressIndicator` РїРѕР»РЅРѕСЃС‚СЊСЋ СѓРґР°Р»С‘РЅ РёР· СЂР°Р·РјРµС‚РєРё.
+4. **Р‘РµСЃС€РѕРІРЅС‹Р№ РїРµСЂРµС…РѕРґ Р±СѓС„РµСЂРёР·Р°С†РёРё РІ С‚Р°Р№РјР»Р°Р№РЅ (РєР°СЃС‚РѕРјРЅС‹Р№ M3 Slider)**:
+   - Р’ `PlayerProgressSection` РїСЂРёРјРµРЅС‘РЅ РєР°СЃС‚РѕРјРЅС‹Р№ РїР°СЂР°РјРµС‚СЂ `track` Сѓ `Slider` РёР· Material 3:
+     1. Р‘Р°Р·РѕРІС‹Р№ РЅРµР°РєС‚РёРІРЅС‹Р№ СЃР»РѕР№ (РѕР±С‰Р°СЏ РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ) С†РІРµС‚Р° `surfaceVariant`.
+     2. РџРѕР»СѓРїСЂРѕР·СЂР°С‡РЅС‹Р№ СЃР»РѕР№ Р±СѓС„РµСЂРёР·Р°С†РёРё `primary.copy(alpha = 0.38f)` РїСЂРѕРїРѕСЂС†РёРѕРЅР°Р»СЊРЅРѕ `bufferedPosition / duration`.
+     3. РђРєС‚РёРІРЅС‹Р№ СЃР»РѕР№ РїСЂРѕРіСЂРµСЃСЃР° РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ Р°РєС†РµРЅС‚РЅРѕРіРѕ С†РІРµС‚Р° `primary`.
+5. **РћРїС‚РёРјРёР·Р°С†РёСЏ СЃРµС‚РµРІС‹С… Р·Р°РїСЂРѕСЃРѕРІ Рё С‚Р°Р№РјР°СѓС‚РѕРІ (`NetworkModule.kt`)**:
+   - Р’ `OkHttpClient` С‚Р°Р№РјР°СѓС‚С‹ РїРѕРґРєР»СЋС‡РµРЅРёСЏ, С‡С‚РµРЅРёСЏ Рё Р·Р°РїРёСЃРё СѓСЃС‚Р°РЅРѕРІР»РµРЅС‹ РІ 10 СЃРµРєСѓРЅРґ, РѕР±С‰РёР№ `callTimeout` РІ 15 СЃРµРєСѓРЅРґ, С‡С‚Рѕ РїСЂРµРґРѕС‚РІСЂР°С‰Р°РµС‚ Р±Р»РѕРєРёСЂРѕРІРєСѓ РёРЅС‚РµСЂС„РµР№СЃР° РїСЂРё РЅРµСЃС‚Р°Р±РёР»СЊРЅРѕР№ СЃРµС‚Рё.
+6. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 core/network/NetworkModule.kt
 core/player/PlayerController.kt
@@ -765,19 +776,19 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## ✅ Фаза 2.6 — Полировка переключения треков и слайдера (18.10.2026)
+## вњ… Р¤Р°Р·Р° 2.6 вЂ” РџРѕР»РёСЂРѕРІРєР° РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ С‚СЂРµРєРѕРІ Рё СЃР»Р°Р№РґРµСЂР° (18.10.2026)
 
-### Что сделано
-1. **Мгновенное глушение прошлого трека при смене (`PlayerController.kt`)**:
-   - В начале методов `playTrackAt`, `resolveAndPlay` и `play` вызывается немедленная остановка: `exoPlayer.pause()`, `exoPlayer.stop()`, `exoPlayer.seekTo(0)`.
-   - Прошлый трек замолкает сразу в момент нажатия, до начала сетевого запроса `resolveStreamUrl`, исключая эффект "хвоста" воспроизведения.
-2. **Плавный переход «Загрузка $\to$ Таймлайн» (`PlayerScreen.kt`)**:
-   - В `PlayerProgressSection` внедрён контейнер фиксированной высоты `44.dp` с выравниванием по центру (`Alignment.Center`), что гарантирует стабильность положения таймкодов без прыжков UI.
-   - Переключение между тонким индикатором загрузки (`LinearProgressIndicator` 4dp) и основным слайдером (`Slider` с буферизацией) анимировано через `Crossfade` (300 мс, `FastOutSlowInEasing`).
-   - Условие показа полоски загрузки: `isBuffering && displayPosition <= 0.005f`.
-3. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РњРіРЅРѕРІРµРЅРЅРѕРµ РіР»СѓС€РµРЅРёРµ РїСЂРѕС€Р»РѕРіРѕ С‚СЂРµРєР° РїСЂРё СЃРјРµРЅРµ (`PlayerController.kt`)**:
+   - Р’ РЅР°С‡Р°Р»Рµ РјРµС‚РѕРґРѕРІ `playTrackAt`, `resolveAndPlay` Рё `play` РІС‹Р·С‹РІР°РµС‚СЃСЏ РЅРµРјРµРґР»РµРЅРЅР°СЏ РѕСЃС‚Р°РЅРѕРІРєР°: `exoPlayer.pause()`, `exoPlayer.stop()`, `exoPlayer.seekTo(0)`.
+   - РџСЂРѕС€Р»С‹Р№ С‚СЂРµРє Р·Р°РјРѕР»РєР°РµС‚ СЃСЂР°Р·Сѓ РІ РјРѕРјРµРЅС‚ РЅР°Р¶Р°С‚РёСЏ, РґРѕ РЅР°С‡Р°Р»Р° СЃРµС‚РµРІРѕРіРѕ Р·Р°РїСЂРѕСЃР° `resolveStreamUrl`, РёСЃРєР»СЋС‡Р°СЏ СЌС„С„РµРєС‚ "С…РІРѕСЃС‚Р°" РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ.
+2. **РџР»Р°РІРЅС‹Р№ РїРµСЂРµС…РѕРґ В«Р—Р°РіСЂСѓР·РєР° $\to$ РўР°Р№РјР»Р°Р№РЅВ» (`PlayerScreen.kt`)**:
+   - Р’ `PlayerProgressSection` РІРЅРµРґСЂС‘РЅ РєРѕРЅС‚РµР№РЅРµСЂ С„РёРєСЃРёСЂРѕРІР°РЅРЅРѕР№ РІС‹СЃРѕС‚С‹ `44.dp` СЃ РІС‹СЂР°РІРЅРёРІР°РЅРёРµРј РїРѕ С†РµРЅС‚СЂСѓ (`Alignment.Center`), С‡С‚Рѕ РіР°СЂР°РЅС‚РёСЂСѓРµС‚ СЃС‚Р°Р±РёР»СЊРЅРѕСЃС‚СЊ РїРѕР»РѕР¶РµРЅРёСЏ С‚Р°Р№РјРєРѕРґРѕРІ Р±РµР· РїСЂС‹Р¶РєРѕРІ UI.
+   - РџРµСЂРµРєР»СЋС‡РµРЅРёРµ РјРµР¶РґСѓ С‚РѕРЅРєРёРј РёРЅРґРёРєР°С‚РѕСЂРѕРј Р·Р°РіСЂСѓР·РєРё (`LinearProgressIndicator` 4dp) Рё РѕСЃРЅРѕРІРЅС‹Рј СЃР»Р°Р№РґРµСЂРѕРј (`Slider` СЃ Р±СѓС„РµСЂРёР·Р°С†РёРµР№) Р°РЅРёРјРёСЂРѕРІР°РЅРѕ С‡РµСЂРµР· `Crossfade` (300 РјСЃ, `FastOutSlowInEasing`).
+   - РЈСЃР»РѕРІРёРµ РїРѕРєР°Р·Р° РїРѕР»РѕСЃРєРё Р·Р°РіСЂСѓР·РєРё: `isBuffering && displayPosition <= 0.005f`.
+3. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 core/player/PlayerController.kt
 feature/player/PlayerScreen.kt
@@ -785,27 +796,27 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## ✅ Фаза 2.7 — Хотфикс UI и состояний плеера (18.10.2026)
+## вњ… Р¤Р°Р·Р° 2.7 вЂ” РҐРѕС‚С„РёРєСЃ UI Рё СЃРѕСЃС‚РѕСЏРЅРёР№ РїР»РµРµСЂР° (18.10.2026)
 
-### Что сделано
-1. **Сброс ошибок при смене трека и переходе в STATE_READY**:
-   - В `PlayerController.kt` добавлено поле `playbackState` в `PlayerState`, а при переходе в `Player.STATE_READY` ошибка автоматически сбрасывается (`error = null`).
-   - В `PlayerViewModel.kt` при смене трека состояние ошибок немедленно очищается, а также синхронизируется с переходом в `STATE_READY`.
-   - В `PlayerScreen.kt` плашка с ошибкой гарантированно скрывается, как только плеер переходит в статус `Player.STATE_READY`.
-2. **Починена палитра обложки (Palette)**:
-   - В `PlayerPalette.kt` внедрено явное состояние загрузки `isLoading`: пока обложка загружается — отображается дефолтный фон; как только обложка загрузилась — применяется доминантный цвет.
-   - Добавлена устойчивая обработка ошибок (при сетевых сбоях или невозможности извлечь палитру остаётся дефолтный фон).
-   - Для светлых и высококонтрастных обложек увеличены веса альфы (`0.72f` вверху, `0.28f` внизу), предотвращая поглощение цвета тёмным системным фоном `surface`.
-   - В `PlayerScreen.kt` переходы градиента фона анимированы через `animateColorAsState` (400 мс).
-3. **Стандартный Slider и плавный Crossfade (500 мс)**:
-   - В `PlayerProgressSection` удалён кастомный Canvas-трек и возвращён стандартный компонент `Slider`.
-   - Реализована буферизация под слайдером через `LinearProgressIndicator` (фон `surfaceVariant`, прогресс `primary`, буферизация `primary.copy(alpha = 0.3f)`).
-   - Переход «загрузка $\to$ таймлайн» выполнен через `Crossfade(targetState = isBuffering && currentPosition == 0L)` с длительностью анимации 500 мс (`FastOutSlowInEasing`).
-4. **Обрезка текста**:
-   - В заголовке трека установлено `maxLines = 2` с `TextOverflow.Ellipsis`.
-5. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЎР±СЂРѕСЃ РѕС€РёР±РѕРє РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР° Рё РїРµСЂРµС…РѕРґРµ РІ STATE_READY**:
+   - Р’ `PlayerController.kt` РґРѕР±Р°РІР»РµРЅРѕ РїРѕР»Рµ `playbackState` РІ `PlayerState`, Р° РїСЂРё РїРµСЂРµС…РѕРґРµ РІ `Player.STATE_READY` РѕС€РёР±РєР° Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё СЃР±СЂР°СЃС‹РІР°РµС‚СЃСЏ (`error = null`).
+   - Р’ `PlayerViewModel.kt` РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР° СЃРѕСЃС‚РѕСЏРЅРёРµ РѕС€РёР±РѕРє РЅРµРјРµРґР»РµРЅРЅРѕ РѕС‡РёС‰Р°РµС‚СЃСЏ, Р° С‚Р°РєР¶Рµ СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓРµС‚СЃСЏ СЃ РїРµСЂРµС…РѕРґРѕРј РІ `STATE_READY`.
+   - Р’ `PlayerScreen.kt` РїР»Р°С€РєР° СЃ РѕС€РёР±РєРѕР№ РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅРЅРѕ СЃРєСЂС‹РІР°РµС‚СЃСЏ, РєР°Рє С‚РѕР»СЊРєРѕ РїР»РµРµСЂ РїРµСЂРµС…РѕРґРёС‚ РІ СЃС‚Р°С‚СѓСЃ `Player.STATE_READY`.
+2. **РџРѕС‡РёРЅРµРЅР° РїР°Р»РёС‚СЂР° РѕР±Р»РѕР¶РєРё (Palette)**:
+   - Р’ `PlayerPalette.kt` РІРЅРµРґСЂРµРЅРѕ СЏРІРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ Р·Р°РіСЂСѓР·РєРё `isLoading`: РїРѕРєР° РѕР±Р»РѕР¶РєР° Р·Р°РіСЂСѓР¶Р°РµС‚СЃСЏ вЂ” РѕС‚РѕР±СЂР°Р¶Р°РµС‚СЃСЏ РґРµС„РѕР»С‚РЅС‹Р№ С„РѕРЅ; РєР°Рє С‚РѕР»СЊРєРѕ РѕР±Р»РѕР¶РєР° Р·Р°РіСЂСѓР·РёР»Р°СЃСЊ вЂ” РїСЂРёРјРµРЅСЏРµС‚СЃСЏ РґРѕРјРёРЅР°РЅС‚РЅС‹Р№ С†РІРµС‚.
+   - Р”РѕР±Р°РІР»РµРЅР° СѓСЃС‚РѕР№С‡РёРІР°СЏ РѕР±СЂР°Р±РѕС‚РєР° РѕС€РёР±РѕРє (РїСЂРё СЃРµС‚РµРІС‹С… СЃР±РѕСЏС… РёР»Рё РЅРµРІРѕР·РјРѕР¶РЅРѕСЃС‚Рё РёР·РІР»РµС‡СЊ РїР°Р»РёС‚СЂСѓ РѕСЃС‚Р°С‘С‚СЃСЏ РґРµС„РѕР»С‚РЅС‹Р№ С„РѕРЅ).
+   - Р”Р»СЏ СЃРІРµС‚Р»С‹С… Рё РІС‹СЃРѕРєРѕРєРѕРЅС‚СЂР°СЃС‚РЅС‹С… РѕР±Р»РѕР¶РµРє СѓРІРµР»РёС‡РµРЅС‹ РІРµСЃР° Р°Р»СЊС„С‹ (`0.72f` РІРІРµСЂС…Сѓ, `0.28f` РІРЅРёР·Сѓ), РїСЂРµРґРѕС‚РІСЂР°С‰Р°СЏ РїРѕРіР»РѕС‰РµРЅРёРµ С†РІРµС‚Р° С‚С‘РјРЅС‹Рј СЃРёСЃС‚РµРјРЅС‹Рј С„РѕРЅРѕРј `surface`.
+   - Р’ `PlayerScreen.kt` РїРµСЂРµС…РѕРґС‹ РіСЂР°РґРёРµРЅС‚Р° С„РѕРЅР° Р°РЅРёРјРёСЂРѕРІР°РЅС‹ С‡РµСЂРµР· `animateColorAsState` (400 РјСЃ).
+3. **РЎС‚Р°РЅРґР°СЂС‚РЅС‹Р№ Slider Рё РїР»Р°РІРЅС‹Р№ Crossfade (500 РјСЃ)**:
+   - Р’ `PlayerProgressSection` СѓРґР°Р»С‘РЅ РєР°СЃС‚РѕРјРЅС‹Р№ Canvas-С‚СЂРµРє Рё РІРѕР·РІСЂР°С‰С‘РЅ СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ РєРѕРјРїРѕРЅРµРЅС‚ `Slider`.
+   - Р РµР°Р»РёР·РѕРІР°РЅР° Р±СѓС„РµСЂРёР·Р°С†РёСЏ РїРѕРґ СЃР»Р°Р№РґРµСЂРѕРј С‡РµСЂРµР· `LinearProgressIndicator` (С„РѕРЅ `surfaceVariant`, РїСЂРѕРіСЂРµСЃСЃ `primary`, Р±СѓС„РµСЂРёР·Р°С†РёСЏ `primary.copy(alpha = 0.3f)`).
+   - РџРµСЂРµС…РѕРґ В«Р·Р°РіСЂСѓР·РєР° $\to$ С‚Р°Р№РјР»Р°Р№РЅВ» РІС‹РїРѕР»РЅРµРЅ С‡РµСЂРµР· `Crossfade(targetState = isBuffering && currentPosition == 0L)` СЃ РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊСЋ Р°РЅРёРјР°С†РёРё 500 РјСЃ (`FastOutSlowInEasing`).
+4. **РћР±СЂРµР·РєР° С‚РµРєСЃС‚Р°**:
+   - Р’ Р·Р°РіРѕР»РѕРІРєРµ С‚СЂРµРєР° СѓСЃС‚Р°РЅРѕРІР»РµРЅРѕ `maxLines = 2` СЃ `TextOverflow.Ellipsis`.
+5. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 core/player/PlayerController.kt
 feature/player/PlayerViewModel.kt
@@ -815,37 +826,37 @@ feature/player/PlayerScreen.kt
 
 ---
 
-## ✅ Фаза 3 — Главный экран с подборками и Медиатека (19.10.2026)
+## вњ… Р¤Р°Р·Р° 3 вЂ” Р“Р»Р°РІРЅС‹Р№ СЌРєСЂР°РЅ СЃ РїРѕРґР±РѕСЂРєР°РјРё Рё РњРµРґРёР°С‚РµРєР° (19.10.2026)
 
-### Что сделано
-1. **Слой данных чартов SoundCloud и кэш Room**:
-   - Создана сущность `ChartCacheEntity` и DAO `ChartCacheDao` с составным первичным ключом `(chartType, id)` и транзакционной заменой `replaceChart`.
-   - База данных `AppDatabase` обновлена до версии 2 с регистрацией `ChartCacheEntity` и `chartCacheDao()`.
-   - Создан интерфейс `SoundCloudChartsRepository` и реализация `SoundCloudChartsRepositoryImpl` через NewPipe-киоски (`https://soundcloud.com/charts/new` для "New & hot" и `/top` для "Top 50").
-   - Внедрён 30-минутный TTL кэширования: свежий кэш отдаётся мгновенно офлайн; при устаревании или pull-to-refresh происходит сетевой запрос к NewPipe с сохранением в Room; при сбое сети работает offline-first фолбэк на кэш.
-   - Hilt-модули `DatabaseModule` и `RepositoryModule` обновлены для предоставления `ChartCacheDao` и `SoundCloudChartsRepository`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЎР»РѕР№ РґР°РЅРЅС‹С… С‡Р°СЂС‚РѕРІ SoundCloud Рё РєСЌС€ Room**:
+   - РЎРѕР·РґР°РЅР° СЃСѓС‰РЅРѕСЃС‚СЊ `ChartCacheEntity` Рё DAO `ChartCacheDao` СЃ СЃРѕСЃС‚Р°РІРЅС‹Рј РїРµСЂРІРёС‡РЅС‹Рј РєР»СЋС‡РѕРј `(chartType, id)` Рё С‚СЂР°РЅР·Р°РєС†РёРѕРЅРЅРѕР№ Р·Р°РјРµРЅРѕР№ `replaceChart`.
+   - Р‘Р°Р·Р° РґР°РЅРЅС‹С… `AppDatabase` РѕР±РЅРѕРІР»РµРЅР° РґРѕ РІРµСЂСЃРёРё 2 СЃ СЂРµРіРёСЃС‚СЂР°С†РёРµР№ `ChartCacheEntity` Рё `chartCacheDao()`.
+   - РЎРѕР·РґР°РЅ РёРЅС‚РµСЂС„РµР№СЃ `SoundCloudChartsRepository` Рё СЂРµР°Р»РёР·Р°С†РёСЏ `SoundCloudChartsRepositoryImpl` С‡РµСЂРµР· NewPipe-РєРёРѕСЃРєРё (`https://soundcloud.com/charts/new` РґР»СЏ "New & hot" Рё `/top` РґР»СЏ "Top 50").
+   - Р’РЅРµРґСЂС‘РЅ 30-РјРёРЅСѓС‚РЅС‹Р№ TTL РєСЌС€РёСЂРѕРІР°РЅРёСЏ: СЃРІРµР¶РёР№ РєСЌС€ РѕС‚РґР°С‘С‚СЃСЏ РјРіРЅРѕРІРµРЅРЅРѕ РѕС„Р»Р°Р№РЅ; РїСЂРё СѓСЃС‚Р°СЂРµРІР°РЅРёРё РёР»Рё pull-to-refresh РїСЂРѕРёСЃС…РѕРґРёС‚ СЃРµС‚РµРІРѕР№ Р·Р°РїСЂРѕСЃ Рє NewPipe СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј РІ Room; РїСЂРё СЃР±РѕРµ СЃРµС‚Рё СЂР°Р±РѕС‚Р°РµС‚ offline-first С„РѕР»Р±СЌРє РЅР° РєСЌС€.
+   - Hilt-РјРѕРґСѓР»Рё `DatabaseModule` Рё `RepositoryModule` РѕР±РЅРѕРІР»РµРЅС‹ РґР»СЏ РїСЂРµРґРѕСЃС‚Р°РІР»РµРЅРёСЏ `ChartCacheDao` Рё `SoundCloudChartsRepository`.
 2. **HomeViewModel**:
-   - Непрерывное наблюдение за реактивными потоками кэша чартов, истории прослушиваний (`play_history`) и лайков (`liked_tracks`).
-   - Автоматическая группировка персональных предпочтений по жанрам (`genreSections`).
-   - Разделение секций: личные («Недавние», «Любимые треки», «Твои жанры») показываются только при наличии данных; чарты («New & Hot», «Top 50») доступны всегда со скелетонами загрузки.
-   - Поддержка `refresh()` с флагом `forceRefresh = true` для жеста pull-to-refresh.
+   - РќРµРїСЂРµСЂС‹РІРЅРѕРµ РЅР°Р±Р»СЋРґРµРЅРёРµ Р·Р° СЂРµР°РєС‚РёРІРЅС‹РјРё РїРѕС‚РѕРєР°РјРё РєСЌС€Р° С‡Р°СЂС‚РѕРІ, РёСЃС‚РѕСЂРёРё РїСЂРѕСЃР»СѓС€РёРІР°РЅРёР№ (`play_history`) Рё Р»Р°Р№РєРѕРІ (`liked_tracks`).
+   - РђРІС‚РѕРјР°С‚РёС‡РµСЃРєР°СЏ РіСЂСѓРїРїРёСЂРѕРІРєР° РїРµСЂСЃРѕРЅР°Р»СЊРЅС‹С… РїСЂРµРґРїРѕС‡С‚РµРЅРёР№ РїРѕ Р¶Р°РЅСЂР°Рј (`genreSections`).
+   - Р Р°Р·РґРµР»РµРЅРёРµ СЃРµРєС†РёР№: Р»РёС‡РЅС‹Рµ (В«РќРµРґР°РІРЅРёРµВ», В«Р›СЋР±РёРјС‹Рµ С‚СЂРµРєРёВ», В«РўРІРѕРё Р¶Р°РЅСЂС‹В») РїРѕРєР°Р·С‹РІР°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё РЅР°Р»РёС‡РёРё РґР°РЅРЅС‹С…; С‡Р°СЂС‚С‹ (В«New & HotВ», В«Top 50В») РґРѕСЃС‚СѓРїРЅС‹ РІСЃРµРіРґР° СЃРѕ СЃРєРµР»РµС‚РѕРЅР°РјРё Р·Р°РіСЂСѓР·РєРё.
+   - РџРѕРґРґРµСЂР¶РєР° `refresh()` СЃ С„Р»Р°РіРѕРј `forceRefresh = true` РґР»СЏ Р¶РµСЃС‚Р° pull-to-refresh.
 3. **HomeScreen (Material 3 Expressive + Jetpack Compose)**:
-   - Выразительная шапка-приветствие по времени суток с динамическим эмодзи («Доброе утро ☀️», «Добрый день 🌤️», «Добрый вечер 🌆», «Доброй ночи 🌙») и крупным шрифтом `headlineLarge`.
-   - Горизонтальные карусели `LazyRow` с карточками 148×148 dp со скруглением `RoundedCornerShape(20.dp)` и тенью 6dp.
-   - Номерные карточки для секции «Top 50 SoundCloud» с крупным плакатным номером позиции (1..50) по дизайн-спеке.
-   - Скелетон-карусели при первой загрузке без мерцания.
-   - Жест Pull-to-refresh через `PullToRefreshBox`.
-   - Тап по любому треку запускает воспроизведение трека с полной очередью из этой подборки.
-4. **LibraryScreen и LibraryViewModel**:
-   - Заменена статическая заглушка на полноценный экран медиатеки любимых треков из базы данных Room.
-   - Счетчик треков в заголовке шапки ("X треков в коллекции").
-   - Кнопки быстрых действий: «Слушать всё» и «Перемешать».
-   - Список карточек `TrackCard` с возможностью быстрого снятия лайка через `IconButton`.
-   - Выразительный Empty State с подсказкой при пустой медиатеке.
-   - Тап по треку открывает плеер с очередью из всей коллекции.
-5. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+   - Р’С‹СЂР°Р·РёС‚РµР»СЊРЅР°СЏ С€Р°РїРєР°-РїСЂРёРІРµС‚СЃС‚РІРёРµ РїРѕ РІСЂРµРјРµРЅРё СЃСѓС‚РѕРє СЃ РґРёРЅР°РјРёС‡РµСЃРєРёРј СЌРјРѕРґР·Рё (В«Р”РѕР±СЂРѕРµ СѓС‚СЂРѕ вЂпёЏВ», В«Р”РѕР±СЂС‹Р№ РґРµРЅСЊ рџЊ¤пёЏВ», В«Р”РѕР±СЂС‹Р№ РІРµС‡РµСЂ рџЊ†В», В«Р”РѕР±СЂРѕР№ РЅРѕС‡Рё рџЊ™В») Рё РєСЂСѓРїРЅС‹Рј С€СЂРёС„С‚РѕРј `headlineLarge`.
+   - Р“РѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Рµ РєР°СЂСѓСЃРµР»Рё `LazyRow` СЃ РєР°СЂС‚РѕС‡РєР°РјРё 148Г—148 dp СЃРѕ СЃРєСЂСѓРіР»РµРЅРёРµРј `RoundedCornerShape(20.dp)` Рё С‚РµРЅСЊСЋ 6dp.
+   - РќРѕРјРµСЂРЅС‹Рµ РєР°СЂС‚РѕС‡РєРё РґР»СЏ СЃРµРєС†РёРё В«Top 50 SoundCloudВ» СЃ РєСЂСѓРїРЅС‹Рј РїР»Р°РєР°С‚РЅС‹Рј РЅРѕРјРµСЂРѕРј РїРѕР·РёС†РёРё (1..50) РїРѕ РґРёР·Р°Р№РЅ-СЃРїРµРєРµ.
+   - РЎРєРµР»РµС‚РѕРЅ-РєР°СЂСѓСЃРµР»Рё РїСЂРё РїРµСЂРІРѕР№ Р·Р°РіСЂСѓР·РєРµ Р±РµР· РјРµСЂС†Р°РЅРёСЏ.
+   - Р–РµСЃС‚ Pull-to-refresh С‡РµСЂРµР· `PullToRefreshBox`.
+   - РўР°Рї РїРѕ Р»СЋР±РѕРјСѓ С‚СЂРµРєСѓ Р·Р°РїСѓСЃРєР°РµС‚ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ С‚СЂРµРєР° СЃ РїРѕР»РЅРѕР№ РѕС‡РµСЂРµРґСЊСЋ РёР· СЌС‚РѕР№ РїРѕРґР±РѕСЂРєРё.
+4. **LibraryScreen Рё LibraryViewModel**:
+   - Р—Р°РјРµРЅРµРЅР° СЃС‚Р°С‚РёС‡РµСЃРєР°СЏ Р·Р°РіР»СѓС€РєР° РЅР° РїРѕР»РЅРѕС†РµРЅРЅС‹Р№ СЌРєСЂР°РЅ РјРµРґРёР°С‚РµРєРё Р»СЋР±РёРјС‹С… С‚СЂРµРєРѕРІ РёР· Р±Р°Р·С‹ РґР°РЅРЅС‹С… Room.
+   - РЎС‡РµС‚С‡РёРє С‚СЂРµРєРѕРІ РІ Р·Р°РіРѕР»РѕРІРєРµ С€Р°РїРєРё ("X С‚СЂРµРєРѕРІ РІ РєРѕР»Р»РµРєС†РёРё").
+   - РљРЅРѕРїРєРё Р±С‹СЃС‚СЂС‹С… РґРµР№СЃС‚РІРёР№: В«РЎР»СѓС€Р°С‚СЊ РІСЃС‘В» Рё В«РџРµСЂРµРјРµС€Р°С‚СЊВ».
+   - РЎРїРёСЃРѕРє РєР°СЂС‚РѕС‡РµРє `TrackCard` СЃ РІРѕР·РјРѕР¶РЅРѕСЃС‚СЊСЋ Р±С‹СЃС‚СЂРѕРіРѕ СЃРЅСЏС‚РёСЏ Р»Р°Р№РєР° С‡РµСЂРµР· `IconButton`.
+   - Р’С‹СЂР°Р·РёС‚РµР»СЊРЅС‹Р№ Empty State СЃ РїРѕРґСЃРєР°Р·РєРѕР№ РїСЂРё РїСѓСЃС‚РѕР№ РјРµРґРёР°С‚РµРєРµ.
+   - РўР°Рї РїРѕ С‚СЂРµРєСѓ РѕС‚РєСЂС‹РІР°РµС‚ РїР»РµРµСЂ СЃ РѕС‡РµСЂРµРґСЊСЋ РёР· РІСЃРµР№ РєРѕР»Р»РµРєС†РёРё.
+5. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 data/local/entity/ChartCacheEntity.kt
 data/local/dao/ChartCacheDao.kt
@@ -863,42 +874,42 @@ navigation/AppNavGraph.kt
 
 ---
 
-## ✅ Фаза 4 — Material 3 Expressive редизайн (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4 вЂ” Material 3 Expressive СЂРµРґРёР·Р°Р№РЅ (19.10.2026)
 
-Примечание: в прежнем плане «Фаза 4» означала алгоритм «Моей волны». По решению пользователя эта фаза отведена под Expressive-редизайн интерфейса, а алгоритм волны перенесён в v1.1. Механика плеера (LRCLIB, Palette, морфинг кнопки) не затрагивалась.
+РџСЂРёРјРµС‡Р°РЅРёРµ: РІ РїСЂРµР¶РЅРµРј РїР»Р°РЅРµ В«Р¤Р°Р·Р° 4В» РѕР·РЅР°С‡Р°Р»Р° Р°Р»РіРѕСЂРёС‚Рј В«РњРѕРµР№ РІРѕР»РЅС‹В». РџРѕ СЂРµС€РµРЅРёСЋ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ СЌС‚Р° С„Р°Р·Р° РѕС‚РІРµРґРµРЅР° РїРѕРґ Expressive-СЂРµРґРёР·Р°Р№РЅ РёРЅС‚РµСЂС„РµР№СЃР°, Р° Р°Р»РіРѕСЂРёС‚Рј РІРѕР»РЅС‹ РїРµСЂРµРЅРµСЃС‘РЅ РІ v1.1. РњРµС…Р°РЅРёРєР° РїР»РµРµСЂР° (LRCLIB, Palette, РјРѕСЂС„РёРЅРі РєРЅРѕРїРєРё) РЅРµ Р·Р°С‚СЂР°РіРёРІР°Р»Р°СЃСЊ.
 
-### Что сделано
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
 1. **ExpressiveNavigationBar** (`core/ui/components/ExpressiveNavigationBar.kt`):
-   - Плавающая нижняя панель `surfaceContainer` со скруглением 24dp, тенью и отступом 8dp над системной навигацией.
-   - Пружинная пилюля-индикатор активной вкладки (~56×32 dp, радиус 16dp) с анимацией смещения (`spring`, dampingRatio 0.78) через `BoxWithConstraints`.
-   - Анимация масштаба и цвета иконок активной вкладки, типографика 11sp, тактильный отклик `TextHandleMove`.
+   - РџР»Р°РІР°СЋС‰Р°СЏ РЅРёР¶РЅСЏСЏ РїР°РЅРµР»СЊ `surfaceContainer` СЃРѕ СЃРєСЂСѓРіР»РµРЅРёРµРј 24dp, С‚РµРЅСЊСЋ Рё РѕС‚СЃС‚СѓРїРѕРј 8dp РЅР°Рґ СЃРёСЃС‚РµРјРЅРѕР№ РЅР°РІРёРіР°С†РёРµР№.
+   - РџСЂСѓР¶РёРЅРЅР°СЏ РїРёР»СЋР»СЏ-РёРЅРґРёРєР°С‚РѕСЂ Р°РєС‚РёРІРЅРѕР№ РІРєР»Р°РґРєРё (~56Г—32 dp, СЂР°РґРёСѓСЃ 16dp) СЃ Р°РЅРёРјР°С†РёРµР№ СЃРјРµС‰РµРЅРёСЏ (`spring`, dampingRatio 0.78) С‡РµСЂРµР· `BoxWithConstraints`.
+   - РђРЅРёРјР°С†РёСЏ РјР°СЃС€С‚Р°Р±Р° Рё С†РІРµС‚Р° РёРєРѕРЅРѕРє Р°РєС‚РёРІРЅРѕР№ РІРєР»Р°РґРєРё, С‚РёРїРѕРіСЂР°С„РёРєР° 11sp, С‚Р°РєС‚РёР»СЊРЅС‹Р№ РѕС‚РєР»РёРє `TextHandleMove`.
 2. **SearchScreen**:
-   - Крупная выразительная шапка «ПОИСК» (headlineLarge, ExtraBold).
-   - `ExpressiveSearchField`: морфинг при фокусе (цвет контейнера, скругление 28dp, тень 8dp), иконка очистки с пружинным появлением.
-   - Жанровые чипы-подсказки, состояния Idle / Loading (скелетоны) / Error / Empty / Results, reveal-анимация списка.
-   - Убран двойной системный inset (вложенный Scaffold с `contentWindowInsets = 0`).
-3. **WaveScreen** (промо-заглушка «скоро»):
-   - Живой Canvas-фон: три синусоиды, радиальный градиентный орб с частицами на орбитах, `rememberInfiniteTransition`.
-   - Бейдж «СКОРО» с градиентом, чипы настроений волны (горизонтальный `LazyRow`, в будущем — режимы), карточка-анонс.
-   - Полноэкранный reveal-переход через `AnimatedVisibility` (пружина + fade).
+   - РљСЂСѓРїРЅР°СЏ РІС‹СЂР°Р·РёС‚РµР»СЊРЅР°СЏ С€Р°РїРєР° В«РџРћРРЎРљВ» (headlineLarge, ExtraBold).
+   - `ExpressiveSearchField`: РјРѕСЂС„РёРЅРі РїСЂРё С„РѕРєСѓСЃРµ (С†РІРµС‚ РєРѕРЅС‚РµР№РЅРµСЂР°, СЃРєСЂСѓРіР»РµРЅРёРµ 28dp, С‚РµРЅСЊ 8dp), РёРєРѕРЅРєР° РѕС‡РёСЃС‚РєРё СЃ РїСЂСѓР¶РёРЅРЅС‹Рј РїРѕСЏРІР»РµРЅРёРµРј.
+   - Р–Р°РЅСЂРѕРІС‹Рµ С‡РёРїС‹-РїРѕРґСЃРєР°Р·РєРё, СЃРѕСЃС‚РѕСЏРЅРёСЏ Idle / Loading (СЃРєРµР»РµС‚РѕРЅС‹) / Error / Empty / Results, reveal-Р°РЅРёРјР°С†РёСЏ СЃРїРёСЃРєР°.
+   - РЈР±СЂР°РЅ РґРІРѕР№РЅРѕР№ СЃРёСЃС‚РµРјРЅС‹Р№ inset (РІР»РѕР¶РµРЅРЅС‹Р№ Scaffold СЃ `contentWindowInsets = 0`).
+3. **WaveScreen** (РїСЂРѕРјРѕ-Р·Р°РіР»СѓС€РєР° В«СЃРєРѕСЂРѕВ»):
+   - Р–РёРІРѕР№ Canvas-С„РѕРЅ: С‚СЂРё СЃРёРЅСѓСЃРѕРёРґС‹, СЂР°РґРёР°Р»СЊРЅС‹Р№ РіСЂР°РґРёРµРЅС‚РЅС‹Р№ РѕСЂР± СЃ С‡Р°СЃС‚РёС†Р°РјРё РЅР° РѕСЂР±РёС‚Р°С…, `rememberInfiniteTransition`.
+   - Р‘РµР№РґР¶ В«РЎРљРћР РћВ» СЃ РіСЂР°РґРёРµРЅС‚РѕРј, С‡РёРїС‹ РЅР°СЃС‚СЂРѕРµРЅРёР№ РІРѕР»РЅС‹ (РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ `LazyRow`, РІ Р±СѓРґСѓС‰РµРј вЂ” СЂРµР¶РёРјС‹), РєР°СЂС‚РѕС‡РєР°-Р°РЅРѕРЅСЃ.
+   - РџРѕР»РЅРѕСЌРєСЂР°РЅРЅС‹Р№ reveal-РїРµСЂРµС…РѕРґ С‡РµСЂРµР· `AnimatedVisibility` (РїСЂСѓР¶РёРЅР° + fade).
 4. **HomeScreen**:
-   - Удалён вложенный Scaffold — контент больше не получает двойные insets.
-   - Все секции обёрнуты в `RevealSection` (staggered-появление с задержкой 55 мс на секцию, пружина, с резервированием layout-размера).
-   - `SectionHeader` с градиентной акцентной полосой; expressивные заголовки секций.
-   - `TrackCarouselCard`: пружинный scale 0.95 при нажатии и тональный слой-подсветка.
-   - `TopChartCarousel`: анимированный цвет контейнера при нажатии, top-3 карточки в `primaryContainer`.
-5. **TrackCard** (общий компонент Search и Library):
-   - Поверхность 20dp с тональным откликом на нажатие (`collectIsPressedAsState` + `animateColorAsState`), пружинный scale 0.975.
-   - Обложка 56dp/12dp, длительность и жанр в подписи.
+   - РЈРґР°Р»С‘РЅ РІР»РѕР¶РµРЅРЅС‹Р№ Scaffold вЂ” РєРѕРЅС‚РµРЅС‚ Р±РѕР»СЊС€Рµ РЅРµ РїРѕР»СѓС‡Р°РµС‚ РґРІРѕР№РЅС‹Рµ insets.
+   - Р’СЃРµ СЃРµРєС†РёРё РѕР±С‘СЂРЅСѓС‚С‹ РІ `RevealSection` (staggered-РїРѕСЏРІР»РµРЅРёРµ СЃ Р·Р°РґРµСЂР¶РєРѕР№ 55 РјСЃ РЅР° СЃРµРєС†РёСЋ, РїСЂСѓР¶РёРЅР°, СЃ СЂРµР·РµСЂРІРёСЂРѕРІР°РЅРёРµРј layout-СЂР°Р·РјРµСЂР°).
+   - `SectionHeader` СЃ РіСЂР°РґРёРµРЅС‚РЅРѕР№ Р°РєС†РµРЅС‚РЅРѕР№ РїРѕР»РѕСЃРѕР№; expressРёРІРЅС‹Рµ Р·Р°РіРѕР»РѕРІРєРё СЃРµРєС†РёР№.
+   - `TrackCarouselCard`: РїСЂСѓР¶РёРЅРЅС‹Р№ scale 0.95 РїСЂРё РЅР°Р¶Р°С‚РёРё Рё С‚РѕРЅР°Р»СЊРЅС‹Р№ СЃР»РѕР№-РїРѕРґСЃРІРµС‚РєР°.
+   - `TopChartCarousel`: Р°РЅРёРјРёСЂРѕРІР°РЅРЅС‹Р№ С†РІРµС‚ РєРѕРЅС‚РµР№РЅРµСЂР° РїСЂРё РЅР°Р¶Р°С‚РёРё, top-3 РєР°СЂС‚РѕС‡РєРё РІ `primaryContainer`.
+5. **TrackCard** (РѕР±С‰РёР№ РєРѕРјРїРѕРЅРµРЅС‚ Search Рё Library):
+   - РџРѕРІРµСЂС…РЅРѕСЃС‚СЊ 20dp СЃ С‚РѕРЅР°Р»СЊРЅС‹Рј РѕС‚РєР»РёРєРѕРј РЅР° РЅР°Р¶Р°С‚РёРµ (`collectIsPressedAsState` + `animateColorAsState`), РїСЂСѓР¶РёРЅРЅС‹Р№ scale 0.975.
+   - РћР±Р»РѕР¶РєР° 56dp/12dp, РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ Рё Р¶Р°РЅСЂ РІ РїРѕРґРїРёСЃРё.
 6. **AppNavGraph**:
-   - Spring-переходы вкладок и плеера (fade + scale / spring slide вместо tween), обновлён вызов `WaveScreen()`.
-7. **Type.kt** — выразительная типографическая шкала:
-   - ExtraBold-заголовки с плотным трекингом (-0.5sp), Bold labelSmall (11sp), SemiBold labelLarge/titleMedium.
-8. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+   - Spring-РїРµСЂРµС…РѕРґС‹ РІРєР»Р°РґРѕРє Рё РїР»РµРµСЂР° (fade + scale / spring slide РІРјРµСЃС‚Рѕ tween), РѕР±РЅРѕРІР»С‘РЅ РІС‹Р·РѕРІ `WaveScreen()`.
+7. **Type.kt** вЂ” РІС‹СЂР°Р·РёС‚РµР»СЊРЅР°СЏ С‚РёРїРѕРіСЂР°С„РёС‡РµСЃРєР°СЏ С€РєР°Р»Р°:
+   - ExtraBold-Р·Р°РіРѕР»РѕРІРєРё СЃ РїР»РѕС‚РЅС‹Рј С‚СЂРµРєРёРЅРіРѕРј (-0.5sp), Bold labelSmall (11sp), SemiBold labelLarge/titleMedium.
+8. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/ui/components/ExpressiveNavigationBar.kt (новый)
+app/src/main/java/com/my/music/core/ui/components/ExpressiveNavigationBar.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/ui/components/TrackCard.kt
 app/src/main/java/com/my/music/core/ui/theme/Type.kt
 app/src/main/java/com/my/music/feature/home/HomeScreen.kt
@@ -909,18 +920,18 @@ app/src/main/java/com/my/music/navigation/AppNavGraph.kt
 
 ---
 
-## ✅ Фаза 4.1 — Правки после теста на реальном устройстве (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.1 вЂ” РџСЂР°РІРєРё РїРѕСЃР»Рµ С‚РµСЃС‚Р° РЅР° СЂРµР°Р»СЊРЅРѕРј СѓСЃС‚СЂРѕР№СЃС‚РІРµ (19.10.2026)
 
-### Что сделано
-1. **WaveScreen**: центр орба перенесён в геометрический центр hero-зоны (`size.height / 2f`), поэтому иконка `Waves` через `Alignment.Center` стоит ровно в центре круга.
-2. **PlayerScreen, верхняя панель**: `TopAppBar` заменён на `CenterAlignedTopAppBar`; «СЕЙЧАС ИГРАЕТ» и название трека центрируются между кнопками «Назад» и «Меню» (`TextAlign.Center`, `fillMaxWidth`, ellipsis).
-3. **PlayerPalette**: приоритет свотчей изменён на выразительные (`vibrant` → `lightVibrant` → `dominant` → …); для светлых обложек (`luminance > 0.35`) насыщенность поднимается ×1.4, светлота ограничивается 0.50–0.66, альфы фона увеличены до 0.88/0.40 (тёмные — 0.62/0.22). Серые «металлические» обложки теперь дают ощутимый цвет фона.
-4. **Тексты песен**: вместо простого fade — `animateColorAsState` (420 мс) от тусклого `onSurface` (alpha 0.30/0.55) к белому `onSurface` (alpha 1.0); дополнительно анимируются вес шрифта (400 → 700, пружина), масштаб (1.0 → 1.05) и свечение (`Transparent` → `primary` 0.5, blur 10).
-5. **Слайдер**: в `PlayerProgressSection` добавлен флаг `isResolving`; `LinearProgressIndicator` показывается при `(isBuffering || isResolving) && позиция == 0`, затем `Crossfade` (500 мс) плавно заменяет его на `Slider` с буферным слоем `primary.copy(alpha = 0.3f)`.
-6. **Чарты SoundCloud**: в `SoundCloudChartsRepositoryImpl` добавлен фильтр мусора — отбрасываются треки длительностью 1–29 сек и явные нули прослушиваний (фильтр по plays применяется только если `viewCount` реально парсится); если после фильтрации список пуст — возвращается исходный. Секция Top 50 остаётся полной (50 позиций).
-7. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **WaveScreen**: С†РµРЅС‚СЂ РѕСЂР±Р° РїРµСЂРµРЅРµСЃС‘РЅ РІ РіРµРѕРјРµС‚СЂРёС‡РµСЃРєРёР№ С†РµРЅС‚СЂ hero-Р·РѕРЅС‹ (`size.height / 2f`), РїРѕСЌС‚РѕРјСѓ РёРєРѕРЅРєР° `Waves` С‡РµСЂРµР· `Alignment.Center` СЃС‚РѕРёС‚ СЂРѕРІРЅРѕ РІ С†РµРЅС‚СЂРµ РєСЂСѓРіР°.
+2. **PlayerScreen, РІРµСЂС…РЅСЏСЏ РїР°РЅРµР»СЊ**: `TopAppBar` Р·Р°РјРµРЅС‘РЅ РЅР° `CenterAlignedTopAppBar`; В«РЎР•Р™Р§РђРЎ РР“Р РђР•РўВ» Рё РЅР°Р·РІР°РЅРёРµ С‚СЂРµРєР° С†РµРЅС‚СЂРёСЂСѓСЋС‚СЃСЏ РјРµР¶РґСѓ РєРЅРѕРїРєР°РјРё В«РќР°Р·Р°РґВ» Рё В«РњРµРЅСЋВ» (`TextAlign.Center`, `fillMaxWidth`, ellipsis).
+3. **PlayerPalette**: РїСЂРёРѕСЂРёС‚РµС‚ СЃРІРѕС‚С‡РµР№ РёР·РјРµРЅС‘РЅ РЅР° РІС‹СЂР°Р·РёС‚РµР»СЊРЅС‹Рµ (`vibrant` в†’ `lightVibrant` в†’ `dominant` в†’ вЂ¦); РґР»СЏ СЃРІРµС‚Р»С‹С… РѕР±Р»РѕР¶РµРє (`luminance > 0.35`) РЅР°СЃС‹С‰РµРЅРЅРѕСЃС‚СЊ РїРѕРґРЅРёРјР°РµС‚СЃСЏ Г—1.4, СЃРІРµС‚Р»РѕС‚Р° РѕРіСЂР°РЅРёС‡РёРІР°РµС‚СЃСЏ 0.50вЂ“0.66, Р°Р»СЊС„С‹ С„РѕРЅР° СѓРІРµР»РёС‡РµРЅС‹ РґРѕ 0.88/0.40 (С‚С‘РјРЅС‹Рµ вЂ” 0.62/0.22). РЎРµСЂС‹Рµ В«РјРµС‚Р°Р»Р»РёС‡РµСЃРєРёРµВ» РѕР±Р»РѕР¶РєРё С‚РµРїРµСЂСЊ РґР°СЋС‚ РѕС‰СѓС‚РёРјС‹Р№ С†РІРµС‚ С„РѕРЅР°.
+4. **РўРµРєСЃС‚С‹ РїРµСЃРµРЅ**: РІРјРµСЃС‚Рѕ РїСЂРѕСЃС‚РѕРіРѕ fade вЂ” `animateColorAsState` (420 РјСЃ) РѕС‚ С‚СѓСЃРєР»РѕРіРѕ `onSurface` (alpha 0.30/0.55) Рє Р±РµР»РѕРјСѓ `onSurface` (alpha 1.0); РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ Р°РЅРёРјРёСЂСѓСЋС‚СЃСЏ РІРµСЃ С€СЂРёС„С‚Р° (400 в†’ 700, РїСЂСѓР¶РёРЅР°), РјР°СЃС€С‚Р°Р± (1.0 в†’ 1.05) Рё СЃРІРµС‡РµРЅРёРµ (`Transparent` в†’ `primary` 0.5, blur 10).
+5. **РЎР»Р°Р№РґРµСЂ**: РІ `PlayerProgressSection` РґРѕР±Р°РІР»РµРЅ С„Р»Р°Рі `isResolving`; `LinearProgressIndicator` РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ РїСЂРё `(isBuffering || isResolving) && РїРѕР·РёС†РёСЏ == 0`, Р·Р°С‚РµРј `Crossfade` (500 РјСЃ) РїР»Р°РІРЅРѕ Р·Р°РјРµРЅСЏРµС‚ РµРіРѕ РЅР° `Slider` СЃ Р±СѓС„РµСЂРЅС‹Рј СЃР»РѕРµРј `primary.copy(alpha = 0.3f)`.
+6. **Р§Р°СЂС‚С‹ SoundCloud**: РІ `SoundCloudChartsRepositoryImpl` РґРѕР±Р°РІР»РµРЅ С„РёР»СЊС‚СЂ РјСѓСЃРѕСЂР° вЂ” РѕС‚Р±СЂР°СЃС‹РІР°СЋС‚СЃСЏ С‚СЂРµРєРё РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊСЋ 1вЂ“29 СЃРµРє Рё СЏРІРЅС‹Рµ РЅСѓР»Рё РїСЂРѕСЃР»СѓС€РёРІР°РЅРёР№ (С„РёР»СЊС‚СЂ РїРѕ plays РїСЂРёРјРµРЅСЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РµСЃР»Рё `viewCount` СЂРµР°Р»СЊРЅРѕ РїР°СЂСЃРёС‚СЃСЏ); РµСЃР»Рё РїРѕСЃР»Рµ С„РёР»СЊС‚СЂР°С†РёРё СЃРїРёСЃРѕРє РїСѓСЃС‚ вЂ” РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ РёСЃС…РѕРґРЅС‹Р№. РЎРµРєС†РёСЏ Top 50 РѕСЃС‚Р°С‘С‚СЃСЏ РїРѕР»РЅРѕР№ (50 РїРѕР·РёС†РёР№).
+7. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
@@ -932,30 +943,30 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.2 — Дружелюбные сетевые ошибки плеера (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.2 вЂ” Р”СЂСѓР¶РµР»СЋР±РЅС‹Рµ СЃРµС‚РµРІС‹Рµ РѕС€РёР±РєРё РїР»РµРµСЂР° (19.10.2026)
 
-### Что сделано
-1. **Единый маппер ошибок (`core/player/PlaybackErrorMessages.kt`)**:
-   - `UnknownHostException`, `ConnectException`, `SocketException`, сообщения «Unable to resolve host» / «No address associated with hostname» → «Нет подключения к интернету. Проверьте сеть.»
-   - `SocketTimeoutException` / таймауты → «Превышено время ожидания. Попробуйте снова.»
-   - `SSLException` → «Ошибка защищённого соединения. Попробуйте снова.»
-   - Всё остальное → «Не удалось воспроизвести трек. Попробуйте снова.»
-   - Для `PlaybackException` дополнительно учитываются коды `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED` / `_TIMEOUT`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р•РґРёРЅС‹Р№ РјР°РїРїРµСЂ РѕС€РёР±РѕРє (`core/player/PlaybackErrorMessages.kt`)**:
+   - `UnknownHostException`, `ConnectException`, `SocketException`, СЃРѕРѕР±С‰РµРЅРёСЏ В«Unable to resolve hostВ» / В«No address associated with hostnameВ» в†’ В«РќРµС‚ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє РёРЅС‚РµСЂРЅРµС‚Сѓ. РџСЂРѕРІРµСЂСЊС‚Рµ СЃРµС‚СЊ.В»
+   - `SocketTimeoutException` / С‚Р°Р№РјР°СѓС‚С‹ в†’ В«РџСЂРµРІС‹С€РµРЅРѕ РІСЂРµРјСЏ РѕР¶РёРґР°РЅРёСЏ. РџРѕРїСЂРѕР±СѓР№С‚Рµ СЃРЅРѕРІР°.В»
+   - `SSLException` в†’ В«РћС€РёР±РєР° Р·Р°С‰РёС‰С‘РЅРЅРѕРіРѕ СЃРѕРµРґРёРЅРµРЅРёСЏ. РџРѕРїСЂРѕР±СѓР№С‚Рµ СЃРЅРѕРІР°.В»
+   - Р’СЃС‘ РѕСЃС‚Р°Р»СЊРЅРѕРµ в†’ В«РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕСЃРїСЂРѕРёР·РІРµСЃС‚Рё С‚СЂРµРє. РџРѕРїСЂРѕР±СѓР№С‚Рµ СЃРЅРѕРІР°.В»
+   - Р”Р»СЏ `PlaybackException` РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ СѓС‡РёС‚С‹РІР°СЋС‚СЃСЏ РєРѕРґС‹ `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED` / `_TIMEOUT`.
 2. **PlayerController**:
-   - Ошибка `resolveStreamUrl` маппится в дружелюбный текст; сырое исключение пишется только в Logcat.
-   - Добавлен `onPlayerError` для ошибок ExoPlayer во время воспроизведения — на экран также уходит только понятное сообщение.
-   - При ошибке сбрасываются `isLoading`, `isBuffering`, `isPlaying`.
-   - Нажатие Play/Pause при наличии ошибки сразу очищает её и повторно запускает текущий трек (`recordHistory = false`, чтобы не дублировать историю).
-   - При переходе в `STATE_READY` ошибка гарантированно очищается.
+   - РћС€РёР±РєР° `resolveStreamUrl` РјР°РїРїРёС‚СЃСЏ РІ РґСЂСѓР¶РµР»СЋР±РЅС‹Р№ С‚РµРєСЃС‚; СЃС‹СЂРѕРµ РёСЃРєР»СЋС‡РµРЅРёРµ РїРёС€РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РІ Logcat.
+   - Р”РѕР±Р°РІР»РµРЅ `onPlayerError` РґР»СЏ РѕС€РёР±РѕРє ExoPlayer РІРѕ РІСЂРµРјСЏ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёСЏ вЂ” РЅР° СЌРєСЂР°РЅ С‚Р°РєР¶Рµ СѓС…РѕРґРёС‚ С‚РѕР»СЊРєРѕ РїРѕРЅСЏС‚РЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ.
+   - РџСЂРё РѕС€РёР±РєРµ СЃР±СЂР°СЃС‹РІР°СЋС‚СЃСЏ `isLoading`, `isBuffering`, `isPlaying`.
+   - РќР°Р¶Р°С‚РёРµ Play/Pause РїСЂРё РЅР°Р»РёС‡РёРё РѕС€РёР±РєРё СЃСЂР°Р·Сѓ РѕС‡РёС‰Р°РµС‚ РµС‘ Рё РїРѕРІС‚РѕСЂРЅРѕ Р·Р°РїСѓСЃРєР°РµС‚ С‚РµРєСѓС‰РёР№ С‚СЂРµРє (`recordHistory = false`, С‡С‚РѕР±С‹ РЅРµ РґСѓР±Р»РёСЂРѕРІР°С‚СЊ РёСЃС‚РѕСЂРёСЋ).
+   - РџСЂРё РїРµСЂРµС…РѕРґРµ РІ `STATE_READY` РѕС€РёР±РєР° РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅРЅРѕ РѕС‡РёС‰Р°РµС‚СЃСЏ.
 3. **PlayerViewModel**:
-   - `togglePlayPause()` немедленно очищает `uiState.error`.
-   - Ошибки загрузки текстов из LRCLIB также маппятся в «Не удалось загрузить текст. Попробуйте снова.» — сырые Java-ошибки не попадают в панель текстов.
-   - Выбор нового трека уже сбрасывает ошибку (`playTrackWithQueue` / `playTrackAt`).
-4. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+   - `togglePlayPause()` РЅРµРјРµРґР»РµРЅРЅРѕ РѕС‡РёС‰Р°РµС‚ `uiState.error`.
+   - РћС€РёР±РєРё Р·Р°РіСЂСѓР·РєРё С‚РµРєСЃС‚РѕРІ РёР· LRCLIB С‚Р°РєР¶Рµ РјР°РїРїСЏС‚СЃСЏ РІ В«РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ С‚РµРєСЃС‚. РџРѕРїСЂРѕР±СѓР№С‚Рµ СЃРЅРѕРІР°.В» вЂ” СЃС‹СЂС‹Рµ Java-РѕС€РёР±РєРё РЅРµ РїРѕРїР°РґР°СЋС‚ РІ РїР°РЅРµР»СЊ С‚РµРєСЃС‚РѕРІ.
+   - Р’С‹Р±РѕСЂ РЅРѕРІРѕРіРѕ С‚СЂРµРєР° СѓР¶Рµ СЃР±СЂР°СЃС‹РІР°РµС‚ РѕС€РёР±РєСѓ (`playTrackWithQueue` / `playTrackAt`).
+4. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/player/PlaybackErrorMessages.kt (новый)
+app/src/main/java/com/my/music/core/player/PlaybackErrorMessages.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/player/PlayerController.kt
 app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
 PROGRESS.md
@@ -964,29 +975,29 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.3 — Финальные визуальные штрихи: WaveSlider, караоке-текст, Google Sans Flex (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.3 вЂ” Р¤РёРЅР°Р»СЊРЅС‹Рµ РІРёР·СѓР°Р»СЊРЅС‹Рµ С€С‚СЂРёС…Рё: WaveSlider, РєР°СЂР°РѕРєРµ-С‚РµРєСЃС‚, Google Sans Flex (19.10.2026)
 
-### Что сделано
-1. **Анимированная синусоида в PlayerScreen (WaveSlider)**:
-   - В `app/build.gradle.kts` добавлена зависимость `com.github.galaxygoldfish:waveslider:v0.0.4` (в задании указана 0.3.3, но в JitPack её нет — последняя собранная версия v0.0.4). JitPack уже был подключён в `settings.gradle.kts`, правок не потребовалось.
-   - Стандартный `Slider` в `PlayerProgressSection` заменён на `WaveSlider` (amplitude = 10F, frequency = 0.07F, colors из MaterialTheme/палитры трека).
-   - Буферизация сохранена: тонкая линия `primary.copy(alpha = 0.3f)` рисуется под волной; Crossfade «индикатор загрузки → слайдер» (500 мс) не тронут.
-2. **Караоке-эффект в текстах (по мотивам Accompanist KaraokeLineText, без копирования кода)**:
-   - В цикле опроса позиции (150 мс) вычисляется прогресс внутри активной строки.
-   - Активная строка заполняется `Brush.linearGradient` слева направо: проигранная часть — белая (`onSurface`), непропетая — тусклая (alpha 0.30), с мягким краем 5%.
-   - Прошедшие строки — заливка 1.0 (белый 55% alpha), будущие — 0.0; заливка анимируется `animateFloatAsState` (160 мс, LinearEasing).
-   - Свечение, анимация веса (400→700) и масштаба (1.05) активной строки сохранены.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РђРЅРёРјРёСЂРѕРІР°РЅРЅР°СЏ СЃРёРЅСѓСЃРѕРёРґР° РІ PlayerScreen (WaveSlider)**:
+   - Р’ `app/build.gradle.kts` РґРѕР±Р°РІР»РµРЅР° Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ `com.github.galaxygoldfish:waveslider:v0.0.4` (РІ Р·Р°РґР°РЅРёРё СѓРєР°Р·Р°РЅР° 0.3.3, РЅРѕ РІ JitPack РµС‘ РЅРµС‚ вЂ” РїРѕСЃР»РµРґРЅСЏСЏ СЃРѕР±СЂР°РЅРЅР°СЏ РІРµСЂСЃРёСЏ v0.0.4). JitPack СѓР¶Рµ Р±С‹Р» РїРѕРґРєР»СЋС‡С‘РЅ РІ `settings.gradle.kts`, РїСЂР°РІРѕРє РЅРµ РїРѕС‚СЂРµР±РѕРІР°Р»РѕСЃСЊ.
+   - РЎС‚Р°РЅРґР°СЂС‚РЅС‹Р№ `Slider` РІ `PlayerProgressSection` Р·Р°РјРµРЅС‘РЅ РЅР° `WaveSlider` (amplitude = 10F, frequency = 0.07F, colors РёР· MaterialTheme/РїР°Р»РёС‚СЂС‹ С‚СЂРµРєР°).
+   - Р‘СѓС„РµСЂРёР·Р°С†РёСЏ СЃРѕС…СЂР°РЅРµРЅР°: С‚РѕРЅРєР°СЏ Р»РёРЅРёСЏ `primary.copy(alpha = 0.3f)` СЂРёСЃСѓРµС‚СЃСЏ РїРѕРґ РІРѕР»РЅРѕР№; Crossfade В«РёРЅРґРёРєР°С‚РѕСЂ Р·Р°РіСЂСѓР·РєРё в†’ СЃР»Р°Р№РґРµСЂВ» (500 РјСЃ) РЅРµ С‚СЂРѕРЅСѓС‚.
+2. **РљР°СЂР°РѕРєРµ-СЌС„С„РµРєС‚ РІ С‚РµРєСЃС‚Р°С… (РїРѕ РјРѕС‚РёРІР°Рј Accompanist KaraokeLineText, Р±РµР· РєРѕРїРёСЂРѕРІР°РЅРёСЏ РєРѕРґР°)**:
+   - Р’ С†РёРєР»Рµ РѕРїСЂРѕСЃР° РїРѕР·РёС†РёРё (150 РјСЃ) РІС‹С‡РёСЃР»СЏРµС‚СЃСЏ РїСЂРѕРіСЂРµСЃСЃ РІРЅСѓС‚СЂРё Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё.
+   - РђРєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° Р·Р°РїРѕР»РЅСЏРµС‚СЃСЏ `Brush.linearGradient` СЃР»РµРІР° РЅР°РїСЂР°РІРѕ: РїСЂРѕРёРіСЂР°РЅРЅР°СЏ С‡Р°СЃС‚СЊ вЂ” Р±РµР»Р°СЏ (`onSurface`), РЅРµРїСЂРѕРїРµС‚Р°СЏ вЂ” С‚СѓСЃРєР»Р°СЏ (alpha 0.30), СЃ РјСЏРіРєРёРј РєСЂР°РµРј 5%.
+   - РџСЂРѕС€РµРґС€РёРµ СЃС‚СЂРѕРєРё вЂ” Р·Р°Р»РёРІРєР° 1.0 (Р±РµР»С‹Р№ 55% alpha), Р±СѓРґСѓС‰РёРµ вЂ” 0.0; Р·Р°Р»РёРІРєР° Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ `animateFloatAsState` (160 РјСЃ, LinearEasing).
+   - РЎРІРµС‡РµРЅРёРµ, Р°РЅРёРјР°С†РёСЏ РІРµСЃР° (400в†’700) Рё РјР°СЃС€С‚Р°Р±Р° (1.05) Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё СЃРѕС…СЂР°РЅРµРЅС‹.
 3. **Google Sans Flex**:
-   - Variable-шрифт `GoogleSansFlex[ROND,opsz,slnt,wdth,wght].ttf` (OFL) скачан в `app/src/main/res/font/google_sans_flex.ttf`; лицензия — `app/src/main/assets/licenses/OFL_GoogleSansFlex.txt`.
-   - В `Type.kt` создан `FontFamily` из 5 весов (400/500/600/700/800) через `FontVariation.Settings` (ось wght, API 26+) и применён ко всей типографике.
-   - Отказались от `ui-text-google-fonts`/`GoogleFont("Google Sans Flex")`: провайдер шрифтов требует GMS и сертификаты, в оффлайне может не загрузиться; локальный TTF надёжнее (в задании допускался вариант «или скачай .ttf»).
-4. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+   - Variable-С€СЂРёС„С‚ `GoogleSansFlex[ROND,opsz,slnt,wdth,wght].ttf` (OFL) СЃРєР°С‡Р°РЅ РІ `app/src/main/res/font/google_sans_flex.ttf`; Р»РёС†РµРЅР·РёСЏ вЂ” `app/src/main/assets/licenses/OFL_GoogleSansFlex.txt`.
+   - Р’ `Type.kt` СЃРѕР·РґР°РЅ `FontFamily` РёР· 5 РІРµСЃРѕРІ (400/500/600/700/800) С‡РµСЂРµР· `FontVariation.Settings` (РѕСЃСЊ wght, API 26+) Рё РїСЂРёРјРµРЅС‘РЅ РєРѕ РІСЃРµР№ С‚РёРїРѕРіСЂР°С„РёРєРµ.
+   - РћС‚РєР°Р·Р°Р»РёСЃСЊ РѕС‚ `ui-text-google-fonts`/`GoogleFont("Google Sans Flex")`: РїСЂРѕРІР°Р№РґРµСЂ С€СЂРёС„С‚РѕРІ С‚СЂРµР±СѓРµС‚ GMS Рё СЃРµСЂС‚РёС„РёРєР°С‚С‹, РІ РѕС„С„Р»Р°Р№РЅРµ РјРѕР¶РµС‚ РЅРµ Р·Р°РіСЂСѓР·РёС‚СЊСЃСЏ; Р»РѕРєР°Р»СЊРЅС‹Р№ TTF РЅР°РґС‘Р¶РЅРµРµ (РІ Р·Р°РґР°РЅРёРё РґРѕРїСѓСЃРєР°Р»СЃСЏ РІР°СЂРёР°РЅС‚ В«РёР»Рё СЃРєР°С‡Р°Р№ .ttfВ»).
+4. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/src/main/res/font/google_sans_flex.ttf (новый)
-app/src/main/assets/licenses/OFL_GoogleSansFlex.txt (новый)
+app/src/main/res/font/google_sans_flex.ttf (РЅРѕРІС‹Р№)
+app/src/main/assets/licenses/OFL_GoogleSansFlex.txt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/ui/theme/Type.kt
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -995,18 +1006,18 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.4 — Чистый фон WaveSlider и замирание волны на паузе (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.4 вЂ” Р§РёСЃС‚С‹Р№ С„РѕРЅ WaveSlider Рё Р·Р°РјРёСЂР°РЅРёРµ РІРѕР»РЅС‹ РЅР° РїР°СѓР·Рµ (19.10.2026)
 
-### Что сделано
-1. **Прозрачный фон слайдера (`PlayerProgressSection`)**:
-   - `inactiveTrackColor` переведён на `Color.Transparent` — серая полоса `surfaceVariant` (линия от бегунка до конца, которую рисует библиотека) больше не видна за волной.
-   - Удалён слой буферизации (`LinearProgressIndicator` `primary.copy(alpha = 0.3f)`) — волна теперь рисуется прямо на градиенте плеера, без подложек (вместе с ним убран параметр `bufferedFraction`).
-2. **Замирание волны на паузе**:
-   - Амплитуда волны связана с `isPlaying` через `animateFloatAsState`: на паузе плавно (500 мс, `FastOutSlowInEasing`) опускается с 10f до 0f, при возобновлении — поднимается обратно.
-   - На паузе волна замирает абсолютно прямой линией.
-3. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РџСЂРѕР·СЂР°С‡РЅС‹Р№ С„РѕРЅ СЃР»Р°Р№РґРµСЂР° (`PlayerProgressSection`)**:
+   - `inactiveTrackColor` РїРµСЂРµРІРµРґС‘РЅ РЅР° `Color.Transparent` вЂ” СЃРµСЂР°СЏ РїРѕР»РѕСЃР° `surfaceVariant` (Р»РёРЅРёСЏ РѕС‚ Р±РµРіСѓРЅРєР° РґРѕ РєРѕРЅС†Р°, РєРѕС‚РѕСЂСѓСЋ СЂРёСЃСѓРµС‚ Р±РёР±Р»РёРѕС‚РµРєР°) Р±РѕР»СЊС€Рµ РЅРµ РІРёРґРЅР° Р·Р° РІРѕР»РЅРѕР№.
+   - РЈРґР°Р»С‘РЅ СЃР»РѕР№ Р±СѓС„РµСЂРёР·Р°С†РёРё (`LinearProgressIndicator` `primary.copy(alpha = 0.3f)`) вЂ” РІРѕР»РЅР° С‚РµРїРµСЂСЊ СЂРёСЃСѓРµС‚СЃСЏ РїСЂСЏРјРѕ РЅР° РіСЂР°РґРёРµРЅС‚Рµ РїР»РµРµСЂР°, Р±РµР· РїРѕРґР»РѕР¶РµРє (РІРјРµСЃС‚Рµ СЃ РЅРёРј СѓР±СЂР°РЅ РїР°СЂР°РјРµС‚СЂ `bufferedFraction`).
+2. **Р—Р°РјРёСЂР°РЅРёРµ РІРѕР»РЅС‹ РЅР° РїР°СѓР·Рµ**:
+   - РђРјРїР»РёС‚СѓРґР° РІРѕР»РЅС‹ СЃРІСЏР·Р°РЅР° СЃ `isPlaying` С‡РµСЂРµР· `animateFloatAsState`: РЅР° РїР°СѓР·Рµ РїР»Р°РІРЅРѕ (500 РјСЃ, `FastOutSlowInEasing`) РѕРїСѓСЃРєР°РµС‚СЃСЏ СЃ 10f РґРѕ 0f, РїСЂРё РІРѕР·РѕР±РЅРѕРІР»РµРЅРёРё вЂ” РїРѕРґРЅРёРјР°РµС‚СЃСЏ РѕР±СЂР°С‚РЅРѕ.
+   - РќР° РїР°СѓР·Рµ РІРѕР»РЅР° Р·Р°РјРёСЂР°РµС‚ Р°Р±СЃРѕР»СЋС‚РЅРѕ РїСЂСЏРјРѕР№ Р»РёРЅРёРµР№.
+3. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1015,20 +1026,20 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.5 — Полоска длительности и компактный плеер (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.5 вЂ” РџРѕР»РѕСЃРєР° РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё Рё РєРѕРјРїР°РєС‚РЅС‹Р№ РїР»РµРµСЂ (19.10.2026)
 
-### Что сделано
-1. **Полоска длительности под волной (`PlayerProgressSection`)**:
-   - Под WaveSlider добавлен тонкий Canvas-слой (2dp, скруглённые концы): вся ширина — длительность трека (primary, alpha 0.18), проигранная часть — ярче (primary, alpha 0.65).
-   - Полоска синхронизирована с `displayPosition` (двигается и при перетаскивании), рисуется за волной, фон остаётся прозрачным.
-2. **Компактность плеера**:
-   - Обложка 280dp → 248dp (анимация схлопывания в текстах: 248dp → 56dp).
-   - Отступы: над обложкой 12→8, под обложкой 16→12, у заголовка 12→8, вокруг кнопок 8→6 и 16→12, нижний 16→12.
-   - Кнопки: Play/Pause 88→80dp (морф радиуса 40→26dp, иконка 40→36, спиннер 32→30), Prev/Next 64→56dp (иконки 32→28).
-   - Пилюли действий 52→46dp (радиусы 26→23dp).
-3. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РџРѕР»РѕСЃРєР° РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё РїРѕРґ РІРѕР»РЅРѕР№ (`PlayerProgressSection`)**:
+   - РџРѕРґ WaveSlider РґРѕР±Р°РІР»РµРЅ С‚РѕРЅРєРёР№ Canvas-СЃР»РѕР№ (2dp, СЃРєСЂСѓРіР»С‘РЅРЅС‹Рµ РєРѕРЅС†С‹): РІСЃСЏ С€РёСЂРёРЅР° вЂ” РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ С‚СЂРµРєР° (primary, alpha 0.18), РїСЂРѕРёРіСЂР°РЅРЅР°СЏ С‡Р°СЃС‚СЊ вЂ” СЏСЂС‡Рµ (primary, alpha 0.65).
+   - РџРѕР»РѕСЃРєР° СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅР° СЃ `displayPosition` (РґРІРёРіР°РµС‚СЃСЏ Рё РїСЂРё РїРµСЂРµС‚Р°СЃРєРёРІР°РЅРёРё), СЂРёСЃСѓРµС‚СЃСЏ Р·Р° РІРѕР»РЅРѕР№, С„РѕРЅ РѕСЃС‚Р°С‘С‚СЃСЏ РїСЂРѕР·СЂР°С‡РЅС‹Рј.
+2. **РљРѕРјРїР°РєС‚РЅРѕСЃС‚СЊ РїР»РµРµСЂР°**:
+   - РћР±Р»РѕР¶РєР° 280dp в†’ 248dp (Р°РЅРёРјР°С†РёСЏ СЃС…Р»РѕРїС‹РІР°РЅРёСЏ РІ С‚РµРєСЃС‚Р°С…: 248dp в†’ 56dp).
+   - РћС‚СЃС‚СѓРїС‹: РЅР°Рґ РѕР±Р»РѕР¶РєРѕР№ 12в†’8, РїРѕРґ РѕР±Р»РѕР¶РєРѕР№ 16в†’12, Сѓ Р·Р°РіРѕР»РѕРІРєР° 12в†’8, РІРѕРєСЂСѓРі РєРЅРѕРїРѕРє 8в†’6 Рё 16в†’12, РЅРёР¶РЅРёР№ 16в†’12.
+   - РљРЅРѕРїРєРё: Play/Pause 88в†’80dp (РјРѕСЂС„ СЂР°РґРёСѓСЃР° 40в†’26dp, РёРєРѕРЅРєР° 40в†’36, СЃРїРёРЅРЅРµСЂ 32в†’30), Prev/Next 64в†’56dp (РёРєРѕРЅРєРё 32в†’28).
+   - РџРёР»СЋР»Рё РґРµР№СЃС‚РІРёР№ 52в†’46dp (СЂР°РґРёСѓСЃС‹ 26в†’23dp).
+3. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1037,32 +1048,32 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.6 — Expressive-редизайн PlayerScreen: нативный слайдер и AnimatedContent (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.6 вЂ” Expressive-СЂРµРґРёР·Р°Р№РЅ PlayerScreen: РЅР°С‚РёРІРЅС‹Р№ СЃР»Р°Р№РґРµСЂ Рё AnimatedContent (19.10.2026)
 
-### Что сделано
-1. **Удалена библиотека WaveSlider**:
-   - Из `app/build.gradle.kts` убрана зависимость `com.github.galaxygoldfish:waveslider:v0.0.4`; JitPack в `settings.gradle.kts` оставлен (не относится к библиотеке).
-2. **Новый слайдер `PlayerSlider` (`core/ui/components/PlayerSlider.kt`)**:
-   - Чистый Compose Canvas: толстая скруглённая дорожка 8dp, буферизация полупрозрачным слоем (`activeColor` alpha 0.28), проигранная часть — акцентный цвет.
-   - Ползунок — вертикальная пилюля 10×30dp с пружинным увеличением ×1.35 и ореолом при перетаскивании; жесты drag + tap, без внешних библиотек.
-3. **Переход «Обложка ↔ Текст» через `AnimatedContent`**:
-   - Верхняя (обложка) и центральная зоны объединены в один `AnimatedContent` с весом 1f.
-   - Пружинный переход (dampingRatio 0.82, StiffnessMediumLow): текст въезжает снизу (it/3), обложка уходит вверх (-it/4), с fade; обратный переход — зеркальный.
-   - Новые file-scope композаблы `CoverModeContent` и `LyricsModeContent`.
-4. **Объём обложки**:
-   - Свечение позади обложки: radialGradient (`primary` alpha 0.35), scale 1.16 через `matchParentSize` (layout не раздувает).
-   - Параллакс: `translationY = scroll * 0.45f` при вертикальном скролле зоны.
-   - Тень 18dp с ambient/spot `primary`; типографика: название `headlineLarge` Bold, артист `bodyLarge` (alpha 0.60); в текстовом режиме — миниатюра 56dp/16dp с тенью 6dp и спейсером 14dp.
-5. **Кнопки управления**:
-   - Play/Pause 84dp (морф радиуса 42/30dp, иконка 38dp, спиннер 32dp), Prev/Next 56dp; ряд центрирован `spacedBy(28.dp)`.
-   - Новый хелпер `rememberPressScale` — пружинный press-scale 0.90 при нажатии (InteractionSource) для всех трёх кнопок.
-6. **Мелочи**: пилюли действий — зазор 4→8dp; спейсеры секций 6→10 и 12→16 (больше воздуха); loading-полоска прогресса приведена к толщине дорожки 8dp (трек `onSurface` alpha 0.12), трек слайдера `onSurface` alpha 0.16, ползунок `onSurface`.
-7. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЈРґР°Р»РµРЅР° Р±РёР±Р»РёРѕС‚РµРєР° WaveSlider**:
+   - РР· `app/build.gradle.kts` СѓР±СЂР°РЅР° Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ `com.github.galaxygoldfish:waveslider:v0.0.4`; JitPack РІ `settings.gradle.kts` РѕСЃС‚Р°РІР»РµРЅ (РЅРµ РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє Р±РёР±Р»РёРѕС‚РµРєРµ).
+2. **РќРѕРІС‹Р№ СЃР»Р°Р№РґРµСЂ `PlayerSlider` (`core/ui/components/PlayerSlider.kt`)**:
+   - Р§РёСЃС‚С‹Р№ Compose Canvas: С‚РѕР»СЃС‚Р°СЏ СЃРєСЂСѓРіР»С‘РЅРЅР°СЏ РґРѕСЂРѕР¶РєР° 8dp, Р±СѓС„РµСЂРёР·Р°С†РёСЏ РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅС‹Рј СЃР»РѕРµРј (`activeColor` alpha 0.28), РїСЂРѕРёРіСЂР°РЅРЅР°СЏ С‡Р°СЃС‚СЊ вЂ” Р°РєС†РµРЅС‚РЅС‹Р№ С†РІРµС‚.
+   - РџРѕР»Р·СѓРЅРѕРє вЂ” РІРµСЂС‚РёРєР°Р»СЊРЅР°СЏ РїРёР»СЋР»СЏ 10Г—30dp СЃ РїСЂСѓР¶РёРЅРЅС‹Рј СѓРІРµР»РёС‡РµРЅРёРµРј Г—1.35 Рё РѕСЂРµРѕР»РѕРј РїСЂРё РїРµСЂРµС‚Р°СЃРєРёРІР°РЅРёРё; Р¶РµСЃС‚С‹ drag + tap, Р±РµР· РІРЅРµС€РЅРёС… Р±РёР±Р»РёРѕС‚РµРє.
+3. **РџРµСЂРµС…РѕРґ В«РћР±Р»РѕР¶РєР° в†” РўРµРєСЃС‚В» С‡РµСЂРµР· `AnimatedContent`**:
+   - Р’РµСЂС…РЅСЏСЏ (РѕР±Р»РѕР¶РєР°) Рё С†РµРЅС‚СЂР°Р»СЊРЅР°СЏ Р·РѕРЅС‹ РѕР±СЉРµРґРёРЅРµРЅС‹ РІ РѕРґРёРЅ `AnimatedContent` СЃ РІРµСЃРѕРј 1f.
+   - РџСЂСѓР¶РёРЅРЅС‹Р№ РїРµСЂРµС…РѕРґ (dampingRatio 0.82, StiffnessMediumLow): С‚РµРєСЃС‚ РІСЉРµР·Р¶Р°РµС‚ СЃРЅРёР·Сѓ (it/3), РѕР±Р»РѕР¶РєР° СѓС…РѕРґРёС‚ РІРІРµСЂС… (-it/4), СЃ fade; РѕР±СЂР°С‚РЅС‹Р№ РїРµСЂРµС…РѕРґ вЂ” Р·РµСЂРєР°Р»СЊРЅС‹Р№.
+   - РќРѕРІС‹Рµ file-scope РєРѕРјРїРѕР·Р°Р±Р»С‹ `CoverModeContent` Рё `LyricsModeContent`.
+4. **РћР±СЉС‘Рј РѕР±Р»РѕР¶РєРё**:
+   - РЎРІРµС‡РµРЅРёРµ РїРѕР·Р°РґРё РѕР±Р»РѕР¶РєРё: radialGradient (`primary` alpha 0.35), scale 1.16 С‡РµСЂРµР· `matchParentSize` (layout РЅРµ СЂР°Р·РґСѓРІР°РµС‚).
+   - РџР°СЂР°Р»Р»Р°РєСЃ: `translationY = scroll * 0.45f` РїСЂРё РІРµСЂС‚РёРєР°Р»СЊРЅРѕРј СЃРєСЂРѕР»Р»Рµ Р·РѕРЅС‹.
+   - РўРµРЅСЊ 18dp СЃ ambient/spot `primary`; С‚РёРїРѕРіСЂР°С„РёРєР°: РЅР°Р·РІР°РЅРёРµ `headlineLarge` Bold, Р°СЂС‚РёСЃС‚ `bodyLarge` (alpha 0.60); РІ С‚РµРєСЃС‚РѕРІРѕРј СЂРµР¶РёРјРµ вЂ” РјРёРЅРёР°С‚СЋСЂР° 56dp/16dp СЃ С‚РµРЅСЊСЋ 6dp Рё СЃРїРµР№СЃРµСЂРѕРј 14dp.
+5. **РљРЅРѕРїРєРё СѓРїСЂР°РІР»РµРЅРёСЏ**:
+   - Play/Pause 84dp (РјРѕСЂС„ СЂР°РґРёСѓСЃР° 42/30dp, РёРєРѕРЅРєР° 38dp, СЃРїРёРЅРЅРµСЂ 32dp), Prev/Next 56dp; СЂСЏРґ С†РµРЅС‚СЂРёСЂРѕРІР°РЅ `spacedBy(28.dp)`.
+   - РќРѕРІС‹Р№ С…РµР»РїРµСЂ `rememberPressScale` вЂ” РїСЂСѓР¶РёРЅРЅС‹Р№ press-scale 0.90 РїСЂРё РЅР°Р¶Р°С‚РёРё (InteractionSource) РґР»СЏ РІСЃРµС… С‚СЂС‘С… РєРЅРѕРїРѕРє.
+6. **РњРµР»РѕС‡Рё**: РїРёР»СЋР»Рё РґРµР№СЃС‚РІРёР№ вЂ” Р·Р°Р·РѕСЂ 4в†’8dp; СЃРїРµР№СЃРµСЂС‹ СЃРµРєС†РёР№ 6в†’10 Рё 12в†’16 (Р±РѕР»СЊС€Рµ РІРѕР·РґСѓС…Р°); loading-РїРѕР»РѕСЃРєР° РїСЂРѕРіСЂРµСЃСЃР° РїСЂРёРІРµРґРµРЅР° Рє С‚РѕР»С‰РёРЅРµ РґРѕСЂРѕР¶РєРё 8dp (С‚СЂРµРє `onSurface` alpha 0.12), С‚СЂРµРє СЃР»Р°Р№РґРµСЂР° `onSurface` alpha 0.16, РїРѕР»Р·СѓРЅРѕРє `onSurface`.
+7. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/src/main/java/com/my/music/core/ui/components/PlayerSlider.kt (новый)
+app/src/main/java/com/my/music/core/ui/components/PlayerSlider.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
@@ -1070,35 +1081,35 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.7 — Дерзкий редизайн PlayerScreen: 3 варианта компоновки, остров управления, слайдер-точки (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.7 вЂ” Р”РµСЂР·РєРёР№ СЂРµРґРёР·Р°Р№РЅ PlayerScreen: 3 РІР°СЂРёР°РЅС‚Р° РєРѕРјРїРѕРЅРѕРІРєРё, РѕСЃС‚СЂРѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ, СЃР»Р°Р№РґРµСЂ-С‚РѕС‡РєРё (19.10.2026)
 
-### Что сделано
-1. **3 варианта композиции** (переключатель `PLAYER_LAYOUT_VARIANT` в начале `PlayerScreen.kt`, значения 1/2/3):
-   - Вариант 1 «Редакция» (по умолчанию): наклонённая обложка 88% ширины по центру (-5°); стеклянная карточка с Display-названием свисает с нижнего края обложки.
-   - Вариант 2 «Смещение»: обложка 62% ширины свисает за правый край (+16dp, наклон +7°), карточка с названием — слева.
-   - Вариант 3 «На обложке»: обложка 94%, название лежит прямо на ней в матово-стеклянной плашке (alpha 0.55).
-2. **«Уход на задний план» при входе в тексты**: обложка — постоянный слой-задник; при переключении она пружинно уменьшается до 0.58, уходит вниз на +26dp, тускнеет до alpha 0.30 и уходит в blur 26dp (`Modifier.blur`, реальный блюр на Android 12+); передний план меняется через `AnimatedContent` (spring slide + fade).
-3. **Плавающий «остров» управления (`ExpressivePlayerComponents.kt`)**:
-   - Каплевидная форма (44dp сверху / 22dp снизу), цветная тень от палитры, рамка 1dp;
-   - Ряд: скорость (круг 44dp с текстом «1×»), пред/след 52dp, Play 74dp с морфом радиуса (круг ↔ сквиркл) и спиннером буферизации, очередь (круг 44dp);
-   - Сверху к острову «прирос» язычок «Текст» (иконка Lyrics, выступает на 19dp над кромкой, в активном режиме подсвечивается `primaryContainer`);
-   - Press-scale 0.90 на всех кнопках острова (общий хелпер `rememberPressScale`).
-4. **Новый слайдер `ExpressivePlayerSlider` (`ExpressivePlayerSlider.kt`)**:
-   - «Цепочка точек»: пройденные — крупнее и ярче, буферные — alpha 0.35, будущие — тусклые; ближайшая к бегунку точка плавно раздувается;
-   - Ползунок-пилюля пружинно «подпрыгивает» при захвате (spring dampingRatio 0.30 с овершутом) и «сквошится»; ореол раскрывается вместе с отскоком.
-5. **Стеклянный режим текстов**: шапка-витрина (миниатюра 52dp + titleLarge) и полупрозрачная панель строк (`surfaceContainerHigh` alpha 0.42–0.62, рамки 1dp) поверх размытой обложки — эффект матового стекла.
-6. **Типографика**: название — `displaySmall` (36sp Google Sans Flex Bold); верхняя панель — только labelSmall «СЕЙЧАС ИГРАЕТ» (убран дублирующий заголовок).
-7. Удалён старый `PlayerSlider.kt` (заменён на ExpressivePlayerSlider); логика ViewModel/Controller не тронута.
-8. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **3 РІР°СЂРёР°РЅС‚Р° РєРѕРјРїРѕР·РёС†РёРё** (РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ `PLAYER_LAYOUT_VARIANT` РІ РЅР°С‡Р°Р»Рµ `PlayerScreen.kt`, Р·РЅР°С‡РµРЅРёСЏ 1/2/3):
+   - Р’Р°СЂРёР°РЅС‚ 1 В«Р РµРґР°РєС†РёСЏВ» (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ): РЅР°РєР»РѕРЅС‘РЅРЅР°СЏ РѕР±Р»РѕР¶РєР° 88% С€РёСЂРёРЅС‹ РїРѕ С†РµРЅС‚СЂСѓ (-5В°); СЃС‚РµРєР»СЏРЅРЅР°СЏ РєР°СЂС‚РѕС‡РєР° СЃ Display-РЅР°Р·РІР°РЅРёРµРј СЃРІРёСЃР°РµС‚ СЃ РЅРёР¶РЅРµРіРѕ РєСЂР°СЏ РѕР±Р»РѕР¶РєРё.
+   - Р’Р°СЂРёР°РЅС‚ 2 В«РЎРјРµС‰РµРЅРёРµВ»: РѕР±Р»РѕР¶РєР° 62% С€РёСЂРёРЅС‹ СЃРІРёСЃР°РµС‚ Р·Р° РїСЂР°РІС‹Р№ РєСЂР°Р№ (+16dp, РЅР°РєР»РѕРЅ +7В°), РєР°СЂС‚РѕС‡РєР° СЃ РЅР°Р·РІР°РЅРёРµРј вЂ” СЃР»РµРІР°.
+   - Р’Р°СЂРёР°РЅС‚ 3 В«РќР° РѕР±Р»РѕР¶РєРµВ»: РѕР±Р»РѕР¶РєР° 94%, РЅР°Р·РІР°РЅРёРµ Р»РµР¶РёС‚ РїСЂСЏРјРѕ РЅР° РЅРµР№ РІ РјР°С‚РѕРІРѕ-СЃС‚РµРєР»СЏРЅРЅРѕР№ РїР»Р°С€РєРµ (alpha 0.55).
+2. **В«РЈС…РѕРґ РЅР° Р·Р°РґРЅРёР№ РїР»Р°РЅВ» РїСЂРё РІС…РѕРґРµ РІ С‚РµРєСЃС‚С‹**: РѕР±Р»РѕР¶РєР° вЂ” РїРѕСЃС‚РѕСЏРЅРЅС‹Р№ СЃР»РѕР№-Р·Р°РґРЅРёРє; РїСЂРё РїРµСЂРµРєР»СЋС‡РµРЅРёРё РѕРЅР° РїСЂСѓР¶РёРЅРЅРѕ СѓРјРµРЅСЊС€Р°РµС‚СЃСЏ РґРѕ 0.58, СѓС…РѕРґРёС‚ РІРЅРёР· РЅР° +26dp, С‚СѓСЃРєРЅРµРµС‚ РґРѕ alpha 0.30 Рё СѓС…РѕРґРёС‚ РІ blur 26dp (`Modifier.blur`, СЂРµР°Р»СЊРЅС‹Р№ Р±Р»СЋСЂ РЅР° Android 12+); РїРµСЂРµРґРЅРёР№ РїР»Р°РЅ РјРµРЅСЏРµС‚СЃСЏ С‡РµСЂРµР· `AnimatedContent` (spring slide + fade).
+3. **РџР»Р°РІР°СЋС‰РёР№ В«РѕСЃС‚СЂРѕРІВ» СѓРїСЂР°РІР»РµРЅРёСЏ (`ExpressivePlayerComponents.kt`)**:
+   - РљР°РїР»РµРІРёРґРЅР°СЏ С„РѕСЂРјР° (44dp СЃРІРµСЂС…Сѓ / 22dp СЃРЅРёР·Сѓ), С†РІРµС‚РЅР°СЏ С‚РµРЅСЊ РѕС‚ РїР°Р»РёС‚СЂС‹, СЂР°РјРєР° 1dp;
+   - Р СЏРґ: СЃРєРѕСЂРѕСЃС‚СЊ (РєСЂСѓРі 44dp СЃ С‚РµРєСЃС‚РѕРј В«1Г—В»), РїСЂРµРґ/СЃР»РµРґ 52dp, Play 74dp СЃ РјРѕСЂС„РѕРј СЂР°РґРёСѓСЃР° (РєСЂСѓРі в†” СЃРєРІРёСЂРєР») Рё СЃРїРёРЅРЅРµСЂРѕРј Р±СѓС„РµСЂРёР·Р°С†РёРё, РѕС‡РµСЂРµРґСЊ (РєСЂСѓРі 44dp);
+   - РЎРІРµСЂС…Сѓ Рє РѕСЃС‚СЂРѕРІСѓ В«РїСЂРёСЂРѕСЃВ» СЏР·С‹С‡РѕРє В«РўРµРєСЃС‚В» (РёРєРѕРЅРєР° Lyrics, РІС‹СЃС‚СѓРїР°РµС‚ РЅР° 19dp РЅР°Рґ РєСЂРѕРјРєРѕР№, РІ Р°РєС‚РёРІРЅРѕРј СЂРµР¶РёРјРµ РїРѕРґСЃРІРµС‡РёРІР°РµС‚СЃСЏ `primaryContainer`);
+   - Press-scale 0.90 РЅР° РІСЃРµС… РєРЅРѕРїРєР°С… РѕСЃС‚СЂРѕРІР° (РѕР±С‰РёР№ С…РµР»РїРµСЂ `rememberPressScale`).
+4. **РќРѕРІС‹Р№ СЃР»Р°Р№РґРµСЂ `ExpressivePlayerSlider` (`ExpressivePlayerSlider.kt`)**:
+   - В«Р¦РµРїРѕС‡РєР° С‚РѕС‡РµРєВ»: РїСЂРѕР№РґРµРЅРЅС‹Рµ вЂ” РєСЂСѓРїРЅРµРµ Рё СЏСЂС‡Рµ, Р±СѓС„РµСЂРЅС‹Рµ вЂ” alpha 0.35, Р±СѓРґСѓС‰РёРµ вЂ” С‚СѓСЃРєР»С‹Рµ; Р±Р»РёР¶Р°Р№С€Р°СЏ Рє Р±РµРіСѓРЅРєСѓ С‚РѕС‡РєР° РїР»Р°РІРЅРѕ СЂР°Р·РґСѓРІР°РµС‚СЃСЏ;
+   - РџРѕР»Р·СѓРЅРѕРє-РїРёР»СЋР»СЏ РїСЂСѓР¶РёРЅРЅРѕ В«РїРѕРґРїСЂС‹РіРёРІР°РµС‚В» РїСЂРё Р·Р°С…РІР°С‚Рµ (spring dampingRatio 0.30 СЃ РѕРІРµСЂС€СѓС‚РѕРј) Рё В«СЃРєРІРѕС€РёС‚СЃСЏВ»; РѕСЂРµРѕР» СЂР°СЃРєСЂС‹РІР°РµС‚СЃСЏ РІРјРµСЃС‚Рµ СЃ РѕС‚СЃРєРѕРєРѕРј.
+5. **РЎС‚РµРєР»СЏРЅРЅС‹Р№ СЂРµР¶РёРј С‚РµРєСЃС‚РѕРІ**: С€Р°РїРєР°-РІРёС‚СЂРёРЅР° (РјРёРЅРёР°С‚СЋСЂР° 52dp + titleLarge) Рё РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅР°СЏ РїР°РЅРµР»СЊ СЃС‚СЂРѕРє (`surfaceContainerHigh` alpha 0.42вЂ“0.62, СЂР°РјРєРё 1dp) РїРѕРІРµСЂС… СЂР°Р·РјС‹С‚РѕР№ РѕР±Р»РѕР¶РєРё вЂ” СЌС„С„РµРєС‚ РјР°С‚РѕРІРѕРіРѕ СЃС‚РµРєР»Р°.
+6. **РўРёРїРѕРіСЂР°С„РёРєР°**: РЅР°Р·РІР°РЅРёРµ вЂ” `displaySmall` (36sp Google Sans Flex Bold); РІРµСЂС…РЅСЏСЏ РїР°РЅРµР»СЊ вЂ” С‚РѕР»СЊРєРѕ labelSmall В«РЎР•Р™Р§РђРЎ РР“Р РђР•РўВ» (СѓР±СЂР°РЅ РґСѓР±Р»РёСЂСѓСЋС‰РёР№ Р·Р°РіРѕР»РѕРІРѕРє).
+7. РЈРґР°Р»С‘РЅ СЃС‚Р°СЂС‹Р№ `PlayerSlider.kt` (Р·Р°РјРµРЅС‘РЅ РЅР° ExpressivePlayerSlider); Р»РѕРіРёРєР° ViewModel/Controller РЅРµ С‚СЂРѕРЅСѓС‚Р°.
+8. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Как посмотреть варианты
-В `PlayerScreen.kt` поменять `PLAYER_LAYOUT_VARIANT` (1/2/3) и пересобрать.
+### РљР°Рє РїРѕСЃРјРѕС‚СЂРµС‚СЊ РІР°СЂРёР°РЅС‚С‹
+Р’ `PlayerScreen.kt` РїРѕРјРµРЅСЏС‚СЊ `PLAYER_LAYOUT_VARIANT` (1/2/3) Рё РїРµСЂРµСЃРѕР±СЂР°С‚СЊ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt (новый)
-app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerComponents.kt (новый)
-app/src/main/java/com/my/music/core/ui/components/PlayerSlider.kt (удалён)
+app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerComponents.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/core/ui/components/PlayerSlider.kt (СѓРґР°Р»С‘РЅ)
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
@@ -1106,41 +1117,41 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.8 — Полировка контраста плеера и экран настроек (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.8 вЂ” РџРѕР»РёСЂРѕРІРєР° РєРѕРЅС‚СЂР°СЃС‚Р° РїР»РµРµСЂР° Рё СЌРєСЂР°РЅ РЅР°СЃС‚СЂРѕРµРє (19.10.2026)
 
-### Что сделано
-1. **Полировка PlayerScreen (контраст и наложения)**:
-   - Лейбл «СЕЙЧАС ИГРАЕТ» получил явный цвет `onSurface` alpha 0.80 — больше не растворяется на градиентном фоне.
-   - Отступы: у острова управления верхний паддинг 24→30dp (запас под язычок «Текст»), спейсер под островом 14→18dp, в CoverForeground добавлен гарантированный спейсер 20dp под карточкой, в LyricsForeground — 18dp до острова и внутренний вертикальный паддинг панели строк, contentPadding списка текстов (16/24dp), подпись «LRCLIB» с увеличенным отступом, плашка ошибки — с вертикальным паддингом.
-   - Контраст матового стекла в текстах: шапка витрины alpha 0.62→0.82, панель строк 0.42→0.72 — строки не сливаются с размытой обложкой.
-2. **Слайдер — сплошная волна**: `ExpressivePlayerSlider` переведён с «цепочки точек» на сплошную скруглённую дорожку 8dp (трек → буфер `activeColor` alpha 0.28 → проигранная часть), ползунок-пилюля 10×30dp с пружинным увеличением и ореолом при захвате (как в рабочей версии Фазы 4.6, но в Expressive-оформлении).
-3. **Слой настроек**:
-   - `AppSettings` (`dynamicCoverColors`, `accentColorArgb`) и интерфейс `SettingsRepository`.
-   - `SettingsRepositoryImpl` на SharedPreferences (`mymusic_settings`), запись в IO-диспетчере, `@Binds` в `RepositoryModule`.
-4. **Тема от акцентного цвета**:
-   - `Theme.kt`: функция `accentColorScheme(accent, darkTheme)` генерирует primary-группу из seed через HSL (secondary/tertiary со сдвигом оттенка 40°, нейтральные поверхности — из фиксированных схем); `MyMusicTheme` получил параметр `accentColor: Color?` с приоритетом над Dynamic Color.
-   - `MainActivity` внедряет `SettingsRepository` и передаёт акцент в тему, когда динамические цвета обложки выключены.
-5. **Плеер и настройки динамики**:
-   - `PlayerViewModel.appSettings` (StateFlow из репозитория).
-   - `PlayerScreen` при выключенной динамике не грузит палитру обложки (`artworkUrl = null`) — фон и акценты плеера строятся от выбранного акцента темы.
-6. **Экран настроек (`SettingsScreen` + `SettingsViewModel`)**:
-   - Секция «ОФОРМЛЕНИЕ»: переключатель «Динамические цвета обложки» и палитра из 6 базовых акцентов (фиолетовый, синий, бирюзовый, зелёный, оранжевый, красный) в виде кружков; выбранный раздувается пружиной и получает контур с галочкой, при включённой динамике палитра приглушена и неактивна.
-   - Маршрут `Screen.Settings` — полноэкранный (нижняя панель скрыта), кнопка-шестерёнка добавлена в шапку `HomeScreen`.
-7. **Сборка**: `.\gradlew assembleDebug` завершилась со статусом `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РџРѕР»РёСЂРѕРІРєР° PlayerScreen (РєРѕРЅС‚СЂР°СЃС‚ Рё РЅР°Р»РѕР¶РµРЅРёСЏ)**:
+   - Р›РµР№Р±Р» В«РЎР•Р™Р§РђРЎ РР“Р РђР•РўВ» РїРѕР»СѓС‡РёР» СЏРІРЅС‹Р№ С†РІРµС‚ `onSurface` alpha 0.80 вЂ” Р±РѕР»СЊС€Рµ РЅРµ СЂР°СЃС‚РІРѕСЂСЏРµС‚СЃСЏ РЅР° РіСЂР°РґРёРµРЅС‚РЅРѕРј С„РѕРЅРµ.
+   - РћС‚СЃС‚СѓРїС‹: Сѓ РѕСЃС‚СЂРѕРІР° СѓРїСЂР°РІР»РµРЅРёСЏ РІРµСЂС…РЅРёР№ РїР°РґРґРёРЅРі 24в†’30dp (Р·Р°РїР°СЃ РїРѕРґ СЏР·С‹С‡РѕРє В«РўРµРєСЃС‚В»), СЃРїРµР№СЃРµСЂ РїРѕРґ РѕСЃС‚СЂРѕРІРѕРј 14в†’18dp, РІ CoverForeground РґРѕР±Р°РІР»РµРЅ РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅРЅС‹Р№ СЃРїРµР№СЃРµСЂ 20dp РїРѕРґ РєР°СЂС‚РѕС‡РєРѕР№, РІ LyricsForeground вЂ” 18dp РґРѕ РѕСЃС‚СЂРѕРІР° Рё РІРЅСѓС‚СЂРµРЅРЅРёР№ РІРµСЂС‚РёРєР°Р»СЊРЅС‹Р№ РїР°РґРґРёРЅРі РїР°РЅРµР»Рё СЃС‚СЂРѕРє, contentPadding СЃРїРёСЃРєР° С‚РµРєСЃС‚РѕРІ (16/24dp), РїРѕРґРїРёСЃСЊ В«LRCLIBВ» СЃ СѓРІРµР»РёС‡РµРЅРЅС‹Рј РѕС‚СЃС‚СѓРїРѕРј, РїР»Р°С€РєР° РѕС€РёР±РєРё вЂ” СЃ РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рј РїР°РґРґРёРЅРіРѕРј.
+   - РљРѕРЅС‚СЂР°СЃС‚ РјР°С‚РѕРІРѕРіРѕ СЃС‚РµРєР»Р° РІ С‚РµРєСЃС‚Р°С…: С€Р°РїРєР° РІРёС‚СЂРёРЅС‹ alpha 0.62в†’0.82, РїР°РЅРµР»СЊ СЃС‚СЂРѕРє 0.42в†’0.72 вЂ” СЃС‚СЂРѕРєРё РЅРµ СЃР»РёРІР°СЋС‚СЃСЏ СЃ СЂР°Р·РјС‹С‚РѕР№ РѕР±Р»РѕР¶РєРѕР№.
+2. **РЎР»Р°Р№РґРµСЂ вЂ” СЃРїР»РѕС€РЅР°СЏ РІРѕР»РЅР°**: `ExpressivePlayerSlider` РїРµСЂРµРІРµРґС‘РЅ СЃ В«С†РµРїРѕС‡РєРё С‚РѕС‡РµРєВ» РЅР° СЃРїР»РѕС€РЅСѓСЋ СЃРєСЂСѓРіР»С‘РЅРЅСѓСЋ РґРѕСЂРѕР¶РєСѓ 8dp (С‚СЂРµРє в†’ Р±СѓС„РµСЂ `activeColor` alpha 0.28 в†’ РїСЂРѕРёРіСЂР°РЅРЅР°СЏ С‡Р°СЃС‚СЊ), РїРѕР»Р·СѓРЅРѕРє-РїРёР»СЋР»СЏ 10Г—30dp СЃ РїСЂСѓР¶РёРЅРЅС‹Рј СѓРІРµР»РёС‡РµРЅРёРµРј Рё РѕСЂРµРѕР»РѕРј РїСЂРё Р·Р°С…РІР°С‚Рµ (РєР°Рє РІ СЂР°Р±РѕС‡РµР№ РІРµСЂСЃРёРё Р¤Р°Р·С‹ 4.6, РЅРѕ РІ Expressive-РѕС„РѕСЂРјР»РµРЅРёРё).
+3. **РЎР»РѕР№ РЅР°СЃС‚СЂРѕРµРє**:
+   - `AppSettings` (`dynamicCoverColors`, `accentColorArgb`) Рё РёРЅС‚РµСЂС„РµР№СЃ `SettingsRepository`.
+   - `SettingsRepositoryImpl` РЅР° SharedPreferences (`mymusic_settings`), Р·Р°РїРёСЃСЊ РІ IO-РґРёСЃРїРµС‚С‡РµСЂРµ, `@Binds` РІ `RepositoryModule`.
+4. **РўРµРјР° РѕС‚ Р°РєС†РµРЅС‚РЅРѕРіРѕ С†РІРµС‚Р°**:
+   - `Theme.kt`: С„СѓРЅРєС†РёСЏ `accentColorScheme(accent, darkTheme)` РіРµРЅРµСЂРёСЂСѓРµС‚ primary-РіСЂСѓРїРїСѓ РёР· seed С‡РµСЂРµР· HSL (secondary/tertiary СЃРѕ СЃРґРІРёРіРѕРј РѕС‚С‚РµРЅРєР° 40В°, РЅРµР№С‚СЂР°Р»СЊРЅС‹Рµ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё вЂ” РёР· С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹С… СЃС…РµРј); `MyMusicTheme` РїРѕР»СѓС‡РёР» РїР°СЂР°РјРµС‚СЂ `accentColor: Color?` СЃ РїСЂРёРѕСЂРёС‚РµС‚РѕРј РЅР°Рґ Dynamic Color.
+   - `MainActivity` РІРЅРµРґСЂСЏРµС‚ `SettingsRepository` Рё РїРµСЂРµРґР°С‘С‚ Р°РєС†РµРЅС‚ РІ С‚РµРјСѓ, РєРѕРіРґР° РґРёРЅР°РјРёС‡РµСЃРєРёРµ С†РІРµС‚Р° РѕР±Р»РѕР¶РєРё РІС‹РєР»СЋС‡РµРЅС‹.
+5. **РџР»РµРµСЂ Рё РЅР°СЃС‚СЂРѕР№РєРё РґРёРЅР°РјРёРєРё**:
+   - `PlayerViewModel.appSettings` (StateFlow РёР· СЂРµРїРѕР·РёС‚РѕСЂРёСЏ).
+   - `PlayerScreen` РїСЂРё РІС‹РєР»СЋС‡РµРЅРЅРѕР№ РґРёРЅР°РјРёРєРµ РЅРµ РіСЂСѓР·РёС‚ РїР°Р»РёС‚СЂСѓ РѕР±Р»РѕР¶РєРё (`artworkUrl = null`) вЂ” С„РѕРЅ Рё Р°РєС†РµРЅС‚С‹ РїР»РµРµСЂР° СЃС‚СЂРѕСЏС‚СЃСЏ РѕС‚ РІС‹Р±СЂР°РЅРЅРѕРіРѕ Р°РєС†РµРЅС‚Р° С‚РµРјС‹.
+6. **Р­РєСЂР°РЅ РЅР°СЃС‚СЂРѕРµРє (`SettingsScreen` + `SettingsViewModel`)**:
+   - РЎРµРєС†РёСЏ В«РћР¤РћР РњР›Р•РќРР•В»: РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ В«Р”РёРЅР°РјРёС‡РµСЃРєРёРµ С†РІРµС‚Р° РѕР±Р»РѕР¶РєРёВ» Рё РїР°Р»РёС‚СЂР° РёР· 6 Р±Р°Р·РѕРІС‹С… Р°РєС†РµРЅС‚РѕРІ (С„РёРѕР»РµС‚РѕРІС‹Р№, СЃРёРЅРёР№, Р±РёСЂСЋР·РѕРІС‹Р№, Р·РµР»С‘РЅС‹Р№, РѕСЂР°РЅР¶РµРІС‹Р№, РєСЂР°СЃРЅС‹Р№) РІ РІРёРґРµ РєСЂСѓР¶РєРѕРІ; РІС‹Р±СЂР°РЅРЅС‹Р№ СЂР°Р·РґСѓРІР°РµС‚СЃСЏ РїСЂСѓР¶РёРЅРѕР№ Рё РїРѕР»СѓС‡Р°РµС‚ РєРѕРЅС‚СѓСЂ СЃ РіР°Р»РѕС‡РєРѕР№, РїСЂРё РІРєР»СЋС‡С‘РЅРЅРѕР№ РґРёРЅР°РјРёРєРµ РїР°Р»РёС‚СЂР° РїСЂРёРіР»СѓС€РµРЅР° Рё РЅРµР°РєС‚РёРІРЅР°.
+   - РњР°СЂС€СЂСѓС‚ `Screen.Settings` вЂ” РїРѕР»РЅРѕСЌРєСЂР°РЅРЅС‹Р№ (РЅРёР¶РЅСЏСЏ РїР°РЅРµР»СЊ СЃРєСЂС‹С‚Р°), РєРЅРѕРїРєР°-С€РµСЃС‚РµСЂС‘РЅРєР° РґРѕР±Р°РІР»РµРЅР° РІ С€Р°РїРєСѓ `HomeScreen`.
+7. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
 app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
-app/src/main/java/com/my/music/data/repository/SettingsRepository.kt (новый)
-app/src/main/java/com/my/music/data/local/SettingsRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/data/repository/SettingsRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/local/SettingsRepositoryImpl.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/di/RepositoryModule.kt
 app/src/main/java/com/my/music/core/ui/theme/Theme.kt
-app/src/main/java/com/my/music/core/ui/theme/AccentPalette.kt (новый)
+app/src/main/java/com/my/music/core/ui/theme/AccentPalette.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/MainActivity.kt
-app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt (новый)
-app/src/main/java/com/my/music/feature/settings/SettingsViewModel.kt (новый)
+app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/feature/settings/SettingsViewModel.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/feature/home/HomeScreen.kt
 app/src/main/java/com/my/music/navigation/Screen.kt
 app/src/main/java/com/my/music/navigation/AppNavGraph.kt
@@ -1150,28 +1161,28 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.9 — Expressive-караоке: «жидкие чернила» и перелив (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.9 вЂ” Expressive-РєР°СЂР°РѕРєРµ: В«Р¶РёРґРєРёРµ С‡РµСЂРЅРёР»Р°В» Рё РїРµСЂРµР»РёРІ (19.10.2026)
 
-### Что сделано
-1. **Караоке-строка «жидкие чернила»** (`LyricLineItem` — вынесен в отдельный композабл):
-   - Вместо жёсткой границы заливки — smoothstep-кромка (полуширина 2.8%): переход «пропето / не пропето» стал мягким.
-   - **Тлеющий фронт**: тёмное свечение прямо на границе заливки, подкрашенное `highlightColor` (primary палитры обложки или акцент темы).
-   - **Шиммер-перелив**: светлая волна (полуширина 9%) пробегает по строке за 2800 мс — только у активной строки и только когда играет музыка.
-   - Градиент строится по критическим точкам (кромка + фронт волны) с компонентным смешением цветов — до 8 стопов.
-2. **Единая пружина фокуса** (dampingRatio 0.62 — лёгкий Expressive-овершут) ведёт всё сразу:
-   - вес 600 → 800, насыщенность остальных строк — 600;
-   - масштаб 1.0 → 1.05 от левого края (`TransformOrigin(0f, 0.5f)` — текст не «уезжает» при росте);
-   - свечение primary: alpha 0 → 0.55, blur 3 → 16;
-   - альфы: неактивные строки — **0.4** (как просил пользователь), «непропетое» у активной — 0.62, «пропетое» — 1.0.
-3. **Производительность**:
-   - прогресс заливки читается ТОЛЬКО активной строкой (условная ветка `when` вызывает лямбду прогресса — неактивные не подписаны на 150-мс опрос позиции);
-   - шиммер живёт в `rememberInfiniteTransition` внутри условия «активная + играет» — на паузе анимация не крутится;
-   - у прошлых/будущих строк кисть константна (полностью тусклая), перерисовки при смене строки минимальны.
-4. **Автоскролл**: штатная пружинная анимация `animateScrollToItem` foundation (кастомный `animationSpec` у этого API отсутствует).
-5. **Проброс `isPlaying`**: PlayerScreen → ExpressiveHeroZone → LyricsForeground → LyricsListView (управляет переливом).
-6. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РљР°СЂР°РѕРєРµ-СЃС‚СЂРѕРєР° В«Р¶РёРґРєРёРµ С‡РµСЂРЅРёР»Р°В»** (`LyricLineItem` вЂ” РІС‹РЅРµСЃРµРЅ РІ РѕС‚РґРµР»СЊРЅС‹Р№ РєРѕРјРїРѕР·Р°Р±Р»):
+   - Р’РјРµСЃС‚Рѕ Р¶С‘СЃС‚РєРѕР№ РіСЂР°РЅРёС†С‹ Р·Р°Р»РёРІРєРё вЂ” smoothstep-РєСЂРѕРјРєР° (РїРѕР»СѓС€РёСЂРёРЅР° 2.8%): РїРµСЂРµС…РѕРґ В«РїСЂРѕРїРµС‚Рѕ / РЅРµ РїСЂРѕРїРµС‚РѕВ» СЃС‚Р°Р» РјСЏРіРєРёРј.
+   - **РўР»РµСЋС‰РёР№ С„СЂРѕРЅС‚**: С‚С‘РјРЅРѕРµ СЃРІРµС‡РµРЅРёРµ РїСЂСЏРјРѕ РЅР° РіСЂР°РЅРёС†Рµ Р·Р°Р»РёРІРєРё, РїРѕРґРєСЂР°С€РµРЅРЅРѕРµ `highlightColor` (primary РїР°Р»РёС‚СЂС‹ РѕР±Р»РѕР¶РєРё РёР»Рё Р°РєС†РµРЅС‚ С‚РµРјС‹).
+   - **РЁРёРјРјРµСЂ-РїРµСЂРµР»РёРІ**: СЃРІРµС‚Р»Р°СЏ РІРѕР»РЅР° (РїРѕР»СѓС€РёСЂРёРЅР° 9%) РїСЂРѕР±РµРіР°РµС‚ РїРѕ СЃС‚СЂРѕРєРµ Р·Р° 2800 РјСЃ вЂ” С‚РѕР»СЊРєРѕ Сѓ Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё Рё С‚РѕР»СЊРєРѕ РєРѕРіРґР° РёРіСЂР°РµС‚ РјСѓР·С‹РєР°.
+   - Р“СЂР°РґРёРµРЅС‚ СЃС‚СЂРѕРёС‚СЃСЏ РїРѕ РєСЂРёС‚РёС‡РµСЃРєРёРј С‚РѕС‡РєР°Рј (РєСЂРѕРјРєР° + С„СЂРѕРЅС‚ РІРѕР»РЅС‹) СЃ РєРѕРјРїРѕРЅРµРЅС‚РЅС‹Рј СЃРјРµС€РµРЅРёРµРј С†РІРµС‚РѕРІ вЂ” РґРѕ 8 СЃС‚РѕРїРѕРІ.
+2. **Р•РґРёРЅР°СЏ РїСЂСѓР¶РёРЅР° С„РѕРєСѓСЃР°** (dampingRatio 0.62 вЂ” Р»С‘РіРєРёР№ Expressive-РѕРІРµСЂС€СѓС‚) РІРµРґС‘С‚ РІСЃС‘ СЃСЂР°Р·Сѓ:
+   - РІРµСЃ 600 в†’ 800, РЅР°СЃС‹С‰РµРЅРЅРѕСЃС‚СЊ РѕСЃС‚Р°Р»СЊРЅС‹С… СЃС‚СЂРѕРє вЂ” 600;
+   - РјР°СЃС€С‚Р°Р± 1.0 в†’ 1.05 РѕС‚ Р»РµРІРѕРіРѕ РєСЂР°СЏ (`TransformOrigin(0f, 0.5f)` вЂ” С‚РµРєСЃС‚ РЅРµ В«СѓРµР·Р¶Р°РµС‚В» РїСЂРё СЂРѕСЃС‚Рµ);
+   - СЃРІРµС‡РµРЅРёРµ primary: alpha 0 в†’ 0.55, blur 3 в†’ 16;
+   - Р°Р»СЊС„С‹: РЅРµР°РєС‚РёРІРЅС‹Рµ СЃС‚СЂРѕРєРё вЂ” **0.4** (РєР°Рє РїСЂРѕСЃРёР» РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ), В«РЅРµРїСЂРѕРїРµС‚РѕРµВ» Сѓ Р°РєС‚РёРІРЅРѕР№ вЂ” 0.62, В«РїСЂРѕРїРµС‚РѕРµВ» вЂ” 1.0.
+3. **РџСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚СЊ**:
+   - РїСЂРѕРіСЂРµСЃСЃ Р·Р°Р»РёРІРєРё С‡РёС‚Р°РµС‚СЃСЏ РўРћР›Р¬РљРћ Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРѕР№ (СѓСЃР»РѕРІРЅР°СЏ РІРµС‚РєР° `when` РІС‹Р·С‹РІР°РµС‚ Р»СЏРјР±РґСѓ РїСЂРѕРіСЂРµСЃСЃР° вЂ” РЅРµР°РєС‚РёРІРЅС‹Рµ РЅРµ РїРѕРґРїРёСЃР°РЅС‹ РЅР° 150-РјСЃ РѕРїСЂРѕСЃ РїРѕР·РёС†РёРё);
+   - С€РёРјРјРµСЂ Р¶РёРІС‘С‚ РІ `rememberInfiniteTransition` РІРЅСѓС‚СЂРё СѓСЃР»РѕРІРёСЏ В«Р°РєС‚РёРІРЅР°СЏ + РёРіСЂР°РµС‚В» вЂ” РЅР° РїР°СѓР·Рµ Р°РЅРёРјР°С†РёСЏ РЅРµ РєСЂСѓС‚РёС‚СЃСЏ;
+   - Сѓ РїСЂРѕС€Р»С‹С…/Р±СѓРґСѓС‰РёС… СЃС‚СЂРѕРє РєРёСЃС‚СЊ РєРѕРЅСЃС‚Р°РЅС‚РЅР° (РїРѕР»РЅРѕСЃС‚СЊСЋ С‚СѓСЃРєР»Р°СЏ), РїРµСЂРµСЂРёСЃРѕРІРєРё РїСЂРё СЃРјРµРЅРµ СЃС‚СЂРѕРєРё РјРёРЅРёРјР°Р»СЊРЅС‹.
+4. **РђРІС‚РѕСЃРєСЂРѕР»Р»**: С€С‚Р°С‚РЅР°СЏ РїСЂСѓР¶РёРЅРЅР°СЏ Р°РЅРёРјР°С†РёСЏ `animateScrollToItem` foundation (РєР°СЃС‚РѕРјРЅС‹Р№ `animationSpec` Сѓ СЌС‚РѕРіРѕ API РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚).
+5. **РџСЂРѕР±СЂРѕСЃ `isPlaying`**: PlayerScreen в†’ ExpressiveHeroZone в†’ LyricsForeground в†’ LyricsListView (СѓРїСЂР°РІР»СЏРµС‚ РїРµСЂРµР»РёРІРѕРј).
+6. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1180,23 +1191,23 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.10 — Благородное караоке: центрирование строки и мягкий стиль (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.10 вЂ” Р‘Р»Р°РіРѕСЂРѕРґРЅРѕРµ РєР°СЂР°РѕРєРµ: С†РµРЅС‚СЂРёСЂРѕРІР°РЅРёРµ СЃС‚СЂРѕРєРё Рё РјСЏРіРєРёР№ СЃС‚РёР»СЊ (19.10.2026)
 
-### Что сделано
-1. **Центрирование активной строки, как в Apple Music**:
-   - `LazyColumn` измеряет свою видимую высоту через `onSizeChanged`;
-   - `contentPadding` = (высота/2 − полстроки) сверху и снизу — любую строку можно поставить в самый центр списка;
-   - автоскролл `animateScrollToItem(idx, scrollOffset = -центр)` — активная строка всегда встаёт ровно по центру видимой области;
-   - при открытии текстов и смене трека — мгновенный `scrollToItem` без «пролёта» через весь список (`activeIndex` сбрасывается при смене текста).
-2. **Смягчение стиля** (вместо «кислотного» — спокойное, дворянское):
-   - пружина фокуса: `dampingRatio` 0.62 → **0.85** — строка плавно растёт без подпрыгивания;
-   - свечение: blur 16 → **8**, alpha 0.55 → **0.2** — мягкое выделение вместо горения;
-   - вес шрифта: 600→800 → **500→700** — мягче и читаемее;
-   - шиммер едва заметный: интенсивность 0.5 → **0.2**, полоса шире (0.12) — просто лёгкий блик;
-   - тлеющий фронт чернил приглушён: `tipColor` alpha **0.7**.
-3. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р¦РµРЅС‚СЂРёСЂРѕРІР°РЅРёРµ Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё, РєР°Рє РІ Apple Music**:
+   - `LazyColumn` РёР·РјРµСЂСЏРµС‚ СЃРІРѕСЋ РІРёРґРёРјСѓСЋ РІС‹СЃРѕС‚Сѓ С‡РµСЂРµР· `onSizeChanged`;
+   - `contentPadding` = (РІС‹СЃРѕС‚Р°/2 в€’ РїРѕР»СЃС‚СЂРѕРєРё) СЃРІРµСЂС…Сѓ Рё СЃРЅРёР·Сѓ вЂ” Р»СЋР±СѓСЋ СЃС‚СЂРѕРєСѓ РјРѕР¶РЅРѕ РїРѕСЃС‚Р°РІРёС‚СЊ РІ СЃР°РјС‹Р№ С†РµРЅС‚СЂ СЃРїРёСЃРєР°;
+   - Р°РІС‚РѕСЃРєСЂРѕР»Р» `animateScrollToItem(idx, scrollOffset = -С†РµРЅС‚СЂ)` вЂ” Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° РІСЃРµРіРґР° РІСЃС‚Р°С‘С‚ СЂРѕРІРЅРѕ РїРѕ С†РµРЅС‚СЂСѓ РІРёРґРёРјРѕР№ РѕР±Р»Р°СЃС‚Рё;
+   - РїСЂРё РѕС‚РєСЂС‹С‚РёРё С‚РµРєСЃС‚РѕРІ Рё СЃРјРµРЅРµ С‚СЂРµРєР° вЂ” РјРіРЅРѕРІРµРЅРЅС‹Р№ `scrollToItem` Р±РµР· В«РїСЂРѕР»С‘С‚Р°В» С‡РµСЂРµР· РІРµСЃСЊ СЃРїРёСЃРѕРє (`activeIndex` СЃР±СЂР°СЃС‹РІР°РµС‚СЃСЏ РїСЂРё СЃРјРµРЅРµ С‚РµРєСЃС‚Р°).
+2. **РЎРјСЏРіС‡РµРЅРёРµ СЃС‚РёР»СЏ** (РІРјРµСЃС‚Рѕ В«РєРёСЃР»РѕС‚РЅРѕРіРѕВ» вЂ” СЃРїРѕРєРѕР№РЅРѕРµ, РґРІРѕСЂСЏРЅСЃРєРѕРµ):
+   - РїСЂСѓР¶РёРЅР° С„РѕРєСѓСЃР°: `dampingRatio` 0.62 в†’ **0.85** вЂ” СЃС‚СЂРѕРєР° РїР»Р°РІРЅРѕ СЂР°СЃС‚С‘С‚ Р±РµР· РїРѕРґРїСЂС‹РіРёРІР°РЅРёСЏ;
+   - СЃРІРµС‡РµРЅРёРµ: blur 16 в†’ **8**, alpha 0.55 в†’ **0.2** вЂ” РјСЏРіРєРѕРµ РІС‹РґРµР»РµРЅРёРµ РІРјРµСЃС‚Рѕ РіРѕСЂРµРЅРёСЏ;
+   - РІРµСЃ С€СЂРёС„С‚Р°: 600в†’800 в†’ **500в†’700** вЂ” РјСЏРіС‡Рµ Рё С‡РёС‚Р°РµРјРµРµ;
+   - С€РёРјРјРµСЂ РµРґРІР° Р·Р°РјРµС‚РЅС‹Р№: РёРЅС‚РµРЅСЃРёРІРЅРѕСЃС‚СЊ 0.5 в†’ **0.2**, РїРѕР»РѕСЃР° С€РёСЂРµ (0.12) вЂ” РїСЂРѕСЃС‚Рѕ Р»С‘РіРєРёР№ Р±Р»РёРє;
+   - С‚Р»РµСЋС‰РёР№ С„СЂРѕРЅС‚ С‡РµСЂРЅРёР» РїСЂРёРіР»СѓС€С‘РЅ: `tipColor` alpha **0.7**.
+3. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1205,19 +1216,19 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.11 — Починка текстов, возврат волны и соседние строки (19.10.2026)
+## вњ… Р¤Р°Р·Р° 4.11 вЂ” РџРѕС‡РёРЅРєР° С‚РµРєСЃС‚РѕРІ, РІРѕР·РІСЂР°С‚ РІРѕР»РЅС‹ Рё СЃРѕСЃРµРґРЅРёРµ СЃС‚СЂРѕРєРё (19.10.2026)
 
-### Что сделано
-1. **Скролл текстов**:
-   - `LazyColumn.contentPadding` — строго `PaddingValues(top = 50.dp, bottom = 50.dp)`;
-   - автоскролл `animateScrollToItem(idx, scrollOffset = -центр)` — активная строка встаёт по центру видимой области, 50dp-отступы не дают упираться в границы карточки;
-   - `Text` явно `softWrap = true`, `maxLines = Int.MAX_VALUE` — длинные строки не обрезаются;
-   - подпись «Синхронный текст · LRCLIB» — за пределами LazyColumn (закреплена под списком).
-2. **Возврат волны**: `ExpressivePlayerSlider` снова волновой — анимированная синусоида (фаза 1600 мс, читается в фазе отрисовки, без рекомпозиций), сужение к краям, проигранная часть — акцентная волна слева направо, буфер — плотнее, бегунок-точка с пружиной и ореолом. На паузе амплитуда плавно (500 мс) уходит в 0 — волна выпрямляется в линию. `isPlaying` проброшен из `PlayerProgressSection`.
-3. **Караоке**: активная строка закрашивается `Brush.linearGradient` слева направо (smoothstep-кромка + тлеющий фронт сохранены); альфы строк: неактивные **0.4**, соседние с активной **0.7** (новый параметр `isNeighbor`).
-4. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЎРєСЂРѕР»Р» С‚РµРєСЃС‚РѕРІ**:
+   - `LazyColumn.contentPadding` вЂ” СЃС‚СЂРѕРіРѕ `PaddingValues(top = 50.dp, bottom = 50.dp)`;
+   - Р°РІС‚РѕСЃРєСЂРѕР»Р» `animateScrollToItem(idx, scrollOffset = -С†РµРЅС‚СЂ)` вЂ” Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° РІСЃС‚Р°С‘С‚ РїРѕ С†РµРЅС‚СЂСѓ РІРёРґРёРјРѕР№ РѕР±Р»Р°СЃС‚Рё, 50dp-РѕС‚СЃС‚СѓРїС‹ РЅРµ РґР°СЋС‚ СѓРїРёСЂР°С‚СЊСЃСЏ РІ РіСЂР°РЅРёС†С‹ РєР°СЂС‚РѕС‡РєРё;
+   - `Text` СЏРІРЅРѕ `softWrap = true`, `maxLines = Int.MAX_VALUE` вЂ” РґР»РёРЅРЅС‹Рµ СЃС‚СЂРѕРєРё РЅРµ РѕР±СЂРµР·Р°СЋС‚СЃСЏ;
+   - РїРѕРґРїРёСЃСЊ В«РЎРёРЅС…СЂРѕРЅРЅС‹Р№ С‚РµРєСЃС‚ В· LRCLIBВ» вЂ” Р·Р° РїСЂРµРґРµР»Р°РјРё LazyColumn (Р·Р°РєСЂРµРїР»РµРЅР° РїРѕРґ СЃРїРёСЃРєРѕРј).
+2. **Р’РѕР·РІСЂР°С‚ РІРѕР»РЅС‹**: `ExpressivePlayerSlider` СЃРЅРѕРІР° РІРѕР»РЅРѕРІРѕР№ вЂ” Р°РЅРёРјРёСЂРѕРІР°РЅРЅР°СЏ СЃРёРЅСѓСЃРѕРёРґР° (С„Р°Р·Р° 1600 РјСЃ, С‡РёС‚Р°РµС‚СЃСЏ РІ С„Р°Р·Рµ РѕС‚СЂРёСЃРѕРІРєРё, Р±РµР· СЂРµРєРѕРјРїРѕР·РёС†РёР№), СЃСѓР¶РµРЅРёРµ Рє РєСЂР°СЏРј, РїСЂРѕРёРіСЂР°РЅРЅР°СЏ С‡Р°СЃС‚СЊ вЂ” Р°РєС†РµРЅС‚РЅР°СЏ РІРѕР»РЅР° СЃР»РµРІР° РЅР°РїСЂР°РІРѕ, Р±СѓС„РµСЂ вЂ” РїР»РѕС‚РЅРµРµ, Р±РµРіСѓРЅРѕРє-С‚РѕС‡РєР° СЃ РїСЂСѓР¶РёРЅРѕР№ Рё РѕСЂРµРѕР»РѕРј. РќР° РїР°СѓР·Рµ Р°РјРїР»РёС‚СѓРґР° РїР»Р°РІРЅРѕ (500 РјСЃ) СѓС…РѕРґРёС‚ РІ 0 вЂ” РІРѕР»РЅР° РІС‹РїСЂСЏРјР»СЏРµС‚СЃСЏ РІ Р»РёРЅРёСЋ. `isPlaying` РїСЂРѕР±СЂРѕС€РµРЅ РёР· `PlayerProgressSection`.
+3. **РљР°СЂР°РѕРєРµ**: Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° Р·Р°РєСЂР°С€РёРІР°РµС‚СЃСЏ `Brush.linearGradient` СЃР»РµРІР° РЅР°РїСЂР°РІРѕ (smoothstep-РєСЂРѕРјРєР° + С‚Р»РµСЋС‰РёР№ С„СЂРѕРЅС‚ СЃРѕС…СЂР°РЅРµРЅС‹); Р°Р»СЊС„С‹ СЃС‚СЂРѕРє: РЅРµР°РєС‚РёРІРЅС‹Рµ **0.4**, СЃРѕСЃРµРґРЅРёРµ СЃ Р°РєС‚РёРІРЅРѕР№ **0.7** (РЅРѕРІС‹Р№ РїР°СЂР°РјРµС‚СЂ `isNeighbor`).
+4. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
@@ -1227,19 +1238,19 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.12 — Чистая M3-типографика текстов вместо караоке (20.10.2026)
+## вњ… Р¤Р°Р·Р° 4.12 вЂ” Р§РёСЃС‚Р°СЏ M3-С‚РёРїРѕРіСЂР°С„РёРєР° С‚РµРєСЃС‚РѕРІ РІРјРµСЃС‚Рѕ РєР°СЂР°РѕРєРµ (20.10.2026)
 
-### Что сделано
-1. **Удалён караоке-эффект**: убраны `Brush.linearGradient`, расчёт прогресса закрашивания, smoothstep-кромка, тлеющий фронт, шиммер и все хелперы (`buildKaraokeBrush`, `karaokeColorAt`, `smoothBlend`, `blendColors`, константы `KARAOKE_*`).
-2. **Два состояния строки**:
-   - активная — крупнее (анимация 16→22sp, как `titleLarge`), `SemiBold` (400→600), акцентный цвет палитры (при тёмном акценте — яркий `onSurface` по порогу luminance 0.35);
-   - неактивные синхронного текста — `bodyLarge` 16sp, `Normal`, `onSurfaceVariant` alpha 0.5; обычный (несинхронный) текст — полностью читаемый `onSurfaceVariant`.
-3. **Плавные переходы**: `animateColorAsState` (320 мс) для цвета, `animateFloatAsState` (пружина 0.8) для размера и `tween` для веса; строка растёт и меняет цвет без резкого скачка.
-4. **Автоскролл**: опрос позиции обновляет только `activeIndex`, а прокрутка вынесена в `LaunchedEffect(activeIndex, viewportHeightPx)` — `animateScrollToItem` с центрирующим `scrollOffset`; первое позиционирование — мгновенный `scrollToItem` (без пролёта через весь текст).
-5. **Чистка**: из цепочки текстов убраны неиспользуемые `isPlaying`, `activeProgress`, `isPast`, `isNeighbor`, замер ширины текста и `graphicsLayer`-масштаб.
-6. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЈРґР°Р»С‘РЅ РєР°СЂР°РѕРєРµ-СЌС„С„РµРєС‚**: СѓР±СЂР°РЅС‹ `Brush.linearGradient`, СЂР°СЃС‡С‘С‚ РїСЂРѕРіСЂРµСЃСЃР° Р·Р°РєСЂР°С€РёРІР°РЅРёСЏ, smoothstep-РєСЂРѕРјРєР°, С‚Р»РµСЋС‰РёР№ С„СЂРѕРЅС‚, С€РёРјРјРµСЂ Рё РІСЃРµ С…РµР»РїРµСЂС‹ (`buildKaraokeBrush`, `karaokeColorAt`, `smoothBlend`, `blendColors`, РєРѕРЅСЃС‚Р°РЅС‚С‹ `KARAOKE_*`).
+2. **Р”РІР° СЃРѕСЃС‚РѕСЏРЅРёСЏ СЃС‚СЂРѕРєРё**:
+   - Р°РєС‚РёРІРЅР°СЏ вЂ” РєСЂСѓРїРЅРµРµ (Р°РЅРёРјР°С†РёСЏ 16в†’22sp, РєР°Рє `titleLarge`), `SemiBold` (400в†’600), Р°РєС†РµРЅС‚РЅС‹Р№ С†РІРµС‚ РїР°Р»РёС‚СЂС‹ (РїСЂРё С‚С‘РјРЅРѕРј Р°РєС†РµРЅС‚Рµ вЂ” СЏСЂРєРёР№ `onSurface` РїРѕ РїРѕСЂРѕРіСѓ luminance 0.35);
+   - РЅРµР°РєС‚РёРІРЅС‹Рµ СЃРёРЅС…СЂРѕРЅРЅРѕРіРѕ С‚РµРєСЃС‚Р° вЂ” `bodyLarge` 16sp, `Normal`, `onSurfaceVariant` alpha 0.5; РѕР±С‹С‡РЅС‹Р№ (РЅРµСЃРёРЅС…СЂРѕРЅРЅС‹Р№) С‚РµРєСЃС‚ вЂ” РїРѕР»РЅРѕСЃС‚СЊСЋ С‡РёС‚Р°РµРјС‹Р№ `onSurfaceVariant`.
+3. **РџР»Р°РІРЅС‹Рµ РїРµСЂРµС…РѕРґС‹**: `animateColorAsState` (320 РјСЃ) РґР»СЏ С†РІРµС‚Р°, `animateFloatAsState` (РїСЂСѓР¶РёРЅР° 0.8) РґР»СЏ СЂР°Р·РјРµСЂР° Рё `tween` РґР»СЏ РІРµСЃР°; СЃС‚СЂРѕРєР° СЂР°СЃС‚С‘С‚ Рё РјРµРЅСЏРµС‚ С†РІРµС‚ Р±РµР· СЂРµР·РєРѕРіРѕ СЃРєР°С‡РєР°.
+4. **РђРІС‚РѕСЃРєСЂРѕР»Р»**: РѕРїСЂРѕСЃ РїРѕР·РёС†РёРё РѕР±РЅРѕРІР»СЏРµС‚ С‚РѕР»СЊРєРѕ `activeIndex`, Р° РїСЂРѕРєСЂСѓС‚РєР° РІС‹РЅРµСЃРµРЅР° РІ `LaunchedEffect(activeIndex, viewportHeightPx)` вЂ” `animateScrollToItem` СЃ С†РµРЅС‚СЂРёСЂСѓСЋС‰РёРј `scrollOffset`; РїРµСЂРІРѕРµ РїРѕР·РёС†РёРѕРЅРёСЂРѕРІР°РЅРёРµ вЂ” РјРіРЅРѕРІРµРЅРЅС‹Р№ `scrollToItem` (Р±РµР· РїСЂРѕР»С‘С‚Р° С‡РµСЂРµР· РІРµСЃСЊ С‚РµРєСЃС‚).
+5. **Р§РёСЃС‚РєР°**: РёР· С†РµРїРѕС‡РєРё С‚РµРєСЃС‚РѕРІ СѓР±СЂР°РЅС‹ РЅРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Рµ `isPlaying`, `activeProgress`, `isPast`, `isNeighbor`, Р·Р°РјРµСЂ С€РёСЂРёРЅС‹ С‚РµРєСЃС‚Р° Рё `graphicsLayer`-РјР°СЃС€С‚Р°Р±.
+6. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1248,20 +1259,20 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.13 — Стабильный лейаут и караоке «по словам» (20.10.2026)
+## вњ… Р¤Р°Р·Р° 4.13 вЂ” РЎС‚Р°Р±РёР»СЊРЅС‹Р№ Р»РµР№Р°СѓС‚ Рё РєР°СЂР°РѕРєРµ В«РїРѕ СЃР»РѕРІР°РјВ» (20.10.2026)
 
-### Что сделано
-1. **Убраны прыжки активной строки**: `fontSize` больше не анимируется — у всех строк базовые 18sp / lineHeight 24sp. Активная строка растёт `graphicsLayer`-масштабом 1.0 → 1.3 (пружина 0.8, `TransformOrigin(0f, 0.5f)`); высота лейаута и позиция списка не меняются.
-2. **Контраст неактивного текста**: `onSurfaceVariant` без альфы (вместо alpha 0.5) — строки читаемы, но менее акцентны.
-3. **Караоке «по словам»**:
-   - строка разбивается на слова `split(" ")` и выводится через `FlowRow` (перенос длинных строк сохранён);
-   - в `LyricsListView` снова считается `activeProgress = (позиция − начало строки) / длительность строки`;
-   - слово окрашивается в `highlightColor`, если `index < progress × words.size`, иначе — в `onSurfaceVariant`;
-   - цвет каждого слова анимируется `animateColorAsState` (180 мс); прогресс читает только активная строка.
-4. **Автоскролл**: `LaunchedEffect(activeIndex, viewportHeightPx)` с центрирующим `scrollOffset` сохранён; постоянная высота строк исключает дёрганье при смене индекса.
-5. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЈР±СЂР°РЅС‹ РїСЂС‹Р¶РєРё Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё**: `fontSize` Р±РѕР»СЊС€Рµ РЅРµ Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ вЂ” Сѓ РІСЃРµС… СЃС‚СЂРѕРє Р±Р°Р·РѕРІС‹Рµ 18sp / lineHeight 24sp. РђРєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° СЂР°СЃС‚С‘С‚ `graphicsLayer`-РјР°СЃС€С‚Р°Р±РѕРј 1.0 в†’ 1.3 (РїСЂСѓР¶РёРЅР° 0.8, `TransformOrigin(0f, 0.5f)`); РІС‹СЃРѕС‚Р° Р»РµР№Р°СѓС‚Р° Рё РїРѕР·РёС†РёСЏ СЃРїРёСЃРєР° РЅРµ РјРµРЅСЏСЋС‚СЃСЏ.
+2. **РљРѕРЅС‚СЂР°СЃС‚ РЅРµР°РєС‚РёРІРЅРѕРіРѕ С‚РµРєСЃС‚Р°**: `onSurfaceVariant` Р±РµР· Р°Р»СЊС„С‹ (РІРјРµСЃС‚Рѕ alpha 0.5) вЂ” СЃС‚СЂРѕРєРё С‡РёС‚Р°РµРјС‹, РЅРѕ РјРµРЅРµРµ Р°РєС†РµРЅС‚РЅС‹.
+3. **РљР°СЂР°РѕРєРµ В«РїРѕ СЃР»РѕРІР°РјВ»**:
+   - СЃС‚СЂРѕРєР° СЂР°Р·Р±РёРІР°РµС‚СЃСЏ РЅР° СЃР»РѕРІР° `split(" ")` Рё РІС‹РІРѕРґРёС‚СЃСЏ С‡РµСЂРµР· `FlowRow` (РїРµСЂРµРЅРѕСЃ РґР»РёРЅРЅС‹С… СЃС‚СЂРѕРє СЃРѕС…СЂР°РЅС‘РЅ);
+   - РІ `LyricsListView` СЃРЅРѕРІР° СЃС‡РёС‚Р°РµС‚СЃСЏ `activeProgress = (РїРѕР·РёС†РёСЏ в€’ РЅР°С‡Р°Р»Рѕ СЃС‚СЂРѕРєРё) / РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ СЃС‚СЂРѕРєРё`;
+   - СЃР»РѕРІРѕ РѕРєСЂР°С€РёРІР°РµС‚СЃСЏ РІ `highlightColor`, РµСЃР»Рё `index < progress Г— words.size`, РёРЅР°С‡Рµ вЂ” РІ `onSurfaceVariant`;
+   - С†РІРµС‚ РєР°Р¶РґРѕРіРѕ СЃР»РѕРІР° Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ `animateColorAsState` (180 РјСЃ); РїСЂРѕРіСЂРµСЃСЃ С‡РёС‚Р°РµС‚ С‚РѕР»СЊРєРѕ Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР°.
+4. **РђРІС‚РѕСЃРєСЂРѕР»Р»**: `LaunchedEffect(activeIndex, viewportHeightPx)` СЃ С†РµРЅС‚СЂРёСЂСѓСЋС‰РёРј `scrollOffset` СЃРѕС…СЂР°РЅС‘РЅ; РїРѕСЃС‚РѕСЏРЅРЅР°СЏ РІС‹СЃРѕС‚Р° СЃС‚СЂРѕРє РёСЃРєР»СЋС‡Р°РµС‚ РґС‘СЂРіР°РЅСЊРµ РїСЂРё СЃРјРµРЅРµ РёРЅРґРµРєСЃР°.
+5. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1270,19 +1281,19 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.14 — Возврат стандартного text layout и нижний отступ (20.10.2026)
+## вњ… Р¤Р°Р·Р° 4.14 вЂ” Р’РѕР·РІСЂР°С‚ СЃС‚Р°РЅРґР°СЂС‚РЅРѕРіРѕ text layout Рё РЅРёР¶РЅРёР№ РѕС‚СЃС‚СѓРї (20.10.2026)
 
-### Что сделано
-1. **Убрано масштабирование**: `graphicsLayer`-scale 1.3 полностью удалён из `LyricLineItem` — текст больше не выходит за правый край, `FlowRow` корректно переносит слова.
-2. **Акцент активной строки без масштаба**:
-   - активная — **20sp, SemiBold**; непропетые слова `onSurface` (белые), пропетые по прогрессу плавно уходят в акцент `highlightColor`;
-   - неактивные — **18sp, Normal**, `onSurfaceVariant` без альфы;
-   - общий `lineHeight = 26.sp` стабилизирует высоту строки.
-3. **Нижний отступ списка**: `contentPadding = PaddingValues(top = 50.dp, bottom = 100.dp)` — последняя строка не заходит под подпись и нижнюю панель.
-4. **Подпись** «Синхронный текст · LRCLIB» остаётся вне `LazyColumn` — под списком, прижата к низу карточки и не перекрывает скролл.
-5. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЈР±СЂР°РЅРѕ РјР°СЃС€С‚Р°Р±РёСЂРѕРІР°РЅРёРµ**: `graphicsLayer`-scale 1.3 РїРѕР»РЅРѕСЃС‚СЊСЋ СѓРґР°Р»С‘РЅ РёР· `LyricLineItem` вЂ” С‚РµРєСЃС‚ Р±РѕР»СЊС€Рµ РЅРµ РІС‹С…РѕРґРёС‚ Р·Р° РїСЂР°РІС‹Р№ РєСЂР°Р№, `FlowRow` РєРѕСЂСЂРµРєС‚РЅРѕ РїРµСЂРµРЅРѕСЃРёС‚ СЃР»РѕРІР°.
+2. **РђРєС†РµРЅС‚ Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё Р±РµР· РјР°СЃС€С‚Р°Р±Р°**:
+   - Р°РєС‚РёРІРЅР°СЏ вЂ” **20sp, SemiBold**; РЅРµРїСЂРѕРїРµС‚С‹Рµ СЃР»РѕРІР° `onSurface` (Р±РµР»С‹Рµ), РїСЂРѕРїРµС‚С‹Рµ РїРѕ РїСЂРѕРіСЂРµСЃСЃСѓ РїР»Р°РІРЅРѕ СѓС…РѕРґСЏС‚ РІ Р°РєС†РµРЅС‚ `highlightColor`;
+   - РЅРµР°РєС‚РёРІРЅС‹Рµ вЂ” **18sp, Normal**, `onSurfaceVariant` Р±РµР· Р°Р»СЊС„С‹;
+   - РѕР±С‰РёР№ `lineHeight = 26.sp` СЃС‚Р°Р±РёР»РёР·РёСЂСѓРµС‚ РІС‹СЃРѕС‚Сѓ СЃС‚СЂРѕРєРё.
+3. **РќРёР¶РЅРёР№ РѕС‚СЃС‚СѓРї СЃРїРёСЃРєР°**: `contentPadding = PaddingValues(top = 50.dp, bottom = 100.dp)` вЂ” РїРѕСЃР»РµРґРЅСЏСЏ СЃС‚СЂРѕРєР° РЅРµ Р·Р°С…РѕРґРёС‚ РїРѕРґ РїРѕРґРїРёСЃСЊ Рё РЅРёР¶РЅСЋСЋ РїР°РЅРµР»СЊ.
+4. **РџРѕРґРїРёСЃСЊ** В«РЎРёРЅС…СЂРѕРЅРЅС‹Р№ С‚РµРєСЃС‚ В· LRCLIBВ» РѕСЃС‚Р°С‘С‚СЃСЏ РІРЅРµ `LazyColumn` вЂ” РїРѕРґ СЃРїРёСЃРєРѕРј, РїСЂРёР¶Р°С‚Р° Рє РЅРёР·Сѓ РєР°СЂС‚РѕС‡РєРё Рё РЅРµ РїРµСЂРµРєСЂС‹РІР°РµС‚ СЃРєСЂРѕР»Р».
+5. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1291,16 +1302,16 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.15 — Гибрид: плавный градиент при стабильном лейауте (20.10.2026)
+## вњ… Р¤Р°Р·Р° 4.15 вЂ” Р“РёР±СЂРёРґ: РїР»Р°РІРЅС‹Р№ РіСЂР°РґРёРµРЅС‚ РїСЂРё СЃС‚Р°Р±РёР»СЊРЅРѕРј Р»РµР№Р°СѓС‚Рµ (20.10.2026)
 
-### Что сделано
-1. **Возвращена плавная заливка всей строки**: вместо `FlowRow` с покраской отдельных слов — единый `Text` с `TextStyle.brush`. `Brush.linearGradient` растягивается по границам строки, прогресс анимируется `animateFloatAsState` (240 мс, `LinearEasing`).
-2. **Цвета градиента**: слева пропетая часть — `highlightColor` (primary), справа непропетая — `onSurfaceVariant`; между ними мягкая кромка ±5% ширины строки (4 стопа без дублей).
-3. **Стабильный лейаут**: `graphicsLayer`/scale не используются; у всех строк фиксированные 18sp и `lineHeight 26.sp`; активная выделяется только `SemiBold` и градиентом. Перенос длинных строк — штатный text layout.
-4. **Сохранены фиксы**: `contentPadding(top = 50.dp, bottom = 100.dp)`, подпись «Синхронный текст · LRCLIB» вне `LazyColumn`, центрирующий автоскролл через `LaunchedEffect(activeIndex, viewportHeightPx)`.
-5. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р’РѕР·РІСЂР°С‰РµРЅР° РїР»Р°РІРЅР°СЏ Р·Р°Р»РёРІРєР° РІСЃРµР№ СЃС‚СЂРѕРєРё**: РІРјРµСЃС‚Рѕ `FlowRow` СЃ РїРѕРєСЂР°СЃРєРѕР№ РѕС‚РґРµР»СЊРЅС‹С… СЃР»РѕРІ вЂ” РµРґРёРЅС‹Р№ `Text` СЃ `TextStyle.brush`. `Brush.linearGradient` СЂР°СЃС‚СЏРіРёРІР°РµС‚СЃСЏ РїРѕ РіСЂР°РЅРёС†Р°Рј СЃС‚СЂРѕРєРё, РїСЂРѕРіСЂРµСЃСЃ Р°РЅРёРјРёСЂСѓРµС‚СЃСЏ `animateFloatAsState` (240 РјСЃ, `LinearEasing`).
+2. **Р¦РІРµС‚Р° РіСЂР°РґРёРµРЅС‚Р°**: СЃР»РµРІР° РїСЂРѕРїРµС‚Р°СЏ С‡Р°СЃС‚СЊ вЂ” `highlightColor` (primary), СЃРїСЂР°РІР° РЅРµРїСЂРѕРїРµС‚Р°СЏ вЂ” `onSurfaceVariant`; РјРµР¶РґСѓ РЅРёРјРё РјСЏРіРєР°СЏ РєСЂРѕРјРєР° В±5% С€РёСЂРёРЅС‹ СЃС‚СЂРѕРєРё (4 СЃС‚РѕРїР° Р±РµР· РґСѓР±Р»РµР№).
+3. **РЎС‚Р°Р±РёР»СЊРЅС‹Р№ Р»РµР№Р°СѓС‚**: `graphicsLayer`/scale РЅРµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ; Сѓ РІСЃРµС… СЃС‚СЂРѕРє С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Рµ 18sp Рё `lineHeight 26.sp`; Р°РєС‚РёРІРЅР°СЏ РІС‹РґРµР»СЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ `SemiBold` Рё РіСЂР°РґРёРµРЅС‚РѕРј. РџРµСЂРµРЅРѕСЃ РґР»РёРЅРЅС‹С… СЃС‚СЂРѕРє вЂ” С€С‚Р°С‚РЅС‹Р№ text layout.
+4. **РЎРѕС…СЂР°РЅРµРЅС‹ С„РёРєСЃС‹**: `contentPadding(top = 50.dp, bottom = 100.dp)`, РїРѕРґРїРёСЃСЊ В«РЎРёРЅС…СЂРѕРЅРЅС‹Р№ С‚РµРєСЃС‚ В· LRCLIBВ» РІРЅРµ `LazyColumn`, С†РµРЅС‚СЂРёСЂСѓСЋС‰РёР№ Р°РІС‚РѕСЃРєСЂРѕР»Р» С‡РµСЂРµР· `LaunchedEffect(activeIndex, viewportHeightPx)`.
+5. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1309,18 +1320,18 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 4.16 — Бегунок по волне, фиолетовый дефолт и артист в шапке (20.10.2026)
+## вњ… Р¤Р°Р·Р° 4.16 вЂ” Р‘РµРіСѓРЅРѕРє РїРѕ РІРѕР»РЅРµ, С„РёРѕР»РµС‚РѕРІС‹Р№ РґРµС„РѕР»С‚ Рё Р°СЂС‚РёСЃС‚ РІ С€Р°РїРєРµ (20.10.2026)
 
-### Что сделано
-1. **Thumb на волне**: в `ExpressivePlayerSlider` Y-координата бегунка и ореола считается по той же синусоиде, что и Path: `centerY − amp × sin(πu) × sin(2π·span·u/wavelength + phase)`. Кружок едет по гребням, а на паузе (амплитуда 0) возвращается на центральную линию.
-2. **Фиолетовая тема по умолчанию**:
-   - `AppSettings.dynamicCoverColors` и чтение из SharedPreferences — дефолт `false`;
-   - `MyMusicTheme.dynamicColor` — дефолт `false` (фиксированная фиолетовая палитра вместо системного Material You);
-   - выключенный переключатель → акцент из настроек (по умолчанию фиолетовый), включённый → палитра обложки в плеере.
-3. **Шапка плеера**: верхняя панель теперь двухстрочная — «СЕЙЧАС ИГРАЕТ» (labelSmall, alpha 0.6) и имя артиста (titleLarge, Bold) с мягким свечением `Shadow(blurRadius = 8f, color = primary alpha 0.55)`; длинные имена обрезаются ellipsis.
-4. **Сборка**: `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Thumb РЅР° РІРѕР»РЅРµ**: РІ `ExpressivePlayerSlider` Y-РєРѕРѕСЂРґРёРЅР°С‚Р° Р±РµРіСѓРЅРєР° Рё РѕСЂРµРѕР»Р° СЃС‡РёС‚Р°РµС‚СЃСЏ РїРѕ С‚РѕР№ Р¶Рµ СЃРёРЅСѓСЃРѕРёРґРµ, С‡С‚Рѕ Рё Path: `centerY в€’ amp Г— sin(ПЂu) Г— sin(2ПЂВ·spanВ·u/wavelength + phase)`. РљСЂСѓР¶РѕРє РµРґРµС‚ РїРѕ РіСЂРµР±РЅСЏРј, Р° РЅР° РїР°СѓР·Рµ (Р°РјРїР»РёС‚СѓРґР° 0) РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ РЅР° С†РµРЅС‚СЂР°Р»СЊРЅСѓСЋ Р»РёРЅРёСЋ.
+2. **Р¤РёРѕР»РµС‚РѕРІР°СЏ С‚РµРјР° РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ**:
+   - `AppSettings.dynamicCoverColors` Рё С‡С‚РµРЅРёРµ РёР· SharedPreferences вЂ” РґРµС„РѕР»С‚ `false`;
+   - `MyMusicTheme.dynamicColor` вЂ” РґРµС„РѕР»С‚ `false` (С„РёРєСЃРёСЂРѕРІР°РЅРЅР°СЏ С„РёРѕР»РµС‚РѕРІР°СЏ РїР°Р»РёС‚СЂР° РІРјРµСЃС‚Рѕ СЃРёСЃС‚РµРјРЅРѕРіРѕ Material You);
+   - РІС‹РєР»СЋС‡РµРЅРЅС‹Р№ РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ в†’ Р°РєС†РµРЅС‚ РёР· РЅР°СЃС‚СЂРѕРµРє (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ С„РёРѕР»РµС‚РѕРІС‹Р№), РІРєР»СЋС‡С‘РЅРЅС‹Р№ в†’ РїР°Р»РёС‚СЂР° РѕР±Р»РѕР¶РєРё РІ РїР»РµРµСЂРµ.
+3. **РЁР°РїРєР° РїР»РµРµСЂР°**: РІРµСЂС…РЅСЏСЏ РїР°РЅРµР»СЊ С‚РµРїРµСЂСЊ РґРІСѓС…СЃС‚СЂРѕС‡РЅР°СЏ вЂ” В«РЎР•Р™Р§РђРЎ РР“Р РђР•РўВ» (labelSmall, alpha 0.6) Рё РёРјСЏ Р°СЂС‚РёСЃС‚Р° (titleLarge, Bold) СЃ РјСЏРіРєРёРј СЃРІРµС‡РµРЅРёРµРј `Shadow(blurRadius = 8f, color = primary alpha 0.55)`; РґР»РёРЅРЅС‹Рµ РёРјРµРЅР° РѕР±СЂРµР·Р°СЋС‚СЃСЏ ellipsis.
+4. **РЎР±РѕСЂРєР°**: `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
 app/src/main/java/com/my/music/data/repository/SettingsRepository.kt
@@ -1334,39 +1345,39 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 5 — Тесты и QA-прочёс (20.10.2026)
+## вњ… Р¤Р°Р·Р° 5 вЂ” РўРµСЃС‚С‹ Рё QA-РїСЂРѕС‡С‘СЃ (20.10.2026)
 
-### Что сделано
-1. **Тестовая песочница (JVM, без эмулятора)**:
-   - В `app/build.gradle.kts` добавлены `junit:4.13.2`, `robolectric:4.14.1`, `kotlinx-coroutines-test:1.9.0`, `androidx.arch.core:core-testing:2.2.0`, `io.mockk:mockk:1.13.13`, `androidx.test:core-ktx:1.6.1`, `androidx.room:room-testing:2.6.1`.
-   - Включены `testOptions.unitTests.isIncludeAndroidResources = true` и `isReturnDefaultValues = true`.
-2. **Написаны 31 JVM-тест**:
-   - `LrcParserTest` (10): `[mm:ss.xx]`, `[mm:ss.x]`, `[mm:ss.xxx]`, несколько меток в строке, `[offset:+ms]`/`[offset:-ms]` с клампом в 0, караоке-теги `<mm:ss.xx>`, сортировка, фолбэк на несинхронный текст, CRLF, пустые/метаданные-only входы.
-   - `PlayerControllerQueueTest` (14): `playNext` и `playPrevious` для Repeat OFF/ALL/ONE, авто-окончание трека через `Player.Listener`, цикл переключения режима, возврат в начало после 3 секунд, shuffle сохраняет текущий трек первым и восстанавливает исходный порядок при выключении.
-   - `HomeViewModelGenreTest` (4): группировка «Твои жанры» из истории и лайков, дедупликация по `id`, trim жанра, отбрасывание пустых жанров, сортировка по размеру, лимит 20 недавних, реактивность чартов. Отдельного `CollectionsViewModel` в проекте нет — логика живёт в `HomeViewModel`.
-   - `LikedTracksRepositoryTest` (3, Robolectric + Room `inMemoryDatabaseBuilder`): добавление/удаление, `toggleLike`, реактивный Flow (пусто → лайк → снятие), сортировка `likedAt DESC`.
-3. **QA-фиксы**:
-   - `PlayerController.playNext()` по умолчанию больше не зацикливает очередь: ручной Next при Repeat OFF на последнем треке остаётся на месте; зацикливание — только у ALL/авто-перехода.
-   - `PlayerController.release()` отменяет внутренний `CoroutineScope`; запись в историю обёрнута в try/catch (сбой Room не ломает воспроизведение).
-   - `runCatching` больше не глотает `CancellationException`: добавлен `core/util/ResultExt.kt`, применён в SoundCloud-репозиториях, чартах, LRCLIB и `HomeViewModel`.
-   - `PlayerPalette`: кэш палитр стал потокобезопасным LRU на 32 записи (раньше — неограниченный `mutableMapOf` с гонками main/IO), `ImageLoader` создаётся один раз на процесс вместо нового на каждый трек.
-   - `PlayerQueueSheet`: key списка теперь по `track.id`, а не по индексу — состояние не «переезжает» при удалении.
-   - Добавлены стабильные ключи в статические списки Wave и скелетонов Home.
-   - Удалена мёртвая ветка `e is StreamInfo` в логе `resolveStreamUrl`.
-4. **Проверки**:
-   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-   - `.\gradlew test` — `BUILD SUCCESSFUL`, 31/31 тестов в debug и release, 0 failures, 0 errors.
-   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 critical/error, 20 warning (предложения обновить версии, exported MediaSessionService, non-lambda offset, отсутствие иконки приложения). Версии по правилам проекта не менялись.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РўРµСЃС‚РѕРІР°СЏ РїРµСЃРѕС‡РЅРёС†Р° (JVM, Р±РµР· СЌРјСѓР»СЏС‚РѕСЂР°)**:
+   - Р’ `app/build.gradle.kts` РґРѕР±Р°РІР»РµРЅС‹ `junit:4.13.2`, `robolectric:4.14.1`, `kotlinx-coroutines-test:1.9.0`, `androidx.arch.core:core-testing:2.2.0`, `io.mockk:mockk:1.13.13`, `androidx.test:core-ktx:1.6.1`, `androidx.room:room-testing:2.6.1`.
+   - Р’РєР»СЋС‡РµРЅС‹ `testOptions.unitTests.isIncludeAndroidResources = true` Рё `isReturnDefaultValues = true`.
+2. **РќР°РїРёСЃР°РЅС‹ 31 JVM-С‚РµСЃС‚**:
+   - `LrcParserTest` (10): `[mm:ss.xx]`, `[mm:ss.x]`, `[mm:ss.xxx]`, РЅРµСЃРєРѕР»СЊРєРѕ РјРµС‚РѕРє РІ СЃС‚СЂРѕРєРµ, `[offset:+ms]`/`[offset:-ms]` СЃ РєР»Р°РјРїРѕРј РІ 0, РєР°СЂР°РѕРєРµ-С‚РµРіРё `<mm:ss.xx>`, СЃРѕСЂС‚РёСЂРѕРІРєР°, С„РѕР»Р±СЌРє РЅР° РЅРµСЃРёРЅС…СЂРѕРЅРЅС‹Р№ С‚РµРєСЃС‚, CRLF, РїСѓСЃС‚С‹Рµ/РјРµС‚Р°РґР°РЅРЅС‹Рµ-only РІС…РѕРґС‹.
+   - `PlayerControllerQueueTest` (14): `playNext` Рё `playPrevious` РґР»СЏ Repeat OFF/ALL/ONE, Р°РІС‚Рѕ-РѕРєРѕРЅС‡Р°РЅРёРµ С‚СЂРµРєР° С‡РµСЂРµР· `Player.Listener`, С†РёРєР» РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ СЂРµР¶РёРјР°, РІРѕР·РІСЂР°С‚ РІ РЅР°С‡Р°Р»Рѕ РїРѕСЃР»Рµ 3 СЃРµРєСѓРЅРґ, shuffle СЃРѕС…СЂР°РЅСЏРµС‚ С‚РµРєСѓС‰РёР№ С‚СЂРµРє РїРµСЂРІС‹Рј Рё РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РёСЃС…РѕРґРЅС‹Р№ РїРѕСЂСЏРґРѕРє РїСЂРё РІС‹РєР»СЋС‡РµРЅРёРё.
+   - `HomeViewModelGenreTest` (4): РіСЂСѓРїРїРёСЂРѕРІРєР° В«РўРІРѕРё Р¶Р°РЅСЂС‹В» РёР· РёСЃС‚РѕСЂРёРё Рё Р»Р°Р№РєРѕРІ, РґРµРґСѓРїР»РёРєР°С†РёСЏ РїРѕ `id`, trim Р¶Р°РЅСЂР°, РѕС‚Р±СЂР°СЃС‹РІР°РЅРёРµ РїСѓСЃС‚С‹С… Р¶Р°РЅСЂРѕРІ, СЃРѕСЂС‚РёСЂРѕРІРєР° РїРѕ СЂР°Р·РјРµСЂСѓ, Р»РёРјРёС‚ 20 РЅРµРґР°РІРЅРёС…, СЂРµР°РєС‚РёРІРЅРѕСЃС‚СЊ С‡Р°СЂС‚РѕРІ. РћС‚РґРµР»СЊРЅРѕРіРѕ `CollectionsViewModel` РІ РїСЂРѕРµРєС‚Рµ РЅРµС‚ вЂ” Р»РѕРіРёРєР° Р¶РёРІС‘С‚ РІ `HomeViewModel`.
+   - `LikedTracksRepositoryTest` (3, Robolectric + Room `inMemoryDatabaseBuilder`): РґРѕР±Р°РІР»РµРЅРёРµ/СѓРґР°Р»РµРЅРёРµ, `toggleLike`, СЂРµР°РєС‚РёРІРЅС‹Р№ Flow (РїСѓСЃС‚Рѕ в†’ Р»Р°Р№Рє в†’ СЃРЅСЏС‚РёРµ), СЃРѕСЂС‚РёСЂРѕРІРєР° `likedAt DESC`.
+3. **QA-С„РёРєСЃС‹**:
+   - `PlayerController.playNext()` РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ Р±РѕР»СЊС€Рµ РЅРµ Р·Р°С†РёРєР»РёРІР°РµС‚ РѕС‡РµСЂРµРґСЊ: СЂСѓС‡РЅРѕР№ Next РїСЂРё Repeat OFF РЅР° РїРѕСЃР»РµРґРЅРµРј С‚СЂРµРєРµ РѕСЃС‚Р°С‘С‚СЃСЏ РЅР° РјРµСЃС‚Рµ; Р·Р°С†РёРєР»РёРІР°РЅРёРµ вЂ” С‚РѕР»СЊРєРѕ Сѓ ALL/Р°РІС‚Рѕ-РїРµСЂРµС…РѕРґР°.
+   - `PlayerController.release()` РѕС‚РјРµРЅСЏРµС‚ РІРЅСѓС‚СЂРµРЅРЅРёР№ `CoroutineScope`; Р·Р°РїРёСЃСЊ РІ РёСЃС‚РѕСЂРёСЋ РѕР±С‘СЂРЅСѓС‚Р° РІ try/catch (СЃР±РѕР№ Room РЅРµ Р»РѕРјР°РµС‚ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ).
+   - `runCatching` Р±РѕР»СЊС€Рµ РЅРµ РіР»РѕС‚Р°РµС‚ `CancellationException`: РґРѕР±Р°РІР»РµРЅ `core/util/ResultExt.kt`, РїСЂРёРјРµРЅС‘РЅ РІ SoundCloud-СЂРµРїРѕР·РёС‚РѕСЂРёСЏС…, С‡Р°СЂС‚Р°С…, LRCLIB Рё `HomeViewModel`.
+   - `PlayerPalette`: РєСЌС€ РїР°Р»РёС‚СЂ СЃС‚Р°Р» РїРѕС‚РѕРєРѕР±РµР·РѕРїР°СЃРЅС‹Рј LRU РЅР° 32 Р·Р°РїРёСЃРё (СЂР°РЅСЊС€Рµ вЂ” РЅРµРѕРіСЂР°РЅРёС‡РµРЅРЅС‹Р№ `mutableMapOf` СЃ РіРѕРЅРєР°РјРё main/IO), `ImageLoader` СЃРѕР·РґР°С‘С‚СЃСЏ РѕРґРёРЅ СЂР°Р· РЅР° РїСЂРѕС†РµСЃСЃ РІРјРµСЃС‚Рѕ РЅРѕРІРѕРіРѕ РЅР° РєР°Р¶РґС‹Р№ С‚СЂРµРє.
+   - `PlayerQueueSheet`: key СЃРїРёСЃРєР° С‚РµРїРµСЂСЊ РїРѕ `track.id`, Р° РЅРµ РїРѕ РёРЅРґРµРєСЃСѓ вЂ” СЃРѕСЃС‚РѕСЏРЅРёРµ РЅРµ В«РїРµСЂРµРµР·Р¶Р°РµС‚В» РїСЂРё СѓРґР°Р»РµРЅРёРё.
+   - Р”РѕР±Р°РІР»РµРЅС‹ СЃС‚Р°Р±РёР»СЊРЅС‹Рµ РєР»СЋС‡Рё РІ СЃС‚Р°С‚РёС‡РµСЃРєРёРµ СЃРїРёСЃРєРё Wave Рё СЃРєРµР»РµС‚РѕРЅРѕРІ Home.
+   - РЈРґР°Р»РµРЅР° РјС‘СЂС‚РІР°СЏ РІРµС‚РєР° `e is StreamInfo` РІ Р»РѕРіРµ `resolveStreamUrl`.
+4. **РџСЂРѕРІРµСЂРєРё**:
+   - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+   - `.\gradlew test` вЂ” `BUILD SUCCESSFUL`, 31/31 С‚РµСЃС‚РѕРІ РІ debug Рё release, 0 failures, 0 errors.
+   - `.\gradlew lint` вЂ” `BUILD SUCCESSFUL`, 0 critical/error, 20 warning (РїСЂРµРґР»РѕР¶РµРЅРёСЏ РѕР±РЅРѕРІРёС‚СЊ РІРµСЂСЃРёРё, exported MediaSessionService, non-lambda offset, РѕС‚СЃСѓС‚СЃС‚РІРёРµ РёРєРѕРЅРєРё РїСЂРёР»РѕР¶РµРЅРёСЏ). Р’РµСЂСЃРёРё РїРѕ РїСЂР°РІРёР»Р°Рј РїСЂРѕРµРєС‚Р° РЅРµ РјРµРЅСЏР»РёСЃСЊ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/src/test/java/com/my/music/testutil/MainDispatcherRule.kt (новый)
-app/src/test/java/com/my/music/data/source/lyrics/LrcParserTest.kt (новый)
-app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt (новый)
-app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt (новый)
-app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt (новый)
-app/src/main/java/com/my/music/core/util/ResultExt.kt (новый)
+app/src/test/java/com/my/music/testutil/MainDispatcherRule.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/my/music/data/source/lyrics/LrcParserTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/core/util/ResultExt.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/player/PlayerController.kt
 app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
 app/src/main/java/com/my/music/data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
@@ -1382,55 +1393,55 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 6 — Воспоминания, Моя волна и Top 10 (20.10.2026)
+## вњ… Р¤Р°Р·Р° 6 вЂ” Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏ, РњРѕСЏ РІРѕР»РЅР° Рё Top 10 (20.10.2026)
 
-### Что сделано
-1. **База данных и «Воспоминания»**:
-   - `LikedTrackEntity` дополнена полями `latitude: Double?`, `longitude: Double?`, `season: String?`; маппер `Track.toLikedEntity()` принимает эти значения (по умолчанию null).
-   - `AppDatabase` обновлена до версии **4**; миграции не пишутся — в `DatabaseModule` уже включён `fallbackToDestructiveMigration()`.
-   - `LikedTracksDao.getLikedTracksBySeason(season)` + `LikedTracksRepository.getLikedTracksBySeason()` — реактивный поток лайков текущего сезона.
-   - `SeasonProvider` (core/util): Winter (дек–фев), Spring (мар–май), Summer (июн–авг), Autumn (сен–ноя); сезон хранится строкой.
-   - `LocationProvider` + `FusedLocationProvider`: `FusedLocationProviderClient.getLastLocation()` с таймаутом 4 с, проверкой `ACCESS_FINE/COARSE_LOCATION`, безопасным фолбэком в null (нет разрешения/ошибка/таймаут). Добавлена зависимость `play-services-location:21.3.0` и разрешения в манифест.
-   - `PlayerViewModel.toggleLike()`: при постановке лайка запрашивает последнюю геопозицию и текущий сезон и сохраняет их в Room; при снятии лайка метаданные не нужны. Сбой геолокации не блокирует лайк.
-   - `HomeViewModel` наблюдает `getLikedTracksBySeason(текущий сезон)` и отдаёт `memories`; `HomeScreen` показывает карусель «Воспоминания» перед «Недавними».
-2. **«Моя волна»**:
-   - Новый `WaveRepository` / `WaveRepositoryImpl`: до 10 случайных лайков, до 5 недавних треков истории, до 5 находок по жанрам из лайков (поиск SoundCloud через NewPipe), фолбэк на Top 10 при отсутствии жанров; итог перемешивается и дедуплицируется, считается вклад каждого источника.
-   - `WaveViewModel`: генерирует подборку, сохраняет разбивку по источникам и сразу запускает очередь через общий `PlayerController.setQueueAndPlay()`; повторное нажатие во время генерации игнорируется.
-   - `WaveScreen` переписан: заглушки «Скоро» и фейковые чипы настроений убраны, добавлена большая градиентная кнопка «Включить волну» с пульсирующим ореолом, press-анимацией и индикатором загрузки; под кнопкой — чипы «N любимых / N из истории / N находок» и список треков с обложками, номерами и запуском с выбранной позиции.
-   - Ошибки сети показываются карточкой; пустые данные дают подсказку «добавьте лайки или послушайте треки».
-3. **Top 50 → Top 10**:
-   - Заголовок на главной заменён на «Top 10 SoundCloud», обновлены комментарии (карусель 1..10, KDoc чартов и кэша).
-   - Внутренние идентификаторы (`top50`, `TOP_50`) оставлены как ключ кэша Room для совместимости; API SoundCloud отдаёт 10 треков, поэтому нумерация и так ограничена 1..10.
-4. **Проверки**:
-   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-   - `.\gradlew test` — `BUILD SUCCESSFUL`, 38/38 тестов в debug и release (31 прежний + SeasonProvider 2 + WaveRepository 3 + Room-сезон 1 + Воспоминания HomeViewModel 1), 0 failures, 0 errors.
-   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (17 — предложения обновить версии, включая play-services-location; 2 — non-lambda offset; отсутствие иконки приложения; exported MediaSessionService).
-5. **Ограничение (исправлено в фазе 6.1)**: runtime-запрос геопозиции в этой фазе не добавлялся (по ТЗ менялся только манифест), поэтому координаты сохранялись лишь при ручной выдаче доступа в системных настройках.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р‘Р°Р·Р° РґР°РЅРЅС‹С… Рё В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ»**:
+   - `LikedTrackEntity` РґРѕРїРѕР»РЅРµРЅР° РїРѕР»СЏРјРё `latitude: Double?`, `longitude: Double?`, `season: String?`; РјР°РїРїРµСЂ `Track.toLikedEntity()` РїСЂРёРЅРёРјР°РµС‚ СЌС‚Рё Р·РЅР°С‡РµРЅРёСЏ (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ null).
+   - `AppDatabase` РѕР±РЅРѕРІР»РµРЅР° РґРѕ РІРµСЂСЃРёРё **4**; РјРёРіСЂР°С†РёРё РЅРµ РїРёС€СѓС‚СЃСЏ вЂ” РІ `DatabaseModule` СѓР¶Рµ РІРєР»СЋС‡С‘РЅ `fallbackToDestructiveMigration()`.
+   - `LikedTracksDao.getLikedTracksBySeason(season)` + `LikedTracksRepository.getLikedTracksBySeason()` вЂ” СЂРµР°РєС‚РёРІРЅС‹Р№ РїРѕС‚РѕРє Р»Р°Р№РєРѕРІ С‚РµРєСѓС‰РµРіРѕ СЃРµР·РѕРЅР°.
+   - `SeasonProvider` (core/util): Winter (РґРµРєвЂ“С„РµРІ), Spring (РјР°СЂвЂ“РјР°Р№), Summer (РёСЋРЅвЂ“Р°РІРі), Autumn (СЃРµРЅвЂ“РЅРѕСЏ); СЃРµР·РѕРЅ С…СЂР°РЅРёС‚СЃСЏ СЃС‚СЂРѕРєРѕР№.
+   - `LocationProvider` + `FusedLocationProvider`: `FusedLocationProviderClient.getLastLocation()` СЃ С‚Р°Р№РјР°СѓС‚РѕРј 4 СЃ, РїСЂРѕРІРµСЂРєРѕР№ `ACCESS_FINE/COARSE_LOCATION`, Р±РµР·РѕРїР°СЃРЅС‹Рј С„РѕР»Р±СЌРєРѕРј РІ null (РЅРµС‚ СЂР°Р·СЂРµС€РµРЅРёСЏ/РѕС€РёР±РєР°/С‚Р°Р№РјР°СѓС‚). Р”РѕР±Р°РІР»РµРЅР° Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ `play-services-location:21.3.0` Рё СЂР°Р·СЂРµС€РµРЅРёСЏ РІ РјР°РЅРёС„РµСЃС‚.
+   - `PlayerViewModel.toggleLike()`: РїСЂРё РїРѕСЃС‚Р°РЅРѕРІРєРµ Р»Р°Р№РєР° Р·Р°РїСЂР°С€РёРІР°РµС‚ РїРѕСЃР»РµРґРЅСЋСЋ РіРµРѕРїРѕР·РёС†РёСЋ Рё С‚РµРєСѓС‰РёР№ СЃРµР·РѕРЅ Рё СЃРѕС…СЂР°РЅСЏРµС‚ РёС… РІ Room; РїСЂРё СЃРЅСЏС‚РёРё Р»Р°Р№РєР° РјРµС‚Р°РґР°РЅРЅС‹Рµ РЅРµ РЅСѓР¶РЅС‹. РЎР±РѕР№ РіРµРѕР»РѕРєР°С†РёРё РЅРµ Р±Р»РѕРєРёСЂСѓРµС‚ Р»Р°Р№Рє.
+   - `HomeViewModel` РЅР°Р±Р»СЋРґР°РµС‚ `getLikedTracksBySeason(С‚РµРєСѓС‰РёР№ СЃРµР·РѕРЅ)` Рё РѕС‚РґР°С‘С‚ `memories`; `HomeScreen` РїРѕРєР°Р·С‹РІР°РµС‚ РєР°СЂСѓСЃРµР»СЊ В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ» РїРµСЂРµРґ В«РќРµРґР°РІРЅРёРјРёВ».
+2. **В«РњРѕСЏ РІРѕР»РЅР°В»**:
+   - РќРѕРІС‹Р№ `WaveRepository` / `WaveRepositoryImpl`: РґРѕ 10 СЃР»СѓС‡Р°Р№РЅС‹С… Р»Р°Р№РєРѕРІ, РґРѕ 5 РЅРµРґР°РІРЅРёС… С‚СЂРµРєРѕРІ РёСЃС‚РѕСЂРёРё, РґРѕ 5 РЅР°С…РѕРґРѕРє РїРѕ Р¶Р°РЅСЂР°Рј РёР· Р»Р°Р№РєРѕРІ (РїРѕРёСЃРє SoundCloud С‡РµСЂРµР· NewPipe), С„РѕР»Р±СЌРє РЅР° Top 10 РїСЂРё РѕС‚СЃСѓС‚СЃС‚РІРёРё Р¶Р°РЅСЂРѕРІ; РёС‚РѕРі РїРµСЂРµРјРµС€РёРІР°РµС‚СЃСЏ Рё РґРµРґСѓРїР»РёС†РёСЂСѓРµС‚СЃСЏ, СЃС‡РёС‚Р°РµС‚СЃСЏ РІРєР»Р°Рґ РєР°Р¶РґРѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР°.
+   - `WaveViewModel`: РіРµРЅРµСЂРёСЂСѓРµС‚ РїРѕРґР±РѕСЂРєСѓ, СЃРѕС…СЂР°РЅСЏРµС‚ СЂР°Р·Р±РёРІРєСѓ РїРѕ РёСЃС‚РѕС‡РЅРёРєР°Рј Рё СЃСЂР°Р·Сѓ Р·Р°РїСѓСЃРєР°РµС‚ РѕС‡РµСЂРµРґСЊ С‡РµСЂРµР· РѕР±С‰РёР№ `PlayerController.setQueueAndPlay()`; РїРѕРІС‚РѕСЂРЅРѕРµ РЅР°Р¶Р°С‚РёРµ РІРѕ РІСЂРµРјСЏ РіРµРЅРµСЂР°С†РёРё РёРіРЅРѕСЂРёСЂСѓРµС‚СЃСЏ.
+   - `WaveScreen` РїРµСЂРµРїРёСЃР°РЅ: Р·Р°РіР»СѓС€РєРё В«РЎРєРѕСЂРѕВ» Рё С„РµР№РєРѕРІС‹Рµ С‡РёРїС‹ РЅР°СЃС‚СЂРѕРµРЅРёР№ СѓР±СЂР°РЅС‹, РґРѕР±Р°РІР»РµРЅР° Р±РѕР»СЊС€Р°СЏ РіСЂР°РґРёРµРЅС‚РЅР°СЏ РєРЅРѕРїРєР° В«Р’РєР»СЋС‡РёС‚СЊ РІРѕР»РЅСѓВ» СЃ РїСѓР»СЊСЃРёСЂСѓСЋС‰РёРј РѕСЂРµРѕР»РѕРј, press-Р°РЅРёРјР°С†РёРµР№ Рё РёРЅРґРёРєР°С‚РѕСЂРѕРј Р·Р°РіСЂСѓР·РєРё; РїРѕРґ РєРЅРѕРїРєРѕР№ вЂ” С‡РёРїС‹ В«N Р»СЋР±РёРјС‹С… / N РёР· РёСЃС‚РѕСЂРёРё / N РЅР°С…РѕРґРѕРєВ» Рё СЃРїРёСЃРѕРє С‚СЂРµРєРѕРІ СЃ РѕР±Р»РѕР¶РєР°РјРё, РЅРѕРјРµСЂР°РјРё Рё Р·Р°РїСѓСЃРєРѕРј СЃ РІС‹Р±СЂР°РЅРЅРѕР№ РїРѕР·РёС†РёРё.
+   - РћС€РёР±РєРё СЃРµС‚Рё РїРѕРєР°Р·С‹РІР°СЋС‚СЃСЏ РєР°СЂС‚РѕС‡РєРѕР№; РїСѓСЃС‚С‹Рµ РґР°РЅРЅС‹Рµ РґР°СЋС‚ РїРѕРґСЃРєР°Р·РєСѓ В«РґРѕР±Р°РІСЊС‚Рµ Р»Р°Р№РєРё РёР»Рё РїРѕСЃР»СѓС€Р°Р№С‚Рµ С‚СЂРµРєРёВ».
+3. **Top 50 в†’ Top 10**:
+   - Р—Р°РіРѕР»РѕРІРѕРє РЅР° РіР»Р°РІРЅРѕР№ Р·Р°РјРµРЅС‘РЅ РЅР° В«Top 10 SoundCloudВ», РѕР±РЅРѕРІР»РµРЅС‹ РєРѕРјРјРµРЅС‚Р°СЂРёРё (РєР°СЂСѓСЃРµР»СЊ 1..10, KDoc С‡Р°СЂС‚РѕРІ Рё РєСЌС€Р°).
+   - Р’РЅСѓС‚СЂРµРЅРЅРёРµ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂС‹ (`top50`, `TOP_50`) РѕСЃС‚Р°РІР»РµРЅС‹ РєР°Рє РєР»СЋС‡ РєСЌС€Р° Room РґР»СЏ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё; API SoundCloud РѕС‚РґР°С‘С‚ 10 С‚СЂРµРєРѕРІ, РїРѕСЌС‚РѕРјСѓ РЅСѓРјРµСЂР°С†РёСЏ Рё С‚Р°Рє РѕРіСЂР°РЅРёС‡РµРЅР° 1..10.
+4. **РџСЂРѕРІРµСЂРєРё**:
+   - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+   - `.\gradlew test` вЂ” `BUILD SUCCESSFUL`, 38/38 С‚РµСЃС‚РѕРІ РІ debug Рё release (31 РїСЂРµР¶РЅРёР№ + SeasonProvider 2 + WaveRepository 3 + Room-СЃРµР·РѕРЅ 1 + Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏ HomeViewModel 1), 0 failures, 0 errors.
+   - `.\gradlew lint` вЂ” `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (17 вЂ” РїСЂРµРґР»РѕР¶РµРЅРёСЏ РѕР±РЅРѕРІРёС‚СЊ РІРµСЂСЃРёРё, РІРєР»СЋС‡Р°СЏ play-services-location; 2 вЂ” non-lambda offset; РѕС‚СЃСѓС‚СЃС‚РІРёРµ РёРєРѕРЅРєРё РїСЂРёР»РѕР¶РµРЅРёСЏ; exported MediaSessionService).
+5. **РћРіСЂР°РЅРёС‡РµРЅРёРµ (РёСЃРїСЂР°РІР»РµРЅРѕ РІ С„Р°Р·Рµ 6.1)**: runtime-Р·Р°РїСЂРѕСЃ РіРµРѕРїРѕР·РёС†РёРё РІ СЌС‚РѕР№ С„Р°Р·Рµ РЅРµ РґРѕР±Р°РІР»СЏР»СЃСЏ (РїРѕ РўР— РјРµРЅСЏР»СЃСЏ С‚РѕР»СЊРєРѕ РјР°РЅРёС„РµСЃС‚), РїРѕСЌС‚РѕРјСѓ РєРѕРѕСЂРґРёРЅР°С‚С‹ СЃРѕС…СЂР°РЅСЏР»РёСЃСЊ Р»РёС€СЊ РїСЂРё СЂСѓС‡РЅРѕР№ РІС‹РґР°С‡Рµ РґРѕСЃС‚СѓРїР° РІ СЃРёСЃС‚РµРјРЅС‹С… РЅР°СЃС‚СЂРѕР№РєР°С….
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
 app/src/main/AndroidManifest.xml
 app/src/main/java/com/my/music/core/di/RepositoryModule.kt
-app/src/main/java/com/my/music/core/location/LocationProvider.kt (новый)
-app/src/main/java/com/my/music/core/location/FusedLocationProvider.kt (новый)
-app/src/main/java/com/my/music/core/util/SeasonProvider.kt (новый)
+app/src/main/java/com/my/music/core/location/LocationProvider.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/core/location/FusedLocationProvider.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/core/util/SeasonProvider.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/data/local/AppDatabase.kt
 app/src/main/java/com/my/music/data/local/dao/LikedTracksDao.kt
 app/src/main/java/com/my/music/data/local/entity/LikedTrackEntity.kt
 app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
 app/src/main/java/com/my/music/data/repository/LikedTracksRepository.kt
-app/src/main/java/com/my/music/data/repository/WaveRepository.kt (новый)
-app/src/main/java/com/my/music/data/source/wave/WaveRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/data/repository/WaveRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/source/wave/WaveRepositoryImpl.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
 app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
 app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/main/java/com/my/music/feature/wave/WaveViewModel.kt (новый)
+app/src/main/java/com/my/music/feature/wave/WaveViewModel.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
 app/src/main/java/com/my/music/data/repository/SoundCloudChartsRepository.kt
 app/src/main/java/com/my/music/data/local/entity/ChartCacheEntity.kt
-app/src/test/java/com/my/music/core/util/SeasonProviderTest.kt (новый)
-app/src/test/java/com/my/music/data/source/wave/WaveRepositoryTest.kt (новый)
+app/src/test/java/com/my/music/core/util/SeasonProviderTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/my/music/data/source/wave/WaveRepositoryTest.kt (РЅРѕРІС‹Р№)
 app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt
 app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
 PROGRESS.md
@@ -1439,63 +1450,63 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 6.1 — Runtime-разрешение геопозиции (20.10.2026)
+## вњ… Р¤Р°Р·Р° 6.1 вЂ” Runtime-СЂР°Р·СЂРµС€РµРЅРёРµ РіРµРѕРїРѕР·РёС†РёРё (20.10.2026)
 
-### Что сделано
-1. **Общий хелпер разрешений**:
-   - Новый `LocationPermissions` (core/location): список `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`, проверка любого из них (`hasPermission`) и переход в карточку приложения через `ACTION_APPLICATION_DETAILS_SETTINGS`.
-   - `FusedLocationProvider` переведён на общий хелпер — логика проверки больше не дублируется.
-2. **Плеер**:
-   - `rememberLauncherForActivityResult(RequestMultiplePermissions())`: при первом лайке без доступа показывается стандартный диалог Android; после выдачи координаты сразу сохраняются.
-   - Лайк не теряется при отказе: `pendingLike` срабатывает после ответа и сохраняет трек без координат.
-   - Ненавязчивый баннер «Геопозиция выключена — „Воспоминания“ не сохранят место лайка»; кнопка «Разрешить» вызывает диалог, после отказа превращается в «Настройки» и открывает системные настройки приложения.
-   - Статус разрешения перечитывается при возврате в приложение (`Lifecycle.Event.ON_RESUME`), поэтому баннер исчезает после выдачи доступа в настройках.
-3. **Экран настроек**:
-   - Новая секция «ГЕОПОЗИЦИЯ» со статусом «Геопозиция: Разрешено / Запрещено», иконкой и пояснением, зачем нужен доступ.
-   - Кнопка «Проверить разрешения»: перечитывает статус, а при запрете открывает настройки приложения; статус также обновляется при возврате из системных настроек.
-4. **Проверки**:
-   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-   - `.\gradlew test` — `BUILD SUCCESSFUL`, 41/41 тест в debug и release (добавлены 3 теста `LocationPermissionsTest`: отказ по умолчанию, достаточность приблизительного доступа, корректный intent системных настроек), 0 failures, 0 errors.
-   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (без новых замечаний).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РћР±С‰РёР№ С…РµР»РїРµСЂ СЂР°Р·СЂРµС€РµРЅРёР№**:
+   - РќРѕРІС‹Р№ `LocationPermissions` (core/location): СЃРїРёСЃРѕРє `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`, РїСЂРѕРІРµСЂРєР° Р»СЋР±РѕРіРѕ РёР· РЅРёС… (`hasPermission`) Рё РїРµСЂРµС…РѕРґ РІ РєР°СЂС‚РѕС‡РєСѓ РїСЂРёР»РѕР¶РµРЅРёСЏ С‡РµСЂРµР· `ACTION_APPLICATION_DETAILS_SETTINGS`.
+   - `FusedLocationProvider` РїРµСЂРµРІРµРґС‘РЅ РЅР° РѕР±С‰РёР№ С…РµР»РїРµСЂ вЂ” Р»РѕРіРёРєР° РїСЂРѕРІРµСЂРєРё Р±РѕР»СЊС€Рµ РЅРµ РґСѓР±Р»РёСЂСѓРµС‚СЃСЏ.
+2. **РџР»РµРµСЂ**:
+   - `rememberLauncherForActivityResult(RequestMultiplePermissions())`: РїСЂРё РїРµСЂРІРѕРј Р»Р°Р№РєРµ Р±РµР· РґРѕСЃС‚СѓРїР° РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ РґРёР°Р»РѕРі Android; РїРѕСЃР»Рµ РІС‹РґР°С‡Рё РєРѕРѕСЂРґРёРЅР°С‚С‹ СЃСЂР°Р·Сѓ СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ.
+   - Р›Р°Р№Рє РЅРµ С‚РµСЂСЏРµС‚СЃСЏ РїСЂРё РѕС‚РєР°Р·Рµ: `pendingLike` СЃСЂР°Р±Р°С‚С‹РІР°РµС‚ РїРѕСЃР»Рµ РѕС‚РІРµС‚Р° Рё СЃРѕС…СЂР°РЅСЏРµС‚ С‚СЂРµРє Р±РµР· РєРѕРѕСЂРґРёРЅР°С‚.
+   - РќРµРЅР°РІСЏР·С‡РёРІС‹Р№ Р±Р°РЅРЅРµСЂ В«Р“РµРѕРїРѕР·РёС†РёСЏ РІС‹РєР»СЋС‡РµРЅР° вЂ” вЂћР’РѕСЃРїРѕРјРёРЅР°РЅРёСЏвЂњ РЅРµ СЃРѕС…СЂР°РЅСЏС‚ РјРµСЃС‚Рѕ Р»Р°Р№РєР°В»; РєРЅРѕРїРєР° В«Р Р°Р·СЂРµС€РёС‚СЊВ» РІС‹Р·С‹РІР°РµС‚ РґРёР°Р»РѕРі, РїРѕСЃР»Рµ РѕС‚РєР°Р·Р° РїСЂРµРІСЂР°С‰Р°РµС‚СЃСЏ РІ В«РќР°СЃС‚СЂРѕР№РєРёВ» Рё РѕС‚РєСЂС‹РІР°РµС‚ СЃРёСЃС‚РµРјРЅС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё РїСЂРёР»РѕР¶РµРЅРёСЏ.
+   - РЎС‚Р°С‚СѓСЃ СЂР°Р·СЂРµС€РµРЅРёСЏ РїРµСЂРµС‡РёС‚С‹РІР°РµС‚СЃСЏ РїСЂРё РІРѕР·РІСЂР°С‚Рµ РІ РїСЂРёР»РѕР¶РµРЅРёРµ (`Lifecycle.Event.ON_RESUME`), РїРѕСЌС‚РѕРјСѓ Р±Р°РЅРЅРµСЂ РёСЃС‡РµР·Р°РµС‚ РїРѕСЃР»Рµ РІС‹РґР°С‡Рё РґРѕСЃС‚СѓРїР° РІ РЅР°СЃС‚СЂРѕР№РєР°С….
+3. **Р­РєСЂР°РЅ РЅР°СЃС‚СЂРѕРµРє**:
+   - РќРѕРІР°СЏ СЃРµРєС†РёСЏ В«Р“Р•РћРџРћР—РР¦РРЇВ» СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј В«Р“РµРѕРїРѕР·РёС†РёСЏ: Р Р°Р·СЂРµС€РµРЅРѕ / Р—Р°РїСЂРµС‰РµРЅРѕВ», РёРєРѕРЅРєРѕР№ Рё РїРѕСЏСЃРЅРµРЅРёРµРј, Р·Р°С‡РµРј РЅСѓР¶РµРЅ РґРѕСЃС‚СѓРї.
+   - РљРЅРѕРїРєР° В«РџСЂРѕРІРµСЂРёС‚СЊ СЂР°Р·СЂРµС€РµРЅРёСЏВ»: РїРµСЂРµС‡РёС‚С‹РІР°РµС‚ СЃС‚Р°С‚СѓСЃ, Р° РїСЂРё Р·Р°РїСЂРµС‚Рµ РѕС‚РєСЂС‹РІР°РµС‚ РЅР°СЃС‚СЂРѕР№РєРё РїСЂРёР»РѕР¶РµРЅРёСЏ; СЃС‚Р°С‚СѓСЃ С‚Р°РєР¶Рµ РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ РїСЂРё РІРѕР·РІСЂР°С‚Рµ РёР· СЃРёСЃС‚РµРјРЅС‹С… РЅР°СЃС‚СЂРѕРµРє.
+4. **РџСЂРѕРІРµСЂРєРё**:
+   - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+   - `.\gradlew test` вЂ” `BUILD SUCCESSFUL`, 41/41 С‚РµСЃС‚ РІ debug Рё release (РґРѕР±Р°РІР»РµРЅС‹ 3 С‚РµСЃС‚Р° `LocationPermissionsTest`: РѕС‚РєР°Р· РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ, РґРѕСЃС‚Р°С‚РѕС‡РЅРѕСЃС‚СЊ РїСЂРёР±Р»РёР·РёС‚РµР»СЊРЅРѕРіРѕ РґРѕСЃС‚СѓРїР°, РєРѕСЂСЂРµРєС‚РЅС‹Р№ intent СЃРёСЃС‚РµРјРЅС‹С… РЅР°СЃС‚СЂРѕРµРє), 0 failures, 0 errors.
+   - `.\gradlew lint` вЂ” `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (Р±РµР· РЅРѕРІС‹С… Р·Р°РјРµС‡Р°РЅРёР№).
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/location/LocationPermissions.kt (новый)
+app/src/main/java/com/my/music/core/location/LocationPermissions.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/location/FusedLocationProvider.kt
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
-app/src/test/java/com/my/music/core/location/LocationPermissionsTest.kt (новый)
+app/src/test/java/com/my/music/core/location/LocationPermissionsTest.kt (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
 
 ---
 
-## ✅ Фаза 6.2 — Expressive-редизайн экрана текста (20.10.2026)
+## вњ… Р¤Р°Р·Р° 6.2 вЂ” Expressive-СЂРµРґРёР·Р°Р№РЅ СЌРєСЂР°РЅР° С‚РµРєСЃС‚Р° (20.10.2026)
 
-### Что сделано
-1. **Чистый экран без панелей**:
-   - Удалены обе стеклянные поверхности: верхняя карточка-витрина и нижняя панель вокруг строк.
-   - Осталась только парящая шапка: миниатюра обложки 42dp, название и артист без подложки.
-   - Удалена служебная подпись «Синхронный текст · LRCLIB» внизу — экран стал чище.
-2. **Типографика**:
-   - Базовая строка увеличена до 24sp / lineHeight 34sp (было 18/26); длинные строки по-прежнему свободно переносятся.
-   - Физический размер шрифта одинаков у всех строк — лейаут не прыгает.
-   - Активная строка: Bold, масштаб 1.08 через `graphicsLayer` с пружиной, мягкое свечение `Shadow` (primary, blur 18), градиент от primary к onSurface по прогрессу.
-   - Неактивные строки: onSurface с alpha 0.36; для несинхронного текста — alpha 0.82 без выделения.
-   - Дальние строки (дистанция ≥ 3) дополнительно размываются на 1.5–3.5dp (RenderEffect на API 31+, ниже — только прозрачность).
-3. **Отступы и маски**:
-   - `contentPadding` 64dp сверху / 136dp снизу для синхронного текста (28/136 — для обычного), межстрочный интервал 18dp.
-   - Верхняя градиентная маска 44dp и нижняя 124dp растворяют строки в цвете `surface` — текст не упирается в контролы.
-4. **Сохранённая механика**:
-   - Переход «обложка ↔ текст» с blur-уходом фона не изменялся.
-   - Логика автоскролла и центрирования прежняя; обновлён только `halfLinePx` под новую высоту строки (22dp).
-5. **Проверки**:
-   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-   - `.\gradlew test` — `BUILD SUCCESSFUL`, 41/41 тест, 0 failures, 0 errors.
-   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (без новых замечаний).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р§РёСЃС‚С‹Р№ СЌРєСЂР°РЅ Р±РµР· РїР°РЅРµР»РµР№**:
+   - РЈРґР°Р»РµРЅС‹ РѕР±Рµ СЃС‚РµРєР»СЏРЅРЅС‹Рµ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё: РІРµСЂС…РЅСЏСЏ РєР°СЂС‚РѕС‡РєР°-РІРёС‚СЂРёРЅР° Рё РЅРёР¶РЅСЏСЏ РїР°РЅРµР»СЊ РІРѕРєСЂСѓРі СЃС‚СЂРѕРє.
+   - РћСЃС‚Р°Р»Р°СЃСЊ С‚РѕР»СЊРєРѕ РїР°СЂСЏС‰Р°СЏ С€Р°РїРєР°: РјРёРЅРёР°С‚СЋСЂР° РѕР±Р»РѕР¶РєРё 42dp, РЅР°Р·РІР°РЅРёРµ Рё Р°СЂС‚РёСЃС‚ Р±РµР· РїРѕРґР»РѕР¶РєРё.
+   - РЈРґР°Р»РµРЅР° СЃР»СѓР¶РµР±РЅР°СЏ РїРѕРґРїРёСЃСЊ В«РЎРёРЅС…СЂРѕРЅРЅС‹Р№ С‚РµРєСЃС‚ В· LRCLIBВ» РІРЅРёР·Сѓ вЂ” СЌРєСЂР°РЅ СЃС‚Р°Р» С‡РёС‰Рµ.
+2. **РўРёРїРѕРіСЂР°С„РёРєР°**:
+   - Р‘Р°Р·РѕРІР°СЏ СЃС‚СЂРѕРєР° СѓРІРµР»РёС‡РµРЅР° РґРѕ 24sp / lineHeight 34sp (Р±С‹Р»Рѕ 18/26); РґР»РёРЅРЅС‹Рµ СЃС‚СЂРѕРєРё РїРѕ-РїСЂРµР¶РЅРµРјСѓ СЃРІРѕР±РѕРґРЅРѕ РїРµСЂРµРЅРѕСЃСЏС‚СЃСЏ.
+   - Р¤РёР·РёС‡РµСЃРєРёР№ СЂР°Р·РјРµСЂ С€СЂРёС„С‚Р° РѕРґРёРЅР°РєРѕРІ Сѓ РІСЃРµС… СЃС‚СЂРѕРє вЂ” Р»РµР№Р°СѓС‚ РЅРµ РїСЂС‹РіР°РµС‚.
+   - РђРєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР°: Bold, РјР°СЃС€С‚Р°Р± 1.08 С‡РµСЂРµР· `graphicsLayer` СЃ РїСЂСѓР¶РёРЅРѕР№, РјСЏРіРєРѕРµ СЃРІРµС‡РµРЅРёРµ `Shadow` (primary, blur 18), РіСЂР°РґРёРµРЅС‚ РѕС‚ primary Рє onSurface РїРѕ РїСЂРѕРіСЂРµСЃСЃСѓ.
+   - РќРµР°РєС‚РёРІРЅС‹Рµ СЃС‚СЂРѕРєРё: onSurface СЃ alpha 0.36; РґР»СЏ РЅРµСЃРёРЅС…СЂРѕРЅРЅРѕРіРѕ С‚РµРєСЃС‚Р° вЂ” alpha 0.82 Р±РµР· РІС‹РґРµР»РµРЅРёСЏ.
+   - Р”Р°Р»СЊРЅРёРµ СЃС‚СЂРѕРєРё (РґРёСЃС‚Р°РЅС†РёСЏ в‰Ґ 3) РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ СЂР°Р·РјС‹РІР°СЋС‚СЃСЏ РЅР° 1.5вЂ“3.5dp (RenderEffect РЅР° API 31+, РЅРёР¶Рµ вЂ” С‚РѕР»СЊРєРѕ РїСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ).
+3. **РћС‚СЃС‚СѓРїС‹ Рё РјР°СЃРєРё**:
+   - `contentPadding` 64dp СЃРІРµСЂС…Сѓ / 136dp СЃРЅРёР·Сѓ РґР»СЏ СЃРёРЅС…СЂРѕРЅРЅРѕРіРѕ С‚РµРєСЃС‚Р° (28/136 вЂ” РґР»СЏ РѕР±С‹С‡РЅРѕРіРѕ), РјРµР¶СЃС‚СЂРѕС‡РЅС‹Р№ РёРЅС‚РµСЂРІР°Р» 18dp.
+   - Р’РµСЂС…РЅСЏСЏ РіСЂР°РґРёРµРЅС‚РЅР°СЏ РјР°СЃРєР° 44dp Рё РЅРёР¶РЅСЏСЏ 124dp СЂР°СЃС‚РІРѕСЂСЏСЋС‚ СЃС‚СЂРѕРєРё РІ С†РІРµС‚Рµ `surface` вЂ” С‚РµРєСЃС‚ РЅРµ СѓРїРёСЂР°РµС‚СЃСЏ РІ РєРѕРЅС‚СЂРѕР»С‹.
+4. **РЎРѕС…СЂР°РЅС‘РЅРЅР°СЏ РјРµС…Р°РЅРёРєР°**:
+   - РџРµСЂРµС…РѕРґ В«РѕР±Р»РѕР¶РєР° в†” С‚РµРєСЃС‚В» СЃ blur-СѓС…РѕРґРѕРј С„РѕРЅР° РЅРµ РёР·РјРµРЅСЏР»СЃСЏ.
+   - Р›РѕРіРёРєР° Р°РІС‚РѕСЃРєСЂРѕР»Р»Р° Рё С†РµРЅС‚СЂРёСЂРѕРІР°РЅРёСЏ РїСЂРµР¶РЅСЏСЏ; РѕР±РЅРѕРІР»С‘РЅ С‚РѕР»СЊРєРѕ `halfLinePx` РїРѕРґ РЅРѕРІСѓСЋ РІС‹СЃРѕС‚Сѓ СЃС‚СЂРѕРєРё (22dp).
+5. **РџСЂРѕРІРµСЂРєРё**:
+   - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+   - `.\gradlew test` вЂ” `BUILD SUCCESSFUL`, 41/41 С‚РµСЃС‚, 0 failures, 0 errors.
+   - `.\gradlew lint` вЂ” `BUILD SUCCESSFUL`, 0 critical/error, 21 warning (Р±РµР· РЅРѕРІС‹С… Р·Р°РјРµС‡Р°РЅРёР№).
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
@@ -1504,113 +1515,113 @@ MEMORY.md
 
 ---
 
-## ✅ Фаза 6.5 — Настоящий фоновый плеер и безопасные миграции Room (20.10.2026)
+## вњ… Р¤Р°Р·Р° 6.5 вЂ” РќР°СЃС‚РѕСЏС‰РёР№ С„РѕРЅРѕРІС‹Р№ РїР»РµРµСЂ Рё Р±РµР·РѕРїР°СЃРЅС‹Рµ РјРёРіСЂР°С†РёРё Room (20.10.2026)
 
-### Что сделано
-1. **MediaSessionService как единственный владелец ExoPlayer**:
-   - `MusicService` создаёт `ExoPlayer` в `onGetSession()`, оборачивает его в `MediaSession` и возвращает контроллерам.
-   - Сервис сам показывает MediaStyle-уведомление, получает foreground-статус и переживает уход приложения в фон.
-   - `ExoPlayer` больше не является Hilt-синглтоном: удалён `PlayerModule`, чтобы UI не мог случайно освободить или создать второй плеер.
-   - `onDestroy()` освобождает сначала `MediaSession`, затем `ExoPlayer` — без «мёртвого» общего плеера.
-2. **PlayerController переведён на MediaController**:
-   - Контроллер подключается к сервису через `SessionToken` и `MediaController.Builder` с application context.
-   - Все команды (play/pause, seek, скорость, позиция, буфер) идут через `MediaController`.
-   - Сохранены очередь, shuffle/repeat, ручной Next при `Repeat OFF`, запись истории и повтор трека после ошибки.
-   - Кнопки Prev/Next из уведомления по-прежнему работают с очередью через `ForwardingPlayer`.
-3. **Метаданные уведомления**:
-   - В `MediaItem` добавлены `mediaId`, `MediaMetadata` с title, artist и artworkUri — в шторке отображаются название, исполнитель и обложка.
-4. **Фон и блокировка экрана**:
-   - ExoPlayer настроен на `AudioAttributes` с обработкой аудиофокуса.
-   - Включены `setHandleAudioBecomingNoisy(true)` и `setWakeMode(C.WAKE_MODE_NETWORK)` (partial wake lock + Wi-Fi lock).
-   - В манифест добавлен `WAKE_LOCK`.
-5. **Безопасные миграции Room**:
-   - Убран `fallbackToDestructiveMigration()`.
-   - Включён `exportSchema = true`, путь схем — `app/schemas` через `room.schemaLocation`.
-   - Добавлены реальные миграции: 1→2 создаёт `chart_cache`, 2→3 добавляет `latitude`/`longitude`, 3→4 добавляет `season`.
-   - Фактическая история: версия 3 не выпускалась отдельно, поэтому координаты закреплены за v3, а сезон — за v4; существующие лайки и история не теряются.
-   - Добавлен JVM-тест миграции v1→v4 с проверкой сохранности лайка, истории и создания кэша чартов.
-6. **Транзакционный лайк**:
-   - `LikedTracksDao.toggleLikedTrack()` помечен `@Transaction`: чтение и запись выполняются атомарно, двойной тап не оставляет БД в неверном состоянии.
-   - `LikedTracksRepositoryImpl.toggleLike()` переведён на новый метод DAO.
-7. **Проверки**:
-   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-   - `.\gradlew test` — `BUILD SUCCESSFUL`, 43/43 теста в debug и release, 0 failures, 0 errors.
-   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 errors, 21 warning (без новых замечаний).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **MediaSessionService РєР°Рє РµРґРёРЅСЃС‚РІРµРЅРЅС‹Р№ РІР»Р°РґРµР»РµС† ExoPlayer**:
+   - `MusicService` СЃРѕР·РґР°С‘С‚ `ExoPlayer` РІ `onGetSession()`, РѕР±РѕСЂР°С‡РёРІР°РµС‚ РµРіРѕ РІ `MediaSession` Рё РІРѕР·РІСЂР°С‰Р°РµС‚ РєРѕРЅС‚СЂРѕР»Р»РµСЂР°Рј.
+   - РЎРµСЂРІРёСЃ СЃР°Рј РїРѕРєР°Р·С‹РІР°РµС‚ MediaStyle-СѓРІРµРґРѕРјР»РµРЅРёРµ, РїРѕР»СѓС‡Р°РµС‚ foreground-СЃС‚Р°С‚СѓСЃ Рё РїРµСЂРµР¶РёРІР°РµС‚ СѓС…РѕРґ РїСЂРёР»РѕР¶РµРЅРёСЏ РІ С„РѕРЅ.
+   - `ExoPlayer` Р±РѕР»СЊС€Рµ РЅРµ СЏРІР»СЏРµС‚СЃСЏ Hilt-СЃРёРЅРіР»С‚РѕРЅРѕРј: СѓРґР°Р»С‘РЅ `PlayerModule`, С‡С‚РѕР±С‹ UI РЅРµ РјРѕРі СЃР»СѓС‡Р°Р№РЅРѕ РѕСЃРІРѕР±РѕРґРёС‚СЊ РёР»Рё СЃРѕР·РґР°С‚СЊ РІС‚РѕСЂРѕР№ РїР»РµРµСЂ.
+   - `onDestroy()` РѕСЃРІРѕР±РѕР¶РґР°РµС‚ СЃРЅР°С‡Р°Р»Р° `MediaSession`, Р·Р°С‚РµРј `ExoPlayer` вЂ” Р±РµР· В«РјС‘СЂС‚РІРѕРіРѕВ» РѕР±С‰РµРіРѕ РїР»РµРµСЂР°.
+2. **PlayerController РїРµСЂРµРІРµРґС‘РЅ РЅР° MediaController**:
+   - РљРѕРЅС‚СЂРѕР»Р»РµСЂ РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ Рє СЃРµСЂРІРёСЃСѓ С‡РµСЂРµР· `SessionToken` Рё `MediaController.Builder` СЃ application context.
+   - Р’СЃРµ РєРѕРјР°РЅРґС‹ (play/pause, seek, СЃРєРѕСЂРѕСЃС‚СЊ, РїРѕР·РёС†РёСЏ, Р±СѓС„РµСЂ) РёРґСѓС‚ С‡РµСЂРµР· `MediaController`.
+   - РЎРѕС…СЂР°РЅРµРЅС‹ РѕС‡РµСЂРµРґСЊ, shuffle/repeat, СЂСѓС‡РЅРѕР№ Next РїСЂРё `Repeat OFF`, Р·Р°РїРёСЃСЊ РёСЃС‚РѕСЂРёРё Рё РїРѕРІС‚РѕСЂ С‚СЂРµРєР° РїРѕСЃР»Рµ РѕС€РёР±РєРё.
+   - РљРЅРѕРїРєРё Prev/Next РёР· СѓРІРµРґРѕРјР»РµРЅРёСЏ РїРѕ-РїСЂРµР¶РЅРµРјСѓ СЂР°Р±РѕС‚Р°СЋС‚ СЃ РѕС‡РµСЂРµРґСЊСЋ С‡РµСЂРµР· `ForwardingPlayer`.
+3. **РњРµС‚Р°РґР°РЅРЅС‹Рµ СѓРІРµРґРѕРјР»РµРЅРёСЏ**:
+   - Р’ `MediaItem` РґРѕР±Р°РІР»РµРЅС‹ `mediaId`, `MediaMetadata` СЃ title, artist Рё artworkUri вЂ” РІ С€С‚РѕСЂРєРµ РѕС‚РѕР±СЂР°Р¶Р°СЋС‚СЃСЏ РЅР°Р·РІР°РЅРёРµ, РёСЃРїРѕР»РЅРёС‚РµР»СЊ Рё РѕР±Р»РѕР¶РєР°.
+4. **Р¤РѕРЅ Рё Р±Р»РѕРєРёСЂРѕРІРєР° СЌРєСЂР°РЅР°**:
+   - ExoPlayer РЅР°СЃС‚СЂРѕРµРЅ РЅР° `AudioAttributes` СЃ РѕР±СЂР°Р±РѕС‚РєРѕР№ Р°СѓРґРёРѕС„РѕРєСѓСЃР°.
+   - Р’РєР»СЋС‡РµРЅС‹ `setHandleAudioBecomingNoisy(true)` Рё `setWakeMode(C.WAKE_MODE_NETWORK)` (partial wake lock + Wi-Fi lock).
+   - Р’ РјР°РЅРёС„РµСЃС‚ РґРѕР±Р°РІР»РµРЅ `WAKE_LOCK`.
+5. **Р‘РµР·РѕРїР°СЃРЅС‹Рµ РјРёРіСЂР°С†РёРё Room**:
+   - РЈР±СЂР°РЅ `fallbackToDestructiveMigration()`.
+   - Р’РєР»СЋС‡С‘РЅ `exportSchema = true`, РїСѓС‚СЊ СЃС…РµРј вЂ” `app/schemas` С‡РµСЂРµР· `room.schemaLocation`.
+   - Р”РѕР±Р°РІР»РµРЅС‹ СЂРµР°Р»СЊРЅС‹Рµ РјРёРіСЂР°С†РёРё: 1в†’2 СЃРѕР·РґР°С‘С‚ `chart_cache`, 2в†’3 РґРѕР±Р°РІР»СЏРµС‚ `latitude`/`longitude`, 3в†’4 РґРѕР±Р°РІР»СЏРµС‚ `season`.
+   - Р¤Р°РєС‚РёС‡РµСЃРєР°СЏ РёСЃС‚РѕСЂРёСЏ: РІРµСЂСЃРёСЏ 3 РЅРµ РІС‹РїСѓСЃРєР°Р»Р°СЃСЊ РѕС‚РґРµР»СЊРЅРѕ, РїРѕСЌС‚РѕРјСѓ РєРѕРѕСЂРґРёРЅР°С‚С‹ Р·Р°РєСЂРµРїР»РµРЅС‹ Р·Р° v3, Р° СЃРµР·РѕРЅ вЂ” Р·Р° v4; СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ Р»Р°Р№РєРё Рё РёСЃС‚РѕСЂРёСЏ РЅРµ С‚РµСЂСЏСЋС‚СЃСЏ.
+   - Р”РѕР±Р°РІР»РµРЅ JVM-С‚РµСЃС‚ РјРёРіСЂР°С†РёРё v1в†’v4 СЃ РїСЂРѕРІРµСЂРєРѕР№ СЃРѕС…СЂР°РЅРЅРѕСЃС‚Рё Р»Р°Р№РєР°, РёСЃС‚РѕСЂРёРё Рё СЃРѕР·РґР°РЅРёСЏ РєСЌС€Р° С‡Р°СЂС‚РѕРІ.
+6. **РўСЂР°РЅР·Р°РєС†РёРѕРЅРЅС‹Р№ Р»Р°Р№Рє**:
+   - `LikedTracksDao.toggleLikedTrack()` РїРѕРјРµС‡РµРЅ `@Transaction`: С‡С‚РµРЅРёРµ Рё Р·Р°РїРёСЃСЊ РІС‹РїРѕР»РЅСЏСЋС‚СЃСЏ Р°С‚РѕРјР°СЂРЅРѕ, РґРІРѕР№РЅРѕР№ С‚Р°Рї РЅРµ РѕСЃС‚Р°РІР»СЏРµС‚ Р‘Р” РІ РЅРµРІРµСЂРЅРѕРј СЃРѕСЃС‚РѕСЏРЅРёРё.
+   - `LikedTracksRepositoryImpl.toggleLike()` РїРµСЂРµРІРµРґС‘РЅ РЅР° РЅРѕРІС‹Р№ РјРµС‚РѕРґ DAO.
+7. **РџСЂРѕРІРµСЂРєРё**:
+   - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+   - `.\gradlew test` вЂ” `BUILD SUCCESSFUL`, 43/43 С‚РµСЃС‚Р° РІ debug Рё release, 0 failures, 0 errors.
+   - `.\gradlew lint` вЂ” `BUILD SUCCESSFUL`, 0 errors, 21 warning (Р±РµР· РЅРѕРІС‹С… Р·Р°РјРµС‡Р°РЅРёР№).
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
 app/src/main/AndroidManifest.xml
 app/src/main/java/com/my/music/core/player/MusicService.kt
 app/src/main/java/com/my/music/core/player/PlayerController.kt
-app/src/main/java/com/my/music/core/player/PlayerModule.kt (удалён)
+app/src/main/java/com/my/music/core/player/PlayerModule.kt (СѓРґР°Р»С‘РЅ)
 app/src/main/java/com/my/music/data/local/AppDatabase.kt
 app/src/main/java/com/my/music/data/local/DatabaseModule.kt
-app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt (новый)
+app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/data/local/dao/LikedTracksDao.kt
 app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
-app/schemas/com.my.music.data.local.AppDatabase/4.json (новый)
+app/schemas/com.my.music.data.local.AppDatabase/4.json (РЅРѕРІС‹Р№)
 app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
-app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt (новый)
+app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
 
 ---
 
-## ✅ Фаза 7 — Умная «Моя волна»: сессии, Last.fm и feedback (21.10.2026)
+## вњ… Р¤Р°Р·Р° 7 вЂ” РЈРјРЅР°СЏ В«РњРѕСЏ РІРѕР»РЅР°В»: СЃРµСЃСЃРёРё, Last.fm Рё feedback (21.10.2026)
 
-### Что сделано
-1. **Сессионная бесконечная волна**:
-   - В `WaveRepository` добавлены `WaveSession`, `WaveBatch` и `StateFlow<WaveSession?> activeSession`; методы `startSession()`, `nextBatch()`, `reset()`.
-   - Старый `generateWave()` сохранён как совместимый вызов «новая сессия + первая пачка».
-   - Микс пачки: 40% похожие артисты Last.fm, 30% лайки, 20% история, 10% жанровые находки; пустые источники добираются из остальных, последний фолбэк — Top 10 SoundCloud.
-   - Внутри сессии ведётся `shownTrackIds`, поэтому треки не повторяются; накопительные счётчики источников обновляются после каждой пачки.
-   - `reset()` сразу обнуляет `activeSession`, затем ждёт mutex — летящий `nextBatch` не может дописать старую пачку в новую очередь.
-2. **Last.fm и семена вкусов**:
-   - Добавлены `LastFmApi`, DTO, `LastFmRepository` и `LastFmRepositoryImpl` (`artist.getsimilar`).
-   - Семена артистов: топ вкусов + история + лайки; семена жанров: топ вкусов + лайки + история.
-   - Похожие артисты ищутся в SoundCloud через NewPipe; ключ Last.fm берётся из `BuildConfig.LASTFM_API_KEY` (gradle property или env `LASTFM_API_KEY`). Без ключа волна работает на локальных источниках и чарте.
-3. **Локальный профиль вкусов и feedback**:
-   - Room v5: `genre_weights`, `artist_weights`, `user_preferences`; миграция `MIGRATION_4_5`, схема `5.json`.
-   - `TasteRepository`: дослушивание >80% — `+1`, скип <30 секунд — `-1`, лайк — `+3`, снятие лайка/дизлайк — `-3`; жанры и артисты нормализуются.
-   - `PlayerViewModel` считает реально проигранное время и пишет feedback при смене трека; лайки и снятие лайков также обновляют веса.
-4. **Автодозагрузка в плеере**:
-   - При 3 оставшихся треках `PlayerViewModel` запрашивает пачку из 12 и дописывает её через `PlayerController.appendToQueue()` без остановки текущего трека.
-   - `appendToQueue()` отбрасывает пустые id и дубликаты, сохраняет исходную очередь для корректного выключения shuffle.
-   - Ручной запуск трека из поиска или медиатеки сбрасывает сессию волны, чтобы автодозагрузка не подмешивала старую волну.
-5. **UI волны и настройки**:
-   - `WaveViewModel` синхронизирует список с очередью плеера, показывает накопительные счётчики всей сессии, жанры, RU-приоритет и состояние завершения.
-   - `WaveScreen`: бейджи «RU в приоритете»/«Все языки» и жанров, счётчик похожих, кнопки «Новая волна» и «Сбросить», сообщение о завершении волны.
-   - В настройках добавлен переключатель «Русская музыка в приоритете» (`pref_ru_language`), при включении кириллические треки идут первыми.
-6. **Проверки**:
-   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-   - `.\gradlew test` — `BUILD SUCCESSFUL`, 50/50 тестов в debug и release, 0 failures, 0 errors (+7 тестов: вкусы, сессия/дедупликация, RU-приоритет, appendToQueue, миграция v5).
-   - `.\gradlew lint` — `BUILD SUCCESSFUL`, 0 errors, 21 warning (без новых замечаний).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РЎРµСЃСЃРёРѕРЅРЅР°СЏ Р±РµСЃРєРѕРЅРµС‡РЅР°СЏ РІРѕР»РЅР°**:
+   - Р’ `WaveRepository` РґРѕР±Р°РІР»РµРЅС‹ `WaveSession`, `WaveBatch` Рё `StateFlow<WaveSession?> activeSession`; РјРµС‚РѕРґС‹ `startSession()`, `nextBatch()`, `reset()`.
+   - РЎС‚Р°СЂС‹Р№ `generateWave()` СЃРѕС…СЂР°РЅС‘РЅ РєР°Рє СЃРѕРІРјРµСЃС‚РёРјС‹Р№ РІС‹Р·РѕРІ В«РЅРѕРІР°СЏ СЃРµСЃСЃРёСЏ + РїРµСЂРІР°СЏ РїР°С‡РєР°В».
+   - РњРёРєСЃ РїР°С‡РєРё: 40% РїРѕС…РѕР¶РёРµ Р°СЂС‚РёСЃС‚С‹ Last.fm, 30% Р»Р°Р№РєРё, 20% РёСЃС‚РѕСЂРёСЏ, 10% Р¶Р°РЅСЂРѕРІС‹Рµ РЅР°С…РѕРґРєРё; РїСѓСЃС‚С‹Рµ РёСЃС‚РѕС‡РЅРёРєРё РґРѕР±РёСЂР°СЋС‚СЃСЏ РёР· РѕСЃС‚Р°Р»СЊРЅС‹С…, РїРѕСЃР»РµРґРЅРёР№ С„РѕР»Р±СЌРє вЂ” Top 10 SoundCloud.
+   - Р’РЅСѓС‚СЂРё СЃРµСЃСЃРёРё РІРµРґС‘С‚СЃСЏ `shownTrackIds`, РїРѕСЌС‚РѕРјСѓ С‚СЂРµРєРё РЅРµ РїРѕРІС‚РѕСЂСЏСЋС‚СЃСЏ; РЅР°РєРѕРїРёС‚РµР»СЊРЅС‹Рµ СЃС‡С‘С‚С‡РёРєРё РёСЃС‚РѕС‡РЅРёРєРѕРІ РѕР±РЅРѕРІР»СЏСЋС‚СЃСЏ РїРѕСЃР»Рµ РєР°Р¶РґРѕР№ РїР°С‡РєРё.
+   - `reset()` СЃСЂР°Р·Сѓ РѕР±РЅСѓР»СЏРµС‚ `activeSession`, Р·Р°С‚РµРј Р¶РґС‘С‚ mutex вЂ” Р»РµС‚СЏС‰РёР№ `nextBatch` РЅРµ РјРѕР¶РµС‚ РґРѕРїРёСЃР°С‚СЊ СЃС‚Р°СЂСѓСЋ РїР°С‡РєСѓ РІ РЅРѕРІСѓСЋ РѕС‡РµСЂРµРґСЊ.
+2. **Last.fm Рё СЃРµРјРµРЅР° РІРєСѓСЃРѕРІ**:
+   - Р”РѕР±Р°РІР»РµРЅС‹ `LastFmApi`, DTO, `LastFmRepository` Рё `LastFmRepositoryImpl` (`artist.getsimilar`).
+   - РЎРµРјРµРЅР° Р°СЂС‚РёСЃС‚РѕРІ: С‚РѕРї РІРєСѓСЃРѕРІ + РёСЃС‚РѕСЂРёСЏ + Р»Р°Р№РєРё; СЃРµРјРµРЅР° Р¶Р°РЅСЂРѕРІ: С‚РѕРї РІРєСѓСЃРѕРІ + Р»Р°Р№РєРё + РёСЃС‚РѕСЂРёСЏ.
+   - РџРѕС…РѕР¶РёРµ Р°СЂС‚РёСЃС‚С‹ РёС‰СѓС‚СЃСЏ РІ SoundCloud С‡РµСЂРµР· NewPipe; РєР»СЋС‡ Last.fm Р±РµСЂС‘С‚СЃСЏ РёР· `BuildConfig.LASTFM_API_KEY` (gradle property РёР»Рё env `LASTFM_API_KEY`). Р‘РµР· РєР»СЋС‡Р° РІРѕР»РЅР° СЂР°Р±РѕС‚Р°РµС‚ РЅР° Р»РѕРєР°Р»СЊРЅС‹С… РёСЃС‚РѕС‡РЅРёРєР°С… Рё С‡Р°СЂС‚Рµ.
+3. **Р›РѕРєР°Р»СЊРЅС‹Р№ РїСЂРѕС„РёР»СЊ РІРєСѓСЃРѕРІ Рё feedback**:
+   - Room v5: `genre_weights`, `artist_weights`, `user_preferences`; РјРёРіСЂР°С†РёСЏ `MIGRATION_4_5`, СЃС…РµРјР° `5.json`.
+   - `TasteRepository`: РґРѕСЃР»СѓС€РёРІР°РЅРёРµ >80% вЂ” `+1`, СЃРєРёРї <30 СЃРµРєСѓРЅРґ вЂ” `-1`, Р»Р°Р№Рє вЂ” `+3`, СЃРЅСЏС‚РёРµ Р»Р°Р№РєР°/РґРёР·Р»Р°Р№Рє вЂ” `-3`; Р¶Р°РЅСЂС‹ Рё Р°СЂС‚РёСЃС‚С‹ РЅРѕСЂРјР°Р»РёР·СѓСЋС‚СЃСЏ.
+   - `PlayerViewModel` СЃС‡РёС‚Р°РµС‚ СЂРµР°Р»СЊРЅРѕ РїСЂРѕРёРіСЂР°РЅРЅРѕРµ РІСЂРµРјСЏ Рё РїРёС€РµС‚ feedback РїСЂРё СЃРјРµРЅРµ С‚СЂРµРєР°; Р»Р°Р№РєРё Рё СЃРЅСЏС‚РёРµ Р»Р°Р№РєРѕРІ С‚Р°РєР¶Рµ РѕР±РЅРѕРІР»СЏСЋС‚ РІРµСЃР°.
+4. **РђРІС‚РѕРґРѕР·Р°РіСЂСѓР·РєР° РІ РїР»РµРµСЂРµ**:
+   - РџСЂРё 3 РѕСЃС‚Р°РІС€РёС…СЃСЏ С‚СЂРµРєР°С… `PlayerViewModel` Р·Р°РїСЂР°С€РёРІР°РµС‚ РїР°С‡РєСѓ РёР· 12 Рё РґРѕРїРёСЃС‹РІР°РµС‚ РµС‘ С‡РµСЂРµР· `PlayerController.appendToQueue()` Р±РµР· РѕСЃС‚Р°РЅРѕРІРєРё С‚РµРєСѓС‰РµРіРѕ С‚СЂРµРєР°.
+   - `appendToQueue()` РѕС‚Р±СЂР°СЃС‹РІР°РµС‚ РїСѓСЃС‚С‹Рµ id Рё РґСѓР±Р»РёРєР°С‚С‹, СЃРѕС…СЂР°РЅСЏРµС‚ РёСЃС…РѕРґРЅСѓСЋ РѕС‡РµСЂРµРґСЊ РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕРіРѕ РІС‹РєР»СЋС‡РµРЅРёСЏ shuffle.
+   - Р СѓС‡РЅРѕР№ Р·Р°РїСѓСЃРє С‚СЂРµРєР° РёР· РїРѕРёСЃРєР° РёР»Рё РјРµРґРёР°С‚РµРєРё СЃР±СЂР°СЃС‹РІР°РµС‚ СЃРµСЃСЃРёСЋ РІРѕР»РЅС‹, С‡С‚РѕР±С‹ Р°РІС‚РѕРґРѕР·Р°РіСЂСѓР·РєР° РЅРµ РїРѕРґРјРµС€РёРІР°Р»Р° СЃС‚Р°СЂСѓСЋ РІРѕР»РЅСѓ.
+5. **UI РІРѕР»РЅС‹ Рё РЅР°СЃС‚СЂРѕР№РєРё**:
+   - `WaveViewModel` СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓРµС‚ СЃРїРёСЃРѕРє СЃ РѕС‡РµСЂРµРґСЊСЋ РїР»РµРµСЂР°, РїРѕРєР°Р·С‹РІР°РµС‚ РЅР°РєРѕРїРёС‚РµР»СЊРЅС‹Рµ СЃС‡С‘С‚С‡РёРєРё РІСЃРµР№ СЃРµСЃСЃРёРё, Р¶Р°РЅСЂС‹, RU-РїСЂРёРѕСЂРёС‚РµС‚ Рё СЃРѕСЃС‚РѕСЏРЅРёРµ Р·Р°РІРµСЂС€РµРЅРёСЏ.
+   - `WaveScreen`: Р±РµР№РґР¶Рё В«RU РІ РїСЂРёРѕСЂРёС‚РµС‚РµВ»/В«Р’СЃРµ СЏР·С‹РєРёВ» Рё Р¶Р°РЅСЂРѕРІ, СЃС‡С‘С‚С‡РёРє РїРѕС…РѕР¶РёС…, РєРЅРѕРїРєРё В«РќРѕРІР°СЏ РІРѕР»РЅР°В» Рё В«РЎР±СЂРѕСЃРёС‚СЊВ», СЃРѕРѕР±С‰РµРЅРёРµ Рѕ Р·Р°РІРµСЂС€РµРЅРёРё РІРѕР»РЅС‹.
+   - Р’ РЅР°СЃС‚СЂРѕР№РєР°С… РґРѕР±Р°РІР»РµРЅ РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ В«Р СѓСЃСЃРєР°СЏ РјСѓР·С‹РєР° РІ РїСЂРёРѕСЂРёС‚РµС‚РµВ» (`pref_ru_language`), РїСЂРё РІРєР»СЋС‡РµРЅРёРё РєРёСЂРёР»Р»РёС‡РµСЃРєРёРµ С‚СЂРµРєРё РёРґСѓС‚ РїРµСЂРІС‹РјРё.
+6. **РџСЂРѕРІРµСЂРєРё**:
+   - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+   - `.\gradlew test` вЂ” `BUILD SUCCESSFUL`, 50/50 С‚РµСЃС‚РѕРІ РІ debug Рё release, 0 failures, 0 errors (+7 С‚РµСЃС‚РѕРІ: РІРєСѓСЃС‹, СЃРµСЃСЃРёСЏ/РґРµРґСѓРїР»РёРєР°С†РёСЏ, RU-РїСЂРёРѕСЂРёС‚РµС‚, appendToQueue, РјРёРіСЂР°С†РёСЏ v5).
+   - `.\gradlew lint` вЂ” `BUILD SUCCESSFUL`, 0 errors, 21 warning (Р±РµР· РЅРѕРІС‹С… Р·Р°РјРµС‡Р°РЅРёР№).
 
-### Ограничения
-- Last.fm-ключ не входит в репозиторий; без него качество волны ниже, но приложение полностью работоспособно.
-- Настроения волны (бодрая/спокойная/по любимым/открытия) пока не реализованы — это следующий этап.
-- Координаты и сезон по-прежнему сохраняются в лайках, но в карточках «Воспоминаний» ещё не отображаются.
+### РћРіСЂР°РЅРёС‡РµРЅРёСЏ
+- Last.fm-РєР»СЋС‡ РЅРµ РІС…РѕРґРёС‚ РІ СЂРµРїРѕР·РёС‚РѕСЂРёР№; Р±РµР· РЅРµРіРѕ РєР°С‡РµСЃС‚РІРѕ РІРѕР»РЅС‹ РЅРёР¶Рµ, РЅРѕ РїСЂРёР»РѕР¶РµРЅРёРµ РїРѕР»РЅРѕСЃС‚СЊСЋ СЂР°Р±РѕС‚РѕСЃРїРѕСЃРѕР±РЅРѕ.
+- РќР°СЃС‚СЂРѕРµРЅРёСЏ РІРѕР»РЅС‹ (Р±РѕРґСЂР°СЏ/СЃРїРѕРєРѕР№РЅР°СЏ/РїРѕ Р»СЋР±РёРјС‹Рј/РѕС‚РєСЂС‹С‚РёСЏ) РїРѕРєР° РЅРµ СЂРµР°Р»РёР·РѕРІР°РЅС‹ вЂ” СЌС‚Рѕ СЃР»РµРґСѓСЋС‰РёР№ СЌС‚Р°Рї.
+- РљРѕРѕСЂРґРёРЅР°С‚С‹ Рё СЃРµР·РѕРЅ РїРѕ-РїСЂРµР¶РЅРµРјСѓ СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ РІ Р»Р°Р№РєР°С…, РЅРѕ РІ РєР°СЂС‚РѕС‡РєР°С… В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёР№В» РµС‰С‘ РЅРµ РѕС‚РѕР±СЂР°Р¶Р°СЋС‚СЃСЏ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/schemas/com.my.music.data.local.AppDatabase/5.json (новый)
+app/schemas/com.my.music.data.local.AppDatabase/5.json (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/di/RepositoryModule.kt
 app/src/main/java/com/my/music/core/network/NetworkModule.kt
 app/src/main/java/com/my/music/core/player/PlayerController.kt
 app/src/main/java/com/my/music/data/local/AppDatabase.kt
 app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt
 app/src/main/java/com/my/music/data/local/DatabaseModule.kt
-app/src/main/java/com/my/music/data/local/TasteRepositoryImpl.kt (новый)
-app/src/main/java/com/my/music/data/local/dao/TasteDao.kt (новый)
-app/src/main/java/com/my/music/data/local/entity/TasteEntities.kt (новый)
-app/src/main/java/com/my/music/data/repository/LastFmRepository.kt (новый)
-app/src/main/java/com/my/music/data/repository/TasteRepository.kt (новый)
+app/src/main/java/com/my/music/data/local/TasteRepositoryImpl.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/local/dao/TasteDao.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/local/entity/TasteEntities.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/repository/LastFmRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/repository/TasteRepository.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/data/repository/WaveRepository.kt
-app/src/main/java/com/my/music/data/source/lastfm/LastFmApi.kt (новый)
-app/src/main/java/com/my/music/data/source/lastfm/LastFmRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/data/source/lastfm/LastFmApi.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/source/lastfm/LastFmRepositoryImpl.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/data/source/wave/WaveRepositoryImpl.kt
 app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
 app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
@@ -1619,7 +1630,7 @@ app/src/main/java/com/my/music/feature/wave/WaveScreen.kt
 app/src/main/java/com/my/music/feature/wave/WaveViewModel.kt
 app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
 app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
-app/src/test/java/com/my/music/data/local/TasteRepositoryTest.kt (новый)
+app/src/test/java/com/my/music/data/local/TasteRepositoryTest.kt (РЅРѕРІС‹Р№)
 app/src/test/java/com/my/music/data/source/wave/WaveRepositoryTest.kt
 README.md
 PROGRESS.md
@@ -1628,23 +1639,23 @@ MEMORY.md
 
 ---
 
-## ✅ Хотфикс — клик Play/Pause и качество волны (21.10.2026)
+## вњ… РҐРѕС‚С„РёРєСЃ вЂ” РєР»РёРє Play/Pause Рё РєР°С‡РµСЃС‚РІРѕ РІРѕР»РЅС‹ (21.10.2026)
 
-### Что сделано
-1. **Кнопка Play/Pause больше не перематывает трек**:
-   - `ExpressivePlayerSlider`: сенсорная высота уменьшена с 46 до 38dp, а тап и горизонтальный драг принимаются только в центральной полосе ±14dp вокруг волны. Раньше невидимая полоса слайдера перехватывала касания, предназначенные кнопкам под ней.
-   - `PlayerControlIsland`: зазор между волной и рядом кнопок увеличен с 8 до 14dp — даже промах пальцем выше кнопки не попадает в зону перемотки.
-   - `PlayerProgressSection`: заглушка загрузки выровнена по высоте (38dp), чтобы при Crossfade «загрузка → слайдер» лейаут не прыгал.
-2. **Волна: язык, артист и жанр**:
-   - Кандидаты каждого источника делятся на строгий и запасной пул. При RU-приоритете кириллица заполняет квоты первой, латиница подключается только при нехватке своих треков (раньше она просто сортировалась в конец, но всё равно попадала в пачку).
-   - Last.fm: похожие артисты с кириллицей проверяются первыми; результаты поиска SoundCloud фильтруются по реальному совпадению артиста (без регистра и пунктуации), чужие треки — только фолбэк.
-   - Жанры: находка считается валидной только при совпадении жанра по словам и с алиасами (рэп/rap, трэп/trap, хаус/house и т.д.); мусорные подписи («Music», «Podcast», «SoundCloud») не используются как семена.
-   - Соотношение 40/30/20/10 сохранено, порядок добора: строгие в квотах → строгие сверх квот → запасные → чарты.
-3. **Проверки**:
-   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-   - `.\gradlew test` — `BUILD SUCCESSFUL`, 53/53 теста в debug и release, 0 failures, 0 errors (+3 теста: язык при RU-приоритете, точный жанр, совпадение артиста).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РљРЅРѕРїРєР° Play/Pause Р±РѕР»СЊС€Рµ РЅРµ РїРµСЂРµРјР°С‚С‹РІР°РµС‚ С‚СЂРµРє**:
+   - `ExpressivePlayerSlider`: СЃРµРЅСЃРѕСЂРЅР°СЏ РІС‹СЃРѕС‚Р° СѓРјРµРЅСЊС€РµРЅР° СЃ 46 РґРѕ 38dp, Р° С‚Р°Рї Рё РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ РґСЂР°Рі РїСЂРёРЅРёРјР°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РІ С†РµРЅС‚СЂР°Р»СЊРЅРѕР№ РїРѕР»РѕСЃРµ В±14dp РІРѕРєСЂСѓРі РІРѕР»РЅС‹. Р Р°РЅСЊС€Рµ РЅРµРІРёРґРёРјР°СЏ РїРѕР»РѕСЃР° СЃР»Р°Р№РґРµСЂР° РїРµСЂРµС…РІР°С‚С‹РІР°Р»Р° РєР°СЃР°РЅРёСЏ, РїСЂРµРґРЅР°Р·РЅР°С‡РµРЅРЅС‹Рµ РєРЅРѕРїРєР°Рј РїРѕРґ РЅРµР№.
+   - `PlayerControlIsland`: Р·Р°Р·РѕСЂ РјРµР¶РґСѓ РІРѕР»РЅРѕР№ Рё СЂСЏРґРѕРј РєРЅРѕРїРѕРє СѓРІРµР»РёС‡РµРЅ СЃ 8 РґРѕ 14dp вЂ” РґР°Р¶Рµ РїСЂРѕРјР°С… РїР°Р»СЊС†РµРј РІС‹С€Рµ РєРЅРѕРїРєРё РЅРµ РїРѕРїР°РґР°РµС‚ РІ Р·РѕРЅСѓ РїРµСЂРµРјРѕС‚РєРё.
+   - `PlayerProgressSection`: Р·Р°РіР»СѓС€РєР° Р·Р°РіСЂСѓР·РєРё РІС‹СЂРѕРІРЅРµРЅР° РїРѕ РІС‹СЃРѕС‚Рµ (38dp), С‡С‚РѕР±С‹ РїСЂРё Crossfade В«Р·Р°РіСЂСѓР·РєР° в†’ СЃР»Р°Р№РґРµСЂВ» Р»РµР№Р°СѓС‚ РЅРµ РїСЂС‹РіР°Р».
+2. **Р’РѕР»РЅР°: СЏР·С‹Рє, Р°СЂС‚РёСЃС‚ Рё Р¶Р°РЅСЂ**:
+   - РљР°РЅРґРёРґР°С‚С‹ РєР°Р¶РґРѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР° РґРµР»СЏС‚СЃСЏ РЅР° СЃС‚СЂРѕРіРёР№ Рё Р·Р°РїР°СЃРЅРѕР№ РїСѓР». РџСЂРё RU-РїСЂРёРѕСЂРёС‚РµС‚Рµ РєРёСЂРёР»Р»РёС†Р° Р·Р°РїРѕР»РЅСЏРµС‚ РєРІРѕС‚С‹ РїРµСЂРІРѕР№, Р»Р°С‚РёРЅРёС†Р° РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё РЅРµС…РІР°С‚РєРµ СЃРІРѕРёС… С‚СЂРµРєРѕРІ (СЂР°РЅСЊС€Рµ РѕРЅР° РїСЂРѕСЃС‚Рѕ СЃРѕСЂС‚РёСЂРѕРІР°Р»Р°СЃСЊ РІ РєРѕРЅРµС†, РЅРѕ РІСЃС‘ СЂР°РІРЅРѕ РїРѕРїР°РґР°Р»Р° РІ РїР°С‡РєСѓ).
+   - Last.fm: РїРѕС…РѕР¶РёРµ Р°СЂС‚РёСЃС‚С‹ СЃ РєРёСЂРёР»Р»РёС†РµР№ РїСЂРѕРІРµСЂСЏСЋС‚СЃСЏ РїРµСЂРІС‹РјРё; СЂРµР·СѓР»СЊС‚Р°С‚С‹ РїРѕРёСЃРєР° SoundCloud С„РёР»СЊС‚СЂСѓСЋС‚СЃСЏ РїРѕ СЂРµР°Р»СЊРЅРѕРјСѓ СЃРѕРІРїР°РґРµРЅРёСЋ Р°СЂС‚РёСЃС‚Р° (Р±РµР· СЂРµРіРёСЃС‚СЂР° Рё РїСѓРЅРєС‚СѓР°С†РёРё), С‡СѓР¶РёРµ С‚СЂРµРєРё вЂ” С‚РѕР»СЊРєРѕ С„РѕР»Р±СЌРє.
+   - Р–Р°РЅСЂС‹: РЅР°С…РѕРґРєР° СЃС‡РёС‚Р°РµС‚СЃСЏ РІР°Р»РёРґРЅРѕР№ С‚РѕР»СЊРєРѕ РїСЂРё СЃРѕРІРїР°РґРµРЅРёРё Р¶Р°РЅСЂР° РїРѕ СЃР»РѕРІР°Рј Рё СЃ Р°Р»РёР°СЃР°РјРё (СЂСЌРї/rap, С‚СЂСЌРї/trap, С…Р°СѓСЃ/house Рё С‚.Рґ.); РјСѓСЃРѕСЂРЅС‹Рµ РїРѕРґРїРёСЃРё (В«MusicВ», В«PodcastВ», В«SoundCloudВ») РЅРµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ РєР°Рє СЃРµРјРµРЅР°.
+   - РЎРѕРѕС‚РЅРѕС€РµРЅРёРµ 40/30/20/10 СЃРѕС…СЂР°РЅРµРЅРѕ, РїРѕСЂСЏРґРѕРє РґРѕР±РѕСЂР°: СЃС‚СЂРѕРіРёРµ РІ РєРІРѕС‚Р°С… в†’ СЃС‚СЂРѕРіРёРµ СЃРІРµСЂС… РєРІРѕС‚ в†’ Р·Р°РїР°СЃРЅС‹Рµ в†’ С‡Р°СЂС‚С‹.
+3. **РџСЂРѕРІРµСЂРєРё**:
+   - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+   - `.\gradlew test` вЂ” `BUILD SUCCESSFUL`, 53/53 С‚РµСЃС‚Р° РІ debug Рё release, 0 failures, 0 errors (+3 С‚РµСЃС‚Р°: СЏР·С‹Рє РїСЂРё RU-РїСЂРёРѕСЂРёС‚РµС‚Рµ, С‚РѕС‡РЅС‹Р№ Р¶Р°РЅСЂ, СЃРѕРІРїР°РґРµРЅРёРµ Р°СЂС‚РёСЃС‚Р°).
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerSlider.kt
 app/src/main/java/com/my/music/core/ui/components/ExpressivePlayerComponents.kt
@@ -1657,55 +1668,55 @@ MEMORY.md
 
 ---
 
-## ✅ Сессия 9 — Офлайн-режим: скачивание треков (21.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 9 вЂ” РћС„Р»Р°Р№РЅ-СЂРµР¶РёРј: СЃРєР°С‡РёРІР°РЅРёРµ С‚СЂРµРєРѕРІ (21.10.2026)
 
-### Что сделано
-1. **Room v6 — таблица скачанных треков**:
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Room v6 вЂ” С‚Р°Р±Р»РёС†Р° СЃРєР°С‡Р°РЅРЅС‹С… С‚СЂРµРєРѕРІ**:
    - `DownloadedTrackEntity` (`downloaded_tracks`): `id`, `title`, `artist`, `artworkUrl`, `durationMs`, `localFilePath`, `downloadedAt`.
    - `DownloadedTracksDao`: `insert` (REPLACE), `delete`, `getById`, `isDownloaded(): Flow<Boolean>`, `getDownloadedIds(): Flow<List<String>>`, `getAll(): Flow<List<DownloadedTrackEntity>>`.
-   - `AppDatabase` → версия 6; `MIGRATION_5_6` создаёт таблицу; схема `app/schemas/com.my.music.data.local.AppDatabase/6.json` экспортирована.
-   - Доменная модель `DownloadedTrack` + мапперы; `DownloadRepository` / `DownloadRepositoryImpl`: проверка существования файла, автоочистка битых записей, удаление файла вместе с записью; Hilt-биндинги в `RepositoryModule` и `DatabaseModule`.
-2. **WorkManager — фоновое скачивание**:
-   - Добавлена зависимость `androidx.work:work-runtime-ktx:2.9.1` (единственная новая версия в проекте).
-   - `DownloadTrackWorker` (CoroutineWorker): резолвит поток через `SoundCloudRepository.resolveStreamUrl`, качает OkHttp в `filesDir/downloads/`, публикует прогресс в WorkManager, затем сохраняет запись в Room. Используется отдельный OkHttp-клиент: у общего `callTimeout = 15 с`, который убивал длинные загрузки.
-   - HLS (m3u8) одним mp3-файлом не сохранить — воркер завершает задачу ошибкой; прогрессивный MP3 резолвится приоритетно.
-   - Имя файла — безопасная версия `track.id` + короткий хэш + `.mp3`: у SoundCloud `id` — это URL со слэшами и двоеточиями.
-   - `DownloadManager`: `download(track)` ставит уникальную работу (`ExistingWorkPolicy.KEEP`, constraint `NetworkType.CONNECTED`), `cancel(trackId)`, `observeState(trackId): Flow<DownloadState>` (Room + WorkInfo).
-   - Зависимости воркера — через Hilt `@EntryPoint` (`DownloadWorkerEntryPoint`), без дополнительной зависимости `androidx.hilt:hilt-work`.
-3. **Плеер — локальный файл в приоритете**:
-   - `PlayerController.resolveAndPlay()` сначала спрашивает `DownloadRepository.getLocalFile(track.id)`; если файл существует — `MediaItem` строится из `file://`-URI, сеть не используется. Нет файла — прежний путь через `resolveStreamUrl`.
-   - В JVM-тестах конструктор принимает `downloadRepository = null` — 17 тестов очереди не менялись.
+   - `AppDatabase` в†’ РІРµСЂСЃРёСЏ 6; `MIGRATION_5_6` СЃРѕР·РґР°С‘С‚ С‚Р°Р±Р»РёС†Сѓ; СЃС…РµРјР° `app/schemas/com.my.music.data.local.AppDatabase/6.json` СЌРєСЃРїРѕСЂС‚РёСЂРѕРІР°РЅР°.
+   - Р”РѕРјРµРЅРЅР°СЏ РјРѕРґРµР»СЊ `DownloadedTrack` + РјР°РїРїРµСЂС‹; `DownloadRepository` / `DownloadRepositoryImpl`: РїСЂРѕРІРµСЂРєР° СЃСѓС‰РµСЃС‚РІРѕРІР°РЅРёСЏ С„Р°Р№Р»Р°, Р°РІС‚РѕРѕС‡РёСЃС‚РєР° Р±РёС‚С‹С… Р·Р°РїРёСЃРµР№, СѓРґР°Р»РµРЅРёРµ С„Р°Р№Р»Р° РІРјРµСЃС‚Рµ СЃ Р·Р°РїРёСЃСЊСЋ; Hilt-Р±РёРЅРґРёРЅРіРё РІ `RepositoryModule` Рё `DatabaseModule`.
+2. **WorkManager вЂ” С„РѕРЅРѕРІРѕРµ СЃРєР°С‡РёРІР°РЅРёРµ**:
+   - Р”РѕР±Р°РІР»РµРЅР° Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ `androidx.work:work-runtime-ktx:2.9.1` (РµРґРёРЅСЃС‚РІРµРЅРЅР°СЏ РЅРѕРІР°СЏ РІРµСЂСЃРёСЏ РІ РїСЂРѕРµРєС‚Рµ).
+   - `DownloadTrackWorker` (CoroutineWorker): СЂРµР·РѕР»РІРёС‚ РїРѕС‚РѕРє С‡РµСЂРµР· `SoundCloudRepository.resolveStreamUrl`, РєР°С‡Р°РµС‚ OkHttp РІ `filesDir/downloads/`, РїСѓР±Р»РёРєСѓРµС‚ РїСЂРѕРіСЂРµСЃСЃ РІ WorkManager, Р·Р°С‚РµРј СЃРѕС…СЂР°РЅСЏРµС‚ Р·Р°РїРёСЃСЊ РІ Room. РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РѕС‚РґРµР»СЊРЅС‹Р№ OkHttp-РєР»РёРµРЅС‚: Сѓ РѕР±С‰РµРіРѕ `callTimeout = 15 СЃ`, РєРѕС‚РѕСЂС‹Р№ СѓР±РёРІР°Р» РґР»РёРЅРЅС‹Рµ Р·Р°РіСЂСѓР·РєРё.
+   - HLS (m3u8) РѕРґРЅРёРј mp3-С„Р°Р№Р»РѕРј РЅРµ СЃРѕС…СЂР°РЅРёС‚СЊ вЂ” РІРѕСЂРєРµСЂ Р·Р°РІРµСЂС€Р°РµС‚ Р·Р°РґР°С‡Сѓ РѕС€РёР±РєРѕР№; РїСЂРѕРіСЂРµСЃСЃРёРІРЅС‹Р№ MP3 СЂРµР·РѕР»РІРёС‚СЃСЏ РїСЂРёРѕСЂРёС‚РµС‚РЅРѕ.
+   - РРјСЏ С„Р°Р№Р»Р° вЂ” Р±РµР·РѕРїР°СЃРЅР°СЏ РІРµСЂСЃРёСЏ `track.id` + РєРѕСЂРѕС‚РєРёР№ С…СЌС€ + `.mp3`: Сѓ SoundCloud `id` вЂ” СЌС‚Рѕ URL СЃРѕ СЃР»СЌС€Р°РјРё Рё РґРІРѕРµС‚РѕС‡РёСЏРјРё.
+   - `DownloadManager`: `download(track)` СЃС‚Р°РІРёС‚ СѓРЅРёРєР°Р»СЊРЅСѓСЋ СЂР°Р±РѕС‚Сѓ (`ExistingWorkPolicy.KEEP`, constraint `NetworkType.CONNECTED`), `cancel(trackId)`, `observeState(trackId): Flow<DownloadState>` (Room + WorkInfo).
+   - Р—Р°РІРёСЃРёРјРѕСЃС‚Рё РІРѕСЂРєРµСЂР° вЂ” С‡РµСЂРµР· Hilt `@EntryPoint` (`DownloadWorkerEntryPoint`), Р±РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕР№ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё `androidx.hilt:hilt-work`.
+3. **РџР»РµРµСЂ вЂ” Р»РѕРєР°Р»СЊРЅС‹Р№ С„Р°Р№Р» РІ РїСЂРёРѕСЂРёС‚РµС‚Рµ**:
+   - `PlayerController.resolveAndPlay()` СЃРЅР°С‡Р°Р»Р° СЃРїСЂР°С€РёРІР°РµС‚ `DownloadRepository.getLocalFile(track.id)`; РµСЃР»Рё С„Р°Р№Р» СЃСѓС‰РµСЃС‚РІСѓРµС‚ вЂ” `MediaItem` СЃС‚СЂРѕРёС‚СЃСЏ РёР· `file://`-URI, СЃРµС‚СЊ РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ. РќРµС‚ С„Р°Р№Р»Р° вЂ” РїСЂРµР¶РЅРёР№ РїСѓС‚СЊ С‡РµСЂРµР· `resolveStreamUrl`.
+   - Р’ JVM-С‚РµСЃС‚Р°С… РєРѕРЅСЃС‚СЂСѓРєС‚РѕСЂ РїСЂРёРЅРёРјР°РµС‚ `downloadRepository = null` вЂ” 17 С‚РµСЃС‚РѕРІ РѕС‡РµСЂРµРґРё РЅРµ РјРµРЅСЏР»РёСЃСЊ.
 4. **UI**:
-   - `PlayerScreen`: рядом с лайком — кнопка скачивания 46dp с тремя состояниями: стрелка вниз → круговой прогресс (детерминированный при известном размере) → галочка `DownloadDone`. Клик: скачать / отменить / ничего для уже готового трека.
-   - `PlayerViewModel`: `downloadState: StateFlow<DownloadState>` через `flatMapLatest` по текущему треку и `toggleDownload()`.
-   - `TrackCard`: маленькая галочка на обложке скачанного трека; `LibraryViewModel` и `SearchViewModel` отдают `downloadedIds: StateFlow<Set<String>>` из Room.
-   - В манифест добавлен `ACCESS_NETWORK_STATE` — он нужен сетевому constraint'у WorkManager.
-5. **Проверки**:
-   - `.\gradlew assembleDebug` — `BUILD SUCCESSFUL` после каждого из четырёх шагов.
-   - `.\gradlew test` — 53/53 теста, 0 failures (тест миграций обновлён под v6 и дополнительно проверяет таблицу `downloaded_tracks`).
+   - `PlayerScreen`: СЂСЏРґРѕРј СЃ Р»Р°Р№РєРѕРј вЂ” РєРЅРѕРїРєР° СЃРєР°С‡РёРІР°РЅРёСЏ 46dp СЃ С‚СЂРµРјСЏ СЃРѕСЃС‚РѕСЏРЅРёСЏРјРё: СЃС‚СЂРµР»РєР° РІРЅРёР· в†’ РєСЂСѓРіРѕРІРѕР№ РїСЂРѕРіСЂРµСЃСЃ (РґРµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅРЅС‹Р№ РїСЂРё РёР·РІРµСЃС‚РЅРѕРј СЂР°Р·РјРµСЂРµ) в†’ РіР°Р»РѕС‡РєР° `DownloadDone`. РљР»РёРє: СЃРєР°С‡Р°С‚СЊ / РѕС‚РјРµРЅРёС‚СЊ / РЅРёС‡РµРіРѕ РґР»СЏ СѓР¶Рµ РіРѕС‚РѕРІРѕРіРѕ С‚СЂРµРєР°.
+   - `PlayerViewModel`: `downloadState: StateFlow<DownloadState>` С‡РµСЂРµР· `flatMapLatest` РїРѕ С‚РµРєСѓС‰РµРјСѓ С‚СЂРµРєСѓ Рё `toggleDownload()`.
+   - `TrackCard`: РјР°Р»РµРЅСЊРєР°СЏ РіР°Р»РѕС‡РєР° РЅР° РѕР±Р»РѕР¶РєРµ СЃРєР°С‡Р°РЅРЅРѕРіРѕ С‚СЂРµРєР°; `LibraryViewModel` Рё `SearchViewModel` РѕС‚РґР°СЋС‚ `downloadedIds: StateFlow<Set<String>>` РёР· Room.
+   - Р’ РјР°РЅРёС„РµСЃС‚ РґРѕР±Р°РІР»РµРЅ `ACCESS_NETWORK_STATE` вЂ” РѕРЅ РЅСѓР¶РµРЅ СЃРµС‚РµРІРѕРјСѓ constraint'Сѓ WorkManager.
+5. **РџСЂРѕРІРµСЂРєРё**:
+   - `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL` РїРѕСЃР»Рµ РєР°Р¶РґРѕРіРѕ РёР· С‡РµС‚С‹СЂС‘С… С€Р°РіРѕРІ.
+   - `.\gradlew test` вЂ” 53/53 С‚РµСЃС‚Р°, 0 failures (С‚РµСЃС‚ РјРёРіСЂР°С†РёР№ РѕР±РЅРѕРІР»С‘РЅ РїРѕРґ v6 Рё РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ РїСЂРѕРІРµСЂСЏРµС‚ С‚Р°Р±Р»РёС†Сѓ `downloaded_tracks`).
 
-### Ограничения
-- Скачивается только прогрессивный MP3; треки, доступные лишь по HLS, офлайн недоступны.
-- Обложка офлайн не сохраняется (в Room только URL для UI).
-- Удаление скачанного трека пока возможно только через очистку данных приложения — отдельного экрана «Скачанное» нет.
+### РћРіСЂР°РЅРёС‡РµРЅРёСЏ
+- РЎРєР°С‡РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРѕРіСЂРµСЃСЃРёРІРЅС‹Р№ MP3; С‚СЂРµРєРё, РґРѕСЃС‚СѓРїРЅС‹Рµ Р»РёС€СЊ РїРѕ HLS, РѕС„Р»Р°Р№РЅ РЅРµРґРѕСЃС‚СѓРїРЅС‹.
+- РћР±Р»РѕР¶РєР° РѕС„Р»Р°Р№РЅ РЅРµ СЃРѕС…СЂР°РЅСЏРµС‚СЃСЏ (РІ Room С‚РѕР»СЊРєРѕ URL РґР»СЏ UI).
+- РЈРґР°Р»РµРЅРёРµ СЃРєР°С‡Р°РЅРЅРѕРіРѕ С‚СЂРµРєР° РїРѕРєР° РІРѕР·РјРѕР¶РЅРѕ С‚РѕР»СЊРєРѕ С‡РµСЂРµР· РѕС‡РёСЃС‚РєСѓ РґР°РЅРЅС‹С… РїСЂРёР»РѕР¶РµРЅРёСЏ вЂ” РѕС‚РґРµР»СЊРЅРѕРіРѕ СЌРєСЂР°РЅР° В«РЎРєР°С‡Р°РЅРЅРѕРµВ» РЅРµС‚.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
 app/src/main/AndroidManifest.xml
-data/model/DownloadedTrack.kt (новый)
-data/local/entity/DownloadedTrackEntity.kt (новый)
-data/local/dao/DownloadedTracksDao.kt (новый)
-data/local/DownloadRepositoryImpl.kt (новый)
-data/repository/DownloadRepository.kt (новый)
+data/model/DownloadedTrack.kt (РЅРѕРІС‹Р№)
+data/local/entity/DownloadedTrackEntity.kt (РЅРѕРІС‹Р№)
+data/local/dao/DownloadedTracksDao.kt (РЅРѕРІС‹Р№)
+data/local/DownloadRepositoryImpl.kt (РЅРѕРІС‹Р№)
+data/repository/DownloadRepository.kt (РЅРѕРІС‹Р№)
 data/local/AppDatabase.kt
 data/local/DatabaseMigrations.kt
 data/local/DatabaseModule.kt
 core/di/RepositoryModule.kt
-core/download/DownloadState.kt (новый)
-core/download/DownloadTrackWorker.kt (новый)
-core/download/DownloadManager.kt (новый)
-core/download/DownloadWorkerEntryPoint.kt (новый)
+core/download/DownloadState.kt (РЅРѕРІС‹Р№)
+core/download/DownloadTrackWorker.kt (РЅРѕРІС‹Р№)
+core/download/DownloadManager.kt (РЅРѕРІС‹Р№)
+core/download/DownloadWorkerEntryPoint.kt (РЅРѕРІС‹Р№)
 core/player/PlayerController.kt
 feature/player/PlayerViewModel.kt
 feature/player/PlayerScreen.kt
@@ -1715,53 +1726,53 @@ feature/library/LibraryScreen.kt
 feature/search/SearchViewModel.kt
 feature/search/SearchScreen.kt
 app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
-app/schemas/com.my.music.data.local.AppDatabase/6.json (новый)
+app/schemas/com.my.music.data.local.AppDatabase/6.json (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
 
 ---
 
-## ✅ Хотфикс — Media3 DownloadManager для HLS (21.10.2026)
+## вњ… РҐРѕС‚С„РёРєСЃ вЂ” Media3 DownloadManager РґР»СЏ HLS (21.10.2026)
 
-### Причина
-- Воркер падал с `Result.failure`: SoundCloud отдаёт трек с `deliveryMethod=HLS`, а старый OkHttp-загрузчик умел скачивать только один прогрессивный файл.
+### РџСЂРёС‡РёРЅР°
+- Р’РѕСЂРєРµСЂ РїР°РґР°Р» СЃ `Result.failure`: SoundCloud РѕС‚РґР°С‘С‚ С‚СЂРµРє СЃ `deliveryMethod=HLS`, Р° СЃС‚Р°СЂС‹Р№ OkHttp-Р·Р°РіСЂСѓР·С‡РёРє СѓРјРµР» СЃРєР°С‡РёРІР°С‚СЊ С‚РѕР»СЊРєРѕ РѕРґРёРЅ РїСЂРѕРіСЂРµСЃСЃРёРІРЅС‹Р№ С„Р°Р№Р».
 
-### Что сделано
-1. **Зависимости**: явно добавлены `androidx.media3:media3-datasource:1.5.0` и `androidx.media3:media3-database:1.5.0` (exoplayer и exoplayer-hls уже были).
-2. **Кэш и DownloadManager**:
-   - `OfflineMediaModule` (Hilt, `@Singleton`): `StandaloneDatabaseProvider` (в Media3 это замена `ExoDatabaseProvider`), `SimpleCache(filesDir/media_cache, NoOpCacheEvictor)`, `CacheDataSource.Factory` для плеера и Media3 `DownloadManager` с upstream `DefaultDataSource`/`DefaultHttpDataSource` (UA `MyMusicApp/1.0`).
-   - Кэш один на процесс: и загрузчик, и `MusicService` используют один `SimpleCache`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р—Р°РІРёСЃРёРјРѕСЃС‚Рё**: СЏРІРЅРѕ РґРѕР±Р°РІР»РµРЅС‹ `androidx.media3:media3-datasource:1.5.0` Рё `androidx.media3:media3-database:1.5.0` (exoplayer Рё exoplayer-hls СѓР¶Рµ Р±С‹Р»Рё).
+2. **РљСЌС€ Рё DownloadManager**:
+   - `OfflineMediaModule` (Hilt, `@Singleton`): `StandaloneDatabaseProvider` (РІ Media3 СЌС‚Рѕ Р·Р°РјРµРЅР° `ExoDatabaseProvider`), `SimpleCache(filesDir/media_cache, NoOpCacheEvictor)`, `CacheDataSource.Factory` РґР»СЏ РїР»РµРµСЂР° Рё Media3 `DownloadManager` СЃ upstream `DefaultDataSource`/`DefaultHttpDataSource` (UA `MyMusicApp/1.0`).
+   - РљСЌС€ РѕРґРёРЅ РЅР° РїСЂРѕС†РµСЃСЃ: Рё Р·Р°РіСЂСѓР·С‡РёРє, Рё `MusicService` РёСЃРїРѕР»СЊР·СѓСЋС‚ РѕРґРёРЅ `SimpleCache`.
 3. **`OfflineDownloadManager`**:
-   - `enqueue(track, stream)`: `DownloadRequest.Builder(track.id, uri).setMimeType(...)`; HLS → `MimeTypes.APPLICATION_M3U8`, MP3 → `AUDIO_MPEG`; повторная постановка активной/готовой загрузки пропускается.
-   - `observeDownload(trackId)`: `Flow<MediaDownloadState>` через `DownloadManager.Listener` + начальное состояние из `DownloadIndex` на IO.
-   - `awaitCompletion(...)`: ожидание терминального состояния с публикацией прогресса (блокирующего API в Media3 нет).
+   - `enqueue(track, stream)`: `DownloadRequest.Builder(track.id, uri).setMimeType(...)`; HLS в†’ `MimeTypes.APPLICATION_M3U8`, MP3 в†’ `AUDIO_MPEG`; РїРѕРІС‚РѕСЂРЅР°СЏ РїРѕСЃС‚Р°РЅРѕРІРєР° Р°РєС‚РёРІРЅРѕР№/РіРѕС‚РѕРІРѕР№ Р·Р°РіСЂСѓР·РєРё РїСЂРѕРїСѓСЃРєР°РµС‚СЃСЏ.
+   - `observeDownload(trackId)`: `Flow<MediaDownloadState>` С‡РµСЂРµР· `DownloadManager.Listener` + РЅР°С‡Р°Р»СЊРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РёР· `DownloadIndex` РЅР° IO.
+   - `awaitCompletion(...)`: РѕР¶РёРґР°РЅРёРµ С‚РµСЂРјРёРЅР°Р»СЊРЅРѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ СЃ РїСѓР±Р»РёРєР°С†РёРµР№ РїСЂРѕРіСЂРµСЃСЃР° (Р±Р»РѕРєРёСЂСѓСЋС‰РµРіРѕ API РІ Media3 РЅРµС‚).
    - `remove(trackId)`, `isCompleted(trackId)`.
-4. **`DownloadTrackWorker`** переписан: resolve → `enqueue` → `awaitCompletion` → Room `save(mediaUrl, mimeType)`; отмена удаляет недокачанные данные; любая ошибка → `Result.failure` (WorkInfo FAILED → UI Failed).
+4. **`DownloadTrackWorker`** РїРµСЂРµРїРёСЃР°РЅ: resolve в†’ `enqueue` в†’ `awaitCompletion` в†’ Room `save(mediaUrl, mimeType)`; РѕС‚РјРµРЅР° СѓРґР°Р»СЏРµС‚ РЅРµРґРѕРєР°С‡Р°РЅРЅС‹Рµ РґР°РЅРЅС‹Рµ; Р»СЋР±Р°СЏ РѕС€РёР±РєР° в†’ `Result.failure` (WorkInfo FAILED в†’ UI Failed).
 5. **Room v7**:
-   - `DownloadedTrackEntity`/`DownloadedTrack`: `mediaUrl` + `mimeType` вместо `localFilePath`; `DownloadRepository.save(track, mediaUrl, mimeType)`; `getDownloadedTrack` проверяет наличие данных в кэше Media3 (или файла после миграции).
-   - `MIGRATION_6_7`: пересоздание таблицы, старые `localFilePath` → `file://...`, `mimeType = audio/mpeg`; `AppDatabase` v7, схема `7.json`.
-6. **Плеер и UI**:
-   - `MusicService`: `ExoPlayer` создаётся с `DefaultMediaSourceFactory(cacheDataSourceFactory)` — скачанные HLS-сегменты и MP3 играют из общего кэша без сети.
-   - `PlayerController.resolveAndPlay`: скачанный трек играет по `mediaUrl`, `isHls` определяется по `mimeType`.
-   - `DownloadManager` (обёртка): `observeState` объединяет Room + `MediaDownloadState` + WorkInfo; активная задача приоритетнее старых записей unique work.
-   - `PlayerScreen`: `SnackbarHost` + `LaunchedEffect(downloadState)` с текстом «Не удалось скачать трек (доступен только онлайн)».
+   - `DownloadedTrackEntity`/`DownloadedTrack`: `mediaUrl` + `mimeType` РІРјРµСЃС‚Рѕ `localFilePath`; `DownloadRepository.save(track, mediaUrl, mimeType)`; `getDownloadedTrack` РїСЂРѕРІРµСЂСЏРµС‚ РЅР°Р»РёС‡РёРµ РґР°РЅРЅС‹С… РІ РєСЌС€Рµ Media3 (РёР»Рё С„Р°Р№Р»Р° РїРѕСЃР»Рµ РјРёРіСЂР°С†РёРё).
+   - `MIGRATION_6_7`: РїРµСЂРµСЃРѕР·РґР°РЅРёРµ С‚Р°Р±Р»РёС†С‹, СЃС‚Р°СЂС‹Рµ `localFilePath` в†’ `file://...`, `mimeType = audio/mpeg`; `AppDatabase` v7, СЃС…РµРјР° `7.json`.
+6. **РџР»РµРµСЂ Рё UI**:
+   - `MusicService`: `ExoPlayer` СЃРѕР·РґР°С‘С‚СЃСЏ СЃ `DefaultMediaSourceFactory(cacheDataSourceFactory)` вЂ” СЃРєР°С‡Р°РЅРЅС‹Рµ HLS-СЃРµРіРјРµРЅС‚С‹ Рё MP3 РёРіСЂР°СЋС‚ РёР· РѕР±С‰РµРіРѕ РєСЌС€Р° Р±РµР· СЃРµС‚Рё.
+   - `PlayerController.resolveAndPlay`: СЃРєР°С‡Р°РЅРЅС‹Р№ С‚СЂРµРє РёРіСЂР°РµС‚ РїРѕ `mediaUrl`, `isHls` РѕРїСЂРµРґРµР»СЏРµС‚СЃСЏ РїРѕ `mimeType`.
+   - `DownloadManager` (РѕР±С‘СЂС‚РєР°): `observeState` РѕР±СЉРµРґРёРЅСЏРµС‚ Room + `MediaDownloadState` + WorkInfo; Р°РєС‚РёРІРЅР°СЏ Р·Р°РґР°С‡Р° РїСЂРёРѕСЂРёС‚РµС‚РЅРµРµ СЃС‚Р°СЂС‹С… Р·Р°РїРёСЃРµР№ unique work.
+   - `PlayerScreen`: `SnackbarHost` + `LaunchedEffect(downloadState)` СЃ С‚РµРєСЃС‚РѕРј В«РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ С‚СЂРµРє (РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РѕРЅР»Р°Р№РЅ)В».
 
-### Проверки
-- `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-- `.\gradlew testDebugUnitTest` — 54/54, 0 failures, 0 errors (+1 тест миграции 6→7: конвертация пути в `file://`-URL и `audio/mpeg`).
+### РџСЂРѕРІРµСЂРєРё
+- `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+- `.\gradlew testDebugUnitTest` вЂ” 54/54, 0 failures, 0 errors (+1 С‚РµСЃС‚ РјРёРіСЂР°С†РёРё 6в†’7: РєРѕРЅРІРµСЂС‚Р°С†РёСЏ РїСѓС‚Рё РІ `file://`-URL Рё `audio/mpeg`).
 
-### Ограничения
-- HLS не превращается в один mp3: офлайн-воспроизведение возможно только через `CacheDataSource` в этом приложении (файл не экспортируется).
-- Обложка офлайн не сохраняется (в Room только URL для UI).
-- Отдельного экрана «Скачанное» и удаления из UI по-прежнему нет — удаление возможно через очистку данных приложения.
+### РћРіСЂР°РЅРёС‡РµРЅРёСЏ
+- HLS РЅРµ РїСЂРµРІСЂР°С‰Р°РµС‚СЃСЏ РІ РѕРґРёРЅ mp3: РѕС„Р»Р°Р№РЅ-РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ РІРѕР·РјРѕР¶РЅРѕ С‚РѕР»СЊРєРѕ С‡РµСЂРµР· `CacheDataSource` РІ СЌС‚РѕРј РїСЂРёР»РѕР¶РµРЅРёРё (С„Р°Р№Р» РЅРµ СЌРєСЃРїРѕСЂС‚РёСЂСѓРµС‚СЃСЏ).
+- РћР±Р»РѕР¶РєР° РѕС„Р»Р°Р№РЅ РЅРµ СЃРѕС…СЂР°РЅСЏРµС‚СЃСЏ (РІ Room С‚РѕР»СЊРєРѕ URL РґР»СЏ UI).
+- РћС‚РґРµР»СЊРЅРѕРіРѕ СЌРєСЂР°РЅР° В«РЎРєР°С‡Р°РЅРЅРѕРµВ» Рё СѓРґР°Р»РµРЅРёСЏ РёР· UI РїРѕ-РїСЂРµР¶РЅРµРјСѓ РЅРµС‚ вЂ” СѓРґР°Р»РµРЅРёРµ РІРѕР·РјРѕР¶РЅРѕ С‡РµСЂРµР· РѕС‡РёСЃС‚РєСѓ РґР°РЅРЅС‹С… РїСЂРёР»РѕР¶РµРЅРёСЏ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/build.gradle.kts
-app/src/main/java/com/my/music/core/download/OfflineMediaModule.kt (новый)
-app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt (новый)
-app/src/main/java/com/my/music/core/download/MediaDownloadState.kt (новый)
+app/src/main/java/com/my/music/core/download/OfflineMediaModule.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/core/download/MediaDownloadState.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
 app/src/main/java/com/my/music/core/download/DownloadManager.kt
 app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
@@ -1775,46 +1786,46 @@ app/src/main/java/com/my/music/data/model/DownloadedTrack.kt
 app/src/main/java/com/my/music/data/repository/DownloadRepository.kt
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
-app/schemas/com.my.music.data.local.AppDatabase/7.json (новый)
+app/schemas/com.my.music.data.local.AppDatabase/7.json (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
 
 ---
 
-## ✅ Хотфикс — кнопка скачивания и перезапуск после отмены (22.10.2026)
+## вњ… РҐРѕС‚С„РёРєСЃ вЂ” РєРЅРѕРїРєР° СЃРєР°С‡РёРІР°РЅРёСЏ Рё РїРµСЂРµР·Р°РїСѓСЃРє РїРѕСЃР»Рµ РѕС‚РјРµРЅС‹ (22.10.2026)
 
-### Причина
-- UI залипал на `InProgress` из-за старой записи Media3/WorkInfo: клики уходили в `cancel()`, а не в новую задачу. В логах — `WM-WorkerWrapper: Work [...] was cancelled`, повторного запуска `DownloadTrackWorker` не было.
-- `ExistingWorkPolicy.KEEP` не гарантировал новую задачу после отменённой цепочки.
-- `DownloadState.Failed` не различал отмену и реальную ошибку, поэтому не было крестика и возврата к кнопке скачивания.
+### РџСЂРёС‡РёРЅР°
+- UI Р·Р°Р»РёРїР°Р» РЅР° `InProgress` РёР·-Р·Р° СЃС‚Р°СЂРѕР№ Р·Р°РїРёСЃРё Media3/WorkInfo: РєР»РёРєРё СѓС…РѕРґРёР»Рё РІ `cancel()`, Р° РЅРµ РІ РЅРѕРІСѓСЋ Р·Р°РґР°С‡Сѓ. Р’ Р»РѕРіР°С… вЂ” `WM-WorkerWrapper: Work [...] was cancelled`, РїРѕРІС‚РѕСЂРЅРѕРіРѕ Р·Р°РїСѓСЃРєР° `DownloadTrackWorker` РЅРµ Р±С‹Р»Рѕ.
+- `ExistingWorkPolicy.KEEP` РЅРµ РіР°СЂР°РЅС‚РёСЂРѕРІР°Р» РЅРѕРІСѓСЋ Р·Р°РґР°С‡Сѓ РїРѕСЃР»Рµ РѕС‚РјРµРЅС‘РЅРЅРѕР№ С†РµРїРѕС‡РєРё.
+- `DownloadState.Failed` РЅРµ СЂР°Р·Р»РёС‡Р°Р» РѕС‚РјРµРЅСѓ Рё СЂРµР°Р»СЊРЅСѓСЋ РѕС€РёР±РєСѓ, РїРѕСЌС‚РѕРјСѓ РЅРµ Р±С‹Р»Рѕ РєСЂРµСЃС‚РёРєР° Рё РІРѕР·РІСЂР°С‚Р° Рє РєРЅРѕРїРєРµ СЃРєР°С‡РёРІР°РЅРёСЏ.
 
-### Что сделано
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
 1. **`DownloadManager`**:
-   - WorkInfo — главный источник состояния. Последняя попытка выбирается по тегу `download-at:<millis>`, потому что порядок списка WorkManager не гарантирован.
-   - `CANCELLED`/`FAILED` → `DownloadState.Error(CANCELLED/FAILED)`, `SUCCEEDED` → `Downloaded`. Терминальный WorkInfo приоритетнее старого прогресса Media3; осиротевшая запись Media3 без активной задачи прогрессом не считается.
-   - `ExistingWorkPolicy.REPLACE`, защита от двойного тапа 700 мс, `KEY_FORCE_RESTART=true`.
-   - `cancel()` теперь сразу удаляет запись Media3 (а не только отменяет WorkManager).
+   - WorkInfo вЂ” РіР»Р°РІРЅС‹Р№ РёСЃС‚РѕС‡РЅРёРє СЃРѕСЃС‚РѕСЏРЅРёСЏ. РџРѕСЃР»РµРґРЅСЏСЏ РїРѕРїС‹С‚РєР° РІС‹Р±РёСЂР°РµС‚СЃСЏ РїРѕ С‚РµРіСѓ `download-at:<millis>`, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РїРѕСЂСЏРґРѕРє СЃРїРёСЃРєР° WorkManager РЅРµ РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅ.
+   - `CANCELLED`/`FAILED` в†’ `DownloadState.Error(CANCELLED/FAILED)`, `SUCCEEDED` в†’ `Downloaded`. РўРµСЂРјРёРЅР°Р»СЊРЅС‹Р№ WorkInfo РїСЂРёРѕСЂРёС‚РµС‚РЅРµРµ СЃС‚Р°СЂРѕРіРѕ РїСЂРѕРіСЂРµСЃСЃР° Media3; РѕСЃРёСЂРѕС‚РµРІС€Р°СЏ Р·Р°РїРёСЃСЊ Media3 Р±РµР· Р°РєС‚РёРІРЅРѕР№ Р·Р°РґР°С‡Рё РїСЂРѕРіСЂРµСЃСЃРѕРј РЅРµ СЃС‡РёС‚Р°РµС‚СЃСЏ.
+   - `ExistingWorkPolicy.REPLACE`, Р·Р°С‰РёС‚Р° РѕС‚ РґРІРѕР№РЅРѕРіРѕ С‚Р°РїР° 700 РјСЃ, `KEY_FORCE_RESTART=true`.
+   - `cancel()` С‚РµРїРµСЂСЊ СЃСЂР°Р·Сѓ СѓРґР°Р»СЏРµС‚ Р·Р°РїРёСЃСЊ Media3 (Р° РЅРµ С‚РѕР»СЊРєРѕ РѕС‚РјРµРЅСЏРµС‚ WorkManager).
 2. **`OfflineDownloadManager`**:
-   - `enqueue(forceRestart)` удаляет старую запись Media3 и ждёт её исчезновения; `COMPLETED` не перекачивается (воркер восстановит Room).
-   - `STATE_REMOVING` в `awaitCompletion` больше не даёт мгновенную ошибку — ожидается новая запись.
+   - `enqueue(forceRestart)` СѓРґР°Р»СЏРµС‚ СЃС‚Р°СЂСѓСЋ Р·Р°РїРёСЃСЊ Media3 Рё Р¶РґС‘С‚ РµС‘ РёСЃС‡РµР·РЅРѕРІРµРЅРёСЏ; `COMPLETED` РЅРµ РїРµСЂРµРєР°С‡РёРІР°РµС‚СЃСЏ (РІРѕСЂРєРµСЂ РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚ Room).
+   - `STATE_REMOVING` РІ `awaitCompletion` Р±РѕР»СЊС€Рµ РЅРµ РґР°С‘С‚ РјРіРЅРѕРІРµРЅРЅСѓСЋ РѕС€РёР±РєСѓ вЂ” РѕР¶РёРґР°РµС‚СЃСЏ РЅРѕРІР°СЏ Р·Р°РїРёСЃСЊ.
 3. **`DownloadTrackWorker`**:
-   - `Log.d` первой строкой `doWork()` — в logcat видно сам факт запуска (тег `DownloadWorker`).
-   - Передаёт `forceRestart`; при `CancellationException` не удаляет Media3, иначе REPLACE-попытка убивала бы новую загрузку.
-4. **`PlayerViewModel`**: `Error` держится 1 секунду и сменяется на `NotDownloaded`; клик по крестику запускает новую попытку.
-5. **`PlayerScreen`**: крестик `Icons.Rounded.Close` с `AnimatedContent`-морфингом обратно в стрелку; Snackbar «Не удалось скачать трек (доступен только онлайн)» показывается только для реальной ошибки (`FAILED`), не для отмены.
-6. **Тест** `DownloadStateResolutionTest` (10 кейсов приоритета состояний).
+   - `Log.d` РїРµСЂРІРѕР№ СЃС‚СЂРѕРєРѕР№ `doWork()` вЂ” РІ logcat РІРёРґРЅРѕ СЃР°Рј С„Р°РєС‚ Р·Р°РїСѓСЃРєР° (С‚РµРі `DownloadWorker`).
+   - РџРµСЂРµРґР°С‘С‚ `forceRestart`; РїСЂРё `CancellationException` РЅРµ СѓРґР°Р»СЏРµС‚ Media3, РёРЅР°С‡Рµ REPLACE-РїРѕРїС‹С‚РєР° СѓР±РёРІР°Р»Р° Р±С‹ РЅРѕРІСѓСЋ Р·Р°РіСЂСѓР·РєСѓ.
+4. **`PlayerViewModel`**: `Error` РґРµСЂР¶РёС‚СЃСЏ 1 СЃРµРєСѓРЅРґСѓ Рё СЃРјРµРЅСЏРµС‚СЃСЏ РЅР° `NotDownloaded`; РєР»РёРє РїРѕ РєСЂРµСЃС‚РёРєСѓ Р·Р°РїСѓСЃРєР°РµС‚ РЅРѕРІСѓСЋ РїРѕРїС‹С‚РєСѓ.
+5. **`PlayerScreen`**: РєСЂРµСЃС‚РёРє `Icons.Rounded.Close` СЃ `AnimatedContent`-РјРѕСЂС„РёРЅРіРѕРј РѕР±СЂР°С‚РЅРѕ РІ СЃС‚СЂРµР»РєСѓ; Snackbar В«РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ С‚СЂРµРє (РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РѕРЅР»Р°Р№РЅ)В» РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ СЂРµР°Р»СЊРЅРѕР№ РѕС€РёР±РєРё (`FAILED`), РЅРµ РґР»СЏ РѕС‚РјРµРЅС‹.
+6. **РўРµСЃС‚** `DownloadStateResolutionTest` (10 РєРµР№СЃРѕРІ РїСЂРёРѕСЂРёС‚РµС‚Р° СЃРѕСЃС‚РѕСЏРЅРёР№).
 
-### Проверки
-- `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-- `.\gradlew testDebugUnitTest` — 64/64, 0 failures, 0 errors.
+### РџСЂРѕРІРµСЂРєРё
+- `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+- `.\gradlew testDebugUnitTest` вЂ” 64/64, 0 failures, 0 errors.
 - APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
-- Диагностика на устройстве: `adb logcat -s DownloadWorker DownloadFlow OfflineDownload`.
+- Р”РёР°РіРЅРѕСЃС‚РёРєР° РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ: `adb logcat -s DownloadWorker DownloadFlow OfflineDownload`.
 
-### Следующий шаг
-- ~~Искать прогрессивный MP3-поток SoundCloud для скачивания~~ — выполнено в разделе «Скачивание только progressive MP3 через OkHttp» ниже.
+### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
+- ~~РСЃРєР°С‚СЊ РїСЂРѕРіСЂРµСЃСЃРёРІРЅС‹Р№ MP3-РїРѕС‚РѕРє SoundCloud РґР»СЏ СЃРєР°С‡РёРІР°РЅРёСЏ~~ вЂ” РІС‹РїРѕР»РЅРµРЅРѕ РІ СЂР°Р·РґРµР»Рµ В«РЎРєР°С‡РёРІР°РЅРёРµ С‚РѕР»СЊРєРѕ progressive MP3 С‡РµСЂРµР· OkHttpВ» РЅРёР¶Рµ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/core/download/DownloadState.kt
 app/src/main/java/com/my/music/core/download/DownloadManager.kt
@@ -1822,48 +1833,48 @@ app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt
 app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
 app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
-app/src/test/java/com/my/music/core/download/DownloadStateResolutionTest.kt (новый)
+app/src/test/java/com/my/music/core/download/DownloadStateResolutionTest.kt (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
 
 ---
 
-## ✅ Скачивание только progressive MP3 через OkHttp (22.10.2026)
+## вњ… РЎРєР°С‡РёРІР°РЅРёРµ С‚РѕР»СЊРєРѕ progressive MP3 С‡РµСЂРµР· OkHttp (22.10.2026)
 
-### Причина
-- HLS — это набор сегментов, а не один файл. Media3 DownloadManager складывал их в `SimpleCache`, из-за чего офлайн-скачивание зависало, а готового mp3 не появлялось.
-- Для офлайна нужен ровно один progressive MP3-файл; если его нет — честная ошибка вместо бесконечной загрузки.
+### РџСЂРёС‡РёРЅР°
+- HLS вЂ” СЌС‚Рѕ РЅР°Р±РѕСЂ СЃРµРіРјРµРЅС‚РѕРІ, Р° РЅРµ РѕРґРёРЅ С„Р°Р№Р». Media3 DownloadManager СЃРєР»Р°РґС‹РІР°Р» РёС… РІ `SimpleCache`, РёР·-Р·Р° С‡РµРіРѕ РѕС„Р»Р°Р№РЅ-СЃРєР°С‡РёРІР°РЅРёРµ Р·Р°РІРёСЃР°Р»Рѕ, Р° РіРѕС‚РѕРІРѕРіРѕ mp3 РЅРµ РїРѕСЏРІР»СЏР»РѕСЃСЊ.
+- Р”Р»СЏ РѕС„Р»Р°Р№РЅР° РЅСѓР¶РµРЅ СЂРѕРІРЅРѕ РѕРґРёРЅ progressive MP3-С„Р°Р№Р»; РµСЃР»Рё РµРіРѕ РЅРµС‚ вЂ” С‡РµСЃС‚РЅР°СЏ РѕС€РёР±РєР° РІРјРµСЃС‚Рѕ Р±РµСЃРєРѕРЅРµС‡РЅРѕР№ Р·Р°РіСЂСѓР·РєРё.
 
-### Что сделано
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
 1. **`SoundCloudRepository.resolveStreamUrl(..., requireProgressive = false)`**:
-   - progressive MP3 с максимальным битрейтом выбирается всегда первым;
-   - для скачивания передаётся `requireProgressive = true`: если progressive нет, возвращается ошибка «Трек доступен только для онлайн-прослушивания»;
-   - для онлайн-плеера HLS-фолбэк сохранён, иначе HLS-only треки перестали бы играть.
+   - progressive MP3 СЃ РјР°РєСЃРёРјР°Р»СЊРЅС‹Рј Р±РёС‚СЂРµР№С‚РѕРј РІС‹Р±РёСЂР°РµС‚СЃСЏ РІСЃРµРіРґР° РїРµСЂРІС‹Рј;
+   - РґР»СЏ СЃРєР°С‡РёРІР°РЅРёСЏ РїРµСЂРµРґР°С‘С‚СЃСЏ `requireProgressive = true`: РµСЃР»Рё progressive РЅРµС‚, РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ РѕС€РёР±РєР° В«РўСЂРµРє РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РѕРЅР»Р°Р№РЅ-РїСЂРѕСЃР»СѓС€РёРІР°РЅРёСЏВ»;
+   - РґР»СЏ РѕРЅР»Р°Р№РЅ-РїР»РµРµСЂР° HLS-С„РѕР»Р±СЌРє СЃРѕС…СЂР°РЅС‘РЅ, РёРЅР°С‡Рµ HLS-only С‚СЂРµРєРё РїРµСЂРµСЃС‚Р°Р»Рё Р±С‹ РёРіСЂР°С‚СЊ.
 2. **`DownloadTrackWorker`**:
-   - вся логика Media3 DownloadManager удалена;
-   - OkHttp качает progressive MP3 в `filesDir/downloads/<safe>_<hash>.mp3`;
-   - загрузка идёт в `.part`, после успеха файл переименовывается; прогресс публикуется через `setProgress`;
-   - при отмене `.part` удаляется, при HLS-only — `Result.failure`, UI показывает крестик и Snackbar.
-3. **Удалены** `OfflineDownloadManager`, `OfflineMediaModule`, `MediaDownloadState`; `MusicService` больше не использует `SimpleCache` и `CacheDataSource`.
-4. **`DownloadManager`** упрощён: Room + WorkInfo, прогресс из воркера; `ExistingWorkPolicy.REPLACE` и защита от двойного тапа 700 мс сохранены.
-5. **`DownloadRepositoryImpl`** проверяет только локальные `file://`-файлы; старые HLS-записи из Room инвалидируются при обращении.
-6. **`DownloadStateResolutionTest`** переписан под новую сигнатуру (10 кейсов).
+   - РІСЃСЏ Р»РѕРіРёРєР° Media3 DownloadManager СѓРґР°Р»РµРЅР°;
+   - OkHttp РєР°С‡Р°РµС‚ progressive MP3 РІ `filesDir/downloads/<safe>_<hash>.mp3`;
+   - Р·Р°РіСЂСѓР·РєР° РёРґС‘С‚ РІ `.part`, РїРѕСЃР»Рµ СѓСЃРїРµС…Р° С„Р°Р№Р» РїРµСЂРµРёРјРµРЅРѕРІС‹РІР°РµС‚СЃСЏ; РїСЂРѕРіСЂРµСЃСЃ РїСѓР±Р»РёРєСѓРµС‚СЃСЏ С‡РµСЂРµР· `setProgress`;
+   - РїСЂРё РѕС‚РјРµРЅРµ `.part` СѓРґР°Р»СЏРµС‚СЃСЏ, РїСЂРё HLS-only вЂ” `Result.failure`, UI РїРѕРєР°Р·С‹РІР°РµС‚ РєСЂРµСЃС‚РёРє Рё Snackbar.
+3. **РЈРґР°Р»РµРЅС‹** `OfflineDownloadManager`, `OfflineMediaModule`, `MediaDownloadState`; `MusicService` Р±РѕР»СЊС€Рµ РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚ `SimpleCache` Рё `CacheDataSource`.
+4. **`DownloadManager`** СѓРїСЂРѕС‰С‘РЅ: Room + WorkInfo, РїСЂРѕРіСЂРµСЃСЃ РёР· РІРѕСЂРєРµСЂР°; `ExistingWorkPolicy.REPLACE` Рё Р·Р°С‰РёС‚Р° РѕС‚ РґРІРѕР№РЅРѕРіРѕ С‚Р°РїР° 700 РјСЃ СЃРѕС…СЂР°РЅРµРЅС‹.
+5. **`DownloadRepositoryImpl`** РїСЂРѕРІРµСЂСЏРµС‚ С‚РѕР»СЊРєРѕ Р»РѕРєР°Р»СЊРЅС‹Рµ `file://`-С„Р°Р№Р»С‹; СЃС‚Р°СЂС‹Рµ HLS-Р·Р°РїРёСЃРё РёР· Room РёРЅРІР°Р»РёРґРёСЂСѓСЋС‚СЃСЏ РїСЂРё РѕР±СЂР°С‰РµРЅРёРё.
+6. **`DownloadStateResolutionTest`** РїРµСЂРµРїРёСЃР°РЅ РїРѕРґ РЅРѕРІСѓСЋ СЃРёРіРЅР°С‚СѓСЂСѓ (10 РєРµР№СЃРѕРІ).
 
-### Проверки
-- `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-- `.\gradlew testDebugUnitTest` — 64/64, 0 failures, 0 errors.
+### РџСЂРѕРІРµСЂРєРё
+- `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+- `.\gradlew testDebugUnitTest` вЂ” 64/64, 0 failures, 0 errors.
 - APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
-- Диагностика на устройстве: `adb logcat -s DownloadWorker DownloadFlow`.
+- Р”РёР°РіРЅРѕСЃС‚РёРєР° РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ: `adb logcat -s DownloadWorker DownloadFlow`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/core/download/DownloadManager.kt
 app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
 app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
-app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt (удалён)
-app/src/main/java/com/my/music/core/download/OfflineMediaModule.kt (удалён)
-app/src/main/java/com/my/music/core/download/MediaDownloadState.kt (удалён)
+app/src/main/java/com/my/music/core/download/OfflineDownloadManager.kt (СѓРґР°Р»С‘РЅ)
+app/src/main/java/com/my/music/core/download/OfflineMediaModule.kt (СѓРґР°Р»С‘РЅ)
+app/src/main/java/com/my/music/core/download/MediaDownloadState.kt (СѓРґР°Р»С‘РЅ)
 app/src/main/java/com/my/music/core/player/MusicService.kt
 app/src/main/java/com/my/music/data/local/DownloadRepositoryImpl.kt
 app/src/main/java/com/my/music/data/local/entity/DownloadedTrackEntity.kt
@@ -1878,103 +1889,103 @@ MEMORY.md
 
 ---
 
-## 🔜 Следующий шаг — экран «Скачанное» и очистка старых данных
+## рџ”њ РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі вЂ” СЌРєСЂР°РЅ В«РЎРєР°С‡Р°РЅРЅРѕРµВ» Рё РѕС‡РёСЃС‚РєР° СЃС‚Р°СЂС‹С… РґР°РЅРЅС‹С…
 
-### Что нужно сделать
-1. **Экран/секция «Скачанное»**: список локальных mp3, удаление файла и записи Room, индикация занятого места.
-2. **Очистка legacy**: удалить оставшийся каталог `filesDir/media_cache` и старые HLS-записи из Room, чтобы они не занимали место и не показывались как скачанные.
-3. **Проверка на устройстве**: скачать progressive-трек, включить авиарежим и воспроизвести; для HLS-only трека проверить крестик и Snackbar «Не удалось скачать трек (доступен только онлайн)».
-4. **Настроения волны**: чипы «Бодрая / Спокойная / По любимым / Открытия», влияющие на жанры, темп и долю новых треков.
-5. **Воспоминания**: показывать сохранённые координаты и сезон в карточках, добавить действие «Открыть на карте».
-6. Сборка, тесты, PROGRESS.md, MEMORY.md, коммит и пуш.
+### Р§С‚Рѕ РЅСѓР¶РЅРѕ СЃРґРµР»Р°С‚СЊ
+1. **Р­РєСЂР°РЅ/СЃРµРєС†РёСЏ В«РЎРєР°С‡Р°РЅРЅРѕРµВ»**: СЃРїРёСЃРѕРє Р»РѕРєР°Р»СЊРЅС‹С… mp3, СѓРґР°Р»РµРЅРёРµ С„Р°Р№Р»Р° Рё Р·Р°РїРёСЃРё Room, РёРЅРґРёРєР°С†РёСЏ Р·Р°РЅСЏС‚РѕРіРѕ РјРµСЃС‚Р°.
+2. **РћС‡РёСЃС‚РєР° legacy**: СѓРґР°Р»РёС‚СЊ РѕСЃС‚Р°РІС€РёР№СЃСЏ РєР°С‚Р°Р»РѕРі `filesDir/media_cache` Рё СЃС‚Р°СЂС‹Рµ HLS-Р·Р°РїРёСЃРё РёР· Room, С‡С‚РѕР±С‹ РѕРЅРё РЅРµ Р·Р°РЅРёРјР°Р»Рё РјРµСЃС‚Рѕ Рё РЅРµ РїРѕРєР°Р·С‹РІР°Р»РёСЃСЊ РєР°Рє СЃРєР°С‡Р°РЅРЅС‹Рµ.
+3. **РџСЂРѕРІРµСЂРєР° РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ**: СЃРєР°С‡Р°С‚СЊ progressive-С‚СЂРµРє, РІРєР»СЋС‡РёС‚СЊ Р°РІРёР°СЂРµР¶РёРј Рё РІРѕСЃРїСЂРѕРёР·РІРµСЃС‚Рё; РґР»СЏ HLS-only С‚СЂРµРєР° РїСЂРѕРІРµСЂРёС‚СЊ РєСЂРµСЃС‚РёРє Рё Snackbar В«РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ С‚СЂРµРє (РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РѕРЅР»Р°Р№РЅ)В».
+4. **РќР°СЃС‚СЂРѕРµРЅРёСЏ РІРѕР»РЅС‹**: С‡РёРїС‹ В«Р‘РѕРґСЂР°СЏ / РЎРїРѕРєРѕР№РЅР°СЏ / РџРѕ Р»СЋР±РёРјС‹Рј / РћС‚РєСЂС‹С‚РёСЏВ», РІР»РёСЏСЋС‰РёРµ РЅР° Р¶Р°РЅСЂС‹, С‚РµРјРї Рё РґРѕР»СЋ РЅРѕРІС‹С… С‚СЂРµРєРѕРІ.
+5. **Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏ**: РїРѕРєР°Р·С‹РІР°С‚СЊ СЃРѕС…СЂР°РЅС‘РЅРЅС‹Рµ РєРѕРѕСЂРґРёРЅР°С‚С‹ Рё СЃРµР·РѕРЅ РІ РєР°СЂС‚РѕС‡РєР°С…, РґРѕР±Р°РІРёС‚СЊ РґРµР№СЃС‚РІРёРµ В«РћС‚РєСЂС‹С‚СЊ РЅР° РєР°СЂС‚РµВ».
+6. РЎР±РѕСЂРєР°, С‚РµСЃС‚С‹, PROGRESS.md, MEMORY.md, РєРѕРјРјРёС‚ Рё РїСѓС€.
 
 ---
 
-## 📋 План — YouTube Music и глобальные статусы сервисов (22.10.2026)
+## рџ“‹ РџР»Р°РЅ вЂ” YouTube Music Рё РіР»РѕР±Р°Р»СЊРЅС‹Рµ СЃС‚Р°С‚СѓСЃС‹ СЃРµСЂРІРёСЃРѕРІ (22.10.2026)
 
-### Общий план
-1. **База и модель**: добавить `Source.YOUTUBE`, убедиться, что `Track` и Room-конвертеры работают с новым источником.
-2. **Репозиторий**: `YouTubeRepository` через NewPipe (`YoutubeService`): поиск + progressive M4A/WEBM_OPUS без HLS.
-3. **UI поиска**: переключатель SoundCloud / YouTube, единый список результатов, ошибки и пустые состояния под выбранный источник.
-4. **Плеер и загрузчик**: научить `PlayerController` и `DownloadTrackWorker` выбирать репозиторий по `Track.source` и корректно определять MIME (MP3/M4A/WEBM). **Выполнено в шаге 4 (см. выше).**
-5. **Импорт плейлистов (на будущее)**: через NewPipe вытаскивать плейлисты YouTube и добавлять в очередь/медиатеку.
-6. **Статусы сервисов**: `ServiceStatusManager` + меню статусов в поиске, ручное обновление, предупреждение о недоступном источнике.
+### РћР±С‰РёР№ РїР»Р°РЅ
+1. **Р‘Р°Р·Р° Рё РјРѕРґРµР»СЊ**: РґРѕР±Р°РІРёС‚СЊ `Source.YOUTUBE`, СѓР±РµРґРёС‚СЊСЃСЏ, С‡С‚Рѕ `Track` Рё Room-РєРѕРЅРІРµСЂС‚РµСЂС‹ СЂР°Р±РѕС‚Р°СЋС‚ СЃ РЅРѕРІС‹Рј РёСЃС‚РѕС‡РЅРёРєРѕРј.
+2. **Р РµРїРѕР·РёС‚РѕСЂРёР№**: `YouTubeRepository` С‡РµСЂРµР· NewPipe (`YoutubeService`): РїРѕРёСЃРє + progressive M4A/WEBM_OPUS Р±РµР· HLS.
+3. **UI РїРѕРёСЃРєР°**: РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ SoundCloud / YouTube, РµРґРёРЅС‹Р№ СЃРїРёСЃРѕРє СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ, РѕС€РёР±РєРё Рё РїСѓСЃС‚С‹Рµ СЃРѕСЃС‚РѕСЏРЅРёСЏ РїРѕРґ РІС‹Р±СЂР°РЅРЅС‹Р№ РёСЃС‚РѕС‡РЅРёРє.
+4. **РџР»РµРµСЂ Рё Р·Р°РіСЂСѓР·С‡РёРє**: РЅР°СѓС‡РёС‚СЊ `PlayerController` Рё `DownloadTrackWorker` РІС‹Р±РёСЂР°С‚СЊ СЂРµРїРѕР·РёС‚РѕСЂРёР№ РїРѕ `Track.source` Рё РєРѕСЂСЂРµРєС‚РЅРѕ РѕРїСЂРµРґРµР»СЏС‚СЊ MIME (MP3/M4A/WEBM). **Р’С‹РїРѕР»РЅРµРЅРѕ РІ С€Р°РіРµ 4 (СЃРј. РІС‹С€Рµ).**
+5. **РРјРїРѕСЂС‚ РїР»РµР№Р»РёСЃС‚РѕРІ (РЅР° Р±СѓРґСѓС‰РµРµ)**: С‡РµСЂРµР· NewPipe РІС‹С‚Р°СЃРєРёРІР°С‚СЊ РїР»РµР№Р»РёСЃС‚С‹ YouTube Рё РґРѕР±Р°РІР»СЏС‚СЊ РІ РѕС‡РµСЂРµРґСЊ/РјРµРґРёР°С‚РµРєСѓ.
+6. **РЎС‚Р°С‚СѓСЃС‹ СЃРµСЂРІРёСЃРѕРІ**: `ServiceStatusManager` + РјРµРЅСЋ СЃС‚Р°С‚СѓСЃРѕРІ РІ РїРѕРёСЃРєРµ, СЂСѓС‡РЅРѕРµ РѕР±РЅРѕРІР»РµРЅРёРµ, РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕРј РёСЃС‚РѕС‡РЅРёРєРµ.
 
-### Текущая итерация — только шаги 1–3
-- [x] `Source.YOUTUBE` в модели.
-- [x] `YouTubeRepository` + `YouTubeRepositoryImpl` + Hilt-биндинг.
+### РўРµРєСѓС‰Р°СЏ РёС‚РµСЂР°С†РёСЏ вЂ” С‚РѕР»СЊРєРѕ С€Р°РіРё 1вЂ“3
+- [x] `Source.YOUTUBE` РІ РјРѕРґРµР»Рё.
+- [x] `YouTubeRepository` + `YouTubeRepositoryImpl` + Hilt-Р±РёРЅРґРёРЅРі.
 - [x] `ServiceStatusManager`, `ServiceType`, `ServiceHealth`.
-- [x] `SearchViewModel`: выбранный источник + подписка на статусы.
-- [x] `SearchScreen`: переключатель источников, меню статусов, предупреждение о недоступном сервисе.
-- [x] Сборка, тесты, коммит, пуш.
+- [x] `SearchViewModel`: РІС‹Р±СЂР°РЅРЅС‹Р№ РёСЃС‚РѕС‡РЅРёРє + РїРѕРґРїРёСЃРєР° РЅР° СЃС‚Р°С‚СѓСЃС‹.
+- [x] `SearchScreen`: РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ РёСЃС‚РѕС‡РЅРёРєРѕРІ, РјРµРЅСЋ СЃС‚Р°С‚СѓСЃРѕРІ, РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕРј СЃРµСЂРІРёСЃРµ.
+- [x] РЎР±РѕСЂРєР°, С‚РµСЃС‚С‹, РєРѕРјРјРёС‚, РїСѓС€.
 
-### Что сделано (22.10.2026)
-- `Source.YOUTUBE` добавлен в `Track.kt`; Room хранит имя enum, миграция не нужна.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ (22.10.2026)
+- `Source.YOUTUBE` РґРѕР±Р°РІР»РµРЅ РІ `Track.kt`; Room С…СЂР°РЅРёС‚ РёРјСЏ enum, РјРёРіСЂР°С†РёСЏ РЅРµ РЅСѓР¶РЅР°.
 - `YouTubeRepository` + `YouTubeRepositoryImpl`:
-  - поиск через `ServiceList.YouTube` с фильтром `videos`;
-  - маппинг `StreamInfoItem` → `Track` (`id`/`transcodingUrl` = URL видео, артист без суффикса ` - Topic`);
-  - `resolveStreamUrl()` выбирает только `DeliveryMethod.PROGRESSIVE_HTTP` + `M4A`/`WEBMA_OPUS`, сначала M4A по максимальному битрейту, затем Opus; `isHls = false`;
-  - Hilt-биндинг в `RepositoryModule`.
+  - РїРѕРёСЃРє С‡РµСЂРµР· `ServiceList.YouTube` СЃ С„РёР»СЊС‚СЂРѕРј `videos`;
+  - РјР°РїРїРёРЅРі `StreamInfoItem` в†’ `Track` (`id`/`transcodingUrl` = URL РІРёРґРµРѕ, Р°СЂС‚РёСЃС‚ Р±РµР· СЃСѓС„С„РёРєСЃР° ` - Topic`);
+  - `resolveStreamUrl()` РІС‹Р±РёСЂР°РµС‚ С‚РѕР»СЊРєРѕ `DeliveryMethod.PROGRESSIVE_HTTP` + `M4A`/`WEBMA_OPUS`, СЃРЅР°С‡Р°Р»Р° M4A РїРѕ РјР°РєСЃРёРјР°Р»СЊРЅРѕРјСѓ Р±РёС‚СЂРµР№С‚Сѓ, Р·Р°С‚РµРј Opus; `isHls = false`;
+  - Hilt-Р±РёРЅРґРёРЅРі РІ `RepositoryModule`.
 - `ServiceStatusManager` (Singleton):
   - `ServiceType { SOUNDCLOUD, YOUTUBE }`, `ServiceHealth(isAvailable, isChecking)`;
-  - `StateFlow<Map<ServiceType, ServiceHealth>>`, параллельная проверка поиском `"test"` с лимитом 1;
-  - `checkAllServices()` при старте (`MyMusicApp` после `NewPipe.init`) и после ошибок поиска;
-  - `refreshStatus()` из меню, защита от параллельных проверок, `markAvailable()` после успешного поиска;
-  - 5 JVM-тестов на успех/failure/exception/начальное состояние.
+  - `StateFlow<Map<ServiceType, ServiceHealth>>`, РїР°СЂР°Р»Р»РµР»СЊРЅР°СЏ РїСЂРѕРІРµСЂРєР° РїРѕРёСЃРєРѕРј `"test"` СЃ Р»РёРјРёС‚РѕРј 1;
+  - `checkAllServices()` РїСЂРё СЃС‚Р°СЂС‚Рµ (`MyMusicApp` РїРѕСЃР»Рµ `NewPipe.init`) Рё РїРѕСЃР»Рµ РѕС€РёР±РѕРє РїРѕРёСЃРєР°;
+  - `refreshStatus()` РёР· РјРµРЅСЋ, Р·Р°С‰РёС‚Р° РѕС‚ РїР°СЂР°Р»Р»РµР»СЊРЅС‹С… РїСЂРѕРІРµСЂРѕРє, `markAvailable()` РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕРіРѕ РїРѕРёСЃРєР°;
+  - 5 JVM-С‚РµСЃС‚РѕРІ РЅР° СѓСЃРїРµС…/failure/exception/РЅР°С‡Р°Р»СЊРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ.
 - `SearchViewModel`:
-  - выбранный `ServiceType`, поиск через соответствующий репозиторий;
-  - общий поток `(query, service)` с debounce 400 мс, отмена устаревших запросов;
-  - `retry()` действительно перезапускает поиск (раньше повторный `onQueryChange` с тем же текстом игнорировался);
-  - подписка на глобальные статусы, `refreshStatuses()`.
+  - РІС‹Р±СЂР°РЅРЅС‹Р№ `ServiceType`, РїРѕРёСЃРє С‡РµСЂРµР· СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёР№ СЂРµРїРѕР·РёС‚РѕСЂРёР№;
+  - РѕР±С‰РёР№ РїРѕС‚РѕРє `(query, service)` СЃ debounce 400 РјСЃ, РѕС‚РјРµРЅР° СѓСЃС‚Р°СЂРµРІС€РёС… Р·Р°РїСЂРѕСЃРѕРІ;
+  - `retry()` РґРµР№СЃС‚РІРёС‚РµР»СЊРЅРѕ РїРµСЂРµР·Р°РїСѓСЃРєР°РµС‚ РїРѕРёСЃРє (СЂР°РЅСЊС€Рµ РїРѕРІС‚РѕСЂРЅС‹Р№ `onQueryChange` СЃ С‚РµРј Р¶Рµ С‚РµРєСЃС‚РѕРј РёРіРЅРѕСЂРёСЂРѕРІР°Р»СЃСЏ);
+  - РїРѕРґРїРёСЃРєР° РЅР° РіР»РѕР±Р°Р»СЊРЅС‹Рµ СЃС‚Р°С‚СѓСЃС‹, `refreshStatuses()`.
 - `SearchScreen`:
-  - переключатель SoundCloud / YouTube с пружинными анимациями и красной обводкой недоступного сервиса;
-  - иконка `Radar` с цветным индикатором и MD3 `DropdownMenu` (список сервисов, точки «Онлайн»/«Ошибка», спиннер «Проверка», кнопка «Обновить статусы»);
-  - предупреждающий баннер для выбранного недоступного сервиса;
-  - динамические подписи источника в idle/empty/results, кнопка «Повторить» через `retry()`.
+  - РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ SoundCloud / YouTube СЃ РїСЂСѓР¶РёРЅРЅС‹РјРё Р°РЅРёРјР°С†РёСЏРјРё Рё РєСЂР°СЃРЅРѕР№ РѕР±РІРѕРґРєРѕР№ РЅРµРґРѕСЃС‚СѓРїРЅРѕРіРѕ СЃРµСЂРІРёСЃР°;
+  - РёРєРѕРЅРєР° `Radar` СЃ С†РІРµС‚РЅС‹Рј РёРЅРґРёРєР°С‚РѕСЂРѕРј Рё MD3 `DropdownMenu` (СЃРїРёСЃРѕРє СЃРµСЂРІРёСЃРѕРІ, С‚РѕС‡РєРё В«РћРЅР»Р°Р№РЅВ»/В«РћС€РёР±РєР°В», СЃРїРёРЅРЅРµСЂ В«РџСЂРѕРІРµСЂРєР°В», РєРЅРѕРїРєР° В«РћР±РЅРѕРІРёС‚СЊ СЃС‚Р°С‚СѓСЃС‹В»);
+  - РїСЂРµРґСѓРїСЂРµР¶РґР°СЋС‰РёР№ Р±Р°РЅРЅРµСЂ РґР»СЏ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РЅРµРґРѕСЃС‚СѓРїРЅРѕРіРѕ СЃРµСЂРІРёСЃР°;
+  - РґРёРЅР°РјРёС‡РµСЃРєРёРµ РїРѕРґРїРёСЃРё РёСЃС‚РѕС‡РЅРёРєР° РІ idle/empty/results, РєРЅРѕРїРєР° В«РџРѕРІС‚РѕСЂРёС‚СЊВ» С‡РµСЂРµР· `retry()`.
 
-### Проверка
-- `.\gradlew assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL.
-- 69 JVM-тестов, 0 failures, 0 errors.
-- Живая проверка через временный тест: поиск YouTube вернул результаты, `resolveStreamUrl()` отдал progressive M4A (`itag=140`, `isHls=false`). Временный тест удалён.
-- Ограничение текущей итерации: `PlayerController` и `DownloadTrackWorker` всё ещё используют `SoundCloudRepository`, поэтому воспроизведение и скачивание YouTube-результатов пока не работают — это шаг 4.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew assembleDebug testDebugUnitTest` вЂ” BUILD SUCCESSFUL.
+- 69 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 errors.
+- Р–РёРІР°СЏ РїСЂРѕРІРµСЂРєР° С‡РµСЂРµР· РІСЂРµРјРµРЅРЅС‹Р№ С‚РµСЃС‚: РїРѕРёСЃРє YouTube РІРµСЂРЅСѓР» СЂРµР·СѓР»СЊС‚Р°С‚С‹, `resolveStreamUrl()` РѕС‚РґР°Р» progressive M4A (`itag=140`, `isHls=false`). Р’СЂРµРјРµРЅРЅС‹Р№ С‚РµСЃС‚ СѓРґР°Р»С‘РЅ.
+- РћРіСЂР°РЅРёС‡РµРЅРёРµ С‚РµРєСѓС‰РµР№ РёС‚РµСЂР°С†РёРё: `PlayerController` Рё `DownloadTrackWorker` РІСЃС‘ РµС‰С‘ РёСЃРїРѕР»СЊР·СѓСЋС‚ `SoundCloudRepository`, РїРѕСЌС‚РѕРјСѓ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ Рё СЃРєР°С‡РёРІР°РЅРёРµ YouTube-СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ РїРѕРєР° РЅРµ СЂР°Р±РѕС‚Р°СЋС‚ вЂ” СЌС‚Рѕ С€Р°Рі 4.
 
-### Явно вне текущей итерации
-- Скачивание YouTube-треков и правки `DownloadTrackWorker`.
-- Правки `PlayerController` и MIME в плеере.
-- Импорт YouTube-плейлистов.
-- Экран «Скачанное» и очистка legacy-кэша.
+### РЇРІРЅРѕ РІРЅРµ С‚РµРєСѓС‰РµР№ РёС‚РµСЂР°С†РёРё
+- РЎРєР°С‡РёРІР°РЅРёРµ YouTube-С‚СЂРµРєРѕРІ Рё РїСЂР°РІРєРё `DownloadTrackWorker`.
+- РџСЂР°РІРєРё `PlayerController` Рё MIME РІ РїР»РµРµСЂРµ.
+- РРјРїРѕСЂС‚ YouTube-РїР»РµР№Р»РёСЃС‚РѕРІ.
+- Р­РєСЂР°РЅ В«РЎРєР°С‡Р°РЅРЅРѕРµВ» Рё РѕС‡РёСЃС‚РєР° legacy-РєСЌС€Р°.
 
 ---
 
-## ✅ Шаг 4 — плеер и скачивание YouTube + умный редирект (22.10.2026)
+## вњ… РЁР°Рі 4 вЂ” РїР»РµРµСЂ Рё СЃРєР°С‡РёРІР°РЅРёРµ YouTube + СѓРјРЅС‹Р№ СЂРµРґРёСЂРµРєС‚ (22.10.2026)
 
-### Что сделано
-1. **MIME в результате resolve**:
-   - `AudioStreamResult` дополнен `mimeType`; старые вызовы без формата получают безопасный фолбэк.
-   - SoundCloud отдаёт `AUDIO_MPEG` для progressive и `APPLICATION_M3U8` для HLS.
-   - YouTube отдаёт `AUDIO_MP4` для M4A и `AUDIO_WEBM` для Opus-фолбэка.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **MIME РІ СЂРµР·СѓР»СЊС‚Р°С‚Рµ resolve**:
+   - `AudioStreamResult` РґРѕРїРѕР»РЅРµРЅ `mimeType`; СЃС‚Р°СЂС‹Рµ РІС‹Р·РѕРІС‹ Р±РµР· С„РѕСЂРјР°С‚Р° РїРѕР»СѓС‡Р°СЋС‚ Р±РµР·РѕРїР°СЃРЅС‹Р№ С„РѕР»Р±СЌРє.
+   - SoundCloud РѕС‚РґР°С‘С‚ `AUDIO_MPEG` РґР»СЏ progressive Рё `APPLICATION_M3U8` РґР»СЏ HLS.
+   - YouTube РѕС‚РґР°С‘С‚ `AUDIO_MP4` РґР»СЏ M4A Рё `AUDIO_WEBM` РґР»СЏ Opus-С„РѕР»Р±СЌРєР°.
 2. **`PlayerController`**:
-   - `resolveAndPlay()` выбирает репозиторий по `Track.source`: YouTube → `YouTubeRepository`, SoundCloud → `SoundCloudRepository`.
-   - ExoPlayer получает `audio/mp4` для YouTube M4A, `audio/webm` для WEBM и `audio/mpeg` для SoundCloud.
-   - Офлайн-воспроизведение берёт MIME из Room, поэтому скачанный M4A больше не теряет формат.
+   - `resolveAndPlay()` РІС‹Р±РёСЂР°РµС‚ СЂРµРїРѕР·РёС‚РѕСЂРёР№ РїРѕ `Track.source`: YouTube в†’ `YouTubeRepository`, SoundCloud в†’ `SoundCloudRepository`.
+   - ExoPlayer РїРѕР»СѓС‡Р°РµС‚ `audio/mp4` РґР»СЏ YouTube M4A, `audio/webm` РґР»СЏ WEBM Рё `audio/mpeg` РґР»СЏ SoundCloud.
+   - РћС„Р»Р°Р№РЅ-РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ Р±РµСЂС‘С‚ MIME РёР· Room, РїРѕСЌС‚РѕРјСѓ СЃРєР°С‡Р°РЅРЅС‹Р№ M4A Р±РѕР»СЊС€Рµ РЅРµ С‚РµСЂСЏРµС‚ С„РѕСЂРјР°С‚.
 3. **`DownloadTrackWorker`**:
-   - Поток резолвится через репозиторий выбранного источника; для SoundCloud сохранён `requireProgressive = true`.
-   - Имя файла зависит от MIME: `.mp3`, `.m4a` или `.webm`; в Room пишется тот же MIME.
-   - HLS и ошибки resolve/download/save по-прежнему завершают задачу через `Result.failure`, WorkInfo становится `FAILED`, UI показывает крестик.
-4. **Умный редирект**:
-   - При `WorkInfo.FAILED` для SoundCloud-трека показывается Snackbar «Не удалось скачать (только онлайн). Найти на YouTube?» с действием «Найти».
-   - Для YouTube-ошибки остаётся нейтральное сообщение без действия.
-   - `NavigationEvents` (Singleton, `SharedFlow` с replay = 1) передаёт запрос `"Артист - Название"` и `YOUTUBE` в `SearchViewModel`.
-   - `SearchViewModel` обрабатывает намерение сразу, без debounce, очищает старые результаты и переключает источник; replay-кэш сбрасывается после обработки.
-   - `AppNavGraph` открывает вкладку поиска с сохранением состояния нижней навигации.
-5. **Тесты**:
-   - `PlayerControllerQueueTest`: YouTube-трек уходит в `YouTubeRepository`, MIME `AUDIO_MP4`; офлайн-M4A сохраняет MIME из Room.
-   - `DownloadWorkerFormatTest`: расширения `.m4a`/`.mp3`/`.webm`, фолбэки MIME и безопасное имя файла.
-   - `SearchViewModelExternalRequestTest`: внешний запрос сразу выбирает YouTube, не ждёт debounce и не повторяется при повторном открытии экрана.
+   - РџРѕС‚РѕРє СЂРµР·РѕР»РІРёС‚СЃСЏ С‡РµСЂРµР· СЂРµРїРѕР·РёС‚РѕСЂРёР№ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР°; РґР»СЏ SoundCloud СЃРѕС…СЂР°РЅС‘РЅ `requireProgressive = true`.
+   - РРјСЏ С„Р°Р№Р»Р° Р·Р°РІРёСЃРёС‚ РѕС‚ MIME: `.mp3`, `.m4a` РёР»Рё `.webm`; РІ Room РїРёС€РµС‚СЃСЏ С‚РѕС‚ Р¶Рµ MIME.
+   - HLS Рё РѕС€РёР±РєРё resolve/download/save РїРѕ-РїСЂРµР¶РЅРµРјСѓ Р·Р°РІРµСЂС€Р°СЋС‚ Р·Р°РґР°С‡Сѓ С‡РµСЂРµР· `Result.failure`, WorkInfo СЃС‚Р°РЅРѕРІРёС‚СЃСЏ `FAILED`, UI РїРѕРєР°Р·С‹РІР°РµС‚ РєСЂРµСЃС‚РёРє.
+4. **РЈРјРЅС‹Р№ СЂРµРґРёСЂРµРєС‚**:
+   - РџСЂРё `WorkInfo.FAILED` РґР»СЏ SoundCloud-С‚СЂРµРєР° РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ Snackbar В«РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ (С‚РѕР»СЊРєРѕ РѕРЅР»Р°Р№РЅ). РќР°Р№С‚Рё РЅР° YouTube?В» СЃ РґРµР№СЃС‚РІРёРµРј В«РќР°Р№С‚РёВ».
+   - Р”Р»СЏ YouTube-РѕС€РёР±РєРё РѕСЃС‚Р°С‘С‚СЃСЏ РЅРµР№С‚СЂР°Р»СЊРЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ Р±РµР· РґРµР№СЃС‚РІРёСЏ.
+   - `NavigationEvents` (Singleton, `SharedFlow` СЃ replay = 1) РїРµСЂРµРґР°С‘С‚ Р·Р°РїСЂРѕСЃ `"РђСЂС‚РёСЃС‚ - РќР°Р·РІР°РЅРёРµ"` Рё `YOUTUBE` РІ `SearchViewModel`.
+   - `SearchViewModel` РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚ РЅР°РјРµСЂРµРЅРёРµ СЃСЂР°Р·Сѓ, Р±РµР· debounce, РѕС‡РёС‰Р°РµС‚ СЃС‚Р°СЂС‹Рµ СЂРµР·СѓР»СЊС‚Р°С‚С‹ Рё РїРµСЂРµРєР»СЋС‡Р°РµС‚ РёСЃС‚РѕС‡РЅРёРє; replay-РєСЌС€ СЃР±СЂР°СЃС‹РІР°РµС‚СЃСЏ РїРѕСЃР»Рµ РѕР±СЂР°Р±РѕС‚РєРё.
+   - `AppNavGraph` РѕС‚РєСЂС‹РІР°РµС‚ РІРєР»Р°РґРєСѓ РїРѕРёСЃРєР° СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј СЃРѕСЃС‚РѕСЏРЅРёСЏ РЅРёР¶РЅРµР№ РЅР°РІРёРіР°С†РёРё.
+5. **РўРµСЃС‚С‹**:
+   - `PlayerControllerQueueTest`: YouTube-С‚СЂРµРє СѓС…РѕРґРёС‚ РІ `YouTubeRepository`, MIME `AUDIO_MP4`; РѕС„Р»Р°Р№РЅ-M4A СЃРѕС…СЂР°РЅСЏРµС‚ MIME РёР· Room.
+   - `DownloadWorkerFormatTest`: СЂР°СЃС€РёСЂРµРЅРёСЏ `.m4a`/`.mp3`/`.webm`, С„РѕР»Р±СЌРєРё MIME Рё Р±РµР·РѕРїР°СЃРЅРѕРµ РёРјСЏ С„Р°Р№Р»Р°.
+   - `SearchViewModelExternalRequestTest`: РІРЅРµС€РЅРёР№ Р·Р°РїСЂРѕСЃ СЃСЂР°Р·Сѓ РІС‹Р±РёСЂР°РµС‚ YouTube, РЅРµ Р¶РґС‘С‚ debounce Рё РЅРµ РїРѕРІС‚РѕСЂСЏРµС‚СЃСЏ РїСЂРё РїРѕРІС‚РѕСЂРЅРѕРј РѕС‚РєСЂС‹С‚РёРё СЌРєСЂР°РЅР°.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/core/navigation/NavigationEvents.kt (новый)
+app/src/main/java/com/my/music/core/navigation/NavigationEvents.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/player/PlayerController.kt
 app/src/main/java/com/my/music/core/download/DownloadTrackWorker.kt
 app/src/main/java/com/my/music/core/download/DownloadWorkerEntryPoint.kt
@@ -1989,153 +2000,153 @@ app/src/main/java/com/my/music/feature/player/PlayerViewModel.kt
 app/src/main/java/com/my/music/feature/search/SearchViewModel.kt
 app/src/main/java/com/my/music/navigation/AppNavGraph.kt
 app/src/test/java/com/my/music/core/player/PlayerControllerQueueTest.kt
-app/src/test/java/com/my/music/core/download/DownloadWorkerFormatTest.kt (новый)
-app/src/test/java/com/my/music/feature/search/SearchViewModelExternalRequestTest.kt (новый)
+app/src/test/java/com/my/music/core/download/DownloadWorkerFormatTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/my/music/feature/search/SearchViewModelExternalRequestTest.kt (РЅРѕРІС‹Р№)
 PROGRESS.md
 MEMORY.md
 ```
 
-### Проверка
-- `.\gradlew assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL.
-- 78 JVM-тестов, 0 failures, 0 errors.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew assembleDebug testDebugUnitTest` вЂ” BUILD SUCCESSFUL.
+- 78 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 errors.
 - APK: `C:\Users\souler\Downloads\MyMusic-debug.apk`.
 
 ---
 
-## ✅ Сессия 5 — MD3 Expressive: Dynamic Color и новый Home (22.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 5 вЂ” MD3 Expressive: Dynamic Color Рё РЅРѕРІС‹Р№ Home (22.10.2026)
 
-### Что сделано
-1. **Фундамент темы**:
-   - на Android 12+ `MyMusicTheme` всегда использует `dynamicDarkColorScheme` / `dynamicLightColorScheme` от системы;
-   - ручной акцент из настроек применяется только на Android ниже 12;
-   - fallback-палитра переведена с фиолетовой на тёплый глубокий фон + коралловый акцент, добавлены все `surfaceContainer*`, `surfaceDim/Bright`, `outlineVariant` и inverse-роли;
-   - создан `Shape.kt`: настоящая squircle-форма через суперэллипс, крупные M3-скругления, Pill и Bento-токены; `shapes` подключены к `MaterialTheme`;
-   - `Type.kt` усилен: ExtraBold Display/Headline, крупнее Display Small, плотный трекинг.
-2. **Главный экран полностью переписан**:
-   - шапка без emoji и refresh: дата, крупное приветствие, одна иконка настроек, pull-to-refresh;
-   - hero «Продолжить слушать» из последнего трека истории: компактная карточка, пружинный scale 0.95, морфинг скругления и цвета;
-   - Bento-раздел «Чарты»: два тональных блока `Top RU` / `Top US` с крупными номерами 01/02/03 и кликабельными треками;
-   - «Хроника»: горизонтальная карусель с чередованием карточек 160dp / 120dp, разной высотой и вертикальным смещением;
-   - «Воспоминания»: одна крупная Bento-карточка с сезонным акцентом, координатами, счётчиком, стеком обложек и запуском очереди;
-   - ниже — Bento-пара «Любимое» и «Ваш жанр» с реальными счётчиками;
-   - появление секций — staggered на Spring с `dampingRatio = 0.8f`.
-3. **Данные**:
-   - добавлена доменная модель `SeasonMemory` и `LikedTracksRepository.getSeasonMemories()`, координаты/сезон больше не теряются при чтении из Room;
-   - `HomeViewModel` больше не грузит старые SoundCloud-чарты для Home; Top RU/US загружаются параллельно через `YouTubeRepository.search()` (`Top 100 Russia music`, `Top 100 USA music`, лимит 8, фильтр длительности);
-   - при ошибке одного региона второй сохраняется, при неудачном refresh старые чарты не затираются;
-   - приложение больше не зависит от обложки на главном: цвета берутся из системной Dynamic Color или fallback-палитры.
-4. **Настройки**:
-   - подпись акцента объясняет, что на Android 12+ используются системные цвета;
-   - ручные акценты доступны только на старых версиях, дефолтный акцент — коралловый.
-5. **Тесты**:
-   - обновлён `HomeViewModelGenreTest` под `SeasonMemory` и YouTube-репозиторий;
-   - добавлен `HomeViewModelChartsTest`: успешная параллельная загрузка, частичная ошибка, сохранение старых чартов при неудачном refresh;
-   - `LikedTracksRepositoryTest` проверяет координаты и сезон через `getSeasonMemories()`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р¤СѓРЅРґР°РјРµРЅС‚ С‚РµРјС‹**:
+   - РЅР° Android 12+ `MyMusicTheme` РІСЃРµРіРґР° РёСЃРїРѕР»СЊР·СѓРµС‚ `dynamicDarkColorScheme` / `dynamicLightColorScheme` РѕС‚ СЃРёСЃС‚РµРјС‹;
+   - СЂСѓС‡РЅРѕР№ Р°РєС†РµРЅС‚ РёР· РЅР°СЃС‚СЂРѕРµРє РїСЂРёРјРµРЅСЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РЅР° Android РЅРёР¶Рµ 12;
+   - fallback-РїР°Р»РёС‚СЂР° РїРµСЂРµРІРµРґРµРЅР° СЃ С„РёРѕР»РµС‚РѕРІРѕР№ РЅР° С‚С‘РїР»С‹Р№ РіР»СѓР±РѕРєРёР№ С„РѕРЅ + РєРѕСЂР°Р»Р»РѕРІС‹Р№ Р°РєС†РµРЅС‚, РґРѕР±Р°РІР»РµРЅС‹ РІСЃРµ `surfaceContainer*`, `surfaceDim/Bright`, `outlineVariant` Рё inverse-СЂРѕР»Рё;
+   - СЃРѕР·РґР°РЅ `Shape.kt`: РЅР°СЃС‚РѕСЏС‰Р°СЏ squircle-С„РѕСЂРјР° С‡РµСЂРµР· СЃСѓРїРµСЂСЌР»Р»РёРїСЃ, РєСЂСѓРїРЅС‹Рµ M3-СЃРєСЂСѓРіР»РµРЅРёСЏ, Pill Рё Bento-С‚РѕРєРµРЅС‹; `shapes` РїРѕРґРєР»СЋС‡РµРЅС‹ Рє `MaterialTheme`;
+   - `Type.kt` СѓСЃРёР»РµРЅ: ExtraBold Display/Headline, РєСЂСѓРїРЅРµРµ Display Small, РїР»РѕС‚РЅС‹Р№ С‚СЂРµРєРёРЅРі.
+2. **Р“Р»Р°РІРЅС‹Р№ СЌРєСЂР°РЅ РїРѕР»РЅРѕСЃС‚СЊСЋ РїРµСЂРµРїРёСЃР°РЅ**:
+   - С€Р°РїРєР° Р±РµР· emoji Рё refresh: РґР°С‚Р°, РєСЂСѓРїРЅРѕРµ РїСЂРёРІРµС‚СЃС‚РІРёРµ, РѕРґРЅР° РёРєРѕРЅРєР° РЅР°СЃС‚СЂРѕРµРє, pull-to-refresh;
+   - hero В«РџСЂРѕРґРѕР»Р¶РёС‚СЊ СЃР»СѓС€Р°С‚СЊВ» РёР· РїРѕСЃР»РµРґРЅРµРіРѕ С‚СЂРµРєР° РёСЃС‚РѕСЂРёРё: РєРѕРјРїР°РєС‚РЅР°СЏ РєР°СЂС‚РѕС‡РєР°, РїСЂСѓР¶РёРЅРЅС‹Р№ scale 0.95, РјРѕСЂС„РёРЅРі СЃРєСЂСѓРіР»РµРЅРёСЏ Рё С†РІРµС‚Р°;
+   - Bento-СЂР°Р·РґРµР» В«Р§Р°СЂС‚С‹В»: РґРІР° С‚РѕРЅР°Р»СЊРЅС‹С… Р±Р»РѕРєР° `Top RU` / `Top US` СЃ РєСЂСѓРїРЅС‹РјРё РЅРѕРјРµСЂР°РјРё 01/02/03 Рё РєР»РёРєР°Р±РµР»СЊРЅС‹РјРё С‚СЂРµРєР°РјРё;
+   - В«РҐСЂРѕРЅРёРєР°В»: РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅР°СЏ РєР°СЂСѓСЃРµР»СЊ СЃ С‡РµСЂРµРґРѕРІР°РЅРёРµРј РєР°СЂС‚РѕС‡РµРє 160dp / 120dp, СЂР°Р·РЅРѕР№ РІС‹СЃРѕС‚РѕР№ Рё РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рј СЃРјРµС‰РµРЅРёРµРј;
+   - В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ»: РѕРґРЅР° РєСЂСѓРїРЅР°СЏ Bento-РєР°СЂС‚РѕС‡РєР° СЃ СЃРµР·РѕРЅРЅС‹Рј Р°РєС†РµРЅС‚РѕРј, РєРѕРѕСЂРґРёРЅР°С‚Р°РјРё, СЃС‡С‘С‚С‡РёРєРѕРј, СЃС‚РµРєРѕРј РѕР±Р»РѕР¶РµРє Рё Р·Р°РїСѓСЃРєРѕРј РѕС‡РµСЂРµРґРё;
+   - РЅРёР¶Рµ вЂ” Bento-РїР°СЂР° В«Р›СЋР±РёРјРѕРµВ» Рё В«Р’Р°С€ Р¶Р°РЅСЂВ» СЃ СЂРµР°Р»СЊРЅС‹РјРё СЃС‡С‘С‚С‡РёРєР°РјРё;
+   - РїРѕСЏРІР»РµРЅРёРµ СЃРµРєС†РёР№ вЂ” staggered РЅР° Spring СЃ `dampingRatio = 0.8f`.
+3. **Р”Р°РЅРЅС‹Рµ**:
+   - РґРѕР±Р°РІР»РµРЅР° РґРѕРјРµРЅРЅР°СЏ РјРѕРґРµР»СЊ `SeasonMemory` Рё `LikedTracksRepository.getSeasonMemories()`, РєРѕРѕСЂРґРёРЅР°С‚С‹/СЃРµР·РѕРЅ Р±РѕР»СЊС€Рµ РЅРµ С‚РµСЂСЏСЋС‚СЃСЏ РїСЂРё С‡С‚РµРЅРёРё РёР· Room;
+   - `HomeViewModel` Р±РѕР»СЊС€Рµ РЅРµ РіСЂСѓР·РёС‚ СЃС‚Р°СЂС‹Рµ SoundCloud-С‡Р°СЂС‚С‹ РґР»СЏ Home; Top RU/US Р·Р°РіСЂСѓР¶Р°СЋС‚СЃСЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕ С‡РµСЂРµР· `YouTubeRepository.search()` (`Top 100 Russia music`, `Top 100 USA music`, Р»РёРјРёС‚ 8, С„РёР»СЊС‚СЂ РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё);
+   - РїСЂРё РѕС€РёР±РєРµ РѕРґРЅРѕРіРѕ СЂРµРіРёРѕРЅР° РІС‚РѕСЂРѕР№ СЃРѕС…СЂР°РЅСЏРµС‚СЃСЏ, РїСЂРё РЅРµСѓРґР°С‡РЅРѕРј refresh СЃС‚Р°СЂС‹Рµ С‡Р°СЂС‚С‹ РЅРµ Р·Р°С‚РёСЂР°СЋС‚СЃСЏ;
+   - РїСЂРёР»РѕР¶РµРЅРёРµ Р±РѕР»СЊС€Рµ РЅРµ Р·Р°РІРёСЃРёС‚ РѕС‚ РѕР±Р»РѕР¶РєРё РЅР° РіР»Р°РІРЅРѕРј: С†РІРµС‚Р° Р±РµСЂСѓС‚СЃСЏ РёР· СЃРёСЃС‚РµРјРЅРѕР№ Dynamic Color РёР»Рё fallback-РїР°Р»РёС‚СЂС‹.
+4. **РќР°СЃС‚СЂРѕР№РєРё**:
+   - РїРѕРґРїРёСЃСЊ Р°РєС†РµРЅС‚Р° РѕР±СЉСЏСЃРЅСЏРµС‚, С‡С‚Рѕ РЅР° Android 12+ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ СЃРёСЃС‚РµРјРЅС‹Рµ С†РІРµС‚Р°;
+   - СЂСѓС‡РЅС‹Рµ Р°РєС†РµРЅС‚С‹ РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РЅР° СЃС‚Р°СЂС‹С… РІРµСЂСЃРёСЏС…, РґРµС„РѕР»С‚РЅС‹Р№ Р°РєС†РµРЅС‚ вЂ” РєРѕСЂР°Р»Р»РѕРІС‹Р№.
+5. **РўРµСЃС‚С‹**:
+   - РѕР±РЅРѕРІР»С‘РЅ `HomeViewModelGenreTest` РїРѕРґ `SeasonMemory` Рё YouTube-СЂРµРїРѕР·РёС‚РѕСЂРёР№;
+   - РґРѕР±Р°РІР»РµРЅ `HomeViewModelChartsTest`: СѓСЃРїРµС€РЅР°СЏ РїР°СЂР°Р»Р»РµР»СЊРЅР°СЏ Р·Р°РіСЂСѓР·РєР°, С‡Р°СЃС‚РёС‡РЅР°СЏ РѕС€РёР±РєР°, СЃРѕС…СЂР°РЅРµРЅРёРµ СЃС‚Р°СЂС‹С… С‡Р°СЂС‚РѕРІ РїСЂРё РЅРµСѓРґР°С‡РЅРѕРј refresh;
+   - `LikedTracksRepositoryTest` РїСЂРѕРІРµСЂСЏРµС‚ РєРѕРѕСЂРґРёРЅР°С‚С‹ Рё СЃРµР·РѕРЅ С‡РµСЂРµР· `getSeasonMemories()`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/core/ui/theme/Color.kt
 app/src/main/java/com/my/music/core/ui/theme/Theme.kt
 app/src/main/java/com/my/music/core/ui/theme/Type.kt
-app/src/main/java/com/my/music/core/ui/theme/Shape.kt (новый)
+app/src/main/java/com/my/music/core/ui/theme/Shape.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/core/ui/theme/AccentPalette.kt
 app/src/main/java/com/my/music/MainActivity.kt
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt (полностью переписан)
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt (РїРѕР»РЅРѕСЃС‚СЊСЋ РїРµСЂРµРїРёСЃР°РЅ)
 app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
 app/src/main/java/com/my/music/feature/settings/SettingsScreen.kt
-app/src/main/java/com/my/music/data/model/SeasonMemory.kt (новый)
+app/src/main/java/com/my/music/data/model/SeasonMemory.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/data/local/entity/LikedTrackEntity.kt
 app/src/main/java/com/my/music/data/local/LikedTracksRepositoryImpl.kt
 app/src/main/java/com/my/music/data/repository/LikedTracksRepository.kt
 app/src/main/java/com/my/music/data/repository/SettingsRepository.kt
 app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelChartsTest.kt (новый)
+app/src/test/java/com/my/music/feature/home/HomeViewModelChartsTest.kt (РЅРѕРІС‹Р№)
 app/src/test/java/com/my/music/data/local/LikedTracksRepositoryTest.kt
 PROGRESS.md
 MEMORY.md
 ```
 
-### Проверка
-- `.\gradlew assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL.
-- 80 JVM-тестов, 0 failures, 0 errors.
-- `lintDebug`: новых замечаний в файлах Home/темы нет; единственная ошибка — существующий Media3 `UnstableApi` в `PlayerController` (плеер по условию не трогали).
-- Плеер и поиск не изменялись.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew assembleDebug testDebugUnitTest` вЂ” BUILD SUCCESSFUL.
+- 80 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 errors.
+- `lintDebug`: РЅРѕРІС‹С… Р·Р°РјРµС‡Р°РЅРёР№ РІ С„Р°Р№Р»Р°С… Home/С‚РµРјС‹ РЅРµС‚; РµРґРёРЅСЃС‚РІРµРЅРЅР°СЏ РѕС€РёР±РєР° вЂ” СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ Media3 `UnstableApi` РІ `PlayerController` (РїР»РµРµСЂ РїРѕ СѓСЃР»РѕРІРёСЋ РЅРµ С‚СЂРѕРіР°Р»Рё).
+- РџР»РµРµСЂ Рё РїРѕРёСЃРє РЅРµ РёР·РјРµРЅСЏР»РёСЃСЊ.
 
 ---
 
-## ✅ Сессия 6 — Компактный Home (23.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 6 вЂ” РљРѕРјРїР°РєС‚РЅС‹Р№ Home (23.10.2026)
 
-### Что сделано
-- Home переписан по новому ТЗ: максимум 4 блока, без Bento-сетки, наложений, вылетов за край и декоративных градиентов.
-- Блок 1 — компактный hero «Продолжить слушать»: обложка слева, текст справа, Play-бейдж, press-scale 0.95.
-- Блок 2 — один блок «Чарты» с переключателем `Top RU` / `Top US`; внутри 3 трека с крупными номерами, ошибка и skeleton остаются внутри блока.
-- Блок 3 — «Недавнее»: горизонтальная лента обложек 126dp, подписи поверх с плоским скримом (без градиента).
-- Блок 4 — опционально «Воспоминания» (сезон + количество) или «Любимое» (количество); при отсутствии данных не показывается.
-- Отступы: 26dp между блоками, 12–14dp внутри; разные скругления: hero 28dp, чарты 20dp, компактная карточка 16dp, обложки — squircle.
-- Появление блоков — лёгкий spring `dampingRatio = 0.8`, только alpha + подъём 12dp.
-- Плеер и поиск не изменялись. `Theme.kt`, `Color.kt`, `Shape.kt` уже соответствовали ТЗ, поэтому не переписывались.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+- Home РїРµСЂРµРїРёСЃР°РЅ РїРѕ РЅРѕРІРѕРјСѓ РўР—: РјР°РєСЃРёРјСѓРј 4 Р±Р»РѕРєР°, Р±РµР· Bento-СЃРµС‚РєРё, РЅР°Р»РѕР¶РµРЅРёР№, РІС‹Р»РµС‚РѕРІ Р·Р° РєСЂР°Р№ Рё РґРµРєРѕСЂР°С‚РёРІРЅС‹С… РіСЂР°РґРёРµРЅС‚РѕРІ.
+- Р‘Р»РѕРє 1 вЂ” РєРѕРјРїР°РєС‚РЅС‹Р№ hero В«РџСЂРѕРґРѕР»Р¶РёС‚СЊ СЃР»СѓС€Р°С‚СЊВ»: РѕР±Р»РѕР¶РєР° СЃР»РµРІР°, С‚РµРєСЃС‚ СЃРїСЂР°РІР°, Play-Р±РµР№РґР¶, press-scale 0.95.
+- Р‘Р»РѕРє 2 вЂ” РѕРґРёРЅ Р±Р»РѕРє В«Р§Р°СЂС‚С‹В» СЃ РїРµСЂРµРєР»СЋС‡Р°С‚РµР»РµРј `Top RU` / `Top US`; РІРЅСѓС‚СЂРё 3 С‚СЂРµРєР° СЃ РєСЂСѓРїРЅС‹РјРё РЅРѕРјРµСЂР°РјРё, РѕС€РёР±РєР° Рё skeleton РѕСЃС‚Р°СЋС‚СЃСЏ РІРЅСѓС‚СЂРё Р±Р»РѕРєР°.
+- Р‘Р»РѕРє 3 вЂ” В«РќРµРґР°РІРЅРµРµВ»: РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅР°СЏ Р»РµРЅС‚Р° РѕР±Р»РѕР¶РµРє 126dp, РїРѕРґРїРёСЃРё РїРѕРІРµСЂС… СЃ РїР»РѕСЃРєРёРј СЃРєСЂРёРјРѕРј (Р±РµР· РіСЂР°РґРёРµРЅС‚Р°).
+- Р‘Р»РѕРє 4 вЂ” РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ» (СЃРµР·РѕРЅ + РєРѕР»РёС‡РµСЃС‚РІРѕ) РёР»Рё В«Р›СЋР±РёРјРѕРµВ» (РєРѕР»РёС‡РµСЃС‚РІРѕ); РїСЂРё РѕС‚СЃСѓС‚СЃС‚РІРёРё РґР°РЅРЅС‹С… РЅРµ РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ.
+- РћС‚СЃС‚СѓРїС‹: 26dp РјРµР¶РґСѓ Р±Р»РѕРєР°РјРё, 12вЂ“14dp РІРЅСѓС‚СЂРё; СЂР°Р·РЅС‹Рµ СЃРєСЂСѓРіР»РµРЅРёСЏ: hero 28dp, С‡Р°СЂС‚С‹ 20dp, РєРѕРјРїР°РєС‚РЅР°СЏ РєР°СЂС‚РѕС‡РєР° 16dp, РѕР±Р»РѕР¶РєРё вЂ” squircle.
+- РџРѕСЏРІР»РµРЅРёРµ Р±Р»РѕРєРѕРІ вЂ” Р»С‘РіРєРёР№ spring `dampingRatio = 0.8`, С‚РѕР»СЊРєРѕ alpha + РїРѕРґСЉС‘Рј 12dp.
+- РџР»РµРµСЂ Рё РїРѕРёСЃРє РЅРµ РёР·РјРµРЅСЏР»РёСЃСЊ. `Theme.kt`, `Color.kt`, `Shape.kt` СѓР¶Рµ СЃРѕРѕС‚РІРµС‚СЃС‚РІРѕРІР°Р»Рё РўР—, РїРѕСЌС‚РѕРјСѓ РЅРµ РїРµСЂРµРїРёСЃС‹РІР°Р»РёСЃСЊ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/home/HomeScreen.kt (полностью переписан)
+app/src/main/java/com/my/music/feature/home/HomeScreen.kt (РїРѕР»РЅРѕСЃС‚СЊСЋ РїРµСЂРµРїРёСЃР°РЅ)
 PROGRESS.md
 MEMORY.md
 ```
 
-### Проверка
-- `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
-- `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 80 JVM-тестов, 0 failures, 0 errors.
-- `lintDebug`: новых замечаний в HomeScreen нет; остаётся существующая ошибка Media3 `UnstableApi` в `PlayerController` (плеер не трогали).
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew assembleDebug` вЂ” BUILD SUCCESSFUL.
+- `.\gradlew testDebugUnitTest` вЂ” BUILD SUCCESSFUL, 80 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 errors.
+- `lintDebug`: РЅРѕРІС‹С… Р·Р°РјРµС‡Р°РЅРёР№ РІ HomeScreen РЅРµС‚; РѕСЃС‚Р°С‘С‚СЃСЏ СЃСѓС‰РµСЃС‚РІСѓСЋС‰Р°СЏ РѕС€РёР±РєР° Media3 `UnstableApi` РІ `PlayerController` (РїР»РµРµСЂ РЅРµ С‚СЂРѕРіР°Р»Рё).
 - APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 
-## ✅ Сессия 7 — Рекомендации вместо чартов (23.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 7 вЂ” Р РµРєРѕРјРµРЅРґР°С†РёРё РІРјРµСЃС‚Рѕ С‡Р°СЂС‚РѕРІ (23.10.2026)
 
-### Что сделано
-- Блок «Чарты» (`Top RU` / `Top US`) полностью удалён из Home.
-- Вместо него добавлен блок «Для вас»: горизонтальная `LazyRow` с рекомендациями.
-- Карточка рекомендации: обложка 140dp в `SquircleShape`, название (до 2 строк) и артист под обложкой, press-scale 0.96.
-- `HomeViewModel` строит персональные запросы по последним лайкам и истории: первый жанр и первый артист, два параллельных запроса `YouTubeRepository.search()` (`"<жанр> music mix"`, `"<артист> best songs"`).
-- Если лайков/истории нет — загружаются популярные треки (`popular music 2026`).
-- Если персонализированный поиск пуст или упал, включается тот же популярный fallback.
-- Результаты фильтруются по длительности 45–900 секунд, дедуплицируются и исключают треки, уже находящиеся в лайках/истории.
-- Повторные запросы защищены ключом персонализации: одинаковые жанр/артист не запускают новую загрузку; при новых сигналах старый запрос отменяется.
-- Ошибка загрузки не затирает уже показанные рекомендации; для пустого состояния есть кнопка «Повторить»/«Обновить».
-- В «Недавнем» обложки переведены на `RoundedCornerShape(18.dp)`, скрим усилен до `0.56f`, подписи получили больший контраст.
-- Hero, опциональная карточка, отступы, reveal-анимации и press-scale остальных блоков не менялись. Плеер и поиск не трогались.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+- Р‘Р»РѕРє В«Р§Р°СЂС‚С‹В» (`Top RU` / `Top US`) РїРѕР»РЅРѕСЃС‚СЊСЋ СѓРґР°Р»С‘РЅ РёР· Home.
+- Р’РјРµСЃС‚Рѕ РЅРµРіРѕ РґРѕР±Р°РІР»РµРЅ Р±Р»РѕРє В«Р”Р»СЏ РІР°СЃВ»: РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅР°СЏ `LazyRow` СЃ СЂРµРєРѕРјРµРЅРґР°С†РёСЏРјРё.
+- РљР°СЂС‚РѕС‡РєР° СЂРµРєРѕРјРµРЅРґР°С†РёРё: РѕР±Р»РѕР¶РєР° 140dp РІ `SquircleShape`, РЅР°Р·РІР°РЅРёРµ (РґРѕ 2 СЃС‚СЂРѕРє) Рё Р°СЂС‚РёСЃС‚ РїРѕРґ РѕР±Р»РѕР¶РєРѕР№, press-scale 0.96.
+- `HomeViewModel` СЃС‚СЂРѕРёС‚ РїРµСЂСЃРѕРЅР°Р»СЊРЅС‹Рµ Р·Р°РїСЂРѕСЃС‹ РїРѕ РїРѕСЃР»РµРґРЅРёРј Р»Р°Р№РєР°Рј Рё РёСЃС‚РѕСЂРёРё: РїРµСЂРІС‹Р№ Р¶Р°РЅСЂ Рё РїРµСЂРІС‹Р№ Р°СЂС‚РёСЃС‚, РґРІР° РїР°СЂР°Р»Р»РµР»СЊРЅС‹С… Р·Р°РїСЂРѕСЃР° `YouTubeRepository.search()` (`"<Р¶Р°РЅСЂ> music mix"`, `"<Р°СЂС‚РёСЃС‚> best songs"`).
+- Р•СЃР»Рё Р»Р°Р№РєРѕРІ/РёСЃС‚РѕСЂРёРё РЅРµС‚ вЂ” Р·Р°РіСЂСѓР¶Р°СЋС‚СЃСЏ РїРѕРїСѓР»СЏСЂРЅС‹Рµ С‚СЂРµРєРё (`popular music 2026`).
+- Р•СЃР»Рё РїРµСЂСЃРѕРЅР°Р»РёР·РёСЂРѕРІР°РЅРЅС‹Р№ РїРѕРёСЃРє РїСѓСЃС‚ РёР»Рё СѓРїР°Р», РІРєР»СЋС‡Р°РµС‚СЃСЏ С‚РѕС‚ Р¶Рµ РїРѕРїСѓР»СЏСЂРЅС‹Р№ fallback.
+- Р РµР·СѓР»СЊС‚Р°С‚С‹ С„РёР»СЊС‚СЂСѓСЋС‚СЃСЏ РїРѕ РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё 45вЂ“900 СЃРµРєСѓРЅРґ, РґРµРґСѓРїР»РёС†РёСЂСѓСЋС‚СЃСЏ Рё РёСЃРєР»СЋС‡Р°СЋС‚ С‚СЂРµРєРё, СѓР¶Рµ РЅР°С…РѕРґСЏС‰РёРµСЃСЏ РІ Р»Р°Р№РєР°С…/РёСЃС‚РѕСЂРёРё.
+- РџРѕРІС‚РѕСЂРЅС‹Рµ Р·Р°РїСЂРѕСЃС‹ Р·Р°С‰РёС‰РµРЅС‹ РєР»СЋС‡РѕРј РїРµСЂСЃРѕРЅР°Р»РёР·Р°С†РёРё: РѕРґРёРЅР°РєРѕРІС‹Рµ Р¶Р°РЅСЂ/Р°СЂС‚РёСЃС‚ РЅРµ Р·Р°РїСѓСЃРєР°СЋС‚ РЅРѕРІСѓСЋ Р·Р°РіСЂСѓР·РєСѓ; РїСЂРё РЅРѕРІС‹С… СЃРёРіРЅР°Р»Р°С… СЃС‚Р°СЂС‹Р№ Р·Р°РїСЂРѕСЃ РѕС‚РјРµРЅСЏРµС‚СЃСЏ.
+- РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РЅРµ Р·Р°С‚РёСЂР°РµС‚ СѓР¶Рµ РїРѕРєР°Р·Р°РЅРЅС‹Рµ СЂРµРєРѕРјРµРЅРґР°С†РёРё; РґР»СЏ РїСѓСЃС‚РѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ РµСЃС‚СЊ РєРЅРѕРїРєР° В«РџРѕРІС‚РѕСЂРёС‚СЊВ»/В«РћР±РЅРѕРІРёС‚СЊВ».
+- Р’ В«РќРµРґР°РІРЅРµРјВ» РѕР±Р»РѕР¶РєРё РїРµСЂРµРІРµРґРµРЅС‹ РЅР° `RoundedCornerShape(18.dp)`, СЃРєСЂРёРј СѓСЃРёР»РµРЅ РґРѕ `0.56f`, РїРѕРґРїРёСЃРё РїРѕР»СѓС‡РёР»Рё Р±РѕР»СЊС€РёР№ РєРѕРЅС‚СЂР°СЃС‚.
+- Hero, РѕРїС†РёРѕРЅР°Р»СЊРЅР°СЏ РєР°СЂС‚РѕС‡РєР°, РѕС‚СЃС‚СѓРїС‹, reveal-Р°РЅРёРјР°С†РёРё Рё press-scale РѕСЃС‚Р°Р»СЊРЅС‹С… Р±Р»РѕРєРѕРІ РЅРµ РјРµРЅСЏР»РёСЃСЊ. РџР»РµРµСЂ Рё РїРѕРёСЃРє РЅРµ С‚СЂРѕРіР°Р»РёСЃСЊ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
 app/src/main/java/com/my/music/feature/home/HomeScreen.kt
-app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt (новый)
-app/src/test/java/com/my/music/feature/home/HomeViewModelChartsTest.kt (удалён)
+app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt (РЅРѕРІС‹Р№)
+app/src/test/java/com/my/music/feature/home/HomeViewModelChartsTest.kt (СѓРґР°Р»С‘РЅ)
 PROGRESS.md
 MEMORY.md
 ```
 
-### Проверка
-- `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
-- `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 81 JVM-тест, 0 failures, 0 errors.
-- `lintDebug`: новых замечаний в Home нет; остаётся существующая ошибка Media3 `UnstableApi` в `PlayerController` (плеер не трогали).
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew assembleDebug` вЂ” BUILD SUCCESSFUL.
+- `.\gradlew testDebugUnitTest` вЂ” BUILD SUCCESSFUL, 81 JVM-С‚РµСЃС‚, 0 failures, 0 errors.
+- `lintDebug`: РЅРѕРІС‹С… Р·Р°РјРµС‡Р°РЅРёР№ РІ Home РЅРµС‚; РѕСЃС‚Р°С‘С‚СЃСЏ СЃСѓС‰РµСЃС‚РІСѓСЋС‰Р°СЏ РѕС€РёР±РєР° Media3 `UnstableApi` РІ `PlayerController` (РїР»РµРµСЂ РЅРµ С‚СЂРѕРіР°Р»Рё).
 - APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 
-## ✅ Сессия 8 — Полировка рекомендаций и «Воспоминаний» (23.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 8 вЂ” РџРѕР»РёСЂРѕРІРєР° СЂРµРєРѕРјРµРЅРґР°С†РёР№ Рё В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёР№В» (23.10.2026)
 
-### Что сделано
-- «Для вас»: запросы переведены на `"<жанр> official audio"` и `"<артист> official audio"`, fallback — `"popular songs official audio"`.
-- Добавлен фильтр нестудийных записей: переводы, ремиксы, каверы, live, караоке, инструменталы, акустика, slowed/nightcore, многоязычные версии и треки без букв в названии.
-- Рекомендации больше не исключают прослушанные или лайкнутые треки. Лента загружается один раз за жизнь `HomeViewModel`, повторно — только через Pull-to-refresh.
-- Если персональных результатов меньше 10, они добираются популярными треками до 15. Максимум карусели — 15 карточек.
-- Позиция основного списка и карусели рекомендаций сохраняется через `rememberLazyListState()`; `RevealBlock` не повторяет анимацию при возврате с плеера.
-- «Воспоминания» переделаны в единую карточку без выступа: шапка с сезоном, количеством треков и кнопкой Play, разделитель и список до 5 треков.
-- В списке «Воспоминаний» квадратные обложки 40dp, название, артист и длительность. Play запускает очередь с первого трека, тап по треку — с выбранного.
-- Плеер и поиск не изменялись.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+- В«Р”Р»СЏ РІР°СЃВ»: Р·Р°РїСЂРѕСЃС‹ РїРµСЂРµРІРµРґРµРЅС‹ РЅР° `"<Р¶Р°РЅСЂ> official audio"` Рё `"<Р°СЂС‚РёСЃС‚> official audio"`, fallback вЂ” `"popular songs official audio"`.
+- Р”РѕР±Р°РІР»РµРЅ С„РёР»СЊС‚СЂ РЅРµСЃС‚СѓРґРёР№РЅС‹С… Р·Р°РїРёСЃРµР№: РїРµСЂРµРІРѕРґС‹, СЂРµРјРёРєСЃС‹, РєР°РІРµСЂС‹, live, РєР°СЂР°РѕРєРµ, РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°Р»С‹, Р°РєСѓСЃС‚РёРєР°, slowed/nightcore, РјРЅРѕРіРѕСЏР·С‹С‡РЅС‹Рµ РІРµСЂСЃРёРё Рё С‚СЂРµРєРё Р±РµР· Р±СѓРєРІ РІ РЅР°Р·РІР°РЅРёРё.
+- Р РµРєРѕРјРµРЅРґР°С†РёРё Р±РѕР»СЊС€Рµ РЅРµ РёСЃРєР»СЋС‡Р°СЋС‚ РїСЂРѕСЃР»СѓС€Р°РЅРЅС‹Рµ РёР»Рё Р»Р°Р№РєРЅСѓС‚С‹Рµ С‚СЂРµРєРё. Р›РµРЅС‚Р° Р·Р°РіСЂСѓР¶Р°РµС‚СЃСЏ РѕРґРёРЅ СЂР°Р· Р·Р° Р¶РёР·РЅСЊ `HomeViewModel`, РїРѕРІС‚РѕСЂРЅРѕ вЂ” С‚РѕР»СЊРєРѕ С‡РµСЂРµР· Pull-to-refresh.
+- Р•СЃР»Рё РїРµСЂСЃРѕРЅР°Р»СЊРЅС‹С… СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ РјРµРЅСЊС€Рµ 10, РѕРЅРё РґРѕР±РёСЂР°СЋС‚СЃСЏ РїРѕРїСѓР»СЏСЂРЅС‹РјРё С‚СЂРµРєР°РјРё РґРѕ 15. РњР°РєСЃРёРјСѓРј РєР°СЂСѓСЃРµР»Рё вЂ” 15 РєР°СЂС‚РѕС‡РµРє.
+- РџРѕР·РёС†РёСЏ РѕСЃРЅРѕРІРЅРѕРіРѕ СЃРїРёСЃРєР° Рё РєР°СЂСѓСЃРµР»Рё СЂРµРєРѕРјРµРЅРґР°С†РёР№ СЃРѕС…СЂР°РЅСЏРµС‚СЃСЏ С‡РµСЂРµР· `rememberLazyListState()`; `RevealBlock` РЅРµ РїРѕРІС‚РѕСЂСЏРµС‚ Р°РЅРёРјР°С†РёСЋ РїСЂРё РІРѕР·РІСЂР°С‚Рµ СЃ РїР»РµРµСЂР°.
+- В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ» РїРµСЂРµРґРµР»Р°РЅС‹ РІ РµРґРёРЅСѓСЋ РєР°СЂС‚РѕС‡РєСѓ Р±РµР· РІС‹СЃС‚СѓРїР°: С€Р°РїРєР° СЃ СЃРµР·РѕРЅРѕРј, РєРѕР»РёС‡РµСЃС‚РІРѕРј С‚СЂРµРєРѕРІ Рё РєРЅРѕРїРєРѕР№ Play, СЂР°Р·РґРµР»РёС‚РµР»СЊ Рё СЃРїРёСЃРѕРє РґРѕ 5 С‚СЂРµРєРѕРІ.
+- Р’ СЃРїРёСЃРєРµ В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёР№В» РєРІР°РґСЂР°С‚РЅС‹Рµ РѕР±Р»РѕР¶РєРё 40dp, РЅР°Р·РІР°РЅРёРµ, Р°СЂС‚РёСЃС‚ Рё РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ. Play Р·Р°РїСѓСЃРєР°РµС‚ РѕС‡РµСЂРµРґСЊ СЃ РїРµСЂРІРѕРіРѕ С‚СЂРµРєР°, С‚Р°Рї РїРѕ С‚СЂРµРєСѓ вЂ” СЃ РІС‹Р±СЂР°РЅРЅРѕРіРѕ.
+- РџР»РµРµСЂ Рё РїРѕРёСЃРє РЅРµ РёР·РјРµРЅСЏР»РёСЃСЊ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
 app/src/main/java/com/my/music/feature/home/HomeScreen.kt
@@ -2144,101 +2155,101 @@ PROGRESS.md
 MEMORY.md
 ```
 
-### Проверка
-- `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 84 JVM-теста, 0 failures, 0 errors.
-- `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew testDebugUnitTest` вЂ” BUILD SUCCESSFUL, 84 JVM-С‚РµСЃС‚Р°, 0 failures, 0 errors.
+- `.\gradlew assembleDebug` вЂ” BUILD SUCCESSFUL.
 - APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
-### Следующий шаг
-- Импорт плейлистов YouTube или экран «Скачанное».
+### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
+- РРјРїРѕСЂС‚ РїР»РµР№Р»РёСЃС‚РѕРІ YouTube РёР»Рё СЌРєСЂР°РЅ В«РЎРєР°С‡Р°РЅРЅРѕРµВ».
 
 ---
 
-## ✅ Сессия 9 — Рекомендации v2: сиды, валидация и recently_shown (24.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 9 вЂ” Р РµРєРѕРјРµРЅРґР°С†РёРё v2: СЃРёРґС‹, РІР°Р»РёРґР°С†РёСЏ Рё recently_shown (24.10.2026)
 
-### Что сделано
-- «Для вас» переведены с одного жанра/артиста на топ-8 артистов-сидов из лайков и истории. Лайк весит больше прослушивания, свежие записи — больше старых; повтор одного и того же трека не удваивает вес.
-- Имя артиста нормализуется: нижний регистр, удаление `feat.`/`ft.`/`prod.`/`produced by`, схлопывание пробелов.
-- На каждый refresh выбираются случайные 4–5 артистов из топ-8. Для каждого генерируются 1–2 запроса из `"<artist> official audio"`, `"<artist> <жанр>"`, `"<artist> official"`, плюс 1–2 общих запроса `"<жанр> official audio"`.
-- Добавлена строгая валидация: трек принимается только при совпадении нормализованного `track.artist` с сид-артистом. Если артист пустой или `Unknown`, сравнивается начало названия (`startsWith`), а не подстрока. Кейс «имя сида в title чужого трека» больше не проходит.
-- Фильтр переводов, ремиксов, каверов, live, караоке, инструментала, акустики, slowed/nightcore и многоязычных версий сохранён.
-- Room поднят до v8: таблица `recently_shown` (`trackId`, `shownAt`) с TTL 24 часа. Показанные треки исключаются из следующей пачки, старые записи вычищаются при записи новой.
-- Пул кандидатов перемешивается перед обрезкой. В финальной ленте не больше 3 треков одного артиста; при нехватке 10 уникальных лента добивается популярными с тем же капом и исключением `recently_shown`.
-- Pull-to-refresh делает force-загрузку, заменяет ленту новой пачкой и не накладывает её поверх старой.
-- Прослушанные и лайкнутые треки не исчезают из уже показанной ленты; возврат с плеера не перезагружает Home, позиции и reveal-анимация сохраняются.
-- Плеер и поиск не изменялись.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+- В«Р”Р»СЏ РІР°СЃВ» РїРµСЂРµРІРµРґРµРЅС‹ СЃ РѕРґРЅРѕРіРѕ Р¶Р°РЅСЂР°/Р°СЂС‚РёСЃС‚Р° РЅР° С‚РѕРї-8 Р°СЂС‚РёСЃС‚РѕРІ-СЃРёРґРѕРІ РёР· Р»Р°Р№РєРѕРІ Рё РёСЃС‚РѕСЂРёРё. Р›Р°Р№Рє РІРµСЃРёС‚ Р±РѕР»СЊС€Рµ РїСЂРѕСЃР»СѓС€РёРІР°РЅРёСЏ, СЃРІРµР¶РёРµ Р·Р°РїРёСЃРё вЂ” Р±РѕР»СЊС€Рµ СЃС‚Р°СЂС‹С…; РїРѕРІС‚РѕСЂ РѕРґРЅРѕРіРѕ Рё С‚РѕРіРѕ Р¶Рµ С‚СЂРµРєР° РЅРµ СѓРґРІР°РёРІР°РµС‚ РІРµСЃ.
+- РРјСЏ Р°СЂС‚РёСЃС‚Р° РЅРѕСЂРјР°Р»РёР·СѓРµС‚СЃСЏ: РЅРёР¶РЅРёР№ СЂРµРіРёСЃС‚СЂ, СѓРґР°Р»РµРЅРёРµ `feat.`/`ft.`/`prod.`/`produced by`, СЃС…Р»РѕРїС‹РІР°РЅРёРµ РїСЂРѕР±РµР»РѕРІ.
+- РќР° РєР°Р¶РґС‹Р№ refresh РІС‹Р±РёСЂР°СЋС‚СЃСЏ СЃР»СѓС‡Р°Р№РЅС‹Рµ 4вЂ“5 Р°СЂС‚РёСЃС‚РѕРІ РёР· С‚РѕРї-8. Р”Р»СЏ РєР°Р¶РґРѕРіРѕ РіРµРЅРµСЂРёСЂСѓСЋС‚СЃСЏ 1вЂ“2 Р·Р°РїСЂРѕСЃР° РёР· `"<artist> official audio"`, `"<artist> <Р¶Р°РЅСЂ>"`, `"<artist> official"`, РїР»СЋСЃ 1вЂ“2 РѕР±С‰РёС… Р·Р°РїСЂРѕСЃР° `"<Р¶Р°РЅСЂ> official audio"`.
+- Р”РѕР±Р°РІР»РµРЅР° СЃС‚СЂРѕРіР°СЏ РІР°Р»РёРґР°С†РёСЏ: С‚СЂРµРє РїСЂРёРЅРёРјР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё СЃРѕРІРїР°РґРµРЅРёРё РЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅРѕРіРѕ `track.artist` СЃ СЃРёРґ-Р°СЂС‚РёСЃС‚РѕРј. Р•СЃР»Рё Р°СЂС‚РёСЃС‚ РїСѓСЃС‚РѕР№ РёР»Рё `Unknown`, СЃСЂР°РІРЅРёРІР°РµС‚СЃСЏ РЅР°С‡Р°Р»Рѕ РЅР°Р·РІР°РЅРёСЏ (`startsWith`), Р° РЅРµ РїРѕРґСЃС‚СЂРѕРєР°. РљРµР№СЃ В«РёРјСЏ СЃРёРґР° РІ title С‡СѓР¶РѕРіРѕ С‚СЂРµРєР°В» Р±РѕР»СЊС€Рµ РЅРµ РїСЂРѕС…РѕРґРёС‚.
+- Р¤РёР»СЊС‚СЂ РїРµСЂРµРІРѕРґРѕРІ, СЂРµРјРёРєСЃРѕРІ, РєР°РІРµСЂРѕРІ, live, РєР°СЂР°РѕРєРµ, РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°Р»Р°, Р°РєСѓСЃС‚РёРєРё, slowed/nightcore Рё РјРЅРѕРіРѕСЏР·С‹С‡РЅС‹С… РІРµСЂСЃРёР№ СЃРѕС…СЂР°РЅС‘РЅ.
+- Room РїРѕРґРЅСЏС‚ РґРѕ v8: С‚Р°Р±Р»РёС†Р° `recently_shown` (`trackId`, `shownAt`) СЃ TTL 24 С‡Р°СЃР°. РџРѕРєР°Р·Р°РЅРЅС‹Рµ С‚СЂРµРєРё РёСЃРєР»СЋС‡Р°СЋС‚СЃСЏ РёР· СЃР»РµРґСѓСЋС‰РµР№ РїР°С‡РєРё, СЃС‚Р°СЂС‹Рµ Р·Р°РїРёСЃРё РІС‹С‡РёС‰Р°СЋС‚СЃСЏ РїСЂРё Р·Р°РїРёСЃРё РЅРѕРІРѕР№.
+- РџСѓР» РєР°РЅРґРёРґР°С‚РѕРІ РїРµСЂРµРјРµС€РёРІР°РµС‚СЃСЏ РїРµСЂРµРґ РѕР±СЂРµР·РєРѕР№. Р’ С„РёРЅР°Р»СЊРЅРѕР№ Р»РµРЅС‚Рµ РЅРµ Р±РѕР»СЊС€Рµ 3 С‚СЂРµРєРѕРІ РѕРґРЅРѕРіРѕ Р°СЂС‚РёСЃС‚Р°; РїСЂРё РЅРµС…РІР°С‚РєРµ 10 СѓРЅРёРєР°Р»СЊРЅС‹С… Р»РµРЅС‚Р° РґРѕР±РёРІР°РµС‚СЃСЏ РїРѕРїСѓР»СЏСЂРЅС‹РјРё СЃ С‚РµРј Р¶Рµ РєР°РїРѕРј Рё РёСЃРєР»СЋС‡РµРЅРёРµРј `recently_shown`.
+- Pull-to-refresh РґРµР»Р°РµС‚ force-Р·Р°РіСЂСѓР·РєСѓ, Р·Р°РјРµРЅСЏРµС‚ Р»РµРЅС‚Сѓ РЅРѕРІРѕР№ РїР°С‡РєРѕР№ Рё РЅРµ РЅР°РєР»Р°РґС‹РІР°РµС‚ РµС‘ РїРѕРІРµСЂС… СЃС‚Р°СЂРѕР№.
+- РџСЂРѕСЃР»СѓС€Р°РЅРЅС‹Рµ Рё Р»Р°Р№РєРЅСѓС‚С‹Рµ С‚СЂРµРєРё РЅРµ РёСЃС‡РµР·Р°СЋС‚ РёР· СѓР¶Рµ РїРѕРєР°Р·Р°РЅРЅРѕР№ Р»РµРЅС‚С‹; РІРѕР·РІСЂР°С‚ СЃ РїР»РµРµСЂР° РЅРµ РїРµСЂРµР·Р°РіСЂСѓР¶Р°РµС‚ Home, РїРѕР·РёС†РёРё Рё reveal-Р°РЅРёРјР°С†РёСЏ СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ.
+- РџР»РµРµСЂ Рё РїРѕРёСЃРє РЅРµ РёР·РјРµРЅСЏР»РёСЃСЊ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
-app/src/main/java/com/my/music/feature/home/RecommendationPlanner.kt (новый)
+app/src/main/java/com/my/music/feature/home/RecommendationPlanner.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
-app/src/main/java/com/my/music/data/local/entity/RecentlyShownEntity.kt (новый)
-app/src/main/java/com/my/music/data/local/dao/RecentlyShownDao.kt (новый)
-app/src/main/java/com/my/music/data/repository/RecentlyShownRepository.kt (новый)
-app/src/main/java/com/my/music/data/local/RecentlyShownRepositoryImpl.kt (новый)
+app/src/main/java/com/my/music/data/local/entity/RecentlyShownEntity.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/local/dao/RecentlyShownDao.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/repository/RecentlyShownRepository.kt (РЅРѕРІС‹Р№)
+app/src/main/java/com/my/music/data/local/RecentlyShownRepositoryImpl.kt (РЅРѕРІС‹Р№)
 app/src/main/java/com/my/music/data/local/AppDatabase.kt
 app/src/main/java/com/my/music/data/local/DatabaseMigrations.kt
 app/src/main/java/com/my/music/data/local/DatabaseModule.kt
 app/src/main/java/com/my/music/core/di/RepositoryModule.kt
-app/schemas/com.my.music.data.local.AppDatabase/8.json (новый)
-app/src/test/java/com/my/music/feature/home/RecommendationPlannerTest.kt (новый)
+app/schemas/com.my.music.data.local.AppDatabase/8.json (РЅРѕРІС‹Р№)
+app/src/test/java/com/my/music/feature/home/RecommendationPlannerTest.kt (РЅРѕРІС‹Р№)
 app/src/test/java/com/my/music/feature/home/HomeViewModelRecommendationsTest.kt
 app/src/test/java/com/my/music/feature/home/HomeViewModelGenreTest.kt
-app/src/test/java/com/my/music/data/local/RecentlyShownRepositoryTest.kt (новый)
+app/src/test/java/com/my/music/data/local/RecentlyShownRepositoryTest.kt (РЅРѕРІС‹Р№)
 app/src/test/java/com/my/music/data/local/DatabaseMigrationTest.kt
 PROGRESS.md
 MEMORY.md
 ```
 
-### Проверка
-- `.\gradlew testDebugUnitTest` — BUILD SUCCESSFUL, 92 JVM-теста, 0 failures, 0 errors.
-- `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
-- Room-схема v8 экспортирована, миграция 1→8 проверена Robolectric-тестом.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew testDebugUnitTest` вЂ” BUILD SUCCESSFUL, 92 JVM-С‚РµСЃС‚Р°, 0 failures, 0 errors.
+- `.\gradlew assembleDebug` вЂ” BUILD SUCCESSFUL.
+- Room-СЃС…РµРјР° v8 СЌРєСЃРїРѕСЂС‚РёСЂРѕРІР°РЅР°, РјРёРіСЂР°С†РёСЏ 1в†’8 РїСЂРѕРІРµСЂРµРЅР° Robolectric-С‚РµСЃС‚РѕРј.
 - APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
-### Следующий шаг
-- Импорт плейлистов YouTube или экран «Скачанное».
+### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
+- РРјРїРѕСЂС‚ РїР»РµР№Р»РёСЃС‚РѕРІ YouTube РёР»Рё СЌРєСЂР°РЅ В«РЎРєР°С‡Р°РЅРЅРѕРµВ».
 
 ---
 
-## ✅ Сессия 10 — Откат ONNX/YAMNet и related-рекомендации (24.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 10 вЂ” РћС‚РєР°С‚ ONNX/YAMNet Рё related-СЂРµРєРѕРјРµРЅРґР°С†РёРё (24.10.2026)
 
-### Причина
-- Локальный ONNX/YAMNet (коммит `4ea6975`) раздувал APK до ~73 МБ и требовал тяжёлого аудио-анализа на слабом устройстве. Для рекомендаций достаточно алгоритмической related-выдачи NewPipe.
-- Прямые related-треки дают реальных новых исполнителей вместо текстовых поисковых запросов и уменьшают количество мусора.
+### РџСЂРёС‡РёРЅР°
+- Р›РѕРєР°Р»СЊРЅС‹Р№ ONNX/YAMNet (РєРѕРјРјРёС‚ `4ea6975`) СЂР°Р·РґСѓРІР°Р» APK РґРѕ ~73 РњР‘ Рё С‚СЂРµР±РѕРІР°Р» С‚СЏР¶С‘Р»РѕРіРѕ Р°СѓРґРёРѕ-Р°РЅР°Р»РёР·Р° РЅР° СЃР»Р°Р±РѕРј СѓСЃС‚СЂРѕР№СЃС‚РІРµ. Р”Р»СЏ СЂРµРєРѕРјРµРЅРґР°С†РёР№ РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ Р°Р»РіРѕСЂРёС‚РјРёС‡РµСЃРєРѕР№ related-РІС‹РґР°С‡Рё NewPipe.
+- РџСЂСЏРјС‹Рµ related-С‚СЂРµРєРё РґР°СЋС‚ СЂРµР°Р»СЊРЅС‹С… РЅРѕРІС‹С… РёСЃРїРѕР»РЅРёС‚РµР»РµР№ РІРјРµСЃС‚Рѕ С‚РµРєСЃС‚РѕРІС‹С… РїРѕРёСЃРєРѕРІС‹С… Р·Р°РїСЂРѕСЃРѕРІ Рё СѓРјРµРЅСЊС€Р°СЋС‚ РєРѕР»РёС‡РµСЃС‚РІРѕ РјСѓСЃРѕСЂР°.
 
-### Что сделано
-1. **Откат Phase 1**:
-   - Создан revert-коммит `9e74fb6`; Room снова v8, удалены `onnxruntime-android`, `yamnet.onnx`, `core/audio`, `AudioFeatureWorker`, `9.json`.
-   - Схемы БД: только `4.json`–`8.json`; опубликованная история не переписывалась.
-2. **Related через NewPipe**:
-   - В `YouTubeRepository` и `SoundCloudRepository` добавлен `getRelated(trackUrl, limit = 30)`.
-   - Реализации вызывают `StreamInfo.getInfo(service, trackUrl)`, берут `relatedItems`, при пустоте — `relatedStreams`, фильтруют `StreamInfoItem`, дедуплицируют по URL и маппят существующим `toDomain()`.
-3. **Сиды**:
-   - Последние 20 лайков и 20 прослушиваний; лайк весит `4.0`, прослушивание `1.0`, свежесть убывает с индексом; дубликат из истории не учитывается, если трек уже лайкнут.
-   - На refresh случайно выбираются 4–6 треков из топ-20, при возможности — разных артистов.
-4. **Сборка ленты**:
-   - Для каждого сида параллельно запрашивается до 30 related-треков; исключаются все выбранные сиды и `recently_shown` (TTL 24 ч).
-   - Сохранены фильтры мусора по названию и длительности 45 с–10 мин. Треки других артистов из related не отбрасываются.
-   - Финал перемешивается; не больше 2 треков на артиста, не больше 3 — для артиста, доминирующего в персональной выборке (≥3 трека и ≥25%).
-   - Лимит ленты — 15 треков; при related <10 добираем fallback-кандидатами.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РћС‚РєР°С‚ Phase 1**:
+   - РЎРѕР·РґР°РЅ revert-РєРѕРјРјРёС‚ `9e74fb6`; Room СЃРЅРѕРІР° v8, СѓРґР°Р»РµРЅС‹ `onnxruntime-android`, `yamnet.onnx`, `core/audio`, `AudioFeatureWorker`, `9.json`.
+   - РЎС…РµРјС‹ Р‘Р”: С‚РѕР»СЊРєРѕ `4.json`вЂ“`8.json`; РѕРїСѓР±Р»РёРєРѕРІР°РЅРЅР°СЏ РёСЃС‚РѕСЂРёСЏ РЅРµ РїРµСЂРµРїРёСЃС‹РІР°Р»Р°СЃСЊ.
+2. **Related С‡РµСЂРµР· NewPipe**:
+   - Р’ `YouTubeRepository` Рё `SoundCloudRepository` РґРѕР±Р°РІР»РµРЅ `getRelated(trackUrl, limit = 30)`.
+   - Р РµР°Р»РёР·Р°С†РёРё РІС‹Р·С‹РІР°СЋС‚ `StreamInfo.getInfo(service, trackUrl)`, Р±РµСЂСѓС‚ `relatedItems`, РїСЂРё РїСѓСЃС‚РѕС‚Рµ вЂ” `relatedStreams`, С„РёР»СЊС‚СЂСѓСЋС‚ `StreamInfoItem`, РґРµРґСѓРїР»РёС†РёСЂСѓСЋС‚ РїРѕ URL Рё РјР°РїРїСЏС‚ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёРј `toDomain()`.
+3. **РЎРёРґС‹**:
+   - РџРѕСЃР»РµРґРЅРёРµ 20 Р»Р°Р№РєРѕРІ Рё 20 РїСЂРѕСЃР»СѓС€РёРІР°РЅРёР№; Р»Р°Р№Рє РІРµСЃРёС‚ `4.0`, РїСЂРѕСЃР»СѓС€РёРІР°РЅРёРµ `1.0`, СЃРІРµР¶РµСЃС‚СЊ СѓР±С‹РІР°РµС‚ СЃ РёРЅРґРµРєСЃРѕРј; РґСѓР±Р»РёРєР°С‚ РёР· РёСЃС‚РѕСЂРёРё РЅРµ СѓС‡РёС‚С‹РІР°РµС‚СЃСЏ, РµСЃР»Рё С‚СЂРµРє СѓР¶Рµ Р»Р°Р№РєРЅСѓС‚.
+   - РќР° refresh СЃР»СѓС‡Р°Р№РЅРѕ РІС‹Р±РёСЂР°СЋС‚СЃСЏ 4вЂ“6 С‚СЂРµРєРѕРІ РёР· С‚РѕРї-20, РїСЂРё РІРѕР·РјРѕР¶РЅРѕСЃС‚Рё вЂ” СЂР°Р·РЅС‹С… Р°СЂС‚РёСЃС‚РѕРІ.
+4. **РЎР±РѕСЂРєР° Р»РµРЅС‚С‹**:
+   - Р”Р»СЏ РєР°Р¶РґРѕРіРѕ СЃРёРґР° РїР°СЂР°Р»Р»РµР»СЊРЅРѕ Р·Р°РїСЂР°С€РёРІР°РµС‚СЃСЏ РґРѕ 30 related-С‚СЂРµРєРѕРІ; РёСЃРєР»СЋС‡Р°СЋС‚СЃСЏ РІСЃРµ РІС‹Р±СЂР°РЅРЅС‹Рµ СЃРёРґС‹ Рё `recently_shown` (TTL 24 С‡).
+   - РЎРѕС…СЂР°РЅРµРЅС‹ С„РёР»СЊС‚СЂС‹ РјСѓСЃРѕСЂР° РїРѕ РЅР°Р·РІР°РЅРёСЋ Рё РґР»РёС‚РµР»СЊРЅРѕСЃС‚Рё 45 СЃвЂ“10 РјРёРЅ. РўСЂРµРєРё РґСЂСѓРіРёС… Р°СЂС‚РёСЃС‚РѕРІ РёР· related РЅРµ РѕС‚Р±СЂР°СЃС‹РІР°СЋС‚СЃСЏ.
+   - Р¤РёРЅР°Р» РїРµСЂРµРјРµС€РёРІР°РµС‚СЃСЏ; РЅРµ Р±РѕР»СЊС€Рµ 2 С‚СЂРµРєРѕРІ РЅР° Р°СЂС‚РёСЃС‚Р°, РЅРµ Р±РѕР»СЊС€Рµ 3 вЂ” РґР»СЏ Р°СЂС‚РёСЃС‚Р°, РґРѕРјРёРЅРёСЂСѓСЋС‰РµРіРѕ РІ РїРµСЂСЃРѕРЅР°Р»СЊРЅРѕР№ РІС‹Р±РѕСЂРєРµ (в‰Ґ3 С‚СЂРµРєР° Рё в‰Ґ25%).
+   - Р›РёРјРёС‚ Р»РµРЅС‚С‹ вЂ” 15 С‚СЂРµРєРѕРІ; РїСЂРё related <10 РґРѕР±РёСЂР°РµРј fallback-РєР°РЅРґРёРґР°С‚Р°РјРё.
 5. **Fallback**:
-   - Точечный поиск по 4–6 топ-артистам, строгая проверка только поля `track.artist`; имя сида в чужом title не проходит.
-   - Глобальный `POPULAR_QUERY` используется только при полностью пустых лайках и истории (холодный старт).
-   - Если персональные данные есть, а related/fallback ничего не дали, возвращается пустая успешная лента или ошибка сети — без популярного запроса.
-6. **Стабильность UI**:
-   - `HomeViewModel` снимает снимок лайков/истории на старте загрузки; изменения во время прослушивания не перезагружают уже показанную ленту.
-   - Обновление — только Pull-to-refresh; позиции `LazyColumn` и карусели сохраняются.
-   - Плеер и поиск не изменялись.
+   - РўРѕС‡РµС‡РЅС‹Р№ РїРѕРёСЃРє РїРѕ 4вЂ“6 С‚РѕРї-Р°СЂС‚РёСЃС‚Р°Рј, СЃС‚СЂРѕРіР°СЏ РїСЂРѕРІРµСЂРєР° С‚РѕР»СЊРєРѕ РїРѕР»СЏ `track.artist`; РёРјСЏ СЃРёРґР° РІ С‡СѓР¶РѕРј title РЅРµ РїСЂРѕС…РѕРґРёС‚.
+   - Р“Р»РѕР±Р°Р»СЊРЅС‹Р№ `POPULAR_QUERY` РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё РїРѕР»РЅРѕСЃС‚СЊСЋ РїСѓСЃС‚С‹С… Р»Р°Р№РєР°С… Рё РёСЃС‚РѕСЂРёРё (С…РѕР»РѕРґРЅС‹Р№ СЃС‚Р°СЂС‚).
+   - Р•СЃР»Рё РїРµСЂСЃРѕРЅР°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ РµСЃС‚СЊ, Р° related/fallback РЅРёС‡РµРіРѕ РЅРµ РґР°Р»Рё, РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ РїСѓСЃС‚Р°СЏ СѓСЃРїРµС€РЅР°СЏ Р»РµРЅС‚Р° РёР»Рё РѕС€РёР±РєР° СЃРµС‚Рё вЂ” Р±РµР· РїРѕРїСѓР»СЏСЂРЅРѕРіРѕ Р·Р°РїСЂРѕСЃР°.
+6. **РЎС‚Р°Р±РёР»СЊРЅРѕСЃС‚СЊ UI**:
+   - `HomeViewModel` СЃРЅРёРјР°РµС‚ СЃРЅРёРјРѕРє Р»Р°Р№РєРѕРІ/РёСЃС‚РѕСЂРёРё РЅР° СЃС‚Р°СЂС‚Рµ Р·Р°РіСЂСѓР·РєРё; РёР·РјРµРЅРµРЅРёСЏ РІРѕ РІСЂРµРјСЏ РїСЂРѕСЃР»СѓС€РёРІР°РЅРёСЏ РЅРµ РїРµСЂРµР·Р°РіСЂСѓР¶Р°СЋС‚ СѓР¶Рµ РїРѕРєР°Р·Р°РЅРЅСѓСЋ Р»РµРЅС‚Сѓ.
+   - РћР±РЅРѕРІР»РµРЅРёРµ вЂ” С‚РѕР»СЊРєРѕ Pull-to-refresh; РїРѕР·РёС†РёРё `LazyColumn` Рё РєР°СЂСѓСЃРµР»Рё СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ.
+   - РџР»РµРµСЂ Рё РїРѕРёСЃРє РЅРµ РёР·РјРµРЅСЏР»РёСЃСЊ.
 
-### Проверка
-- `.\gradlew testDebugUnitTest` — `BUILD SUCCESSFUL`, 100 JVM-тестов, 0 failures, 0 errors.
-- `.\gradlew assembleDebug` — `BUILD SUCCESSFUL`.
-- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 218 807 байт (~27,2 МБ); `onnx`/`yamnet` внутри отсутствуют.
-- Живая проверка через временный JVM-тест: YouTube и SoundCloud вернули по 10 related-элементов; временный тест удалён.
-- `HomeViewModelRecommendationsTest` — 12 тестов, `RecommendationPlannerTest` — 9 тестов; обновлён `HomeViewModelGenreTest`.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew testDebugUnitTest` вЂ” `BUILD SUCCESSFUL`, 100 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 errors.
+- `.\gradlew assembleDebug` вЂ” `BUILD SUCCESSFUL`.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 218 807 Р±Р°Р№С‚ (~27,2 РњР‘); `onnx`/`yamnet` РІРЅСѓС‚СЂРё РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‚.
+- Р–РёРІР°СЏ РїСЂРѕРІРµСЂРєР° С‡РµСЂРµР· РІСЂРµРјРµРЅРЅС‹Р№ JVM-С‚РµСЃС‚: YouTube Рё SoundCloud РІРµСЂРЅСѓР»Рё РїРѕ 10 related-СЌР»РµРјРµРЅС‚РѕРІ; РІСЂРµРјРµРЅРЅС‹Р№ С‚РµСЃС‚ СѓРґР°Р»С‘РЅ.
+- `HomeViewModelRecommendationsTest` вЂ” 12 С‚РµСЃС‚РѕРІ, `RecommendationPlannerTest` вЂ” 9 С‚РµСЃС‚РѕРІ; РѕР±РЅРѕРІР»С‘РЅ `HomeViewModelGenreTest`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/data/repository/YouTubeRepository.kt
 app/src/main/java/com/my/music/data/repository/SoundCloudRepository.kt
@@ -2253,45 +2264,45 @@ PROGRESS.md
 MEMORY.md
 ```
 
-### Следующий шаг
-- Проверить related-ленту на реальном устройстве, затем импорт плейлистов YouTube или экран «Скачанное».
+### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
+- РџСЂРѕРІРµСЂРёС‚СЊ related-Р»РµРЅС‚Сѓ РЅР° СЂРµР°Р»СЊРЅРѕРј СѓСЃС‚СЂРѕР№СЃС‚РІРµ, Р·Р°С‚РµРј РёРјРїРѕСЂС‚ РїР»РµР№Р»РёСЃС‚РѕРІ YouTube РёР»Рё СЌРєСЂР°РЅ В«РЎРєР°С‡Р°РЅРЅРѕРµВ».
 
 ---
 
-## ✅ Сессия 11 — Phase C: единый резолвер источника скачивания (25.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 11 вЂ” Phase C: РµРґРёРЅС‹Р№ СЂРµР·РѕР»РІРµСЂ РёСЃС‚РѕС‡РЅРёРєР° СЃРєР°С‡РёРІР°РЅРёСЏ (25.10.2026)
 
-### Причина
-- SoundCloud отдаёт только HLS, из которого нельзя собрать один офлайн-файл. Раньше такие треки либо не качались, либо требовали ручного поиска на YouTube.
-- Кнопка скачивания была только в плеере; на главной и в медиатеке её не было.
+### РџСЂРёС‡РёРЅР°
+- SoundCloud РѕС‚РґР°С‘С‚ С‚РѕР»СЊРєРѕ HLS, РёР· РєРѕС‚РѕСЂРѕРіРѕ РЅРµР»СЊР·СЏ СЃРѕР±СЂР°С‚СЊ РѕРґРёРЅ РѕС„Р»Р°Р№РЅ-С„Р°Р№Р». Р Р°РЅСЊС€Рµ С‚Р°РєРёРµ С‚СЂРµРєРё Р»РёР±Рѕ РЅРµ РєР°С‡Р°Р»РёСЃСЊ, Р»РёР±Рѕ С‚СЂРµР±РѕРІР°Р»Рё СЂСѓС‡РЅРѕРіРѕ РїРѕРёСЃРєР° РЅР° YouTube.
+- РљРЅРѕРїРєР° СЃРєР°С‡РёРІР°РЅРёСЏ Р±С‹Р»Р° С‚РѕР»СЊРєРѕ РІ РїР»РµРµСЂРµ; РЅР° РіР»Р°РІРЅРѕР№ Рё РІ РјРµРґРёР°С‚РµРєРµ РµС‘ РЅРµ Р±С‹Р»Рѕ.
 
-### Что сделано
-1. **Контракт источников**:
-   - `DownloadCapability` — `PROGRESSIVE`, `HLS_ONLY`, `NONE`; каждый репозиторий отдаёт `downloadCapability`.
-   - `DownloadSource` — общий интерфейс `source` / `capability` / `search()` / `resolve()`.
-   - `YouTubeDownloadSource` (`PROGRESSIVE`) и `SoundCloudDownloadSource` (`HLS_ONLY`) собраны через Hilt `@IntoSet` в `DownloadSourceModule`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **РљРѕРЅС‚СЂР°РєС‚ РёСЃС‚РѕС‡РЅРёРєРѕРІ**:
+   - `DownloadCapability` вЂ” `PROGRESSIVE`, `HLS_ONLY`, `NONE`; РєР°Р¶РґС‹Р№ СЂРµРїРѕР·РёС‚РѕСЂРёР№ РѕС‚РґР°С‘С‚ `downloadCapability`.
+   - `DownloadSource` вЂ” РѕР±С‰РёР№ РёРЅС‚РµСЂС„РµР№СЃ `source` / `capability` / `search()` / `resolve()`.
+   - `YouTubeDownloadSource` (`PROGRESSIVE`) Рё `SoundCloudDownloadSource` (`HLS_ONLY`) СЃРѕР±СЂР°РЅС‹ С‡РµСЂРµР· Hilt `@IntoSet` РІ `DownloadSourceModule`.
 2. **`DownloadSourceResolver`**:
-   - Сначала пробует текущий источник, если он progressive и у трека есть ссылка; затем остальные progressive-источники.
-   - Строгий матч: нормализованный артист должен совпасть целиком, название — точно, с допуском только на `feat.`, `remaster`, `official audio/video`, `lyrics`, `visualizer`, `explicit`, `clean` и точный префикс `Артист — Название` (YouTube-формат). Подстроки запрещены.
-   - `RecentlyFailedSources` — TTL 30 минут на пару «трек + источник»; `Mutex` на `trackId` не даёт запускать параллельный поиск при быстрых повторных тапах.
-   - Возвращает `ResolvedDownload`: исходные метаданные трека + фактический progressive-URL, MIME и источник.
+   - РЎРЅР°С‡Р°Р»Р° РїСЂРѕР±СѓРµС‚ С‚РµРєСѓС‰РёР№ РёСЃС‚РѕС‡РЅРёРє, РµСЃР»Рё РѕРЅ progressive Рё Сѓ С‚СЂРµРєР° РµСЃС‚СЊ СЃСЃС‹Р»РєР°; Р·Р°С‚РµРј РѕСЃС‚Р°Р»СЊРЅС‹Рµ progressive-РёСЃС‚РѕС‡РЅРёРєРё.
+   - РЎС‚СЂРѕРіРёР№ РјР°С‚С‡: РЅРѕСЂРјР°Р»РёР·РѕРІР°РЅРЅС‹Р№ Р°СЂС‚РёСЃС‚ РґРѕР»Р¶РµРЅ СЃРѕРІРїР°СЃС‚СЊ С†РµР»РёРєРѕРј, РЅР°Р·РІР°РЅРёРµ вЂ” С‚РѕС‡РЅРѕ, СЃ РґРѕРїСѓСЃРєРѕРј С‚РѕР»СЊРєРѕ РЅР° `feat.`, `remaster`, `official audio/video`, `lyrics`, `visualizer`, `explicit`, `clean` Рё С‚РѕС‡РЅС‹Р№ РїСЂРµС„РёРєСЃ `РђСЂС‚РёСЃС‚ вЂ” РќР°Р·РІР°РЅРёРµ` (YouTube-С„РѕСЂРјР°С‚). РџРѕРґСЃС‚СЂРѕРєРё Р·Р°РїСЂРµС‰РµРЅС‹.
+   - `RecentlyFailedSources` вЂ” TTL 30 РјРёРЅСѓС‚ РЅР° РїР°СЂСѓ В«С‚СЂРµРє + РёСЃС‚РѕС‡РЅРёРєВ»; `Mutex` РЅР° `trackId` РЅРµ РґР°С‘С‚ Р·Р°РїСѓСЃРєР°С‚СЊ РїР°СЂР°Р»Р»РµР»СЊРЅС‹Р№ РїРѕРёСЃРє РїСЂРё Р±С‹СЃС‚СЂС‹С… РїРѕРІС‚РѕСЂРЅС‹С… С‚Р°РїР°С….
+   - Р’РѕР·РІСЂР°С‰Р°РµС‚ `ResolvedDownload`: РёСЃС…РѕРґРЅС‹Рµ РјРµС‚Р°РґР°РЅРЅС‹Рµ С‚СЂРµРєР° + С„Р°РєС‚РёС‡РµСЃРєРёР№ progressive-URL, MIME Рё РёСЃС‚РѕС‡РЅРёРє.
 3. **`DownloadManager`**:
-   - `download()` стал `suspend`: резолвер вызывается до постановки `DownloadTrackWorker`; в задачу передаются `KEY_DIRECT_STREAM_URL`, `KEY_DIRECT_MIME_TYPE`, `KEY_RESOLVED_SOURCE`.
-   - Ошибка резолва возвращается в UI без создания воркера; активный резолв отменяется вместе с задачей.
-   - `observeStates(ids)` отдаёт состояния сразу для списка карточек одним запросом WorkManager по тегу `download-track:<id>`.
+   - `download()` СЃС‚Р°Р» `suspend`: СЂРµР·РѕР»РІРµСЂ РІС‹Р·С‹РІР°РµС‚СЃСЏ РґРѕ РїРѕСЃС‚Р°РЅРѕРІРєРё `DownloadTrackWorker`; РІ Р·Р°РґР°С‡Сѓ РїРµСЂРµРґР°СЋС‚СЃСЏ `KEY_DIRECT_STREAM_URL`, `KEY_DIRECT_MIME_TYPE`, `KEY_RESOLVED_SOURCE`.
+   - РћС€РёР±РєР° СЂРµР·РѕР»РІР° РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ РІ UI Р±РµР· СЃРѕР·РґР°РЅРёСЏ РІРѕСЂРєРµСЂР°; Р°РєС‚РёРІРЅС‹Р№ СЂРµР·РѕР»РІ РѕС‚РјРµРЅСЏРµС‚СЃСЏ РІРјРµСЃС‚Рµ СЃ Р·Р°РґР°С‡РµР№.
+   - `observeStates(ids)` РѕС‚РґР°С‘С‚ СЃРѕСЃС‚РѕСЏРЅРёСЏ СЃСЂР°Р·Сѓ РґР»СЏ СЃРїРёСЃРєР° РєР°СЂС‚РѕС‡РµРє РѕРґРЅРёРј Р·Р°РїСЂРѕСЃРѕРј WorkManager РїРѕ С‚РµРіСѓ `download-track:<id>`.
 4. **Worker**:
-   - Скачивает готовый прямой progressive-URL; старый путь `resolveStream` оставлен для задач, поставленных до обновления и для повторного запуска.
-   - В Room сохраняются исходные `Track.id`/`source`, а файл и MIME берутся с фактического источника.
+   - РЎРєР°С‡РёРІР°РµС‚ РіРѕС‚РѕРІС‹Р№ РїСЂСЏРјРѕР№ progressive-URL; СЃС‚Р°СЂС‹Р№ РїСѓС‚СЊ `resolveStream` РѕСЃС‚Р°РІР»РµРЅ РґР»СЏ Р·Р°РґР°С‡, РїРѕСЃС‚Р°РІР»РµРЅРЅС‹С… РґРѕ РѕР±РЅРѕРІР»РµРЅРёСЏ Рё РґР»СЏ РїРѕРІС‚РѕСЂРЅРѕРіРѕ Р·Р°РїСѓСЃРєР°.
+   - Р’ Room СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ РёСЃС…РѕРґРЅС‹Рµ `Track.id`/`source`, Р° С„Р°Р№Р» Рё MIME Р±РµСЂСѓС‚СЃСЏ СЃ С„Р°РєС‚РёС‡РµСЃРєРѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР°.
 5. **UI**:
-   - Общий `TrackDownloadButton` добавлен в hero-карточку, «Для вас», «Недавнее», «Воспоминания» и медиатеку; в плеере кнопка уже была.
-   - При успехе — бейдж прогресса/галочка, при неудаче — Snackbar «Не удалось найти источник» (Player, Home, Library). Диалогов выбора источника нет.
+   - РћР±С‰РёР№ `TrackDownloadButton` РґРѕР±Р°РІР»РµРЅ РІ hero-РєР°СЂС‚РѕС‡РєСѓ, В«Р”Р»СЏ РІР°СЃВ», В«РќРµРґР°РІРЅРµРµВ», В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ» Рё РјРµРґРёР°С‚РµРєСѓ; РІ РїР»РµРµСЂРµ РєРЅРѕРїРєР° СѓР¶Рµ Р±С‹Р»Р°.
+   - РџСЂРё СѓСЃРїРµС…Рµ вЂ” Р±РµР№РґР¶ РїСЂРѕРіСЂРµСЃСЃР°/РіР°Р»РѕС‡РєР°, РїСЂРё РЅРµСѓРґР°С‡Рµ вЂ” Snackbar В«РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё РёСЃС‚РѕС‡РЅРёРєВ» (Player, Home, Library). Р”РёР°Р»РѕРіРѕРІ РІС‹Р±РѕСЂР° РёСЃС‚РѕС‡РЅРёРєР° РЅРµС‚.
 
-### Проверка
-- `.\gradlew testDebugUnitTest assembleDebug` — `BUILD SUCCESSFUL`, 109 JVM-тестов, 0 failures, 0 errors.
-- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 406 949 байт (~27,4 МБ).
-- `DownloadSourceResolverTest` — 10 тестов: SC отсеивается как HLS, YT выбирается, ложное название отсеивается, `recently_failed` блокирует повтор, отсутствие источников даёт ошибку, YouTube-префикс артиста допускается.
-- Живая проверка матча на реальной выдаче YouTube: для `Midnight City — M83` совпал только официальный ролик канала M83 (`match=true`), остальные кандидаты отсеяны. Прямой `resolveStreamUrl` с этой машины вернул `LOGIN_REQUIRED: Please sign in` — bot-защита YouTube, не ошибка резолвера; на мобильном IP путь остаётся рабочим. Временный live-тест удалён.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew testDebugUnitTest assembleDebug` вЂ” `BUILD SUCCESSFUL`, 109 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 errors.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 406 949 Р±Р°Р№С‚ (~27,4 РњР‘).
+- `DownloadSourceResolverTest` вЂ” 10 С‚РµСЃС‚РѕРІ: SC РѕС‚СЃРµРёРІР°РµС‚СЃСЏ РєР°Рє HLS, YT РІС‹Р±РёСЂР°РµС‚СЃСЏ, Р»РѕР¶РЅРѕРµ РЅР°Р·РІР°РЅРёРµ РѕС‚СЃРµРёРІР°РµС‚СЃСЏ, `recently_failed` Р±Р»РѕРєРёСЂСѓРµС‚ РїРѕРІС‚РѕСЂ, РѕС‚СЃСѓС‚СЃС‚РІРёРµ РёСЃС‚РѕС‡РЅРёРєРѕРІ РґР°С‘С‚ РѕС€РёР±РєСѓ, YouTube-РїСЂРµС„РёРєСЃ Р°СЂС‚РёСЃС‚Р° РґРѕРїСѓСЃРєР°РµС‚СЃСЏ.
+- Р–РёРІР°СЏ РїСЂРѕРІРµСЂРєР° РјР°С‚С‡Р° РЅР° СЂРµР°Р»СЊРЅРѕР№ РІС‹РґР°С‡Рµ YouTube: РґР»СЏ `Midnight City вЂ” M83` СЃРѕРІРїР°Р» С‚РѕР»СЊРєРѕ РѕС„РёС†РёР°Р»СЊРЅС‹Р№ СЂРѕР»РёРє РєР°РЅР°Р»Р° M83 (`match=true`), РѕСЃС‚Р°Р»СЊРЅС‹Рµ РєР°РЅРґРёРґР°С‚С‹ РѕС‚СЃРµСЏРЅС‹. РџСЂСЏРјРѕР№ `resolveStreamUrl` СЃ СЌС‚РѕР№ РјР°С€РёРЅС‹ РІРµСЂРЅСѓР» `LOGIN_REQUIRED: Please sign in` вЂ” bot-Р·Р°С‰РёС‚Р° YouTube, РЅРµ РѕС€РёР±РєР° СЂРµР·РѕР»РІРµСЂР°; РЅР° РјРѕР±РёР»СЊРЅРѕРј IP РїСѓС‚СЊ РѕСЃС‚Р°С‘С‚СЃСЏ СЂР°Р±РѕС‡РёРј. Р’СЂРµРјРµРЅРЅС‹Р№ live-С‚РµСЃС‚ СѓРґР°Р»С‘РЅ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/core/download/DownloadCapability.kt
 app/src/main/java/com/my/music/core/download/DownloadSource.kt
@@ -2321,30 +2332,30 @@ PROGRESS.md
 MEMORY.md
 ```
 
-### Следующий шаг
-- Phase A: редизайн экрана синхронизированного текста (описать текущее состояние и дождаться команды «Продолжай Phase A»).
+### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
+- Phase A: СЂРµРґРёР·Р°Р№РЅ СЌРєСЂР°РЅР° СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅРЅРѕРіРѕ С‚РµРєСЃС‚Р° (РѕРїРёСЃР°С‚СЊ С‚РµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ Рё РґРѕР¶РґР°С‚СЊСЃСЏ РєРѕРјР°РЅРґС‹ В«РџСЂРѕРґРѕР»Р¶Р°Р№ Phase AВ»).
 
 ---
 
-## ✅ Сессия 11.1 — Чистка кнопок скачивания на главной (25.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 11.1 вЂ” Р§РёСЃС‚РєР° РєРЅРѕРїРѕРє СЃРєР°С‡РёРІР°РЅРёСЏ РЅР° РіР»Р°РІРЅРѕР№ (25.10.2026)
 
-### Причина
-- В карточках главной кнопка скачивания всегда падала с ошибкой «Не удалось найти источник»: лента не передаёт полный контекст трека, нужный резолверу.
-- Скачивание остаётся в плеере и медиатеке, где контекст полный.
+### РџСЂРёС‡РёРЅР°
+- Р’ РєР°СЂС‚РѕС‡РєР°С… РіР»Р°РІРЅРѕР№ РєРЅРѕРїРєР° СЃРєР°С‡РёРІР°РЅРёСЏ РІСЃРµРіРґР° РїР°РґР°Р»Р° СЃ РѕС€РёР±РєРѕР№ В«РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё РёСЃС‚РѕС‡РЅРёРєВ»: Р»РµРЅС‚Р° РЅРµ РїРµСЂРµРґР°С‘С‚ РїРѕР»РЅС‹Р№ РєРѕРЅС‚РµРєСЃС‚ С‚СЂРµРєР°, РЅСѓР¶РЅС‹Р№ СЂРµР·РѕР»РІРµСЂСѓ.
+- РЎРєР°С‡РёРІР°РЅРёРµ РѕСЃС‚Р°С‘С‚СЃСЏ РІ РїР»РµРµСЂРµ Рё РјРµРґРёР°С‚РµРєРµ, РіРґРµ РєРѕРЅС‚РµРєСЃС‚ РїРѕР»РЅС‹Р№.
 
-### Что сделано
-- Из `HomeScreen` полностью убраны `TrackDownloadButton`, состояния скачивания и Snackbar ошибки: hero-карточка, «Для вас», «Недавнее», «Воспоминания».
-- Удалён лишний `Box`-обёртка и `SnackbarHost`; `PullToRefreshBox` снова корневой контейнер экрана.
-- Из `HomeViewModel` удалены `DownloadManager`, `downloadStates`, `downloadError`, `downloadTrack()` и `consumeDownloadError()`.
-- Отступы сохранены: в hero остался `Spacer(8.dp)` перед `PlayBadge`, в остальных карточках кнопки были оверлеями и не влияли на лейаут.
-- Тесты `HomeViewModelGenreTest` и `HomeViewModelRecommendationsTest` очищены от моков `DownloadManager`.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+- РР· `HomeScreen` РїРѕР»РЅРѕСЃС‚СЊСЋ СѓР±СЂР°РЅС‹ `TrackDownloadButton`, СЃРѕСЃС‚РѕСЏРЅРёСЏ СЃРєР°С‡РёРІР°РЅРёСЏ Рё Snackbar РѕС€РёР±РєРё: hero-РєР°СЂС‚РѕС‡РєР°, В«Р”Р»СЏ РІР°СЃВ», В«РќРµРґР°РІРЅРµРµВ», В«Р’РѕСЃРїРѕРјРёРЅР°РЅРёСЏВ».
+- РЈРґР°Р»С‘РЅ Р»РёС€РЅРёР№ `Box`-РѕР±С‘СЂС‚РєР° Рё `SnackbarHost`; `PullToRefreshBox` СЃРЅРѕРІР° РєРѕСЂРЅРµРІРѕР№ РєРѕРЅС‚РµР№РЅРµСЂ СЌРєСЂР°РЅР°.
+- РР· `HomeViewModel` СѓРґР°Р»РµРЅС‹ `DownloadManager`, `downloadStates`, `downloadError`, `downloadTrack()` Рё `consumeDownloadError()`.
+- РћС‚СЃС‚СѓРїС‹ СЃРѕС…СЂР°РЅРµРЅС‹: РІ hero РѕСЃС‚Р°Р»СЃСЏ `Spacer(8.dp)` РїРµСЂРµРґ `PlayBadge`, РІ РѕСЃС‚Р°Р»СЊРЅС‹С… РєР°СЂС‚РѕС‡РєР°С… РєРЅРѕРїРєРё Р±С‹Р»Рё РѕРІРµСЂР»РµСЏРјРё Рё РЅРµ РІР»РёСЏР»Рё РЅР° Р»РµР№Р°СѓС‚.
+- РўРµСЃС‚С‹ `HomeViewModelGenreTest` Рё `HomeViewModelRecommendationsTest` РѕС‡РёС‰РµРЅС‹ РѕС‚ РјРѕРєРѕРІ `DownloadManager`.
 
-### Проверка
-- `.\gradlew testDebugUnitTest assembleDebug` — `BUILD SUCCESSFUL`, 109 JVM-тестов, 0 failures, 0 errors.
-- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 406 949 байт (~27,4 МБ).
-- `DownloadSourceResolver`, `DownloadManager`, `DownloadTrackWorker`, плеер и медиатека не менялись.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew testDebugUnitTest assembleDebug` вЂ” `BUILD SUCCESSFUL`, 109 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 errors.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 406 949 Р±Р°Р№С‚ (~27,4 РњР‘).
+- `DownloadSourceResolver`, `DownloadManager`, `DownloadTrackWorker`, РїР»РµРµСЂ Рё РјРµРґРёР°С‚РµРєР° РЅРµ РјРµРЅСЏР»РёСЃСЊ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/home/HomeScreen.kt
 app/src/main/java/com/my/music/feature/home/HomeViewModel.kt
@@ -2354,98 +2365,98 @@ PROGRESS.md
 MEMORY.md
 ```
 
-### Следующий шаг
-- Phase A: аудит текущего экрана текста и редизайн после команды «Продолжай Phase A».
+### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
+- Phase A: Р°СѓРґРёС‚ С‚РµРєСѓС‰РµРіРѕ СЌРєСЂР°РЅР° С‚РµРєСЃС‚Р° Рё СЂРµРґРёР·Р°Р№РЅ РїРѕСЃР»Рµ РєРѕРјР°РЅРґС‹ В«РџСЂРѕРґРѕР»Р¶Р°Р№ Phase AВ».
 
 ---
 
-## ✅ Сессия 12 — Phase A: полировка режима синхронного текста (26.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 12 вЂ” Phase A: РїРѕР»РёСЂРѕРІРєР° СЂРµР¶РёРјР° СЃРёРЅС…СЂРѕРЅРЅРѕРіРѕ С‚РµРєСЃС‚Р° (26.10.2026)
 
-### Причина
-- Текст в режиме «Текст» жил поверх пёстрого фона: радиальное свечение палитры и размытая обложка давали цветные пятна, из-за которых строки читались неровно.
-- Иерархия строк была слабой: все строки 24sp, разница только в альфе; активная строка дополнительно масштабировалась `graphicsLayer`, из-за чего вылезала за край.
-- Дальние строки размывались `blur` — на слабом железе это дорого и даёт «грязные» края.
+### РџСЂРёС‡РёРЅР°
+- РўРµРєСЃС‚ РІ СЂРµР¶РёРјРµ В«РўРµРєСЃС‚В» Р¶РёР» РїРѕРІРµСЂС… РїС‘СЃС‚СЂРѕРіРѕ С„РѕРЅР°: СЂР°РґРёР°Р»СЊРЅРѕРµ СЃРІРµС‡РµРЅРёРµ РїР°Р»РёС‚СЂС‹ Рё СЂР°Р·РјС‹С‚Р°СЏ РѕР±Р»РѕР¶РєР° РґР°РІР°Р»Рё С†РІРµС‚РЅС‹Рµ РїСЏС‚РЅР°, РёР·-Р·Р° РєРѕС‚РѕСЂС‹С… СЃС‚СЂРѕРєРё С‡РёС‚Р°Р»РёСЃСЊ РЅРµСЂРѕРІРЅРѕ.
+- РРµСЂР°СЂС…РёСЏ СЃС‚СЂРѕРє Р±С‹Р»Р° СЃР»Р°Р±РѕР№: РІСЃРµ СЃС‚СЂРѕРєРё 24sp, СЂР°Р·РЅРёС†Р° С‚РѕР»СЊРєРѕ РІ Р°Р»СЊС„Рµ; Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ РјР°СЃС€С‚Р°Р±РёСЂРѕРІР°Р»Р°СЃСЊ `graphicsLayer`, РёР·-Р·Р° С‡РµРіРѕ РІС‹Р»РµР·Р°Р»Р° Р·Р° РєСЂР°Р№.
+- Р”Р°Р»СЊРЅРёРµ СЃС‚СЂРѕРєРё СЂР°Р·РјС‹РІР°Р»РёСЃСЊ `blur` вЂ” РЅР° СЃР»Р°Р±РѕРј Р¶РµР»РµР·Рµ СЌС‚Рѕ РґРѕСЂРѕРіРѕ Рё РґР°С‘С‚ В«РіСЂСЏР·РЅС‹РµВ» РєСЂР°СЏ.
 
-### Что сделано
-1. **Фон режима текста**:
-   - Радиальное свечение палитры под обложкой гаснет вместе с обложкой (`alpha = 1f - recede`), в режиме текста его нет.
-   - Поверх размытой обложки добавлен фиксированный scrim `surface` alpha `0.65 * recede` — фон тёмный и спокойный на любой обложке.
-   - Верхняя градиентная маска списка увеличена с 44dp до 60dp, нижняя (124dp) сохранена.
-2. **Иерархия строк** (`LyricLineItem`):
-   - Активная — 24sp Bold, `highlightColor` через караоке-кисть, свечение `Shadow(alpha = 0.38f, blurRadius = 18f)`.
-   - Соседние (N±1) — 18sp Medium, `onSurfaceVariant` alpha 0.55.
-   - Дальние (N±2 и больше) — 16sp Normal alpha 0.35.
-   - Убран `blur` у дальних строк и `graphicsLayer`-масштаб активной строки (`TransformOrigin` больше не нужен).
-   - Несинхронизированный текст — 24sp Normal alpha 0.82 без караоке и без свечения.
-3. **Караоке-заливка**:
-   - `buildLyricsBrush` переведён с диагонального `Brush.linearGradient` на `Brush.horizontalGradient`, крайние случаи — `SolidColor`.
-   - Замеры на устройстве: активная строка 249 по всей ширине пропетой части и ~229–234 в непропетой, перенесённая строка («twilight») 219–236 — заливка работает на обеих визуальных строках.
-4. **Геометрия списка**:
-   - `centerLiftPx = 24.dp`: активная строка стоит выше геометрического центра, поэтому перенесённая вторая строка не попадает под нижнюю маску.
-   - Первое позиционирование — `scrollToItem`, дальше `animateScrollToItem`; опрос позиции 150 мс; тап по строке = `seekTo(line.timeMs)`.
-   - Пилюля «Текст» осталась переключателем, отдельного route/BottomSheet и кнопки закрытия нет.
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р¤РѕРЅ СЂРµР¶РёРјР° С‚РµРєСЃС‚Р°**:
+   - Р Р°РґРёР°Р»СЊРЅРѕРµ СЃРІРµС‡РµРЅРёРµ РїР°Р»РёС‚СЂС‹ РїРѕРґ РѕР±Р»РѕР¶РєРѕР№ РіР°СЃРЅРµС‚ РІРјРµСЃС‚Рµ СЃ РѕР±Р»РѕР¶РєРѕР№ (`alpha = 1f - recede`), РІ СЂРµР¶РёРјРµ С‚РµРєСЃС‚Р° РµРіРѕ РЅРµС‚.
+   - РџРѕРІРµСЂС… СЂР°Р·РјС‹С‚РѕР№ РѕР±Р»РѕР¶РєРё РґРѕР±Р°РІР»РµРЅ С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ scrim `surface` alpha `0.65 * recede` вЂ” С„РѕРЅ С‚С‘РјРЅС‹Р№ Рё СЃРїРѕРєРѕР№РЅС‹Р№ РЅР° Р»СЋР±РѕР№ РѕР±Р»РѕР¶РєРµ.
+   - Р’РµСЂС…РЅСЏСЏ РіСЂР°РґРёРµРЅС‚РЅР°СЏ РјР°СЃРєР° СЃРїРёСЃРєР° СѓРІРµР»РёС‡РµРЅР° СЃ 44dp РґРѕ 60dp, РЅРёР¶РЅСЏСЏ (124dp) СЃРѕС…СЂР°РЅРµРЅР°.
+2. **РРµСЂР°СЂС…РёСЏ СЃС‚СЂРѕРє** (`LyricLineItem`):
+   - РђРєС‚РёРІРЅР°СЏ вЂ” 24sp Bold, `highlightColor` С‡РµСЂРµР· РєР°СЂР°РѕРєРµ-РєРёСЃС‚СЊ, СЃРІРµС‡РµРЅРёРµ `Shadow(alpha = 0.38f, blurRadius = 18f)`.
+   - РЎРѕСЃРµРґРЅРёРµ (NВ±1) вЂ” 18sp Medium, `onSurfaceVariant` alpha 0.55.
+   - Р”Р°Р»СЊРЅРёРµ (NВ±2 Рё Р±РѕР»СЊС€Рµ) вЂ” 16sp Normal alpha 0.35.
+   - РЈР±СЂР°РЅ `blur` Сѓ РґР°Р»СЊРЅРёС… СЃС‚СЂРѕРє Рё `graphicsLayer`-РјР°СЃС€С‚Р°Р± Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё (`TransformOrigin` Р±РѕР»СЊС€Рµ РЅРµ РЅСѓР¶РµРЅ).
+   - РќРµСЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅРЅС‹Р№ С‚РµРєСЃС‚ вЂ” 24sp Normal alpha 0.82 Р±РµР· РєР°СЂР°РѕРєРµ Рё Р±РµР· СЃРІРµС‡РµРЅРёСЏ.
+3. **РљР°СЂР°РѕРєРµ-Р·Р°Р»РёРІРєР°**:
+   - `buildLyricsBrush` РїРµСЂРµРІРµРґС‘РЅ СЃ РґРёР°РіРѕРЅР°Р»СЊРЅРѕРіРѕ `Brush.linearGradient` РЅР° `Brush.horizontalGradient`, РєСЂР°Р№РЅРёРµ СЃР»СѓС‡Р°Рё вЂ” `SolidColor`.
+   - Р—Р°РјРµСЂС‹ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ: Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° 249 РїРѕ РІСЃРµР№ С€РёСЂРёРЅРµ РїСЂРѕРїРµС‚РѕР№ С‡Р°СЃС‚Рё Рё ~229вЂ“234 РІ РЅРµРїСЂРѕРїРµС‚РѕР№, РїРµСЂРµРЅРµСЃС‘РЅРЅР°СЏ СЃС‚СЂРѕРєР° (В«twilightВ») 219вЂ“236 вЂ” Р·Р°Р»РёРІРєР° СЂР°Р±РѕС‚Р°РµС‚ РЅР° РѕР±РµРёС… РІРёР·СѓР°Р»СЊРЅС‹С… СЃС‚СЂРѕРєР°С….
+4. **Р“РµРѕРјРµС‚СЂРёСЏ СЃРїРёСЃРєР°**:
+   - `centerLiftPx = 24.dp`: Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° СЃС‚РѕРёС‚ РІС‹С€Рµ РіРµРѕРјРµС‚СЂРёС‡РµСЃРєРѕРіРѕ С†РµРЅС‚СЂР°, РїРѕСЌС‚РѕРјСѓ РїРµСЂРµРЅРµСЃС‘РЅРЅР°СЏ РІС‚РѕСЂР°СЏ СЃС‚СЂРѕРєР° РЅРµ РїРѕРїР°РґР°РµС‚ РїРѕРґ РЅРёР¶РЅСЋСЋ РјР°СЃРєСѓ.
+   - РџРµСЂРІРѕРµ РїРѕР·РёС†РёРѕРЅРёСЂРѕРІР°РЅРёРµ вЂ” `scrollToItem`, РґР°Р»СЊС€Рµ `animateScrollToItem`; РѕРїСЂРѕСЃ РїРѕР·РёС†РёРё 150 РјСЃ; С‚Р°Рї РїРѕ СЃС‚СЂРѕРєРµ = `seekTo(line.timeMs)`.
+   - РџРёР»СЋР»СЏ В«РўРµРєСЃС‚В» РѕСЃС‚Р°Р»Р°СЃСЊ РїРµСЂРµРєР»СЋС‡Р°С‚РµР»РµРј, РѕС‚РґРµР»СЊРЅРѕРіРѕ route/BottomSheet Рё РєРЅРѕРїРєРё Р·Р°РєСЂС‹С‚РёСЏ РЅРµС‚.
 
-### Диагностика (почему вторая строка выглядела серой)
-- Гипотеза о «кисть не заливает вторую строку» не подтвердилась: двухслойный рендер с `DstIn`-маской и `CompositingStrategy.Offscreen` дал тот же результат и был откачен.
-- Красный диагностический тест показал, что вторая визуальная строка темнее первой не из-за `alpha` и не из-за разбиения текста, а потому что попадает под нижнюю градиентную маску 124dp.
-- Исправление — подъём активной строки на 24dp при сохранении маски.
+### Р”РёР°РіРЅРѕСЃС‚РёРєР° (РїРѕС‡РµРјСѓ РІС‚РѕСЂР°СЏ СЃС‚СЂРѕРєР° РІС‹РіР»СЏРґРµР»Р° СЃРµСЂРѕР№)
+- Р“РёРїРѕС‚РµР·Р° Рѕ В«РєРёСЃС‚СЊ РЅРµ Р·Р°Р»РёРІР°РµС‚ РІС‚РѕСЂСѓСЋ СЃС‚СЂРѕРєСѓВ» РЅРµ РїРѕРґС‚РІРµСЂРґРёР»Р°СЃСЊ: РґРІСѓС…СЃР»РѕР№РЅС‹Р№ СЂРµРЅРґРµСЂ СЃ `DstIn`-РјР°СЃРєРѕР№ Рё `CompositingStrategy.Offscreen` РґР°Р» С‚РѕС‚ Р¶Рµ СЂРµР·СѓР»СЊС‚Р°С‚ Рё Р±С‹Р» РѕС‚РєР°С‡РµРЅ.
+- РљСЂР°СЃРЅС‹Р№ РґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРёР№ С‚РµСЃС‚ РїРѕРєР°Р·Р°Р», С‡С‚Рѕ РІС‚РѕСЂР°СЏ РІРёР·СѓР°Р»СЊРЅР°СЏ СЃС‚СЂРѕРєР° С‚РµРјРЅРµРµ РїРµСЂРІРѕР№ РЅРµ РёР·-Р·Р° `alpha` Рё РЅРµ РёР·-Р·Р° СЂР°Р·Р±РёРµРЅРёСЏ С‚РµРєСЃС‚Р°, Р° РїРѕС‚РѕРјСѓ С‡С‚Рѕ РїРѕРїР°РґР°РµС‚ РїРѕРґ РЅРёР¶РЅСЋСЋ РіСЂР°РґРёРµРЅС‚РЅСѓСЋ РјР°СЃРєСѓ 124dp.
+- РСЃРїСЂР°РІР»РµРЅРёРµ вЂ” РїРѕРґСЉС‘Рј Р°РєС‚РёРІРЅРѕР№ СЃС‚СЂРѕРєРё РЅР° 24dp РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё РјР°СЃРєРё.
 
-### Проверка
-- `.\gradlew testDebugUnitTest assembleDebug` — `BUILD SUCCESSFUL`, 109 JVM-тестов, 0 failures, 0 skipped.
-- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 406 949 байт (~27,4 МБ); хэш установленного APK совпал со сборочным.
-- Live-тест на SM-A266B:
-  - M83 — Midnight City: иерархия 24/18/16 читается, фон тёмный, автоскролл и тап-перемотка работают, перенесённая строка заливается.
-  - The Beatles — Here Comes The Sun (светлая обложка): фон остаётся тёмным, активная строка белая со свечением, соседние и дальние приглушены.
-  - Hans Zimmer — Time: состояние «Инструментальный трек» без изменений.
-  - Moby — Porcelain (Above & Beyond Remix): несинхронизированный текст 24sp Normal без караоке.
-  - Трек без текста: состояние ошибки и кнопка «Повторить поиск текста» без изменений.
-- Напоминание: после `adb install` обязателен `am force-stop`, иначе на экране остаётся старый код.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew testDebugUnitTest assembleDebug` вЂ” `BUILD SUCCESSFUL`, 109 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 skipped.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 406 949 Р±Р°Р№С‚ (~27,4 РњР‘); С…СЌС€ СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅРѕРіРѕ APK СЃРѕРІРїР°Р» СЃРѕ СЃР±РѕСЂРѕС‡РЅС‹Рј.
+- Live-С‚РµСЃС‚ РЅР° SM-A266B:
+  - M83 вЂ” Midnight City: РёРµСЂР°СЂС…РёСЏ 24/18/16 С‡РёС‚Р°РµС‚СЃСЏ, С„РѕРЅ С‚С‘РјРЅС‹Р№, Р°РІС‚РѕСЃРєСЂРѕР»Р» Рё С‚Р°Рї-РїРµСЂРµРјРѕС‚РєР° СЂР°Р±РѕС‚Р°СЋС‚, РїРµСЂРµРЅРµСЃС‘РЅРЅР°СЏ СЃС‚СЂРѕРєР° Р·Р°Р»РёРІР°РµС‚СЃСЏ.
+  - The Beatles вЂ” Here Comes The Sun (СЃРІРµС‚Р»Р°СЏ РѕР±Р»РѕР¶РєР°): С„РѕРЅ РѕСЃС‚Р°С‘С‚СЃСЏ С‚С‘РјРЅС‹Рј, Р°РєС‚РёРІРЅР°СЏ СЃС‚СЂРѕРєР° Р±РµР»Р°СЏ СЃРѕ СЃРІРµС‡РµРЅРёРµРј, СЃРѕСЃРµРґРЅРёРµ Рё РґР°Р»СЊРЅРёРµ РїСЂРёРіР»СѓС€РµРЅС‹.
+  - Hans Zimmer вЂ” Time: СЃРѕСЃС‚РѕСЏРЅРёРµ В«РРЅСЃС‚СЂСѓРјРµРЅС‚Р°Р»СЊРЅС‹Р№ С‚СЂРµРєВ» Р±РµР· РёР·РјРµРЅРµРЅРёР№.
+  - Moby вЂ” Porcelain (Above & Beyond Remix): РЅРµСЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅРЅС‹Р№ С‚РµРєСЃС‚ 24sp Normal Р±РµР· РєР°СЂР°РѕРєРµ.
+  - РўСЂРµРє Р±РµР· С‚РµРєСЃС‚Р°: СЃРѕСЃС‚РѕСЏРЅРёРµ РѕС€РёР±РєРё Рё РєРЅРѕРїРєР° В«РџРѕРІС‚РѕСЂРёС‚СЊ РїРѕРёСЃРє С‚РµРєСЃС‚Р°В» Р±РµР· РёР·РјРµРЅРµРЅРёР№.
+- РќР°РїРѕРјРёРЅР°РЅРёРµ: РїРѕСЃР»Рµ `adb install` РѕР±СЏР·Р°С‚РµР»РµРЅ `am force-stop`, РёРЅР°С‡Рµ РЅР° СЌРєСЂР°РЅРµ РѕСЃС‚Р°С‘С‚СЃСЏ СЃС‚Р°СЂС‹Р№ РєРѕРґ.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/java/com/my/music/feature/player/PlayerScreen.kt
 PROGRESS.md
 MEMORY.md
 ```
 
-### Следующий шаг
-- Phase B — только после команды «Продолжай Phase B». До неё изменения не начинать.
+### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
+- Phase B вЂ” С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ РєРѕРјР°РЅРґС‹ В«РџСЂРѕРґРѕР»Р¶Р°Р№ Phase BВ». Р”Рѕ РЅРµС‘ РёР·РјРµРЅРµРЅРёСЏ РЅРµ РЅР°С‡РёРЅР°С‚СЊ.
 
 ---
 
-## ✅ Сессия 13 — Phase A fix + Phase B: фон текста, стабильный таймлайн, синусоида-пульс (26.10.2026)
+## вњ… РЎРµСЃСЃРёСЏ 13 вЂ” Phase A fix + Phase B: С„РѕРЅ С‚РµРєСЃС‚Р°, СЃС‚Р°Р±РёР»СЊРЅС‹Р№ С‚Р°Р№РјР»Р°Р№РЅ, СЃРёРЅСѓСЃРѕРёРґР°-РїСѓР»СЊСЃ (26.10.2026)
 
-### Причина
-- В режиме «Текст» размытая обложка масштабировалась до 0.58 и висела по центру — на светлой обложке были видны прямоугольные края «серого кирпича».
-- Морф `LinearProgressIndicator` ↔ `Slider` срывался на паузе, а фаза волны слайдера при остановке `rememberInfiniteTransition` скачком возвращалась в 0 — ползунок дёргался.
-- Запрошена мягкая пульсация синусоиды над слайдером от реального баса.
+### РџСЂРёС‡РёРЅР°
+- Р’ СЂРµР¶РёРјРµ В«РўРµРєСЃС‚В» СЂР°Р·РјС‹С‚Р°СЏ РѕР±Р»РѕР¶РєР° РјР°СЃС€С‚Р°Р±РёСЂРѕРІР°Р»Р°СЃСЊ РґРѕ 0.58 Рё РІРёСЃРµР»Р° РїРѕ С†РµРЅС‚СЂСѓ вЂ” РЅР° СЃРІРµС‚Р»РѕР№ РѕР±Р»РѕР¶РєРµ Р±С‹Р»Рё РІРёРґРЅС‹ РїСЂСЏРјРѕСѓРіРѕР»СЊРЅС‹Рµ РєСЂР°СЏ В«СЃРµСЂРѕРіРѕ РєРёСЂРїРёС‡Р°В».
+- РњРѕСЂС„ `LinearProgressIndicator` в†” `Slider` СЃСЂС‹РІР°Р»СЃСЏ РЅР° РїР°СѓР·Рµ, Р° С„Р°Р·Р° РІРѕР»РЅС‹ СЃР»Р°Р№РґРµСЂР° РїСЂРё РѕСЃС‚Р°РЅРѕРІРєРµ `rememberInfiniteTransition` СЃРєР°С‡РєРѕРј РІРѕР·РІСЂР°С‰Р°Р»Р°СЃСЊ РІ 0 вЂ” РїРѕР»Р·СѓРЅРѕРє РґС‘СЂРіР°Р»СЃСЏ.
+- Р—Р°РїСЂРѕС€РµРЅР° РјСЏРіРєР°СЏ РїСѓР»СЊСЃР°С†РёСЏ СЃРёРЅСѓСЃРѕРёРґС‹ РЅР°Рґ СЃР»Р°Р№РґРµСЂРѕРј РѕС‚ СЂРµР°Р»СЊРЅРѕРіРѕ Р±Р°СЃР°.
 
-### Что сделано
-1. **Фон текста** (`PlayerScreen`):
-   - Полноэкранный размытый слой: `matchParentSize()` + `graphicsLayer { scale 1.25 }` + `blur(44.dp, Unbounded)`; прямоугольные края уходят за экран.
-   - Hero-обложка в текстах гаснет полностью (`alpha = lerp(1f, 0f, recede)`), scrim `surface` alpha `0.65 * lyricsBackdrop` перенесён из hero-зоны в корень экрана.
-   - Верхняя/нижняя маски списка заменены на `DstIn`-затухание контента (`CompositingStrategy.Offscreen`): маска режет прозрачность строк, а не заливает фон цветом surface — на светлой обложке больше нет тёмного прямоугольника.
-2. **Таймлайн**:
-   - `ExpressivePlayerSlider` переведён на `rememberPlaybackPhase(active = isPlaying, periodMs = 1600)` (`withFrameNanos`): на паузе фаза замирает, а не сбрасывается; амплитуда плавно уходит в линию за 500 мс.
-   - Морф прогресса защёлкнут через `hasStarted` на `trackId`: `LinearProgressIndicator` показывается только на старте трека и не возвращается на паузе/буферизации.
-3. **Синусоида-пульс** (`SinePulseBar`):
-   - Полоса 16dp над слайдером, stroke 1.5dp, `primary` alpha 0.5, края сходятся к линии; hitbox слайдера не изменён.
-   - `BassSampler`: `Visualizer` на аудиосессии ExoPlayer, FFT-бины 1–11, средняя амплитуда /96, асимметричный lerp (атака 0.35, спад 0.10).
-   - `PlaybackAudioSession` публикует `audioSessionId` из `MusicService` в UI того же процесса.
-   - В манифест добавлен `RECORD_AUDIO`; разрешение спрашивается один раз за процесс, при отказе — ambient `0.42 + 0.26*sin(1.15t) + 0.10*sin(0.53t+1.2)`.
-   - На паузе амплитуда плавно гаснет в линию (220 мс), на смене трека — gate fade out/in (120 мс + 360 мс).
+### Р§С‚Рѕ СЃРґРµР»Р°РЅРѕ
+1. **Р¤РѕРЅ С‚РµРєСЃС‚Р°** (`PlayerScreen`):
+   - РџРѕР»РЅРѕСЌРєСЂР°РЅРЅС‹Р№ СЂР°Р·РјС‹С‚С‹Р№ СЃР»РѕР№: `matchParentSize()` + `graphicsLayer { scale 1.25 }` + `blur(44.dp, Unbounded)`; РїСЂСЏРјРѕСѓРіРѕР»СЊРЅС‹Рµ РєСЂР°СЏ СѓС…РѕРґСЏС‚ Р·Р° СЌРєСЂР°РЅ.
+   - Hero-РѕР±Р»РѕР¶РєР° РІ С‚РµРєСЃС‚Р°С… РіР°СЃРЅРµС‚ РїРѕР»РЅРѕСЃС‚СЊСЋ (`alpha = lerp(1f, 0f, recede)`), scrim `surface` alpha `0.65 * lyricsBackdrop` РїРµСЂРµРЅРµСЃС‘РЅ РёР· hero-Р·РѕРЅС‹ РІ РєРѕСЂРµРЅСЊ СЌРєСЂР°РЅР°.
+   - Р’РµСЂС…РЅСЏСЏ/РЅРёР¶РЅСЏСЏ РјР°СЃРєРё СЃРїРёСЃРєР° Р·Р°РјРµРЅРµРЅС‹ РЅР° `DstIn`-Р·Р°С‚СѓС…Р°РЅРёРµ РєРѕРЅС‚РµРЅС‚Р° (`CompositingStrategy.Offscreen`): РјР°СЃРєР° СЂРµР¶РµС‚ РїСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ СЃС‚СЂРѕРє, Р° РЅРµ Р·Р°Р»РёРІР°РµС‚ С„РѕРЅ С†РІРµС‚РѕРј surface вЂ” РЅР° СЃРІРµС‚Р»РѕР№ РѕР±Р»РѕР¶РєРµ Р±РѕР»СЊС€Рµ РЅРµС‚ С‚С‘РјРЅРѕРіРѕ РїСЂСЏРјРѕСѓРіРѕР»СЊРЅРёРєР°.
+2. **РўР°Р№РјР»Р°Р№РЅ**:
+   - `ExpressivePlayerSlider` РїРµСЂРµРІРµРґС‘РЅ РЅР° `rememberPlaybackPhase(active = isPlaying, periodMs = 1600)` (`withFrameNanos`): РЅР° РїР°СѓР·Рµ С„Р°Р·Р° Р·Р°РјРёСЂР°РµС‚, Р° РЅРµ СЃР±СЂР°СЃС‹РІР°РµС‚СЃСЏ; Р°РјРїР»РёС‚СѓРґР° РїР»Р°РІРЅРѕ СѓС…РѕРґРёС‚ РІ Р»РёРЅРёСЋ Р·Р° 500 РјСЃ.
+   - РњРѕСЂС„ РїСЂРѕРіСЂРµСЃСЃР° Р·Р°С‰С‘Р»РєРЅСѓС‚ С‡РµСЂРµР· `hasStarted` РЅР° `trackId`: `LinearProgressIndicator` РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РЅР° СЃС‚Р°СЂС‚Рµ С‚СЂРµРєР° Рё РЅРµ РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ РЅР° РїР°СѓР·Рµ/Р±СѓС„РµСЂРёР·Р°С†РёРё.
+3. **РЎРёРЅСѓСЃРѕРёРґР°-РїСѓР»СЊСЃ** (`SinePulseBar`):
+   - РџРѕР»РѕСЃР° 16dp РЅР°Рґ СЃР»Р°Р№РґРµСЂРѕРј, stroke 1.5dp, `primary` alpha 0.5, РєСЂР°СЏ СЃС…РѕРґСЏС‚СЃСЏ Рє Р»РёРЅРёРё; hitbox СЃР»Р°Р№РґРµСЂР° РЅРµ РёР·РјРµРЅС‘РЅ.
+   - `BassSampler`: `Visualizer` РЅР° Р°СѓРґРёРѕСЃРµСЃСЃРёРё ExoPlayer, FFT-Р±РёРЅС‹ 1вЂ“11, СЃСЂРµРґРЅСЏСЏ Р°РјРїР»РёС‚СѓРґР° /96, Р°СЃРёРјРјРµС‚СЂРёС‡РЅС‹Р№ lerp (Р°С‚Р°РєР° 0.35, СЃРїР°Рґ 0.10).
+   - `PlaybackAudioSession` РїСѓР±Р»РёРєСѓРµС‚ `audioSessionId` РёР· `MusicService` РІ UI С‚РѕРіРѕ Р¶Рµ РїСЂРѕС†РµСЃСЃР°.
+   - Р’ РјР°РЅРёС„РµСЃС‚ РґРѕР±Р°РІР»РµРЅ `RECORD_AUDIO`; СЂР°Р·СЂРµС€РµРЅРёРµ СЃРїСЂР°С€РёРІР°РµС‚СЃСЏ РѕРґРёРЅ СЂР°Р· Р·Р° РїСЂРѕС†РµСЃСЃ, РїСЂРё РѕС‚РєР°Р·Рµ вЂ” ambient `0.42 + 0.26*sin(1.15t) + 0.10*sin(0.53t+1.2)`.
+   - РќР° РїР°СѓР·Рµ Р°РјРїР»РёС‚СѓРґР° РїР»Р°РІРЅРѕ РіР°СЃРЅРµС‚ РІ Р»РёРЅРёСЋ (220 РјСЃ), РЅР° СЃРјРµРЅРµ С‚СЂРµРєР° вЂ” gate fade out/in (120 РјСЃ + 360 РјСЃ).
 
-### Проверка
-- `.\gradlew testDebugUnitTest assembleDebug` — `BUILD SUCCESSFUL`, 109 JVM-тестов, 0 failures, 0 skipped.
-- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 417 678 байт.
-- Live-тест на SM-A266B:
-  - Moby — Porcelain (тёмная бирюзовая обложка) и ONDA ANDAR — type london (светлая бежевая): фон текстов — мягкое полноэкранное пятно без прямоугольных границ; верхние/нижние строки растворяются через DstIn.
-  - Пауза: ползунок не прыгает по X, волна слайдера плавно выпрямляется, синусоида гаснет в линию; резюм возвращает волну с той же фазы.
-  - Синусоида: амплитуда 11–16 px при FFT-энергии, на паузе 0.
-  - Источник энергии: **Visualizer** (logcat `SinePulse: Visualizer активен, сессия 19153`); ambient-ветка проверена отзывом `RECORD_AUDIO` — logcat `Нет RECORD_AUDIO — ambient-фолбэк`.
-- Напоминание: после `adb install` обязателен `am force-stop`.
+### РџСЂРѕРІРµСЂРєР°
+- `.\gradlew testDebugUnitTest assembleDebug` вЂ” `BUILD SUCCESSFUL`, 109 JVM-С‚РµСЃС‚РѕРІ, 0 failures, 0 skipped.
+- APK: `app/build/outputs/apk/debug/app-debug.apk`, 27 417 678 Р±Р°Р№С‚.
+- Live-С‚РµСЃС‚ РЅР° SM-A266B:
+  - Moby вЂ” Porcelain (С‚С‘РјРЅР°СЏ Р±РёСЂСЋР·РѕРІР°СЏ РѕР±Р»РѕР¶РєР°) Рё ONDA ANDAR вЂ” type london (СЃРІРµС‚Р»Р°СЏ Р±РµР¶РµРІР°СЏ): С„РѕРЅ С‚РµРєСЃС‚РѕРІ вЂ” РјСЏРіРєРѕРµ РїРѕР»РЅРѕСЌРєСЂР°РЅРЅРѕРµ РїСЏС‚РЅРѕ Р±РµР· РїСЂСЏРјРѕСѓРіРѕР»СЊРЅС‹С… РіСЂР°РЅРёС†; РІРµСЂС…РЅРёРµ/РЅРёР¶РЅРёРµ СЃС‚СЂРѕРєРё СЂР°СЃС‚РІРѕСЂСЏСЋС‚СЃСЏ С‡РµСЂРµР· DstIn.
+  - РџР°СѓР·Р°: РїРѕР»Р·СѓРЅРѕРє РЅРµ РїСЂС‹РіР°РµС‚ РїРѕ X, РІРѕР»РЅР° СЃР»Р°Р№РґРµСЂР° РїР»Р°РІРЅРѕ РІС‹РїСЂСЏРјР»СЏРµС‚СЃСЏ, СЃРёРЅСѓСЃРѕРёРґР° РіР°СЃРЅРµС‚ РІ Р»РёРЅРёСЋ; СЂРµР·СЋРј РІРѕР·РІСЂР°С‰Р°РµС‚ РІРѕР»РЅСѓ СЃ С‚РѕР№ Р¶Рµ С„Р°Р·С‹.
+  - РЎРёРЅСѓСЃРѕРёРґР°: Р°РјРїР»РёС‚СѓРґР° 11вЂ“16 px РїСЂРё FFT-СЌРЅРµСЂРіРёРё, РЅР° РїР°СѓР·Рµ 0.
+  - РСЃС‚РѕС‡РЅРёРє СЌРЅРµСЂРіРёРё: **Visualizer** (logcat `SinePulse: Visualizer Р°РєС‚РёРІРµРЅ, СЃРµСЃСЃРёСЏ 19153`); ambient-РІРµС‚РєР° РїСЂРѕРІРµСЂРµРЅР° РѕС‚Р·С‹РІРѕРј `RECORD_AUDIO` вЂ” logcat `РќРµС‚ RECORD_AUDIO вЂ” ambient-С„РѕР»Р±СЌРє`.
+- РќР°РїРѕРјРёРЅР°РЅРёРµ: РїРѕСЃР»Рµ `adb install` РѕР±СЏР·Р°С‚РµР»РµРЅ `am force-stop`.
 
-### Файлы
+### Р¤Р°Р№Р»С‹
 ```
 app/src/main/AndroidManifest.xml
 app/src/main/java/com/my/music/core/player/MusicService.kt
@@ -2458,5 +2469,5 @@ PROGRESS.md
 MEMORY.md
 ```
 
-### Следующий шаг
-- Ожидает следующей команды: экран «Скачанное» или импорт плейлистов YouTube.
+### РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі
+- РћР¶РёРґР°РµС‚ СЃР»РµРґСѓСЋС‰РµР№ РєРѕРјР°РЅРґС‹: СЌРєСЂР°РЅ В«РЎРєР°С‡Р°РЅРЅРѕРµВ» РёР»Рё РёРјРїРѕСЂС‚ РїР»РµР№Р»РёСЃС‚РѕРІ YouTube.

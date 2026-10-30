@@ -21,6 +21,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.AssistChip
@@ -664,6 +665,7 @@ private fun serviceIcon(service: ServiceType) = when (service) {
     ServiceType.YOUTUBE -> Icons.Rounded.SmartDisplay
     ServiceType.DEEZER -> Icons.Rounded.Equalizer
     ServiceType.APPLE -> Icons.Rounded.MusicNote
+    ServiceType.SPOTIFY -> Icons.Rounded.GraphicEq
 }
 
 @Composable

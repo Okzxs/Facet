@@ -38,7 +38,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
@@ -66,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -75,6 +78,7 @@ import com.my.music.BuildConfig
 import com.my.music.core.location.LocationPermissions
 import com.my.music.core.ui.theme.AccentOption
 import com.my.music.core.ui.theme.AccentOptions
+import com.my.music.data.repository.AppSettings
 import com.my.music.data.repository.ThemeMode
 import kotlin.math.roundToInt
 
@@ -321,6 +325,58 @@ fun SettingsScreen(
                 }
             }
         }
+
+        Spacer(Modifier.height(40.dp))
+
+        // в”Ђв”Ђв”Ђ РЇР·С‹Рє РёРЅС‚РµСЂС„РµР№СЃР° в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+        Text(
+            text = "РЇР·С‹Рє",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "РЇР·С‹Рє РёРЅС‚РµСЂС„РµР№СЃР°",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = "РџСЂРёРјРµРЅСЏРµС‚СЃСЏ СЃСЂР°Р·Сѓ, Р±РµР· РїРµСЂРµР·Р°РїСѓСЃРєР° РїСЂРёР»РѕР¶РµРЅРёСЏ",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(14.dp))
+                SegmentedButtonRow(
+                    selected = settings.appLanguage,
+                    onSelect = viewModel::setAppLanguage,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(40.dp))
+
+        // в”Ђв”Ђв”Ђ РРЅС‚РµРіСЂР°С†РёРё: Spotify в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+        Text(
+            text = "РРЅС‚РµРіСЂР°С†РёРё",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        SpotifyIntegrationCard(
+            settings = settings,
+            onSave = viewModel::saveSpotifyCredentials,
+        )
 
         Spacer(Modifier.height(40.dp))
 
@@ -893,6 +949,100 @@ private fun AccentDot(
                     tint = Color.White,
                     modifier = Modifier.size(18.dp),
                 )
+            }
+        }
+    }
+}
+
+/** Сегментированный выбор языка интерфейса. */
+@Composable
+private fun SegmentedButtonRow(selected: String, onSelect: (String) -> Unit) {
+    val options = listOf(
+        "system" to "Система",
+        "ru" to "Русский",
+        "en" to "English",
+    )
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        options.forEachIndexed { index, (value, label) ->
+            SegmentedButton(
+                selected = selected == value,
+                onClick = { onSelect(value) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+            ) {
+                Text(label)
+            }
+        }
+    }
+}
+
+/** Карточка интеграции Spotify: ключи приложения для поиска метаданных. */
+@Composable
+private fun SpotifyIntegrationCard(
+    settings: AppSettings,
+    onSave: (String, String) -> Unit,
+) {
+    var clientId by remember(settings.spotifyClientId) {
+        mutableStateOf(settings.spotifyClientId)
+    }
+    var clientSecret by remember(settings.spotifyClientSecret) {
+        mutableStateOf(settings.spotifyClientSecret)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Spotify",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = "Ключи нужны только для поиска: стрим идёт через YouTube",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(14.dp))
+            OutlinedTextField(
+                value = clientId,
+                onValueChange = { clientId = it },
+                label = { Text("Client ID") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = clientSecret,
+                onValueChange = { clientSecret = it },
+                label = { Text("Client Secret") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (settings.isSpotifyConfigured) "Подключено" else "Не подключено",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (settings.isSpotifyConfigured) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                FilledTonalButton(onClick = { onSave(clientId, clientSecret) }) {
+                    Text("Сохранить")
+                }
             }
         }
     }

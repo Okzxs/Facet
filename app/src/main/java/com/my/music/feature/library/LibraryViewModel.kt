@@ -8,6 +8,7 @@ import com.my.music.core.download.DownloadMessages
 import com.my.music.core.download.DownloadState
 import com.my.music.core.player.PlayerController
 import com.my.music.core.util.rethrowCancellation
+import com.my.music.data.model.DownloadedTrack
 import com.my.music.data.model.Track
 import com.my.music.data.repository.DownloadRepository
 import com.my.music.data.repository.LikedTracksRepository
@@ -27,7 +28,7 @@ import javax.inject.Inject
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val likedTracksRepository: LikedTracksRepository,
-    downloadRepository: DownloadRepository,
+    private val downloadRepository: DownloadRepository,
     private val downloadManager: DownloadManager,
     playerController: PlayerController,
 ) : ViewModel() {
@@ -66,6 +67,15 @@ class LibraryViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptySet(),
         )
+
+    /** Сами скачанные треки — вкладка «Скачанное» в медиатеке. */
+    val downloadedTracks: StateFlow<List<DownloadedTrack>> =
+        downloadRepository.observeDownloadedTracks()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = emptyList(),
+            )
 
     /** Состояния кнопок скачивания в списке лайков. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -113,8 +123,21 @@ class LibraryViewModel @Inject constructor(
         _likeError.value = null
     }
 
+    /** Удаление скачанного трека: файл и запись в Room убирает репозиторий. */
+    fun removeDownload(trackId: String) {
+        viewModelScope.launch {
+            runCatching { downloadRepository.remove(trackId) }
+                .rethrowCancellation()
+                .onFailure { error ->
+                    Log.e(TAG, "Не удалось удалить скачанный трек", error)
+                    _downloadError.value = DELETE_FAILED_MESSAGE
+                }
+        }
+    }
+
     private companion object {
         const val TAG = "LibraryViewModel"
         const val LIKE_FAILED_MESSAGE = "Не удалось обновить лайк: база данных недоступна"
+        const val DELETE_FAILED_MESSAGE = "Не удалось удалить трек с устройства"
     }
 }
