@@ -403,11 +403,19 @@ class PlayerController private constructor(
     /**
      * Дописать трек в конец очереди.
      *
+     * Если ничего не играет, «конец очереди» недостижим (шторка очереди без
+     * текущего трека не открывается), поэтому трек сразу начинает играть.
+     *
      * @return true, если трек добавлен; false — если он уже в очереди или без id.
      */
     fun addToQueue(track: Track): Boolean {
         if (track.id.isBlank()) return false
-        if (_state.value.queue.any { it.id == track.id }) return false
+        val state = _state.value
+        if (state.queue.isEmpty() || state.currentIndex !in state.queue.indices) {
+            setQueueAndPlay(listOf(track))
+            return true
+        }
+        if (state.queue.any { it.id == track.id }) return false
         appendToQueue(listOf(track))
         return true
     }

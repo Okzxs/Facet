@@ -42,8 +42,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -86,12 +88,19 @@ fun ArtistScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    // Прокручиваем к текущему треку один раз при открытии: иначе каждый
+    // следующий трек выдёргивал бы список из-под пальца.
+    var scrolledToCurrent by remember { mutableStateOf(false) }
 
     // Экран открыли с играющим треком — сразу показываем его строку.
     // Шапка и заголовок секции занимают первые два элемента списка.
     LaunchedEffect(currentTrackId, state.tracks) {
+        if (scrolledToCurrent) return@LaunchedEffect
         val index = state.tracks.indexOfFirst { it.id == currentTrackId }
-        if (index >= 0) listState.animateScrollToItem(index + ARTIST_LIST_HEADER_ITEMS)
+        if (index >= 0) {
+            listState.animateScrollToItem(index + ARTIST_LIST_HEADER_ITEMS)
+            scrolledToCurrent = true
+        }
     }
 
     // Очередь живёт в плеере: подтверждение действий — Snackbar.

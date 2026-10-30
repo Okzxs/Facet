@@ -398,6 +398,15 @@ class PlayerControllerQueueTest {
         assertEquals(0, controller.state.value.currentIndex)
     }
 
+    @Test
+    fun `addToQueue starts playback when nothing is playing`() {
+        assertTrue(controller.addToQueue(track("first")))
+
+        assertEquals(listOf("first"), controller.state.value.queue.map { it.id })
+        assertEquals(0, controller.state.value.currentIndex)
+        assertEquals("first", controller.state.value.currentTrack?.id)
+    }
+
     private fun track(id: String) = Track(
         id = id,
         source = Source.SOUNDCLOUD,
