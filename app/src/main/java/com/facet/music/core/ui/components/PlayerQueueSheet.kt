@@ -5,7 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,8 +67,9 @@ fun PlayerQueueSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
 
-    // Автоматическая прокрутка к текущему треку при открытии
-    LaunchedEffect(currentIndex) {
+    // Автоматическая прокрутка к текущему треку при открытии:
+    // перед ним стоят секция «Сейчас играет» и треки «Проиграно».
+    LaunchedEffect(currentIndex, queue.size) {
         if (currentIndex in queue.indices) {
             listState.animateScrollToItem(currentIndex.coerceAtLeast(0))
         }
@@ -177,30 +178,85 @@ fun PlayerQueueSheet(
                     )
                 }
             } else {
+                val safeIndex = currentIndex.coerceIn(0, queue.lastIndex)
+                val playedItems = queue.take(safeIndex).mapIndexed { index, track -> index to track }
+                val currentItem = queue.getOrNull(safeIndex)
+                val nextItems = queue.drop(safeIndex + 1)
+                    .mapIndexed { offset, track -> (safeIndex + 1 + offset) to track }
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    itemsIndexed(
-                        items = queue,
-                        // Стабильный ключ по треку: при удалении элемента его состояние
-                        // не «переезжает» на соседний, как было с ключом по индексу
-                        key = { _, track -> track.id },
-                    ) { index, track ->
-                        val isPlaying = index == currentIndex
-                        QueueTrackItem(
-                            track = track,
-                            isPlaying = isPlaying,
-                            onClick = { onTrackClick(index) },
-                            onDismiss = { onRemoveTrack(index) },
-                        )
+                    // ─── Сейчас играет ────────────────────────────────────
+                    currentItem?.let { track ->
+                        item(key = "section_now") {
+                            QueueSectionHeader(stringResource(R.string.queue_section_now))
+                        }
+                        item(key = "current_${track.id}") {
+                            QueueTrackItem(
+                                track = track,
+                                isPlaying = true,
+                                onClick = { onTrackClick(safeIndex) },
+                                onDismiss = { onRemoveTrack(safeIndex) },
+                            )
+                        }
+                    }
+
+                    // ─── Далее ────────────────────────────────────────────
+                    if (nextItems.isNotEmpty()) {
+                        item(key = "section_next") {
+                            QueueSectionHeader(stringResource(R.string.queue_section_next))
+                        }
+                        items(
+                            items = nextItems,
+                            key = { (_, track) -> "next_${track.id}" },
+                        ) { (index, track) ->
+                            QueueTrackItem(
+                                track = track,
+                                isPlaying = false,
+                                onClick = { onTrackClick(index) },
+                                onDismiss = { onRemoveTrack(index) },
+                            )
+                        }
+                    }
+
+                    // ─── Проиграно ────────────────────────────────────────
+                    if (playedItems.isNotEmpty()) {
+                        item(key = "section_played") {
+                            QueueSectionHeader(stringResource(R.string.queue_section_played))
+                        }
+                        items(
+                            items = playedItems,
+                            key = { (_, track) -> "played_${track.id}" },
+                        ) { (index, track) ->
+                            QueueTrackItem(
+                                track = track,
+                                isPlaying = false,
+                                onClick = { onTrackClick(index) },
+                                onDismiss = { onRemoveTrack(index) },
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * Заголовок секции очереди: «Сейчас играет», «Далее», «Проиграно».
+ */
+@Composable
+private fun QueueSectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 8.dp, top = 10.dp, bottom = 2.dp),
+    )
 }
 
 /**

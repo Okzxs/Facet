@@ -256,6 +256,35 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
+/**
+ * 12 → 13: очередь воспроизведения переживает перезапуск.
+ * Строки денормализованы, как в плейлистах: для восстановления хватает
+ * самой таблицы, джойны с лайками не нужны.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `queue` (
+                `position` INTEGER NOT NULL,
+                `trackId` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `streamUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `genre` TEXT,
+                `transcodingUrl` TEXT,
+                `isrc` TEXT,
+                `previewSeconds` INTEGER,
+                PRIMARY KEY(`position`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -268,4 +297,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_9_10,
     MIGRATION_10_11,
     MIGRATION_11_12,
+    MIGRATION_12_13,
 )

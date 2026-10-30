@@ -8,6 +8,7 @@ import com.facet.music.data.local.dao.DownloadedTracksDao
 import com.facet.music.data.local.dao.LikedTracksDao
 import com.facet.music.data.local.dao.PlayHistoryDao
 import com.facet.music.data.local.dao.PlaylistDao
+import com.facet.music.data.local.dao.QueueDao
 import com.facet.music.data.local.dao.RecentlyShownDao
 import com.facet.music.data.local.dao.SearchCacheDao
 import com.facet.music.data.local.dao.TasteDao
@@ -20,6 +21,7 @@ import com.facet.music.data.local.entity.ArtistWeightEntity
 import com.facet.music.data.local.entity.GenreWeightEntity
 import com.facet.music.data.local.entity.PlaylistEntity
 import com.facet.music.data.local.entity.PlaylistTrackEntity
+import com.facet.music.data.local.entity.QueueEntity
 import com.facet.music.data.local.entity.RecentlyShownEntity
 import com.facet.music.data.local.entity.SearchCacheEntity
 import com.facet.music.data.local.entity.UserPreferenceEntity
@@ -41,8 +43,9 @@ import com.facet.music.data.local.entity.UserPreferenceEntity
         SearchCacheEntity::class,
         PlaylistEntity::class,
         PlaylistTrackEntity::class,
+        QueueEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -55,4 +58,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recentlyShownDao(): RecentlyShownDao
     abstract fun searchCacheDao(): SearchCacheDao
     abstract fun playlistDao(): PlaylistDao
+    abstract fun queueDao(): QueueDao
 }

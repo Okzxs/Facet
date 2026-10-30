@@ -117,5 +117,11 @@ abstract class RepositoryModule {
     abstract fun bindSpotifyAuthRepository(
         impl: com.facet.music.data.source.external.SpotifyAuthRepositoryImpl,
     ): com.facet.music.data.repository.SpotifyAuthRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindQueueRepository(
+        impl: com.facet.music.data.local.QueueRepositoryImpl,
+    ): com.facet.music.data.repository.QueueRepository
 }
 

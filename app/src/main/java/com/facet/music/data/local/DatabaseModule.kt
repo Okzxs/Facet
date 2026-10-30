@@ -7,6 +7,7 @@ import com.facet.music.data.local.dao.DownloadedTracksDao
 import com.facet.music.data.local.dao.LikedTracksDao
 import com.facet.music.data.local.dao.PlayHistoryDao
 import com.facet.music.data.local.dao.PlaylistDao
+import com.facet.music.data.local.dao.QueueDao
 import com.facet.music.data.local.dao.RecentlyShownDao
 import com.facet.music.data.local.dao.SearchCacheDao
 import com.facet.music.data.local.dao.TasteDao
@@ -87,5 +88,11 @@ object DatabaseModule {
     @Singleton
     fun providePlaylistDao(database: AppDatabase): PlaylistDao {
         return database.playlistDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideQueueDao(database: AppDatabase): QueueDao {
+        return database.queueDao()
     }
 }

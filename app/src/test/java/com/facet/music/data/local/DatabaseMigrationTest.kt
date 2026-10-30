@@ -58,7 +58,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 12 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 13 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -95,7 +95,7 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(12, database.openHelper.writableDatabase.version)
+            assertEquals(13, database.openHelper.writableDatabase.version)
 
             // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
@@ -287,6 +287,34 @@ class DatabaseMigrationTest {
         MIGRATION_3_4.migrate(db)
 
         assertTrue("season" in tableColumns(db, "liked_tracks"))
+    }
+
+    @Test
+    fun `migration 12 to 13 creates queue table`() {
+        val db = openLegacyDatabase("m-12-13.db", 12) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+        }
+
+        MIGRATION_12_13.migrate(db)
+
+        assertTrue(hasTable(db, "queue"))
+        assertEquals(
+            setOf(
+                "position",
+                "trackId",
+                "source",
+                "title",
+                "artist",
+                "artworkUrl",
+                "streamUrl",
+                "durationMs",
+                "genre",
+                "transcodingUrl",
+                "isrc",
+                "previewSeconds",
+            ),
+            tableColumns(db, "queue"),
+        )
     }
 
     @Test

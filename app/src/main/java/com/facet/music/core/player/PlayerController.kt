@@ -20,6 +20,7 @@ import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.DownloadRepository
 import com.facet.music.data.repository.PlayHistoryRepository
+import com.facet.music.data.repository.QueueRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,6 +28,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -34,6 +36,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -57,6 +62,8 @@ class PlayerController private constructor(
     private val downloadRepository: DownloadRepository?,
     /** Резолвер стрима для внешних источников; null в тестах и легаси-конструкторах. */
     private val streamResolver: StreamResolver?,
+    /** Сохранение очереди между запусками; null в JVM-тестах. */
+    private val queueRepository: QueueRepository?,
     initialController: MediaController?,
 ) {
 
@@ -68,6 +75,7 @@ class PlayerController private constructor(
         playHistoryRepository: PlayHistoryRepository,
         downloadRepository: DownloadRepository,
         streamResolver: StreamResolver,
+        queueRepository: QueueRepository,
     ) : this(
         context,
         soundCloudRepository,
@@ -75,6 +83,7 @@ class PlayerController private constructor(
         playHistoryRepository,
         downloadRepository,
         streamResolver,
+        queueRepository,
         null,
     )
 
@@ -90,6 +99,7 @@ class PlayerController private constructor(
         youTubeRepository,
         playHistoryRepository,
         downloadRepository,
+        null,
         null,
         null,
     )
@@ -109,6 +119,7 @@ class PlayerController private constructor(
         playHistoryRepository,
         downloadRepository,
         streamResolver,
+        null,
         mediaController,
     )
 
@@ -197,6 +208,50 @@ class PlayerController private constructor(
                 delay(COLD_START_CONNECT_DELAY_MS)
                 ensureConnected()
             }
+        }
+        // Очередь переживает перезапуск: сначала восстанавливаем сохранённую,
+        // затем начинаем писать изменения (restore не должен сам себя перезаписать).
+        restoreQueueFromDb()
+        persistQueue()
+    }
+
+    /** Поднимает сохранённую очередь, не начиная воспроизведение. */
+    private fun restoreQueueFromDb() {
+        val repository = queueRepository ?: return
+        scope.launch {
+            val snapshot = runCatching { repository.load() }.getOrNull() ?: return@launch
+            if (snapshot.tracks.isEmpty()) return@launch
+            // Не перетираем очередь, если за время чтения что-то уже играет.
+            if (_state.value.currentTrack != null || _state.value.queue.isNotEmpty()) return@launch
+            val index = snapshot.currentIndex.coerceIn(0, snapshot.tracks.lastIndex)
+            originalQueue = snapshot.tracks
+            _state.update {
+                it.copy(
+                    queue = snapshot.tracks,
+                    currentIndex = index,
+                    currentTrack = snapshot.tracks[index],
+                    isPlaying = false,
+                    isLoading = false,
+                )
+            }
+        }
+    }
+
+    /** Пишет очередь в Room с задержкой: быстрые правки не дают десятки записей. */
+    @OptIn(FlowPreview::class)
+    private fun persistQueue() {
+        val repository = queueRepository ?: return
+        scope.launch {
+            _state
+                .map { it.queue to it.currentIndex }
+                .debounce(QUEUE_PERSIST_DEBOUNCE_MS)
+                .distinctUntilChanged()
+                .collect { (queue, index) ->
+                    runCatching {
+                        if (queue.isEmpty()) repository.clear()
+                        else repository.save(queue, index)
+                    }
+                }
         }
     }
 
@@ -833,6 +888,16 @@ class PlayerController private constructor(
 
     fun pauseOrResume() {
         ensureConnected()
+        // Восстановленная очередь живёт только в состоянии: в контроллере ещё нет
+        // медиаэлемента. Первый Play должен запустить трек, а не «нажать play» в пустоту.
+        val restored = _state.value
+        if (restored.currentTrack != null &&
+            restored.queue.isNotEmpty() &&
+            mediaController?.mediaItemCount == 0
+        ) {
+            playTrackAt(restored.currentIndex.coerceIn(0, restored.queue.lastIndex))
+            return
+        }
         // После ошибки нажатие Play/Pause сразу снимает сообщение и повторяет запуск трека
         if (_state.value.error != null) {
             _state.update { it.copy(error = null) }
@@ -923,6 +988,9 @@ class PlayerController private constructor(
 
         /** Текст ошибки, который снимается при успешном переподключении. */
         const val PLAYER_UNAVAILABLE_MESSAGE = "Не удалось подключиться к плееру"
+
+        /** Задержка записи очереди в Room: серия быстрых правок даёт одну запись. */
+        const val QUEUE_PERSIST_DEBOUNCE_MS = 500L
     }
 }
 

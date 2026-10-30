@@ -246,6 +246,9 @@
     <string name="player_find_on_youtube">Find</string>
 
     <!-- Очередь -->
+    <string name="queue_section_now">Now playing</string>
+    <string name="queue_section_next">Up next</string>
+    <string name="queue_section_played">Played</string>
     <string name="queue_title">Queue</string>
     <string name="queue_empty">Queue is empty</string>
     <string name="queue_remove_cd">Remove from queue</string>
