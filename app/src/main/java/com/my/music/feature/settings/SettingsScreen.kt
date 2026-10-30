@@ -954,12 +954,12 @@ private fun AccentDot(
     }
 }
 
-/** Сегментированный выбор языка интерфейса. */
+/** РЎРµРіРјРµРЅС‚РёСЂРѕРІР°РЅРЅС‹Р№ РІС‹Р±РѕСЂ СЏР·С‹РєР° РёРЅС‚РµСЂС„РµР№СЃР°. */
 @Composable
 private fun SegmentedButtonRow(selected: String, onSelect: (String) -> Unit) {
     val options = listOf(
-        "system" to "Система",
-        "ru" to "Русский",
+        "system" to "РЎРёСЃС‚РµРјР°",
+        "ru" to "Р СѓСЃСЃРєРёР№",
         "en" to "English",
     )
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -975,7 +975,7 @@ private fun SegmentedButtonRow(selected: String, onSelect: (String) -> Unit) {
     }
 }
 
-/** Карточка интеграции Spotify: ключи приложения для поиска метаданных. */
+/** РљР°СЂС‚РѕС‡РєР° РёРЅС‚РµРіСЂР°С†РёРё Spotify: РєР»СЋС‡Рё РїСЂРёР»РѕР¶РµРЅРёСЏ РґР»СЏ РїРѕРёСЃРєР° РјРµС‚Р°РґР°РЅРЅС‹С…. */
 @Composable
 private fun SpotifyIntegrationCard(
     settings: AppSettings,
@@ -1003,7 +1003,7 @@ private fun SpotifyIntegrationCard(
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                text = "Ключи нужны только для поиска: стрим идёт через YouTube",
+                text = "РљР»СЋС‡Рё РЅСѓР¶РЅС‹ С‚РѕР»СЊРєРѕ РґР»СЏ РїРѕРёСЃРєР°: СЃС‚СЂРёРј РёРґС‘С‚ С‡РµСЂРµР· YouTube",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1031,7 +1031,7 @@ private fun SpotifyIntegrationCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (settings.isSpotifyConfigured) "Подключено" else "Не подключено",
+                    text = if (settings.isSpotifyConfigured) "РџРѕРґРєР»СЋС‡РµРЅРѕ" else "РќРµ РїРѕРґРєР»СЋС‡РµРЅРѕ",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (settings.isSpotifyConfigured) {
                         MaterialTheme.colorScheme.primary
@@ -1041,7 +1041,7 @@ private fun SpotifyIntegrationCard(
                     modifier = Modifier.weight(1f),
                 )
                 FilledTonalButton(onClick = { onSave(clientId, clientSecret) }) {
-                    Text("Сохранить")
+                    Text("РЎРѕС…СЂР°РЅРёС‚СЊ")
                 }
             }
         }

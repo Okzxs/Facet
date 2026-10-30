@@ -355,7 +355,9 @@ private fun formatTotalDuration(ms: Long): String {
     return if (hours > 0) "$hours С‡ $minutes РјРёРЅ" else "$minutes РјРёРЅ"
 }
 
-/** Вкладки медиатеки: вся коллекция лайков или только офлайн-файлы. */
+/**
+ * Р’РєР»Р°РґРєРё РјРµРґРёР°С‚РµРєРё: РІСЃСЏ РєРѕР»Р»РµРєС†РёСЏ Р»Р°Р№РєРѕРІ РёР»Рё С‚РѕР»СЊРєРѕ РѕС„Р»Р°Р№РЅ-С„Р°Р№Р»С‹.
+ */
 private enum class LibraryTab { MEDIA, DOWNLOADED }
 
 @Composable
@@ -369,8 +371,8 @@ private fun LibraryTabs(
             .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         val tabs = listOf(
-            LibraryTab.MEDIA to "Медиатека",
-            LibraryTab.DOWNLOADED to "Скачанное",
+            LibraryTab.MEDIA to "РњРµРґРёР°С‚РµРєР°",
+            LibraryTab.DOWNLOADED to "РЎРєР°С‡Р°РЅРЅРѕРµ",
         )
         tabs.forEachIndexed { index, (tab, label) ->
             SegmentedButton(
@@ -384,7 +386,7 @@ private fun LibraryTabs(
     }
 }
 
-/** Диалог удаления скачанного трека с устройства. */
+/** Р”РёР°Р»РѕРі СѓРґР°Р»РµРЅРёСЏ СЃРєР°С‡Р°РЅРЅРѕРіРѕ С‚СЂРµРєР° СЃ СѓСЃС‚СЂРѕР№СЃС‚РІР°. */
 @Composable
 private fun DeleteDownloadDialog(
     title: String,
@@ -393,18 +395,18 @@ private fun DeleteDownloadDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Удалить с устройства?") },
-        text = { Text("Файл «$title» будет удалён, трек останется в медиатеке как онлайн.") },
+        title = { Text("РЈРґР°Р»РёС‚СЊ СЃ СѓСЃС‚СЂРѕР№СЃС‚РІР°?") },
+        text = { Text("Р¤Р°Р№Р» В«$titleВ» Р±СѓРґРµС‚ СѓРґР°Р»С‘РЅ, С‚СЂРµРє РѕСЃС‚Р°РЅРµС‚СЃСЏ РІ РјРµРґРёР°С‚РµРєРµ РєР°Рє РѕРЅР»Р°Р№РЅ.") },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Удалить") }
+            TextButton(onClick = onConfirm) { Text("РЈРґР°Р»РёС‚СЊ") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Отмена") }
+            TextButton(onClick = onDismiss) { Text("РћС‚РјРµРЅР°") }
         },
     )
 }
 
-/** Вкладка «Скачанное»: офлайн-файлы с удалением по кнопке. */
+/** Р’РєР»Р°РґРєР° В«РЎРєР°С‡Р°РЅРЅРѕРµВ»: РѕС„Р»Р°Р№РЅ-С„Р°Р№Р»С‹ СЃ СѓРґР°Р»РµРЅРёРµРј РїРѕ РєРЅРѕРїРєРµ. */
 @Composable
 private fun DownloadedContent(
     downloaded: List<DownloadedTrack>,
@@ -435,7 +437,7 @@ private fun DownloadedContent(
                     IconButton(onClick = { onDelete(track) }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
-                            contentDescription = "Удалить с устройства",
+                            contentDescription = "РЈРґР°Р»РёС‚СЊ СЃ СѓСЃС‚СЂРѕР№СЃС‚РІР°",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -445,7 +447,7 @@ private fun DownloadedContent(
     }
 }
 
-/** Пустое состояние «Скачанное». */
+/** РџСѓСЃС‚РѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ В«РЎРєР°С‡Р°РЅРЅРѕРµВ». */
 @Composable
 private fun DownloadedEmptyState(onOpenSearch: () -> Unit) {
     Box(
@@ -471,14 +473,14 @@ private fun DownloadedEmptyState(onOpenSearch: () -> Unit) {
             }
             Spacer(Modifier.height(20.dp))
             Text(
-                text = "Пока пусто",
+                text = "РџРѕРєР° РїСѓСЃС‚Рѕ",
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "У вас пока нет скачанных треков. Нажмите на стрелочку в плеере, " +
-                    "чтобы сохранить музыку",
+                text = "РЈ РІР°СЃ РїРѕРєР° РЅРµС‚ СЃРєР°С‡Р°РЅРЅС‹С… С‚СЂРµРєРѕРІ. РќР°Р¶РјРёС‚Рµ РЅР° СЃС‚СЂРµР»РѕС‡РєСѓ РІ РїР»РµРµСЂРµ, " +
+                    "С‡С‚РѕР±С‹ СЃРѕС…СЂР°РЅРёС‚СЊ РјСѓР·С‹РєСѓ",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -491,7 +493,7 @@ private fun DownloadedEmptyState(onOpenSearch: () -> Unit) {
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Найти музыку")
+                Text("РќР°Р№С‚Рё РјСѓР·С‹РєСѓ")
             }
         }
     }
