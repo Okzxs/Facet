@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,15 +32,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +57,10 @@ import com.my.music.R
 import com.my.music.core.ui.components.TrackArtwork
 import com.my.music.core.ui.components.TrackCard
 import com.my.music.data.model.Track
+import kotlinx.coroutines.launch
+
+/** Сколько элементов списка идёт до первого трека: шапка артиста и заголовок секции. */
+private const val ARTIST_LIST_HEADER_ITEMS = 2
 
 /**
  * Экран артиста: круглая обложка первого трека, имя, «Слушать всё»
@@ -62,10 +74,49 @@ import com.my.music.data.model.Track
 fun ArtistScreen(
     onBack: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
+    onPlayNext: (Track) -> Boolean,
+    onAddToQueue: (Track) -> Boolean,
     viewModel: ArtistViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val currentTrackId by viewModel.currentTrackId.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
     val avatarUrl = state.tracks.firstOrNull()?.artworkUrl
+    val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Экран открыли с играющим треком — сразу показываем его строку.
+    // Шапка и заголовок секции занимают первые два элемента списка.
+    LaunchedEffect(currentTrackId, state.tracks) {
+        val index = state.tracks.indexOfFirst { it.id == currentTrackId }
+        if (index >= 0) listState.animateScrollToItem(index + ARTIST_LIST_HEADER_ITEMS)
+    }
+
+    // Очередь живёт в плеере: подтверждение действий — Snackbar.
+    val handlePlayNext: (Track) -> Unit = { track ->
+        if (onPlayNext(track)) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = context.getString(R.string.queue_play_next_done, track.title),
+                    duration = SnackbarDuration.Short,
+                )
+            }
+        }
+    }
+    val handleAddToQueue: (Track) -> Unit = { track ->
+        val added = onAddToQueue(track)
+        scope.launch {
+            snackbarHostState.showSnackbar(
+                message = context.getString(
+                    if (added) R.string.queue_added_done else R.string.queue_already_added,
+                    track.title,
+                ),
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
 
     Scaffold(
         modifier = Modifier
@@ -73,6 +124,7 @@ fun ArtistScreen(
             .background(MaterialTheme.colorScheme.background),
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.statusBars,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -97,6 +149,7 @@ fun ArtistScreen(
         },
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
@@ -144,9 +197,13 @@ fun ArtistScreen(
                 items(items = state.tracks, key = { it.id }) { track ->
                     TrackCard(
                         track = track,
+                        isPlaying = track.id == currentTrackId,
+                        isPaused = track.id == currentTrackId && !isPlaying,
                         artworkSize = 60,
                         artworkCornerDp = 16,
                         onClick = { onTrackClick(track, state.tracks) },
+                        onPlayNext = { handlePlayNext(track) },
+                        onAddToQueue = { handleAddToQueue(track) },
                     )
                 }
             }

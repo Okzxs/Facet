@@ -223,6 +223,27 @@
     <string name="queue_repeat_cd">Повтор</string>
     <string name="queue_shuffle_cd">Перемешать</string>
 
+    <!-- Действия с треком (меню по долгому тапу в списках) -->
+    <string name="track_actions_cd">Действия с треком</string>
+    <string name="artist_open">К артисту</string>
+    <string name="queue_play_next">Играть следующим</string>
+    <string name="queue_add">В очередь</string>
+    <string name="queue_play_next_done">Играет следующим: %1$s</string>
+    <string name="queue_added_done">Добавлено в очередь: %1$s</string>
+    <string name="queue_already_added">Уже в очереди: %1$s</string>
+
+    <!-- Таймер сна -->
+    <string name="player_sleep_timer">Таймер сна</string>
+    <string name="player_sleep_timer_active">Таймер сна · до %1$s</string>
+    <string name="sleep_timer_title">Таймер сна</string>
+    <string name="sleep_timer_hint">Воспроизведение приостановится, когда время выйдет</string>
+    <string name="sleep_timer_remaining">Остановится в %1$s · осталось %2$d мин</string>
+    <string name="sleep_timer_option_minutes">%1$d мин</string>
+    <string name="sleep_timer_cancel">Отключить таймер</string>
+    <string name="sleep_timer_selected_cd">Выбранный таймер</string>
+    <string name="sleep_timer_started">Таймер сна: %1$d мин</string>
+    <string name="sleep_timer_cancelled">Таймер сна отключён</string>
+
     <!-- Волна -->
     <string name="wave_title">Моя волна</string>
     <string name="wave_subtitle">Бесконечный поток из ваших вкусов, похожих артистов и находок</string>

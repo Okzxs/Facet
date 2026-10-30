@@ -1,5 +1,24 @@
 # PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
 
+## Последнее обновление: 30.10.2026 (сессия 59)
+
+## UX-улучшения по мотивам Riff и Dotify — сессия 59
+
+### Что изучали
+- **Riff** (`rootscripts/riff`, клон в TEMP): это не Flutter и не Kotlin — Electron 41 + чистый JS/HTML/CSS (`riff` 43.2.2, `src/main/main.js`, `src/renderer/app.js` ~25 000 строк, `styles.css` ~10 600 строк, MD3-токены в CSS, hls.js и Tone.js). Находки: (1) отдельный экран очереди с бейджем количества на пункте навигации, заголовком «Playback queue», кнопкой «Clear queue» и подсказкой при пустой очереди; (2) очередь переживает перезапуск (`restoreQueue`, `[PlayerProvider] Restoring queue`), хранит историю индексов и заранее прогревает следующий трек (`prefetchNextQueueTrack`); (3) таймер сна в аудио-настройках: статус «Off», чипсы 15/30/45/60 мин, «End of track», «Turn off» и подсказка «Fades out and pauses when the timer runs out»; (4) экран артиста — hero-обложка, галочка verified, Follow/Block, блок About с «Show all», горизонтальные вкладки «Треки/Альбомы» и «Popular Songs»; (5) компактный мини-плеер из заголовка окна и таймлайн в плейбаре.
+- **Dotify** (готовый реверс в `%TEMP%\dotify`, Flutter + sqflite): (1) постоянная таблица `queue` с позицией (`idx_queue_position`, `addQueueItem`/`insertQueueItem`) — очередь с ручной вставкой; (2) секции очереди `player.queue.now_playing` / `.next` / `.played` / `.clear` / `.empty` — видно не только «сейчас» и «дальше», но и проигранное; (3) таймер сна `player.sleep_timer`, `player.timer.start/.cancel/.min/.stops_at` — показывается точное время остановки; (4) контекст «Playing from» (`player.origin.album/playlist/search/wave/queue`); (5) кастомизация мини-плеера (`settings.mini_player.progress` — line/cover/background, пресеты standard/minimal/pill/deck), офлайн-бейджи (`common.offline`, «Download to cache»/«Download to local») и настраиваемые свайпы строки («Configure track swipe actions»).
+
+### Что сделали (3 улучшения)
+1. **«Играть следующим» / «В очередь» в списках** — `TrackCard` получил необязательные `onPlayNext`/`onAddToQueue`: при их наличии долгий тап открывает M3-меню (пункты «Играть следующим», «В очередь», «К артисту»), короткий тап не менялся. Чистая логика вставки — `core/player/QueueInsertion.kt` (`insertNextTrack`: вставка сразу после текущего, перенос дубликата с пересчётом индекса, игнор пустого id). `PlayerController.playNext(track)`/`addToQueue(track)` возвращают Boolean, `PlayerViewModel` пробрасывает их, `AppNavGraph` раздаёт колбэки в поиск, медиатеку (обе вкладки), плейлист и артиста; подтверждение — Snackbar («Играет следующим…», «Добавлено в очередь…», «Уже в очереди…»). Файлы: `TrackCard.kt`, `core/player/QueueInsertion.kt`, `PlayerController.kt`, `PlayerViewModel.kt`, `AppNavGraph.kt`, `SearchScreen.kt`, `LibraryScreen.kt`, `PlaylistScreen.kt`, `ArtistScreen.kt`.
+2. **«Сейчас играет» на экране артиста + автопрокрутка** — `ArtistViewModel` получил `PlayerController` и потоки `currentTrackId`/`isPlaying`; играющая строка подсвечивается и получает эквалайзер (пауза — три точки), при открытии экран прокручивается к текущему треку, как шторка очереди. Та же автопрокрутка добавлена в `PlaylistScreen` (`rememberLazyListState` + `LaunchedEffect(currentTrackId, tracks)`), где подсветка уже была. Файлы: `ArtistViewModel.kt`, `ArtistScreen.kt`, `PlaylistScreen.kt`.
+3. **Таймер сна в overflow-меню плеера** — пункт «Таймер сна» (при активном таймере «Таймер сна · до HH:mm») открывает новый переиспользуемый `SleepTimerSheet` в `core/ui/components`: 15/30/60 мин, отметка выбранного, «Отключить таймер», подпись «Остановится в HH:mm · осталось N мин». `core/player/SleepTimer.kt` — чистые функции `sleepTimerEndTime`/`sleepTimerRemainingMinutes` и `SleepTimerState`; `PlayerViewModel.startSleepTimer`/`cancelSleepTimer` держат job и по истечении зовут новый `PlayerController.pause()` (пауза без переключения). Подтверждения — Snackbar. Файлы: `core/player/SleepTimer.kt`, `SleepTimerSheet.kt`, `PlayerViewModel.kt`, `PlayerScreen.kt`, `PlayerController.kt`.
+
+### Проверки
+- `assembleDebug` — BUILD SUCCESSFUL, APK 27 976 672 байт.
+- `testDebugUnitTest` — 32 suites / 227 тестов, 0 failures/errors/skipped (было 30/212): `QueueInsertionTest` (6), `SleepTimerTest` (5), 4 новых кейса в `PlayerControllerQueueTest`.
+- Строки: 260 ключей в EN и 260 в RU, наборы совпадают, дублей нет.
+- Установка на телефон **не выполнена**: `adb devices` пуст, `adb mdns services` пуст, известные адреса 192.168.1.106:44537 и 192.168.0.102:* не отвечают.
+
 ## Последнее обновление: 30.10.2026 (сессия 58)
 
 ## Импорт плейлистов по ссылке и экран артиста — сессия 58

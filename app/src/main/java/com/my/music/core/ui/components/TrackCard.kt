@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,8 +30,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -41,7 +46,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,6 +77,11 @@ import kotlin.math.sin
  * Переиспользуемая карточка трека — горизонтальный layout.
  * Используется в поиске, главной, библиотеке. В покое фон прозрачный:
  * список держится на воздухе и отступах, а не на плашках.
+ *
+ * Действия «играть следующим» и «в очередь» не занимают место в строке:
+ * они открываются меню по долгому тапу. Riff и Dotify держат такие действия
+ * рядом с треком, но у нас trailing-слот уже занят скачиванием, лайком и
+ * плейлистом — лишняя иконка сжала бы название до пары букв.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -93,6 +105,14 @@ fun TrackCard(
      * Если не передан, карточка ведёт себя как раньше — только короткий тап.
      */
     onArtistClick: (() -> Unit)? = null,
+    /**
+     * Необязательное действие «играть следующим». Если передан хотя бы один
+     * из колбэков очереди, долгий тап открывает меню действий вместо
+     * мгновенного перехода к артисту.
+     */
+    onPlayNext: (() -> Unit)? = null,
+    /** Необязательное действие «в очередь» — см. [onPlayNext]. */
+    onAddToQueue: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -121,130 +141,197 @@ fun TrackCard(
         label = "trackCardScale",
     )
 
-    // Долгий тап подключаем только когда экран его передал: у остальных
-    // списков не должно появляться невидимых жестов.
-    val clickModifier = if (onArtistClick != null) {
-        Modifier.combinedClickable(
+    // Действия очереди живут в меню по долгому тапу: ещё одна иконка в
+    // и без того плотном trailing-слоте сжала бы название трека.
+    val hasQueueActions = onPlayNext != null || onAddToQueue != null
+    var actionsExpanded by remember { mutableStateOf(false) }
+
+    val clickModifier = when {
+        hasQueueActions -> Modifier.combinedClickable(
+            interactionSource = interactionSource,
+            indication = ripple(color = MaterialTheme.colorScheme.primary),
+            onLongClickLabel = stringResource(R.string.track_actions_cd),
+            onLongClick = { actionsExpanded = true },
+            onClick = onClick,
+        )
+        // Старое поведение без действий очереди: долгий тап сразу к артисту.
+        onArtistClick != null -> Modifier.combinedClickable(
             interactionSource = interactionSource,
             indication = ripple(color = MaterialTheme.colorScheme.primary),
             onLongClickLabel = stringResource(R.string.artist_open_cd),
             onLongClick = onArtistClick,
             onClick = onClick,
         )
-    } else {
-        Modifier.clickable(
+        else -> Modifier.clickable(
             interactionSource = interactionSource,
             indication = ripple(color = MaterialTheme.colorScheme.primary),
             onClick = onClick,
         )
     }
 
-    Surface(
-        modifier = modifier
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .graphicsLayer {
-                scaleX = pressedScale
-                scaleY = pressedScale
-            },
-        shape = shape,
-        color = containerColor,
-        tonalElevation = 0.dp,
-    ) {
-        ListItem(
-            modifier = clickModifier,
-            headlineContent = {
-                // Название и автор живут в одной колонке без supporting-слота:
-                // ListItem иначе разводит их по высоте, и у коротких названий
-                // между строками появляется пустая дыра.
-                Column(verticalArrangement = Arrangement.Center) {
-                    Text(
-                        text = track.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (isPlaying) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = buildString {
-                            append(track.artist)
-                            if (!track.genre.isNullOrBlank()) append(" · ${track.genre}")
-                            if (track.durationMs > 0) append(" · ${formatDuration(track.durationMs)}")
-                            previewLabel?.let { append(" · $it") }
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            leadingContent = {
-                Box {
-                    TrackArtwork(
-                        url = track.artworkUrl,
-                        contentDescription = stringResource(R.string.track_artwork_cd, track.title),
-                        size = artworkSize,
-                        cornerDp = artworkCornerDp,
-                    )
-                    // Значок «скачано» — маленькая галочка поверх обложки
-                    if (isDownloaded) {
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .size(18.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.DownloadDone,
-                                contentDescription = stringResource(R.string.track_downloaded_cd),
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.padding(2.dp),
-                            )
-                        }
-                    }
-                }
-            },
-            trailingContent = if (isPlaying || trailingContent != null || onAddToPlaylist != null) {
-                {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (isPlaying) {
-                            if (isPaused) {
-                                PausedEqualizerDots(
-                                    modifier = Modifier.padding(end = 12.dp),
-                                )
+    Box(modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    scaleX = pressedScale
+                    scaleY = pressedScale
+                },
+            shape = shape,
+            color = containerColor,
+            tonalElevation = 0.dp,
+        ) {
+            ListItem(
+                modifier = clickModifier,
+                headlineContent = {
+                    // Название и автор живут в одной колонке без supporting-слота:
+                    // ListItem иначе разводит их по высоте, и у коротких названий
+                    // между строками появляется пустая дыра.
+                    Column(verticalArrangement = Arrangement.Center) {
+                        Text(
+                            text = track.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (isPlaying) {
+                                MaterialTheme.colorScheme.primary
                             } else {
-                                PlayingEqualizerIcon(
-                                    modifier = Modifier.padding(end = 12.dp),
-                                )
-                            }
-                        }
-                        trailingContent?.invoke()
-                        onAddToPlaylist?.let { onAdd ->
-                            IconButton(
-                                onClick = onAdd,
-                                modifier = Modifier.size(40.dp),
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = buildString {
+                                append(track.artist)
+                                if (!track.genre.isNullOrBlank()) append(" · ${track.genre}")
+                                if (track.durationMs > 0) append(" · ${formatDuration(track.durationMs)}")
+                                previewLabel?.let { append(" · $it") }
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                leadingContent = {
+                    Box {
+                        TrackArtwork(
+                            url = track.artworkUrl,
+                            contentDescription = stringResource(R.string.track_artwork_cd, track.title),
+                            size = artworkSize,
+                            cornerDp = artworkCornerDp,
+                        )
+                        // Значок «скачано» — маленькая галочка поверх обложки
+                        if (isDownloaded) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(18.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
                             ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
-                                    contentDescription = stringResource(R.string.playlist_add_to_cd),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp),
+                                    imageVector = Icons.Rounded.DownloadDone,
+                                    contentDescription = stringResource(R.string.track_downloaded_cd),
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.padding(2.dp),
                                 )
                             }
                         }
                     }
+                },
+                trailingContent = if (isPlaying || trailingContent != null || onAddToPlaylist != null) {
+                    {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isPlaying) {
+                                if (isPaused) {
+                                    PausedEqualizerDots(
+                                        modifier = Modifier.padding(end = 12.dp),
+                                    )
+                                } else {
+                                    PlayingEqualizerIcon(
+                                        modifier = Modifier.padding(end = 12.dp),
+                                    )
+                                }
+                            }
+                            trailingContent?.invoke()
+                            onAddToPlaylist?.let { onAdd ->
+                                IconButton(
+                                    onClick = onAdd,
+                                    modifier = Modifier.size(40.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                        contentDescription = stringResource(R.string.playlist_add_to_cd),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    null
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+        }
+
+        // Меню действий по долгому тапу. Попап не обрезается Surface карточки,
+        // поэтому якорем служит внешний Box.
+        if (hasQueueActions) {
+            DropdownMenu(
+                expanded = actionsExpanded,
+                onDismissRequest = { actionsExpanded = false },
+            ) {
+                onPlayNext?.let { playNext ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.queue_play_next)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.SkipNext,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            actionsExpanded = false
+                            playNext()
+                        },
+                    )
                 }
-            } else {
-                null
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        )
+                onAddToQueue?.let { addToQueue ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.queue_add)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            actionsExpanded = false
+                            addToQueue()
+                        },
+                    )
+                }
+                onArtistClick?.let { openArtist ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.artist_open)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.MusicNote,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            actionsExpanded = false
+                            openArtist()
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 

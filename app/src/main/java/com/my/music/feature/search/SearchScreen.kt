@@ -161,6 +161,8 @@ private val OnlineGreenDark = Color(0xFF81C995)
 fun SearchScreen(
     onTrackClick: (track: Track, queue: List<Track>) -> Unit,
     onArtistClick: (String) -> Unit,
+    onPlayNext: (Track) -> Boolean,
+    onAddToQueue: (Track) -> Boolean,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -171,6 +173,31 @@ fun SearchScreen(
     val context = LocalContext.current
     // Трек, для которого открыта шторка «Добавить в плейлист».
     var playlistTrack by remember { mutableStateOf<Track?>(null) }
+
+    // Очередь живёт в плеере, поэтому единственный отклик на действие —
+    // Snackbar с названием трека.
+    val handlePlayNext: (Track) -> Unit = { track ->
+        if (onPlayNext(track)) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = context.getString(R.string.queue_play_next_done, track.title),
+                    duration = SnackbarDuration.Short,
+                )
+            }
+        }
+    }
+    val handleAddToQueue: (Track) -> Unit = { track ->
+        val added = onAddToQueue(track)
+        scope.launch {
+            snackbarHostState.showSnackbar(
+                message = context.getString(
+                    if (added) R.string.queue_added_done else R.string.queue_already_added,
+                    track.title,
+                ),
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
 
     val contentState = when {
         state.isLoading -> SearchContentState.Loading
@@ -273,6 +300,8 @@ fun SearchScreen(
                         onTrackClick = onTrackClick,
                         onAddToPlaylist = { track -> playlistTrack = track },
                         onArtistClick = onArtistClick,
+                        onPlayNext = handlePlayNext,
+                        onAddToQueue = handleAddToQueue,
                     )
                 }
             }
@@ -1134,6 +1163,8 @@ private fun ResultsList(
     onTrackClick: (Track, List<Track>) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
     onArtistClick: (String) -> Unit,
+    onPlayNext: (Track) -> Unit,
+    onAddToQueue: (Track) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -1176,6 +1207,8 @@ private fun ResultsList(
                     onClick = { onTrackClick(track, tracks) },
                     onAddToPlaylist = { onAddToPlaylist(track) },
                     onArtistClick = { onArtistClick(track.artist) },
+                    onPlayNext = { onPlayNext(track) },
+                    onAddToQueue = { onAddToQueue(track) },
                 )
             }
         }

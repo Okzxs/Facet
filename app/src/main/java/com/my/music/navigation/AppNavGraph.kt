@@ -205,6 +205,8 @@ fun AppNavGraph() {
                         onArtistClick = { artist ->
                             navController.navigate(Screen.Artist.createRoute(artist))
                         },
+                        onPlayNext = { track -> playerViewModel.playNext(track) },
+                        onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
                 }
                 composable(Screen.Library.route) {
@@ -226,6 +228,8 @@ fun AppNavGraph() {
                         onArtistClick = { artist ->
                             navController.navigate(Screen.Artist.createRoute(artist))
                         },
+                        onPlayNext = { track -> playerViewModel.playNext(track) },
+                        onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
                 }
                 // Экран плейлиста — отдельный маршрут с id. Нижний док скрыт:
@@ -242,6 +246,8 @@ fun AppNavGraph() {
                         onArtistClick = { artist ->
                             navController.navigate(Screen.Artist.createRoute(artist))
                         },
+                        onPlayNext = { track -> playerViewModel.playNext(track) },
+                        onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
                 }
                 // Экран артиста: имя в пути, нижний док скрыт как у деталей.
@@ -254,6 +260,8 @@ fun AppNavGraph() {
                     ArtistScreen(
                         onBack = { navController.popBackStack() },
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        onPlayNext = { track -> playerViewModel.playNext(track) },
+                        onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
                 }
                 composable(Screen.Wave.route) {

@@ -346,6 +346,58 @@ class PlayerControllerQueueTest {
         coVerify(exactly = 0) { youTubeRepository.resolveStreamUrl(any()) }
     }
 
+    @Test
+    fun `playNext puts requested track right after current`() {
+        controller.setQueueAndPlay(tracks, 0)
+
+        assertTrue(controller.playNext(track("next")))
+
+        assertEquals(
+            listOf("one", "next", "two", "three"),
+            controller.state.value.queue.map { it.id },
+        )
+        assertEquals(0, controller.state.value.currentIndex)
+        assertEquals("one", controller.state.value.currentTrack?.id)
+    }
+
+    @Test
+    fun `playNext moves track from the end of the queue and shifts index`() {
+        controller.setQueueAndPlay(tracks, 1)
+
+        assertTrue(controller.playNext(track("one")))
+
+        assertEquals(
+            listOf("two", "one", "three"),
+            controller.state.value.queue.map { it.id },
+        )
+        assertEquals(0, controller.state.value.currentIndex)
+        assertEquals("two", controller.state.value.currentTrack?.id)
+    }
+
+    @Test
+    fun `playNext for the current track changes nothing`() {
+        controller.setQueueAndPlay(tracks, 0)
+
+        assertFalse(controller.playNext(track("one")))
+
+        assertEquals(tracks.map { it.id }, controller.state.value.queue.map { it.id })
+        assertEquals(0, controller.state.value.currentIndex)
+    }
+
+    @Test
+    fun `addToQueue appends only new tracks`() {
+        controller.setQueueAndPlay(tracks, 0)
+
+        assertFalse(controller.addToQueue(track("two")))
+        assertTrue(controller.addToQueue(track("four")))
+
+        assertEquals(
+            listOf("one", "two", "three", "four"),
+            controller.state.value.queue.map { it.id },
+        )
+        assertEquals(0, controller.state.value.currentIndex)
+    }
+
     private fun track(id: String) = Track(
         id = id,
         source = Source.SOUNDCLOUD,

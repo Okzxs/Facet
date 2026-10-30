@@ -12,6 +12,8 @@ import com.my.music.core.navigation.NavigationEvents
 import com.my.music.core.player.ERROR_LYRICS
 import com.my.music.core.player.PlayerController
 import com.my.music.core.player.PlayerState
+import com.my.music.core.player.SleepTimerState
+import com.my.music.core.player.sleepTimerEndTime
 import com.my.music.core.player.toFriendlyPlaybackMessage
 import com.my.music.core.service.ServiceType
 import com.my.music.core.util.SeasonProvider
@@ -385,6 +387,45 @@ class PlayerViewModel @Inject constructor(
         playerController.playNext()
     }
 
+    /** Поставить трек следующим в очереди; false — трек уже играет. */
+    fun playNext(track: Track): Boolean = playerController.playNext(track)
+
+    /** Дописать трек в очередь; false — он уже там. */
+    fun addToQueue(track: Track): Boolean = playerController.addToQueue(track)
+
+    // ─── Таймер сна ───────────────────────────────────────────────────────────
+
+    private val _sleepTimer = MutableStateFlow<SleepTimerState?>(null)
+
+    /** Активный таймер сна или null. */
+    val sleepTimer: StateFlow<SleepTimerState?> = _sleepTimer.asStateFlow()
+
+    private var sleepTimerJob: Job? = null
+
+    /**
+     * Запустить таймер сна: через [minutes] минут воспроизведение встанет
+     * на паузу. Повторный выбор заменяет прежний таймер, а не суммируется.
+     */
+    fun startSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        val endsAt = sleepTimerEndTime(System.currentTimeMillis(), minutes)
+        _sleepTimer.value = SleepTimerState(minutes = minutes, endsAtMillis = endsAt)
+        sleepTimerJob = viewModelScope.launch {
+            // Точная задержка, а не округлённые минуты: иначе пауза приходит
+            // на несколько секунд позже выбранного времени.
+            delay((endsAt - System.currentTimeMillis()).coerceAtLeast(0L))
+            playerController.pause()
+            _sleepTimer.value = null
+        }
+    }
+
+    /** Выключить таймер сна, не трогая воспроизведение. */
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _sleepTimer.value = null
+    }
+
     fun playPrevious() {
         playerController.playPrevious()
     }
@@ -570,3 +611,4 @@ data class PlayerUiState(
     val lyricsError: String? = null,
     val downloadError: String? = null,
 )
+

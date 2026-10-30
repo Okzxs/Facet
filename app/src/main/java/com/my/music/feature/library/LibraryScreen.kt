@@ -98,6 +98,8 @@ fun LibraryScreen(
     onOpenSearch: () -> Unit,
     onPlaylistClick: (Long) -> Unit,
     onArtistClick: (String) -> Unit,
+    onPlayNext: (Track) -> Boolean,
+    onAddToQueue: (Track) -> Boolean,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val likedTracks by viewModel.likedTracks.collectAsState()
@@ -124,6 +126,30 @@ fun LibraryScreen(
     // Диалог ввода ссылки для импорта и сам текст ссылки.
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var importLink by rememberSaveable { mutableStateOf("") }
+
+    // Очередь живёт в плеере: подтверждение действий — Snackbar.
+    val handlePlayNext: (Track) -> Unit = { track ->
+        if (onPlayNext(track)) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = context.getString(R.string.queue_play_next_done, track.title),
+                    duration = SnackbarDuration.Short,
+                )
+            }
+        }
+    }
+    val handleAddToQueue: (Track) -> Unit = { track ->
+        val added = onAddToQueue(track)
+        scope.launch {
+            snackbarHostState.showSnackbar(
+                message = context.getString(
+                    if (added) R.string.queue_added_done else R.string.queue_already_added,
+                    track.title,
+                ),
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
 
     LaunchedEffect(downloadError) {
         val message = downloadError ?: return@LaunchedEffect
@@ -310,6 +336,8 @@ fun LibraryScreen(
                             onAddToPlaylist = { playlistTrack = track },
                             // Долгий тап по карточке открывает экран артиста.
                             onArtistClick = { onArtistClick(track.artist) },
+                            onPlayNext = { handlePlayNext(track) },
+                            onAddToQueue = { handleAddToQueue(track) },
                             trailingContent = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     TrackDownloadButton(
@@ -339,6 +367,8 @@ fun LibraryScreen(
                     onOpenSearch = onOpenSearch,
                     onAddToPlaylist = { track -> playlistTrack = track },
                     onArtistClick = onArtistClick,
+                    onPlayNext = handlePlayNext,
+                    onAddToQueue = handleAddToQueue,
                 )
 
                 LibraryTab.PLAYLISTS -> PlaylistsContent(
@@ -733,6 +763,8 @@ private fun DownloadedContent(
     onOpenSearch: () -> Unit,
     onAddToPlaylist: (Track) -> Unit,
     onArtistClick: (String) -> Unit,
+    onPlayNext: (Track) -> Unit,
+    onAddToQueue: (Track) -> Unit,
 ) {
     if (downloaded.isEmpty()) {
         DownloadedEmptyState(onOpenSearch = onOpenSearch)
@@ -754,6 +786,8 @@ private fun DownloadedContent(
                 onClick = { onTrackClick(track, tracks) },
                 onAddToPlaylist = { onAddToPlaylist(track) },
                 onArtistClick = { onArtistClick(track.artist) },
+                onPlayNext = { onPlayNext(track) },
+                onAddToQueue = { onAddToQueue(track) },
                 trailingContent = {
                     IconButton(onClick = { onDelete(track) }) {
                         Icon(

@@ -3,14 +3,19 @@ package com.my.music.feature.artist
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.my.music.core.player.PlayerController
 import com.my.music.data.model.Track
 import com.my.music.data.repository.YouTubeRepository
 import com.my.music.data.source.external.DeezerProvider
 import com.my.music.navigation.ARTIST_NAME_ARG
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -42,6 +47,7 @@ class ArtistViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val deezerProvider: DeezerProvider,
     private val youTubeRepository: YouTubeRepository,
+    playerController: PlayerController,
 ) : ViewModel() {
 
     /** Имя артиста приходит аргументом маршрута и уже раскодировано навигацией. */
@@ -49,6 +55,25 @@ class ArtistViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ArtistUiState(name = artistName))
     val uiState: StateFlow<ArtistUiState> = _uiState.asStateFlow()
+
+    /** Id играющего трека — его строка подсвечивается и получает эквалайзер. */
+    val currentTrackId: StateFlow<String?> = playerController.state
+        .map { it.currentTrack?.id }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = null,
+        )
+
+    val isPlaying: StateFlow<Boolean> = playerController.state
+        .map { it.isPlaying }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = false,
+        )
 
     init {
         loadTracks()

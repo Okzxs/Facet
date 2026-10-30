@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
@@ -93,6 +94,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.text.format.DateFormat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil3.compose.AsyncImage
@@ -107,6 +109,7 @@ import com.my.music.core.ui.components.PlayerControlIsland
 import com.my.music.core.ui.components.PlayerQueueSheet
 import com.my.music.core.ui.components.PlayerSliderState
 import com.my.music.core.ui.components.AddToPlaylistSheet
+import com.my.music.core.ui.components.SleepTimerSheet
 import com.my.music.core.ui.theme.PillShape
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.runtime.key
@@ -118,6 +121,7 @@ import com.my.music.data.model.Source
 import com.my.music.data.model.Track
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Date
 import kotlin.math.abs
 
 /**
@@ -173,11 +177,13 @@ fun PlayerScreen(
     val isDisliked by viewModel.isDisliked.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
+    val sleepTimer by viewModel.sleepTimer.collectAsState()
 
     var isLyricsMode by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
+    var showSleepTimer by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // ─── Разрешение на геопозицию ────────────────────────────────────────
@@ -234,6 +240,11 @@ fun PlayerScreen(
     val track = playerState.currentTrack ?: uiState.track
     // Локальный файл уже лежит на диске — скачивать его нечего.
     val canDownload = track != null && track.source != Source.LOCAL
+    // Время остановки таймера сна — в формате локали устройства; пункт меню
+    // получает уже готовую строку, DateFormat в Compose не ресурс.
+    val sleepTimerEndsAtText = sleepTimer?.let { timer ->
+        DateFormat.getTimeFormat(context).format(Date(timer.endsAtMillis))
+    }
 
     // Скачивание невозможно (нет прав/404/HLS-ошибка) — сообщаем пользователю.
     // Крестик живёт секунду, поэтому Snackbar запускаем в scope композиции,
@@ -582,6 +593,27 @@ fun PlayerScreen(
                                         showAddToPlaylist = true
                                     },
                                 )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = sleepTimerEndsAtText?.let { time ->
+                                                stringResource(R.string.player_sleep_timer_active, time)
+                                            } ?: stringResource(R.string.player_sleep_timer),
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Bedtime,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    enabled = track != null,
+                                    onClick = {
+                                        showMenu = false
+                                        showSleepTimer = true
+                                    },
+                                )
                             }
                         }
                     },
@@ -786,6 +818,35 @@ fun PlayerScreen(
                     )
                 }
             },
+        )
+    }
+
+    // Таймер сна: пресеты и отключение. Шторка живёт вне Scaffold — как
+    // и «Добавить в плейлист», она рисуется в отдельном окне.
+    if (showSleepTimer) {
+        SleepTimerSheet(
+            state = sleepTimer,
+            onSelectMinutes = { minutes ->
+                showSleepTimer = false
+                viewModel.startSleepTimer(minutes)
+                snackbarScope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = context.getString(R.string.sleep_timer_started, minutes),
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+            },
+            onCancelTimer = {
+                showSleepTimer = false
+                viewModel.cancelSleepTimer()
+                snackbarScope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = context.getString(R.string.sleep_timer_cancelled),
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+            },
+            onDismiss = { showSleepTimer = false },
         )
     }
 }

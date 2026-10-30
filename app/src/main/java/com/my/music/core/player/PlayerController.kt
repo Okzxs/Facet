@@ -366,6 +366,53 @@ class PlayerController private constructor(
     }
 
     /**
+     * Поставить трек следующим в очереди, не прерывая воспроизведение.
+     *
+     * Если очередь пуста (или в ней нет текущего трека), «следующим» некуда —
+     * трек просто начинает играть. Дубликат по id не добавляется: прежнее
+     * вхождение переносится на позицию сразу после текущего.
+     *
+     * @return true, если очередь изменилась (трек встал следующим или заиграл);
+     * false — если трек пустой или уже является текущим.
+     */
+    fun playNext(track: Track): Boolean {
+        if (track.id.isBlank()) return false
+        val state = _state.value
+        if (state.queue.isEmpty() || state.currentIndex !in state.queue.indices) {
+            setQueueAndPlay(listOf(track))
+            return true
+        }
+
+        val insertion = insertNextTrack(state.queue, state.currentIndex, track)
+        if (insertion.queue == state.queue) return false
+
+        originalQueue = when {
+            originalQueue.isEmpty() -> insertion.queue
+            originalQueue.any { it.id == track.id } -> originalQueue
+            // При перемешивании исходный порядок хранится отдельно: новый
+            // трек уходит в его конец, чтобы восстановление порядка его не потеряло.
+            state.isShuffle -> originalQueue + track
+            else -> insertion.queue
+        }
+        _state.update {
+            it.copy(queue = insertion.queue, currentIndex = insertion.currentIndex)
+        }
+        return true
+    }
+
+    /**
+     * Дописать трек в конец очереди.
+     *
+     * @return true, если трек добавлен; false — если он уже в очереди или без id.
+     */
+    fun addToQueue(track: Track): Boolean {
+        if (track.id.isBlank()) return false
+        if (_state.value.queue.any { it.id == track.id }) return false
+        appendToQueue(listOf(track))
+        return true
+    }
+
+    /**
      * Воспроизвести трек по индексу в текущей очереди.
      */
     fun playTrackAt(index: Int) {
@@ -791,6 +838,16 @@ class PlayerController private constructor(
 
     fun seekTo(positionMs: Long) {
         mediaController?.seekTo(positionMs)
+    }
+
+    /**
+     * Пауза без переключения (таймер сна). В отличие от [pauseOrResume],
+     * повторный вызов ничего не запускает.
+     */
+    fun pause() {
+        scope.launch {
+            awaitController()?.pause()
+        }
     }
 
     fun setPlaybackSpeed(speed: Float) {

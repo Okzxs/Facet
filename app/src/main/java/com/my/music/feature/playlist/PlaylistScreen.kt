@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
@@ -36,9 +37,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -48,6 +51,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.my.music.R
 import com.my.music.core.ui.components.TrackCard
 import com.my.music.data.model.Track
+import kotlinx.coroutines.launch
 
 /**
  * Экран одного плейлиста: треки в порядке добавления, удаление трека иконкой
@@ -62,6 +66,8 @@ fun PlaylistScreen(
     onBack: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
     onArtistClick: (String) -> Unit,
+    onPlayNext: (Track) -> Boolean,
+    onAddToQueue: (Track) -> Boolean,
     viewModel: PlaylistViewModel = hiltViewModel(),
 ) {
     val playlist by viewModel.playlist.collectAsState()
@@ -72,6 +78,40 @@ fun PlaylistScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val updateFailedMessage = stringResource(R.string.playlist_update_failed)
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Открыли плейлист с играющим треком — сразу показываем его строку,
+    // как это делает шторка очереди.
+    LaunchedEffect(currentTrackId, tracks) {
+        val index = tracks.indexOfFirst { it.id == currentTrackId }
+        if (index >= 0) listState.animateScrollToItem(index)
+    }
+
+    // Очередь живёт в плеере: подтверждение действий — Snackbar.
+    val handlePlayNext: (Track) -> Unit = { track ->
+        if (onPlayNext(track)) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = context.getString(R.string.queue_play_next_done, track.title),
+                    duration = SnackbarDuration.Short,
+                )
+            }
+        }
+    }
+    val handleAddToQueue: (Track) -> Unit = { track ->
+        val added = onAddToQueue(track)
+        scope.launch {
+            snackbarHostState.showSnackbar(
+                message = context.getString(
+                    if (added) R.string.queue_added_done else R.string.queue_already_added,
+                    track.title,
+                ),
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
 
     LaunchedEffect(failed) {
         if (!failed) return@LaunchedEffect
@@ -134,6 +174,7 @@ fun PlaylistScreen(
                 )
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .weight(1f),
@@ -149,6 +190,8 @@ fun PlaylistScreen(
                             artworkCornerDp = 16,
                             onClick = { onTrackClick(track, tracks) },
                             onArtistClick = { onArtistClick(track.artist) },
+                            onPlayNext = { handlePlayNext(track) },
+                            onAddToQueue = { handleAddToQueue(track) },
                             trailingContent = {
                                 IconButton(onClick = { viewModel.removeTrack(track.id) }) {
                                     Icon(
