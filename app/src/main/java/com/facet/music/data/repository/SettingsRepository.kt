@@ -49,6 +49,8 @@ data class AppSettings(
     val onboardingCompleted: Boolean = false,
     /** Желаемое качество скачивания, кбит/с: 128, 256 или 320. */
     val downloadQualityKbps: Int = 320,
+    /** client_id приложения SoundCloud: нужен только для импорта лайков. */
+    val soundcloudClientId: String = "",
 ) {
     /** Настроены ли ключи Spotify: нужны оба поля, иначе поиск не работает. */
     val isSpotifyConfigured: Boolean
@@ -115,6 +117,9 @@ interface SettingsRepository {
 
     /** Сохранить желаемое качество скачивания (128/256/320 кбит/с). */
     suspend fun setDownloadQuality(kbps: Int)
+
+    /** Сохранить client_id SoundCloud для импорта лайков. */
+    suspend fun setSoundCloudClientId(clientId: String)
 
     companion object {
         /** Допустимые варианты качества скачивания. */

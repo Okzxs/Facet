@@ -346,6 +346,11 @@
     <string name="import_profile_hint_soundcloud">Paste a SoundCloud profile link — we’ll show its public playlists.</string>
     <string name="import_profile_field">Profile link</string>
     <string name="import_profile_load">Load playlists</string>
+    <string name="import_sc_likes_title">Liked tracks from SoundCloud</string>
+    <string name="import_sc_likes_hint">SoundCloud doesn’t expose likes publicly: create an app at soundcloud.com/you/apps and paste its client_id here. Only your own likes are imported.</string>
+    <string name="import_sc_client_id">SoundCloud client_id</string>
+    <string name="import_sc_likes_button">Import SoundCloud likes</string>
+    <string name="import_error_soundcloud_client">Add a SoundCloud client_id to import likes</string>
     <string name="import_profile_found">Playlists: %1$d · selected %2$d</string>
     <string name="import_profile_tracks">%1$d tracks</string>
     <string name="import_profile_import_selected">Import selected (%1$d)</string>

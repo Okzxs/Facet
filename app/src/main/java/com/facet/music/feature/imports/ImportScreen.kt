@@ -157,6 +157,38 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
             Text(stringResource(R.string.import_profile_load))
         }
 
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(12.dp))
+
+        // Лайки SoundCloud: API требует client_id, публичная страница закрыта.
+        Text(
+            text = stringResource(R.string.import_sc_likes_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.import_sc_likes_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = state.clientId,
+            onValueChange = viewModel::setClientId,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text(stringResource(R.string.import_sc_client_id)) },
+            shape = RoundedCornerShape(12.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = viewModel::importSoundCloudLikes,
+            enabled = !state.isImporting,
+        ) {
+            Text(stringResource(R.string.import_sc_likes_button))
+        }
+
         if (state.playlists.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             Text(
@@ -307,6 +339,9 @@ private fun importErrorText(error: ImportError): String = when (error) {
     ImportError.EMPTY_LINK -> stringResource(R.string.import_error_empty)
     ImportError.UNSUPPORTED_LINK -> stringResource(R.string.import_error_unsupported)
     ImportError.SPOTIFY_NOT_CONFIGURED -> stringResource(R.string.import_error_spotify_keys)
+    ImportError.SOUNDCLOUD_CLIENT_ID_REQUIRED -> stringResource(
+        R.string.import_error_soundcloud_client,
+    )
     ImportError.EMPTY_PLAYLIST -> stringResource(R.string.import_profile_empty)
     ImportError.SAVE_FAILED -> stringResource(R.string.import_error_save)
     else -> stringResource(R.string.import_error_network)

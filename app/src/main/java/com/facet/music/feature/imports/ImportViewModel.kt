@@ -8,9 +8,12 @@ import com.facet.music.core.import.ProfileLinkParser
 import com.facet.music.core.import.TextPlaylistParser
 import com.facet.music.core.import.TextTrackQuery
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlaylistRepository
+import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
+import com.facet.music.data.source.external.SoundCloudLikesProvider
 import com.facet.music.data.source.imports.PlaylistImportResult
 import com.facet.music.data.source.imports.PlaylistImportService
 import com.facet.music.data.source.imports.ProfileImportResult
@@ -18,6 +21,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -49,6 +53,9 @@ data class ImportUiState(
     val textFound: List<Track> = emptyList(),
     val textMissing: Int = 0,
     val importedPlaylists: Int = 0,
+    /** client_id SoundCloud, если пользователь импортирует лайки. */
+    val clientId: String = "",
+    val likesImported: Int = 0,
 ) {
     val selectedCount: Int get() = playlists.count { it.selected }
 }
@@ -63,10 +70,60 @@ class ImportViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val soundCloudRepository: SoundCloudRepository,
     private val youTubeRepository: YouTubeRepository,
+    private val settingsRepository: SettingsRepository,
+    private val likedTracksRepository: LikedTracksRepository,
+    private val soundCloudLikesProvider: SoundCloudLikesProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ImportUiState())
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
+
+    fun setClientId(value: String) {
+        _uiState.update { it.copy(clientId = value.trim(), error = null) }
+    }
+
+    /**
+     * Любимые SoundCloud: API требует client_id приложения, публичная
+     * страница лайков не парсится. Идём в API, докладываем только новые.
+     */
+    fun importSoundCloudLikes() {
+        if (_uiState.value.isImporting) return
+        viewModelScope.launch {
+            val typed = _uiState.value.clientId.trim()
+            val clientId = typed.ifBlank {
+                settingsRepository.settings.first().soundcloudClientId
+            }
+            if (clientId.isBlank()) {
+                _uiState.update { it.copy(error = ImportError.SOUNDCLOUD_CLIENT_ID_REQUIRED) }
+                return@launch
+            }
+            if (typed.isNotBlank()) settingsRepository.setSoundCloudClientId(clientId)
+
+            _uiState.update { it.copy(isImporting = true, error = null) }
+            val parsed = ProfileLinkParser.parse(_uiState.value.link)
+            val profileUrl = parsed?.id
+                ?: "https://soundcloud.com/${_uiState.value.link.trim().trimStart('@')}"
+
+            soundCloudLikesProvider.fetchLikes(profileUrl, clientId)
+                .onSuccess { tracks ->
+                    val existing = runCatching {
+                        likedTracksRepository.getLikedTracks().first()
+                    }.getOrDefault(emptyList()).mapTo(HashSet()) { it.id }
+                    val fresh = tracks.filter { it.id !in existing }
+                    fresh.forEach { runCatching { likedTracksRepository.likeTrack(it) } }
+                    _uiState.update {
+                        it.copy(
+                            isImporting = false,
+                            likesImported = fresh.size,
+                            message = "Импортировано лайков SoundCloud: ${fresh.size}",
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update { it.copy(isImporting = false, error = ImportError.NETWORK) }
+                }
+        }
+    }
 
     fun setTab(tab: ImportTab) {
         _uiState.update { it.copy(tab = tab, error = null) }

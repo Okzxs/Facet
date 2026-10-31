@@ -235,3 +235,9 @@ data class Track(
 - Главная: `WavePromoCard` (вкладка «Волна»), `NewReleasesBlock` (Deezer `/editorial/0/releases`, альбом грузится при нажатии, событие `HomeViewModel.openPlayer`), `ChartsBlock` (SoundCloud top50), `GenrePlaylistsBlock`, `ExtrasSkeleton`.
 - Импорт: `TextPlaylistParser` (строка = трек, « - » делит артиста и название, без дефиса — поиск как есть), `ProfileLinkParser` (Spotify `/user/<id>`, SoundCloud `/<user>`), `PlaylistImportService.loadProfile` (Spotify `/users/{id}/playlists`, SoundCloud — вкладки канала NewPipe), экран `feature/imports/ImportScreen` с вкладками «Профиль/Список», вход из медиатеки (маршрут `import`).
 - Релизные тексты: `CHANGELOG.md`, `docs/github-release-1.0.0.md`.
+
+## Навигация и импорт SoundCloud (сессия 65)
+
+- Переход с главной на «Волну» — как переключение вкладки: `navigate(Wave) { popUpTo(Home) { saveState = true }; launchSingleTop = true; restoreState = true }`. Иначе Wave остаётся поверх Home и back возвращает на неё.
+- Лайки SoundCloud: публичная `/likes` не парсится (JS), API v2 требует `client_id`. `SoundCloudLikesProvider` резолвит профиль (`/resolve`), тянет `/users/{id}/likes` по 50 до 200 треков; id хранится в `AppSettings.soundcloudClientId` (ключ `soundcloud_client_id`). OAuth не добавлен: нужен secret зарегистрированного приложения.
+- Медиатека: импорт — ExtendedFAB над доком (`padding(bottom = LocalBottomDockHeight.current)`), не чипс в списке.

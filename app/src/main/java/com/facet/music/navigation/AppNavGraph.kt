@@ -199,7 +199,15 @@ fun AppNavGraph() {
                     HomeScreen(
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
                         onSettingsClick = { navController.navigate(Screen.Settings.route) },
-                        onWaveClick = { navController.navigate(Screen.Wave.route) },
+                        onWaveClick = {
+                            // Переход как у вкладки: Home сохраняет состояние,
+                            // back возвращает на неё, а не залипает на Wave.
+                            navController.navigate(Screen.Wave.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                     )
                 }
                 composable(Screen.Search.route) {

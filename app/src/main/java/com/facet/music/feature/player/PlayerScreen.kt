@@ -1146,7 +1146,7 @@ private fun ExpressiveHeroZone(
                             Spacer(Modifier.height(24.dp))
                             Text(
                                 text = state.title,
-                                style = MaterialTheme.typography.headlineSmall,
+                                style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,

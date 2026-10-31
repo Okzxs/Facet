@@ -351,6 +351,11 @@
     <string name="import_profile_hint_soundcloud">Вставь ссылку на профиль SoundCloud — покажем публичные плейлисты.</string>
     <string name="import_profile_field">Ссылка на профиль</string>
     <string name="import_profile_load">Загрузить плейлисты</string>
+    <string name="import_sc_likes_title">Любимые треки из SoundCloud</string>
+    <string name="import_sc_likes_hint">SoundCloud не отдаёт лайки публично: создай приложение на soundcloud.com/you/apps и вставь его client_id. Импортируются только твои лайки.</string>
+    <string name="import_sc_client_id">client_id SoundCloud</string>
+    <string name="import_sc_likes_button">Импортировать любимые из SoundCloud</string>
+    <string name="import_error_soundcloud_client">Добавь client_id SoundCloud для импорта лайков</string>
     <string name="import_profile_found">Плейлистов: %1$d · выбрано %2$d</string>
     <string name="import_profile_tracks">Треков: %1$d</string>
     <string name="import_profile_import_selected">Импортировать выбранные (%1$d)</string>

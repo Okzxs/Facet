@@ -80,6 +80,7 @@ class SettingsRepositoryImpl @Inject constructor(
         // Качество скачивания: неизвестное значение считаем 320.
         downloadQualityKbps = prefs.getInt(KEY_DOWNLOAD_QUALITY, 320)
             .takeIf { it in SettingsRepository.DOWNLOAD_QUALITIES } ?: 320,
+        soundcloudClientId = prefs.getString(KEY_SOUNDCLOUD_CLIENT_ID, null).orEmpty(),
     )
 
     /**
@@ -191,6 +192,15 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(onboardingCompleted = completed) }
     }
 
+    override suspend fun setSoundCloudClientId(clientId: String) {
+        awaitLoaded()
+        val trimmed = clientId.trim()
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_SOUNDCLOUD_CLIENT_ID, trimmed).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(soundcloudClientId = trimmed) }
+    }
+
     override suspend fun setDownloadQuality(kbps: Int) {
         awaitLoaded()
         val normalized = kbps.takeIf { it in SettingsRepository.DOWNLOAD_QUALITIES } ?: 320
@@ -214,5 +224,6 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_APP_LANGUAGE = "app_language"
         const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
         const val KEY_DOWNLOAD_QUALITY = "download_quality"
+        const val KEY_SOUNDCLOUD_CLIENT_ID = "soundcloud_client_id"
     }
 }

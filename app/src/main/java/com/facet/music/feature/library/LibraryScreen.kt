@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -235,6 +236,20 @@ fun LibraryScreen(
             .background(MaterialTheme.colorScheme.background),
         contentWindowInsets = WindowInsets.statusBars,
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = onImportClick,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Rounded.AddLink,
+                        contentDescription = null,
+                    )
+                },
+                text = { Text(stringResource(R.string.import_entry)) },
+                // Док — оверлей: поднимаем FAB над ним, иначе кнопка под ним.
+                modifier = Modifier.padding(bottom = LocalBottomDockHeight.current),
+            )
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -293,22 +308,6 @@ fun LibraryScreen(
                         )
                     }
                 }
-            }
-
-            // ─── Импорт профиля или текстового списка ────────────────────
-            item(key = "library_import_entry") {
-                AssistChip(
-                    onClick = onImportClick,
-                    label = { Text(stringResource(R.string.import_entry)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.AddLink,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
             }
 
             // ─── Плейлисты ───────────────────────────────────────────────
@@ -843,6 +842,7 @@ private fun importErrorRes(error: ImportError): Int = when (error) {
     ImportError.YANDEX_UNSUPPORTED -> R.string.import_error_yandex
     ImportError.APPLE_PLAYLIST_UNSUPPORTED -> R.string.import_error_apple
     ImportError.SPOTIFY_NOT_CONFIGURED -> R.string.import_error_spotify_keys
+    ImportError.SOUNDCLOUD_CLIENT_ID_REQUIRED -> R.string.import_error_soundcloud_client
     ImportError.EMPTY_PLAYLIST -> R.string.import_error_empty_playlist
     ImportError.NETWORK -> R.string.import_error_network
     ImportError.SAVE_FAILED -> R.string.import_error_save
