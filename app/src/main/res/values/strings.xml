@@ -120,6 +120,7 @@
     <string name="settings_location_denied_hint">Without location, like coordinates are not saved and “Memories” are not tied to a place</string>
     <string name="settings_check_permissions">Check permissions</string>
     <string name="settings_location_footer">If access is denied, the button opens app settings</string>
+    <string name="settings_downloads_section">Downloads and cache</string>
     <string name="settings_quality_title">Download quality</string>
     <string name="settings_quality_hint">Bitrate for downloads. YouTube picks the closest available stream.</string>
     <string name="settings_cache_title">Listened cache</string>
@@ -241,6 +242,12 @@
     <string name="variation_nightcore">Nightcore</string>
     <string name="player_cover">Cover</string>
     <string name="player_lyrics">Lyrics</string>
+    <string name="player_action_like">Like</string>
+    <string name="player_action_download">Download</string>
+    <string name="player_action_lyrics">Lyrics</string>
+    <string name="player_action_queue">Queue</string>
+    <string name="player_action_variations">Variations</string>
+    <string name="player_speed_value">Speed · %1$s</string>
     <string name="player_location_off">Location is off</string>
     <string name="player_location_off_hint">“Memories” won’t save the place of your like</string>
     <string name="player_download_cd">Download track</string>

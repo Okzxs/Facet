@@ -3,9 +3,14 @@ package com.facet.music.feature.search
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -89,10 +94,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -1256,9 +1264,13 @@ private fun ResultsList(
 
 /**
  * Скелетон списка карточек при поиске: повторяет геометрию TrackCard.
+ *
+ * Блоки залиты бегущим градиентом (shimmer): пока источник отвечает, видно,
+ * что экран живой, а не завис.
  */
 @Composable
 private fun SearchSkeletonList() {
+    val shimmer = rememberShimmerBrush()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1278,7 +1290,7 @@ private fun SearchSkeletonList() {
                     modifier = Modifier
                         .size(56.dp)
                         .clip(MaterialTheme.shapes.medium)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        .background(shimmer),
                 )
 
                 Spacer(Modifier.width(16.dp))
@@ -1289,7 +1301,7 @@ private fun SearchSkeletonList() {
                             .fillMaxWidth(0.68f)
                             .height(15.dp)
                             .clip(MaterialTheme.shapes.extraSmall)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                            .background(shimmer),
                     )
                     Spacer(Modifier.height(8.dp))
                     Box(
@@ -1297,10 +1309,40 @@ private fun SearchSkeletonList() {
                             .fillMaxWidth(0.42f)
                             .height(11.dp)
                             .clip(MaterialTheme.shapes.extraSmall)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)),
+                            .background(shimmer),
                     )
                 }
             }
         }
     }
+}
+
+/**
+ * Бегущий градиент для скелетонов: полоса подсветки проходит по ширине экрана
+ * за 1.2 с. Ширина берётся из конфигурации, чтобы на разных экранах скорость
+ * выглядела одинаково.
+ */
+@Composable
+private fun rememberShimmerBrush(): Brush {
+    val transition = rememberInfiniteTransition(label = "skeletonShimmer")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "shimmerProgress",
+    )
+    val base = MaterialTheme.colorScheme.surfaceContainerHighest
+    val highlight = MaterialTheme.colorScheme.surfaceContainerLow
+    val widthPx = with(LocalDensity.current) {
+        LocalConfiguration.current.screenWidthDp.dp.toPx()
+    }
+    val start = -widthPx + progress * widthPx * 2f
+    return Brush.linearGradient(
+        colors = listOf(base, highlight, base),
+        start = Offset(start, 0f),
+        end = Offset(start + widthPx, 0f),
+    )
 }

@@ -1,6 +1,41 @@
-# PROGRESS.md вЂ” РСЃС‚РѕСЂРёСЏ СЂР°Р·СЂР°Р±РѕС‚РєРё
+# PROGRESS.md — История разработки
 
-## Последнее обновление: 30.10.2026 (сессия 63)
+## Последнее обновление: 31.10.2026 (сессия 67)
+
+## Плоский редизайн, сборка релиза и подготовка GitHub Release — сессия 67
+
+- **Плеер.** `PlayerControlIsland` переработан: транспорт (шаффл, пред, Play 64dp,
+  след, повтор) и слот действий `actionsContent`. Пять `PlayerActionItem`
+  с подписями `labelSmall` — «Нравится», «Скачать», «Текст», «Очередь»,
+  «Вариации» — стоят под Play; загрузка показывает кольцо прогресса, готовый
+  файл — `DownloadDone`. Скорость и дизлайк ушли в overflow-меню, кнопка текста
+  из шапки убрана. Старые сквирклы над островом в варианте 1 больше не рисуются.
+- **Слайдер.** `ExpressivePlayerSlider` заменён на плоскую дорожку 4dp:
+  приглушённая часть, буфер, акцент, бегунок 12dp с ореолом при захвате.
+  Волновая отрисовка и `rememberPlaybackPhase` в таймлайне не используются.
+- **Медиатека.** `LargeTopAppBar` со сворачиванием (`exitUntilCollapsedScrollBehavior`
+  + `nestedScroll`), `LibraryHeader` удалён, `CollectionSummary` — первая строка.
+  Сетка плейлистов: 2 колонки, отступы 20/16, FAB поднят над доком на 12dp,
+  нижний `contentPadding` 96dp + док, чтобы кнопка не перекрывала контент.
+- **Настройки.** Плоский список без карточек: `SettingsSectionTitle`
+  (`titleSmall`, `primary`), `SettingsDivider` с inset 20dp, `SettingsSwitchRow`.
+  Секции: Оформление (тема, динамические цвета, акцент, палитра), Язык,
+  Интеграции (Spotify), Моя волна, Разрешения, Загрузки и кэш. Добавлена строка
+  `settings_downloads_section`.
+- **Поиск.** Скелетоны получили бегущий shimmer-градиент
+  (`rememberShimmerBrush`, `infiniteRepeatable` 1200 мс) вместо статичных плашек.
+- **Строки.** EN/RU по 374 ключа, наборы совпадают; добавлены
+  `player_action_*`, `player_speed_value`, `settings_downloads_section`.
+- **Проверки.** `testDebugUnitTest assembleDebug` — BUILD SUCCESSFUL, 42 suite /
+  277 тестов, 0 failures; `assembleRelease` — BUILD SUCCESSFUL (4m44s), APK
+  6 477 737 байт, SHA-256 `e627d69c56081e108ad16c01b9e5294b6ccbc115b6f3449f363e37becc68ea5d`,
+  установлен по mDNS `adb-R5CY552H83H-nxMtL5` — Success.
+- **Доки.** README переписан под фактические возможности (источники, импорт,
+  кэш, ID3, тесты, ограничения); AGENTS дополнен сессией 67; CHANGELOG и
+  `docs/github-release-1.0.0.md` исправлены: импорт лайков SoundCloud теперь
+  поддержан, добавлены пункты про новый UI.
+- **Осталось.** Публикация GitHub Release (тег `v1.0.0`, APK, SHA-256) — за
+  пользователем; живой смоук-тест на телефоне — тоже.
 
 ## Лайки SoundCloud через api-v2 — сессия 66
 

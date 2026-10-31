@@ -1,18 +1,71 @@
 # Facet
 
-Кастомный музыкальный агрегатор в стиле Material 3 для Android.  
-Воспроизводит треки с разных стриминговых платформ в одном приложении.
+Музыкальный агрегатор для Android в каноничном Material 3: пять источников,
+один поиск, один плеер и одна медиатека. Написан на Kotlin и Jetpack Compose.
 
-> **Распространение:** только APK (GitHub Releases / Telegram). Не для Google Play.
+> **Распространение:** только APK (GitHub Releases / Telegram). В Google Play,
+> App Store и RuStore приложение не публикуется: парсинг стриминговых сервисов
+> нарушает их условия использования.
+
+**Версия:** 1.0.0 (versionCode 1) · **minSdk:** 26 (Android 8.0) · **GPLv3**
+
+---
+
+## Возможности
+
+### Источники и поиск
+- **SoundCloud и YouTube** — полноценный стрим через NewPipe Extractor.
+- **Deezer и Apple Music** — поиск и 30-секундные превью; полный трек
+  подтягивается с YouTube по совпадению артиста, названия и ISRC.
+- **Spotify** — поиск по Client ID приложения, вход по OAuth PKCE
+  (`facet://spotify-auth`) для профиля, плейлистов и импорта любимых.
+- **Сводный поиск** — параллельные запросы по всем источникам, слияние
+  дублей и бейдж «+N» у треков, найденных в нескольких местах.
+- **Тексты** — LRCLIB с синхронной подсветкой строк.
+- **Экран артиста** — топ треки, альбомы и похожие исполнители.
+
+### Медиатека
+- Любимые треки, плейлисты и скачанное на одном экране.
+- Создание плейлистов и импорт по ссылке: Spotify, Deezer, Apple, YouTube,
+  SoundCloud.
+- **Импорт профиля** — публичные плейлисты Spotify и SoundCloud по ссылке на
+  профиль, с выбором «все или выборочно».
+- **Импорт списком** — одна строка = один трек, формат «Артист - Название»
+  или просто название.
+- **Лайки SoundCloud** — через публичный `api-v2` с `client_id` из NewPipe:
+  превью, импорт только новых, честное сообщение для закрытых профилей.
+- **Любимые Spotify** — `/v1/me/tracks` после входа в аккаунт.
+
+### Плеер
+- Очередь с секциями «Сейчас играет», «Далее», «Проиграно» и восстановлением
+  после перезапуска приложения.
+- Волна от трека — бесконечное радио на похожих артистах.
+- Детюн 428–453 Гц, вариации Speed Up / Slowed / Nightcore, скорость 0.5–2×.
+- Таймер сна, перемешивание и повтор.
+- Плавающий остров управления: действия «Нравится», «Скачать», «Текст»,
+  «Очередь» и «Вариации» с подписями прямо под Play.
+
+### Офлайн
+- Скачивание с качеством 128/256/320 кбит/с, ID3-теги и обложки для MP3.
+- Кэш прослушанного: трек сохраняется после 20 секунд, лимит 500 МБ,
+  LRU-очистка и управление в настройках.
+
+### Оформление
+- Material 3: Dynamic Color на Android 12+, fallback-палитра `#3A4E6E`,
+  скругления 12/16/24, Google Sans Flex.
+- Плоский список настроек с секциями, LargeTopAppBar в медиатеке, shimmer-
+  скелетоны при загрузке поиска.
+- Онбординг первого запуска, сплэш Android 12+, адаптивная иконка «Призма».
+- Полная локализация EN/RU, смена языка без переустановки.
 
 ---
 
 ## Требования
 
-- VS Code или любой редактор; тестирование на реальном устройстве через adb
 - **JDK 17** (задаётся через `JAVA_HOME`)
-- **Android SDK 35** (устанавливается автоматически при сборке)
+- **Android SDK 35** (скачивается Gradle при первой сборке)
 - Реальное устройство **Android 8.0+ (API 26+)**, установка через adb
+- Windows PowerShell — основной проверенный сценарий
 
 ---
 
@@ -22,13 +75,25 @@
 # Debug APK
 .\gradlew.bat assembleDebug
 
-# Release APK (подписанный, с R8)
+# Release APK (подписанный, R8 + shrinkResources)
 .\gradlew.bat assembleRelease
+
+# Unit-тесты
+.\gradlew.bat testDebugUnitTest
 ```
 
-### Релизная подпись
+Готовые файлы:
 
-Для подписи нужны `keystore.jks` и `keystore.properties` в корне проекта. Оба файла в `.gitignore` — в репозиторий они не попадают, сделайте резервную копию: без ключа обновления установленного приложения невозможны.
+```
+app\build\outputs\apk\debug\app-debug.apk
+app\build\outputs\apk\release\app-release.apk
+```
+
+### Подпись релиза
+
+В корне нужны `keystore.jks` и `keystore.properties` — оба в `.gitignore` и в
+репозиторий не попадают. Сделайте резервную копию: без этого ключа обновления
+установленного приложения невозможны.
 
 ```properties
 # keystore.properties
@@ -38,30 +103,30 @@ keyAlias=facet
 keyPassword=…
 ```
 
-Если файла нет, `assembleRelease` соберёт неподписанный APK, но не упадёт. Правила R8 — в `app/proguard-rules.pro`.
+Без файла `assembleRelease` соберёт неподписанный APK, но не упадёт. Правила
+R8 — в `app/proguard-rules.pro`.
 
-### Ключ Last.fm для «Моей волны»
+### Ключи и интеграции
 
-Похожие артисты подтягиваются через Last.fm. Ключ не хранится в репозитории; без него волна продолжит работать на лайках, истории и чарте.
+- **Last.fm** — похожие артисты для «Волны». Ключ не хранится в репозитории;
+  задаётся через `$env:LASTFM_API_KEY` или `LASTFM_API_KEY` в
+  `%USERPROFILE%\.gradle\gradle.properties`. Без ключа волна работает на
+  лайках, истории и чарте.
+- **Spotify** — Client ID вводится в настройках приложения. Для входа в
+  Dashboard должен быть указан Redirect URI `facet://spotify-auth`.
+- **SoundCloud** — отдельный ключ не нужен: лайки читаются публичным
+  `client_id` NewPipe. Если он перестанет работать, остаётся импорт списком.
+
+---
+
+## Установка
 
 ```powershell
-# Вариант 1: переменная окружения
-$env:LASTFM_API_KEY = "ваш_ключ"
-.\gradlew.bat assembleDebug
-
-# Вариант 2: в %USERPROFILE%\.gradle\gradle.properties
-# LASTFM_API_KEY=ваш_ключ
+adb install -r app\build\outputs\apk\release\app-release.apk
 ```
 
-### Путь к APK после сборки
-```
-app\build\outputs\apk\debug\app-debug.apk
-```
-
-### Установка на устройство через ADB
-```powershell
-adb install app\build\outputs\apk\debug\app-debug.apk
-```
+Или скопируйте APK на телефон и откройте. Для обновления поверх старой версии
+подпись должна совпадать с установленной.
 
 ---
 
@@ -69,39 +134,53 @@ adb install app\build\outputs\apk\debug\app-debug.apk
 
 ```
 app/src/main/java/com/facet/music/
-├── core/            # Сеть, DI, UI-компоненты, тема
-├── data/            # Модели, репозитории, источники данных
-├── feature/         # Экраны: home, search, player, library, wave
-├── navigation/      # NavGraph, Screen
+├── core/            # Сеть, DI, плеер, импорт, кэш, UI-компоненты, тема
+├── data/            # Модели, Room, репозитории, источники данных
+├── feature/         # home, search, player, library, wave, artist, imports…
+├── navigation/      # NavGraph, Screen, высота дока
 ├── MainActivity.kt
 └── FacetApp.kt
 ```
 
-Подробнее — см. [AGENTS.md](AGENTS.md) и [PROGRESS.md](PROGRESS.md).
-
----
-
-## Источники
-
-| Источник | Статус |
-|----------|--------|
-| SoundCloud | ✅ Поиск и воспроизведение |
-| LRCLIB (тексты) | ✅ Синхронные тексты |
-| Last.fm (похожие артисты) | ✅ «Моя волна» |
-| Spotify | 📋 v2 |
-| Яндекс Музыка | 📋 v2 |
-| ВК Музыка | 📋 v2 |
-
-> Spotify-вход (OAuth PKCE) требует Redirect URI `facet://spotify-auth` в настройках приложения на [Spotify Dashboard](https://developer.spotify.com/dashboard).
+Подробности по архитектуре и решениям — в [AGENTS.md](AGENTS.md), история
+сессий — в [PROGRESS.md](PROGRESS.md).
 
 ---
 
 ## Технологии
 
-Kotlin 2.0.21 · Jetpack Compose · Material 3 · Hilt · Media3 · Room · NewPipe Extractor · Last.fm · Coil 3
+Kotlin 2.0.21 · Jetpack Compose (BOM 2024.11.00) · Material 3 · Hilt 2.52 ·
+Media3 1.5.0 · Room 2.6.1 · NewPipe Extractor 0.26.5 · Coil 3 · OkHttp ·
+kotlinx.serialization · AGP 8.5.2 · compileSdk 35 / minSdk 26.
+
+---
+
+## Тесты
+
+42 test suite, 277 JVM-тестов, 0 failures. Покрыты парсеры ссылок и списков,
+слияние поиска, настройки и миграции Room (1→14), очередь, кэш, ID3,
+детюн/вариации, Spotify PKCE. Инструментальных UI-тестов нет: проверка экранов
+идёт на реальном устройстве.
+
+---
+
+## Известные ограничения
+
+- Deezer и Apple Music отдают только 30-секундные превью; полный трек — через
+  YouTube-матч.
+- Spotify используется для метаданных и импорта, звук Spotify недоступен.
+- Лайки SoundCloud работают для публичных профилей; закрытый профиль честно
+  сообщает, что лайки недоступны.
+- Публичный `client_id` SoundCloud может смениться или упереться в лимиты.
+- HLS-потоки не кэшируются; ID3 пишется только для MP3.
+- Slowed меняет скорость и питч, без reverb.
+- Last.fm scrobble не реализован: Last.fm используется только для похожих
+  артистов «Волны».
 
 ---
 
 ## Лицензия
 
-Проект распространяется по [GNU GPL v3.0](LICENSE): этого требует лицензия NewPipe Extractor, через который работает SoundCloud. Исходники открыты, форки обязаны оставаться под GPLv3.
+Проект распространяется по [GNU GPL v3.0](LICENSE): этого требует лицензия
+NewPipe Extractor, через который работают SoundCloud и YouTube. Исходники
+открыты, форки обязаны оставаться под GPLv3.

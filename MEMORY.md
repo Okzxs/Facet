@@ -3,7 +3,14 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 66 (31.10.2026): лайки SoundCloud через api-v2 и публичный client_id NewPipe, превью и импорт; 42 suite / 277 тестов | Проверить импорт лайков на публичном профиле; собрать GitHub Release |
+| Facet | активен  | Сессия 67 (31.10.2026): плоский редизайн (плеер, медиатека, настройки, shimmer в поиске), release APK 6 477 737 байт, SHA-256 `e627d69c…`, 42 suite / 277 тестов | Живой смоук-тест на телефоне; опубликовать GitHub Release `v1.0.0` с APK |
+
+### Сессия 67: плоский редизайн и подготовка релиза
+- **Плеер:** `PlayerControlIsland` — транспорт (шаффл/пред/Play 64/след/повтор) + слот `actionsContent`; пять `PlayerActionItem` с подписями под Play (лайк, скачать, текст, очередь, вариации). Скорость и дизлайк — в overflow-меню, кнопка текста из шапки убрана. `ExpressivePlayerSlider` — плоская дорожка 4dp с буфером и бегунком 12dp.
+- **Медиатека:** `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior`, `LibraryHeader` удалён, summary — первая строка; сетка 2 колонки с отступами 20/16; FAB на `LocalBottomDockHeight + 12dp`, `contentPadding` 96dp + док.
+- **Настройки:** полностью плоский список — `SettingsSectionTitle` (`titleSmall`, `primary`), `SettingsDivider` (inset 20dp), `SettingsSwitchRow`; убраны все `Surface`-карточки, включая Spotify.
+- **Поиск:** shimmer-скелетоны (`rememberShimmerBrush`, 1200 мс).
+- **Строки:** EN/RU по 374 ключа. **Сборка:** debug+release зелёные, 42 suite / 277 тестов; APK установлен по mDNS `adb-R5CY552H83H-nxMtL5`. README переписан, AGENTS/PROGRESS/CHANGELOG/release-текст обновлены.
 
 ### Подтверждённая проверка финального фикса
 - Сессия 63 (финал): кэш прослушанного (Room v14 `audio_cache`, `MIGRATION_13_14`, файлы в cacheDir, LRU 500 МБ, `AudioCacheWorker` после 20 секунд, воспроизведение из кэша через `StreamResolver`, карточка в настройках), качество скачивания 128/256/320 (`downloadQualityKbps`, выбор ближайшего M4A-потока), ID3v2.3-теги и обложка для MP3 (`Id3Writer`, в `DownloadEngine`). Тесты 39 suites / 264. APK 6 409 801 установлен на 192.168.0.101:37391.

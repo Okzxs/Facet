@@ -119,6 +119,7 @@
     <string name="settings_location_denied_hint">Без доступа координаты лайков не сохраняются, а «Воспоминания» не привязываются к месту</string>
     <string name="settings_check_permissions">Проверить разрешения</string>
     <string name="settings_location_footer">Если доступ запрещён, кнопка откроет настройки приложения</string>
+    <string name="settings_downloads_section">Загрузки и кэш</string>
     <string name="settings_quality_title">Качество загрузки</string>
     <string name="settings_quality_hint">Битрейт для скачивания. YouTube выбирает ближайший доступный поток.</string>
     <string name="settings_cache_title">Кэш прослушанного</string>
@@ -242,6 +243,12 @@
     <string name="variation_nightcore">Nightcore</string>
     <string name="player_cover">Обложка</string>
     <string name="player_lyrics">Текст песни</string>
+    <string name="player_action_like">Нравится</string>
+    <string name="player_action_download">Скачать</string>
+    <string name="player_action_lyrics">Текст</string>
+    <string name="player_action_queue">Очередь</string>
+    <string name="player_action_variations">Вариации</string>
+    <string name="player_speed_value">Скорость · %1$s</string>
     <string name="player_location_off">Геопозиция выключена</string>
     <string name="player_location_off_hint">«Воспоминания» не сохранят место лайка</string>
     <string name="player_download_cd">Скачать трек</string>

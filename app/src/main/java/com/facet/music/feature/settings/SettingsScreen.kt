@@ -115,8 +115,9 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 /**
- * Экран настроек: секция «Оформление» —
- * переключатель динамических цветов обложки и ручная палитра акцентов.
+ * Экран настроек — плоский список: заголовки секций, строки и тонкие
+ * разделители с отступом. Карточки убраны: на длинном экране они дробили
+ * ритм и отнимали ширину у текста.
  */
 @Composable
 fun SettingsScreen(
@@ -192,244 +193,151 @@ fun SettingsScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
-            .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-            .systemBarsPadding(),
-    ) {
-        SettingsHeader(onBack = onBack)
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            text = stringResource(R.string.settings_appearance),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        Surface(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                .fillMaxSize()
+                // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
+                .background(MaterialTheme.colorScheme.background)
+                .verticalScroll(rememberScrollState())
+                .systemBarsPadding(),
         ) {
-            Column {
-                // ─── Тема приложения ───
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 18.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.settings_theme),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        text = stringResource(R.string.settings_theme_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        ThemeMode.entries.forEachIndexed { index, mode ->
-                            SegmentedButton(
-                                selected = settings.themeMode == mode,
-                                onClick = { viewModel.setThemeMode(mode) },
-                                shape = SegmentedButtonDefaults.itemShape(
-                                    index = index,
-                                    count = ThemeMode.entries.size,
-                                ),
-                            ) {
-                                Text(
-                                    text = when (mode) {
-                                        ThemeMode.LIGHT -> stringResource(R.string.settings_theme_light)
-                                        ThemeMode.DARK -> stringResource(R.string.settings_theme_dark)
-                                        ThemeMode.SYSTEM -> stringResource(R.string.settings_theme_system)
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            }
-                        }
-                    }
-                }
+            SettingsHeader(onBack = onBack)
 
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                )
+            // ─── Оформление ─────────────────────────────────────────────────
+            SettingsSectionTitle(R.string.settings_appearance)
 
-                // ─── Динамические цвета обложки ───
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.settings_dynamic_cover),
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = stringResource(R.string.settings_dynamic_cover_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Switch(
-                        checked = settings.dynamicCoverColors,
-                        onCheckedChange = viewModel::setDynamicCoverColors,
-                    )
-                }
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                )
-
-                // ─── Акцентный цвет: включение ───
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.settings_accent),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = if (settings.accentEnabled) {
-                                stringResource(R.string.settings_accent_on)
-                            } else {
-                                stringResource(R.string.settings_accent_off)
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Switch(
-                        checked = settings.accentEnabled,
-                        onCheckedChange = viewModel::setAccentEnabled,
-                    )
-                }
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                )
-
-                // ─── Палитра акцента ───
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .alpha(if (settings.accentEnabled) 1f else 0.38f),
-                ) {
-                    Spacer(Modifier.height(16.dp))
-                    // Готовые кружки и «Свой цвет» пишут в одно поле customAccentColor:
-                    // оно имеет высший приоритет в теме и работает поверх Dynamic Color.
-                    // Список скроллится горизонтально: на узких экранах кружки сохраняют
-                    // размер вместо сплющивания, а крайние Spacer держат отступ от границ.
-                    val customArgb = settings.customAccentColor
-                    val isPresetSelected = AccentOptions.any { it.color.toArgb() == customArgb }
-                    val recents = settings.recentAccentColors
-                    if (recents.isNotEmpty()) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 18.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.settings_recent),
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                recents.forEach { argb ->
-                                    RecentColorDot(
-                                        color = Color(argb),
-                                        selected = customArgb == argb,
-                                        onClick = { viewModel.setAccentColor(Color(argb)) },
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(14.dp))
-                        }
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Spacer(Modifier.width(8.dp))
-                        AccentOptions.forEach { option ->
-                            AccentDot(
-                                option = option,
-                                selected = customArgb == option.color.toArgb(),
-                                onClick = { viewModel.setAccentColor(option.color) },
-                            )
-                        }
-                        CustomColorDot(
-                            color = customArgb?.let { Color(it) },
-                            selected = customArgb != null && !isPresetSelected,
-                            onClick = { showCustomColorDialog = true },
-                        )
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    Spacer(Modifier.height(16.dp))
-                }
-            }
-        }
-
-        Spacer(Modifier.height(40.dp))
-
-        // ─── Язык интерфейса ─────────────────────────────────────────────
-        Text(
-            text = stringResource(R.string.settings_language_section),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-        Spacer(Modifier.height(10.dp))
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
                 Text(
-                    text = stringResource(R.string.settings_language),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    text = stringResource(R.string.settings_theme),
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(3.dp))
+                Text(
+                    text = stringResource(R.string.settings_theme_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(14.dp))
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    ThemeMode.entries.forEachIndexed { index, mode ->
+                        SegmentedButton(
+                            selected = settings.themeMode == mode,
+                            onClick = { viewModel.setThemeMode(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = ThemeMode.entries.size,
+                            ),
+                        ) {
+                            Text(
+                                text = when (mode) {
+                                    ThemeMode.LIGHT -> stringResource(R.string.settings_theme_light)
+                                    ThemeMode.DARK -> stringResource(R.string.settings_theme_dark)
+                                    ThemeMode.SYSTEM -> stringResource(R.string.settings_theme_system)
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+                    }
+                }
+            }
+
+            SettingsDivider()
+
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_dynamic_cover),
+                hint = stringResource(R.string.settings_dynamic_cover_hint),
+                checked = settings.dynamicCoverColors,
+                onCheckedChange = viewModel::setDynamicCoverColors,
+            )
+
+            SettingsDivider()
+
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_accent),
+                hint = if (settings.accentEnabled) {
+                    stringResource(R.string.settings_accent_on)
+                } else {
+                    stringResource(R.string.settings_accent_off)
+                },
+                checked = settings.accentEnabled,
+                onCheckedChange = viewModel::setAccentEnabled,
+            )
+
+            // Палитра: точки живут прямо на фоне, без плашки-карточки.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(if (settings.accentEnabled) 1f else 0.38f)
+                    .padding(top = 12.dp, bottom = 8.dp),
+            ) {
+                // Готовые кружки и «Свой цвет» пишут в одно поле customAccentColor:
+                // оно имеет высший приоритет в теме и работает поверх Dynamic Color.
+                // Список скроллится горизонтально: на узких экранах кружки сохраняют
+                // размер вместо сплющивания, а крайние Spacer держат отступ от границ.
+                val customArgb = settings.customAccentColor
+                val isPresetSelected = AccentOptions.any { it.color.toArgb() == customArgb }
+                val recents = settings.recentAccentColors
+                if (recents.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_recent),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            recents.forEach { argb ->
+                                RecentColorDot(
+                                    color = Color(argb),
+                                    selected = customArgb == argb,
+                                    onClick = { viewModel.setAccentColor(Color(argb)) },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Spacer(Modifier.width(12.dp))
+                    AccentOptions.forEach { option ->
+                        AccentDot(
+                            option = option,
+                            selected = customArgb == option.color.toArgb(),
+                            onClick = { viewModel.setAccentColor(option.color) },
+                        )
+                    }
+                    CustomColorDot(
+                        color = customArgb?.let { Color(it) },
+                        selected = customArgb != null && !isPresetSelected,
+                        onClick = { showCustomColorDialog = true },
+                    )
+                    Spacer(Modifier.width(12.dp))
+                }
+            }
+
+            // ─── Язык ───────────────────────────────────────────────────────
+            SettingsSectionTitle(R.string.settings_language_section)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
                 Text(
                     text = stringResource(R.string.settings_language_hint),
                     style = MaterialTheme.typography.bodySmall,
@@ -441,141 +349,79 @@ fun SettingsScreen(
                     onSelect = onLanguageSelect,
                 )
             }
-        }
 
-        Spacer(Modifier.height(40.dp))
+            // ─── Интеграции ────────────────────────────────────────────────
+            SettingsSectionTitle(R.string.settings_integrations)
+            SpotifyIntegrationCard(
+                settings = settings,
+                auth = spotifyAuth,
+                onSave = viewModel::saveSpotifyCredentials,
+                onSignIn = viewModel::signInSpotify,
+                onSignOut = viewModel::signOutSpotify,
+                onOpenGuide = { showSpotifyGuide = true },
+            )
 
-        // ─── Интеграции: Spotify ─────────────────────────────────────────
-        Text(
-            text = stringResource(R.string.settings_integrations),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-        Spacer(Modifier.height(10.dp))
-        SpotifyIntegrationCard(
-            settings = settings,
-            auth = spotifyAuth,
-            onSave = viewModel::saveSpotifyCredentials,
-            onSignIn = viewModel::signInSpotify,
-            onSignOut = viewModel::signOutSpotify,
-            onOpenGuide = { showSpotifyGuide = true },
-        )
+            // ─── Моя волна ──────────────────────────────────────────────────
+            SettingsSectionTitle(R.string.settings_wave)
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_russian_first),
+                hint = stringResource(R.string.settings_russian_first_hint),
+                checked = russianPriority,
+                onCheckedChange = viewModel::setRussianPriority,
+            )
 
-        Spacer(Modifier.height(40.dp))
+            // ─── Разрешения ────────────────────────────────────────────────
+            SettingsSectionTitle(R.string.settings_permissions)
 
-        Text(
-            text = stringResource(R.string.settings_wave),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 18.dp),
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Language,
+                    imageVector = if (hasLocationPermission) {
+                        Icons.Rounded.LocationOn
+                    } else {
+                        Icons.Rounded.LocationOff
+                    },
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = if (hasLocationPermission) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(R.string.settings_russian_first),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                        ),
+                        text = if (hasLocationPermission) {
+                            stringResource(R.string.settings_location_allowed)
+                        } else {
+                            stringResource(R.string.settings_location_denied)
+                        },
+                        style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        text = stringResource(R.string.settings_russian_first_hint),
+                        text = if (hasLocationPermission) {
+                            stringResource(R.string.settings_location_allowed_hint)
+                        } else {
+                            stringResource(R.string.settings_location_denied_hint)
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.width(12.dp))
-                Switch(
-                    checked = russianPriority,
-                    onCheckedChange = viewModel::setRussianPriority,
-                )
             }
-        }
 
-        Spacer(Modifier.height(32.dp))
-
-        Text(
-            text = stringResource(R.string.settings_permissions),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (hasLocationPermission) {
-                            Icons.Rounded.LocationOn
-                        } else {
-                            Icons.Rounded.LocationOff
-                        },
-                        contentDescription = null,
-                        tint = if (hasLocationPermission) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (hasLocationPermission) {
-                                stringResource(R.string.settings_location_allowed)
-                            } else {
-                                stringResource(R.string.settings_location_denied)
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = if (hasLocationPermission) {
-                                stringResource(R.string.settings_location_allowed_hint)
-                            } else {
-                                stringResource(R.string.settings_location_denied_hint)
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+            ) {
                 FilledTonalButton(
                     onClick = {
                         hasLocationPermission = LocationPermissions.hasPermission(context)
@@ -598,24 +444,21 @@ fun SettingsScreen(
                     )
                 }
             }
-        }
 
-        Spacer(Modifier.height(24.dp))
+            // ─── Загрузки и кэш ────────────────────────────────────────────
+            SettingsSectionTitle(R.string.settings_downloads_section)
 
-        // ─── Качество скачивания ────────────────────────────────────────
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            tonalElevation = 0.dp,
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
                 Text(
                     text = stringResource(R.string.settings_quality_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
                     text = stringResource(R.string.settings_quality_hint),
                     style = MaterialTheme.typography.bodySmall,
@@ -632,68 +475,66 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
 
-        Spacer(Modifier.height(24.dp))
+            SettingsDivider()
 
-        // ─── Кэш прослушанного ──────────────────────────────────────────
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            tonalElevation = 0.dp,
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    text = stringResource(R.string.settings_cache_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = if (cacheCount == 0) {
-                        stringResource(R.string.settings_cache_empty)
-                    } else {
-                        stringResource(
-                            R.string.settings_cache_summary,
-                            formatMegabytes(cacheBytes),
-                            cacheCount,
-                        )
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.settings_cache_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = if (cacheCount == 0) {
+                            stringResource(R.string.settings_cache_empty)
+                        } else {
+                            stringResource(
+                                R.string.settings_cache_summary,
+                                formatMegabytes(cacheBytes),
+                                cacheCount,
+                            )
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (cacheCount > 0) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.width(8.dp))
                     TextButton(onClick = viewModel::clearAudioCache) {
                         Text(stringResource(R.string.settings_cache_clear))
                     }
                 }
             }
-        }
 
-        Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(32.dp))
 
-        // Футер с версией сборки: читается как подпись экрана, а не как элемент списка.
-        Text(
-            text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        TextButton(
-            onClick = { showLicenses = true },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-        ) {
+            // Футер с версией сборки: читается как подпись экрана, а не как элемент списка.
             Text(
-                text = stringResource(R.string.settings_licenses),
-                style = MaterialTheme.typography.labelLarge,
+                text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
+            TextButton(
+                onClick = { showLicenses = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_licenses),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
         }
-    }
 
         // Снекбар смены языка живёт над прокручиваемым содержимым, но внутри
         // того же Box, поэтому виден на любой позиции скролла.
@@ -726,6 +567,61 @@ fun SettingsScreen(
 
     if (showLicenses) {
         LicensesDialog(onDismiss = { showLicenses = false })
+    }
+}
+
+/** Заголовок секции настроек: мелкий капс-стиль в акценте темы. */
+@Composable
+private fun SettingsSectionTitle(titleRes: Int) {
+    Text(
+        text = stringResource(titleRes),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 8.dp),
+    )
+}
+
+/** Разделитель строк с отступом от краёв: ритм списка без карточек. */
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+    )
+}
+
+/** Строка-переключатель: заголовок, пояснение и Switch справа. */
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
     }
 }
 
@@ -1219,14 +1115,11 @@ private fun SpotifyIntegrationCard(
     val connected = auth.connected
     val displayName = auth.displayName?.takeIf { it.isNotBlank() } ?: "Spotify"
 
-    Surface(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+            .padding(horizontal = 20.dp, vertical = 8.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "Spotify",
@@ -1344,7 +1237,6 @@ private fun SpotifyIntegrationCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
     }
 }
 

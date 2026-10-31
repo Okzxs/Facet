@@ -34,10 +34,12 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -48,6 +50,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,6 +69,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.R
 import com.facet.music.core.download.DownloadState
@@ -94,6 +98,7 @@ import kotlinx.coroutines.launch
  * Раньше это были три сегмента одной вкладки, и содержимое каждого
  * начиналось с собственного заголовка — теперь один заголовок и общий ритм.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
@@ -229,13 +234,32 @@ fun LibraryScreen(
         viewModel.consumeSpotifyError()
     }
 
+    // Большая шапка сворачивается при прокрутке: заголовок остаётся в одну строку,
+    // а над сеткой плейлистов появляется больше места.
+    val topBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
     Scaffold(
         // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .nestedScroll(topBarScrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets.statusBars,
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            LargeTopAppBar(
+                title = {
+                    // Стиль не задаём: LargeTopAppBar сам переводит заголовок
+                    // из крупного в компактный при сворачивании.
+                    Text(text = stringResource(R.string.library_title))
+                },
+                scrollBehavior = topBarScrollBehavior,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onImportClick,
@@ -247,7 +271,11 @@ fun LibraryScreen(
                 },
                 text = { Text(stringResource(R.string.import_entry)) },
                 // Док — оверлей: поднимаем FAB над ним, иначе кнопка под ним.
-                modifier = Modifier.padding(bottom = LocalBottomDockHeight.current),
+                // Небольшой запас по краю не даёт кнопке липнуть к островку.
+                modifier = Modifier.padding(
+                    end = 4.dp,
+                    bottom = LocalBottomDockHeight.current + 12.dp,
+                ),
             )
         },
     ) { padding ->
@@ -255,12 +283,20 @@ fun LibraryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
+            // Запас снизу: последний элемент не должен прятаться под FAB.
+            contentPadding = PaddingValues(
+                bottom = 96.dp + LocalBottomDockHeight.current,
+            ),
         ) {
-            item(key = "library_header") {
-                LibraryHeader(
-                    trackCount = likedTracks.size,
-                    playlistCount = playlists.size,
+            item(key = "library_summary") {
+                Text(
+                    text = CollectionSummary(
+                        trackCount = likedTracks.size,
+                        playlistCount = playlists.size,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
                 )
             }
 
@@ -335,8 +371,8 @@ fun LibraryScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                .padding(horizontal = 20.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             row.forEach { playlist ->
                                 PlaylistTile(
@@ -505,26 +541,6 @@ fun LibraryScreen(
                     )
                 }
             },
-        )
-    }
-}
-
-/** Шапка медиатеки: крупный заголовок и общая подпись коллекции. */
-@Composable
-private fun LibraryHeader(trackCount: Int, playlistCount: Int) {
-    Column(
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.library_title),
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = CollectionSummary(trackCount = trackCount, playlistCount = playlistCount),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
