@@ -1,5 +1,14 @@
 package com.facet.music.feature.imports
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -134,9 +143,18 @@ fun ImportScreen(
                 )
             }
 
-            when (state.tab) {
-                ImportTab.PROFILE -> ProfileImportContent(state, viewModel)
-                ImportTab.TEXT -> TextImportContent(state, viewModel)
+            AnimatedContent(
+                targetState = state.tab,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                },
+                label = "importTab",
+            ) { tab ->
+                when (tab) {
+                    ImportTab.PROFILE -> ProfileImportContent(state, viewModel)
+                    ImportTab.TEXT -> TextImportContent(state, viewModel)
+                }
             }
         }
     }
@@ -218,44 +236,50 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                         )
                     }
 
-                    if (state.likesPreview.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(
-                                R.string.import_sc_likes_found,
-                                state.likesPreview.size,
-                            ),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        state.likesPreview.take(PREVIEW_TRACK_COUNT).forEach { track ->
+                    AnimatedVisibility(
+                        visible = state.likesPreview.isNotEmpty(),
+                        enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                        exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(12.dp))
                             Text(
-                                text = "${track.artist} — ${track.title}",
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Button(
-                            onClick = viewModel::importSoundCloudLikes,
-                            enabled = !state.isImporting,
-                            shape = CircleShape,
-                        ) {
-                            if (state.isImporting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                            }
-                            Text(
-                                stringResource(
-                                    R.string.import_sc_likes_import,
+                                text = stringResource(
+                                    R.string.import_sc_likes_found,
                                     state.likesPreview.size,
                                 ),
+                                style = MaterialTheme.typography.titleSmall,
                             )
+                            state.likesPreview.take(PREVIEW_TRACK_COUNT).forEach { track ->
+                                Text(
+                                    text = "${track.artist} — ${track.title}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Button(
+                                onClick = viewModel::importSoundCloudLikes,
+                                enabled = !state.isImporting,
+                                shape = CircleShape,
+                            ) {
+                                if (state.isImporting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(
+                                    stringResource(
+                                        R.string.import_sc_likes_import,
+                                        state.likesPreview.size,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
@@ -386,7 +410,9 @@ private fun ImportCard(
     content: @Composable () -> Unit,
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {

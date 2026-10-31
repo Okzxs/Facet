@@ -228,12 +228,14 @@ fun PlayerQueueSheet(
                             items = nextItems,
                             key = { (_, track) -> "next_${track.id}" },
                         ) { (index, track) ->
-                            QueueTrackItem(
-                                track = track,
-                                isPlaying = false,
-                                onClick = { onTrackClick(index) },
-                                onDismiss = { onRemoveTrack(index) },
-                            )
+                            Box(Modifier.animateItem()) {
+                                QueueTrackItem(
+                                    track = track,
+                                    isPlaying = false,
+                                    onClick = { onTrackClick(index) },
+                                    onDismiss = { onRemoveTrack(index) },
+                                )
+                            }
                         }
                     }
 
@@ -246,12 +248,14 @@ fun PlayerQueueSheet(
                             items = playedItems,
                             key = { (_, track) -> "played_${track.id}" },
                         ) { (index, track) ->
-                            QueueTrackItem(
-                                track = track,
-                                isPlaying = false,
-                                onClick = { onTrackClick(index) },
-                                onDismiss = { onRemoveTrack(index) },
-                            )
+                            Box(Modifier.animateItem()) {
+                                QueueTrackItem(
+                                    track = track,
+                                    isPlaying = false,
+                                    onClick = { onTrackClick(index) },
+                                    onDismiss = { onRemoveTrack(index) },
+                                )
+                            }
                         }
                     }
                 }

@@ -14,9 +14,11 @@ import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.model.DownloadedTrack
 import com.facet.music.data.model.Playlist
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.DownloadRepository
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlaylistRepository
+import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SpotifyAuthRepository
 import com.facet.music.data.source.external.SpotifyProvider
 import com.facet.music.data.source.imports.PlaylistImportResult
@@ -56,8 +58,17 @@ class LibraryViewModel @Inject constructor(
     private val playlistImportService: PlaylistImportService,
     private val spotifyAuthRepository: SpotifyAuthRepository,
     private val spotifyProvider: SpotifyProvider,
+    private val settingsRepository: SettingsRepository,
     playerController: PlayerController,
 ) : ViewModel() {
+
+    /** Флаги импорта: скрывают FAB и блок Spotify после первого импорта. */
+    val appSettings: StateFlow<AppSettings> = settingsRepository.settings
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = AppSettings(),
+        )
 
     val likedTracks: StateFlow<List<Track>> = likedTracksRepository.getLikedTracks()
         .stateIn(
@@ -237,6 +248,9 @@ class LibraryViewModel @Inject constructor(
                         runCatching { likedTracksRepository.likeTrack(track) }
                     }
                     _spotifyLikesImported.value = fresh.size
+                    // Успешный импорт прячет чипс и подсказку «Требуется вход».
+                    runCatching { settingsRepository.setSpotifyLikesImported(true) }
+                    runCatching { settingsRepository.setImportCompleted(true) }
                 }
                 .onFailure { error ->
                     Log.e(TAG, "Не удалось импортировать любимые Spotify", error)
@@ -374,6 +388,7 @@ class LibraryViewModel @Inject constructor(
                 .onSuccess {
                     _importState.value = PlaylistImportState.Idle
                     _importSuccess.value = playlist.name
+                    runCatching { settingsRepository.setImportCompleted(true) }
                 }
                 .onFailure { error ->
                     Log.e(TAG, "Не удалось сохранить импортированный плейлист", error)

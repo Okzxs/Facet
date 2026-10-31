@@ -1,6 +1,7 @@
 package com.facet.music.feature.player
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
@@ -78,6 +79,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -88,6 +90,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -141,6 +144,12 @@ private const val PLAYER_LAYOUT_VARIANT = 1
 
 /** Порог закрытия свайпом вниз: 30% высоты экрана. */
 private const val DISMISS_THRESHOLD = 0.30f
+
+/** Перемотка свайпом по обложке: 1 dp пути = 300 мс трека. */
+private const val SEEK_MS_PER_DP = 300f
+
+/** Вибро-отклик каждые 10 секунд перемотки. */
+private const val SEEK_HAPTIC_STEP_MS = 10_000L
 
 /**
  * Постоянный слот под полоску прогресса активной строки текста.
@@ -405,6 +414,8 @@ fun PlayerScreen(
     // Границы острова управления в координатах корня: касание из этой зоны
     // не запускает закрытие — кнопки и слайдер должны работать как обычно.
     var controlIslandBounds by remember { mutableStateOf<Rect?>(null) }
+    // Границы обложки: свайп по ней — перемотка, а не закрытие плеера.
+    var artworkBounds by remember { mutableStateOf<Rect?>(null) }
     // Границы самого LazyColumn с текстом: только по нему решаем,
     // скроллить текст или тянуть плеер (шапка и пустые зоны — всегда плеер).
     var lyricsListBounds by remember { mutableStateOf<Rect?>(null) }
@@ -453,7 +464,7 @@ fun PlayerScreen(
     val swipeToDismissModifier = if (showQueueSheet || swipeState.isDismissed) {
         Modifier
     } else {
-        Modifier.pointerInput(Unit) {
+        Modifier.pointerInput(artworkBounds) {
             awaitEachGesture {
                 // Initial-проход: корень получает событие раньше списка текста,
                 // поэтому может забрать вертикальный жест себе.
@@ -464,6 +475,11 @@ fun PlayerScreen(
                 // Остров управления не участвует в закрытии.
                 val island = controlIslandBounds
                 if (island != null && island.contains(down.position)) {
+                    return@awaitEachGesture
+                }
+                // Обложка отдана свайпу-перемотке: вниз по ней не закрывает.
+                val artwork = artworkBounds
+                if (artwork != null && artwork.contains(down.position)) {
                     return@awaitEachGesture
                 }
 
@@ -733,6 +749,9 @@ fun PlayerScreen(
                         notePainter = notePainter,
                         placeholderPainter = placeholderPainter,
                         currentPositionMs = { viewModel.currentPositionMs() },
+                        durationMs = track?.durationMs ?: 0L,
+                        onSeekToMs = { timeMs -> viewModel.seekToMs(timeMs) },
+                        onArtworkBoundsChanged = { artworkBounds = it },
                         onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                         onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
                         onLyricsListBoundsChanged = { lyricsListBounds = it },
@@ -1020,6 +1039,9 @@ private fun ExpressiveHeroZone(
     notePainter: Painter,
     placeholderPainter: Painter,
     currentPositionMs: () -> Long,
+    durationMs: Long,
+    onSeekToMs: (Long) -> Unit,
+    onArtworkBoundsChanged: (Rect?) -> Unit,
     onSeekToLine: (Long) -> Unit,
     onRetryLyrics: () -> Unit,
     onLyricsListBoundsChanged: (Rect?) -> Unit,
@@ -1038,6 +1060,15 @@ private fun ExpressiveHeroZone(
     val display = remember(trackKey, title, artist, artworkUrl) {
         TrackDisplay(trackKey, title, artist, artworkUrl)
     }
+
+    // Перемотка свайпом по обложке: вверх — вперёд, вниз — назад.
+    // Жест живёт только на обложке, поэтому не конфликтует с закрытием плеера.
+    val haptics = LocalHapticFeedback.current
+    val msPerPx = SEEK_MS_PER_DP / LocalDensity.current.density
+    var seekTargetMs by remember(trackKey) { mutableStateOf<Long?>(null) }
+    var seekBaseMs by remember(trackKey) { mutableLongStateOf(0L) }
+    var seekDeltaPx by remember(trackKey) { mutableFloatStateOf(0f) }
+    var seekHapticStep by remember(trackKey) { mutableIntStateOf(0) }
 
     Box(modifier = modifier) {
         AnimatedContent(
@@ -1097,8 +1128,53 @@ private fun ExpressiveHeroZone(
                                 modifier = Modifier
                                     .fillMaxWidth(0.82f)
                                     .aspectRatio(1f)
-                                    .then(coverSwipeModifier),
+                                    .then(coverSwipeModifier)
+                                    .onGloballyPositioned {
+                                        onArtworkBoundsChanged(it.boundsInRoot())
+                                    }
+                                    .pointerInput(trackKey, durationMs) {
+                                        detectVerticalDragGestures(
+                                            onDragStart = {
+                                                seekBaseMs = currentPositionMs()
+                                                    .coerceIn(0L, durationMs.coerceAtLeast(0L))
+                                                seekDeltaPx = 0f
+                                                seekHapticStep = 0
+                                                seekTargetMs = seekBaseMs
+                                            },
+                                            onVerticalDrag = { change, dragAmount ->
+                                                change.consume()
+                                                seekDeltaPx += dragAmount
+                                                val candidate = seekBaseMs -
+                                                    (seekDeltaPx * msPerPx).toLong()
+                                                val target = candidate.coerceIn(
+                                                    0L,
+                                                    durationMs.coerceAtLeast(0L),
+                                                )
+                                                seekTargetMs = target
+                                                val step = (abs(target - seekBaseMs) /
+                                                    SEEK_HAPTIC_STEP_MS).toInt()
+                                                if (step > seekHapticStep) {
+                                                    seekHapticStep = step
+                                                    haptics.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove,
+                                                    )
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                seekTargetMs?.let(onSeekToMs)
+                                                seekTargetMs = null
+                                                seekDeltaPx = 0f
+                                            },
+                                            onDragCancel = {
+                                                seekTargetMs = null
+                                                seekDeltaPx = 0f
+                                            },
+                                        )
+                                    },
                             ) {
+                                DisposableEffect(trackKey) {
+                                    onDispose { onArtworkBoundsChanged(null) }
+                                }
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -1115,6 +1191,44 @@ private fun ExpressiveHeroZone(
                                         notePainter = notePainter,
                                         placeholderPainter = placeholderPainter,
                                     )
+                                }
+                                // HUD перемотки: целевое время и смещение от текущего.
+                                Crossfade(
+                                    targetState = seekTargetMs != null,
+                                    modifier = Modifier.align(Alignment.Center),
+                                    animationSpec = tween(140),
+                                    label = "seekHud",
+                                ) { visible ->
+                                    if (visible) {
+                                        val targetMs = seekTargetMs ?: seekBaseMs
+                                        val delta = targetMs - seekBaseMs
+                                        Surface(
+                                            shape = MaterialTheme.shapes.large,
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                                .copy(alpha = 0.94f),
+                                            tonalElevation = 4.dp,
+                                            shadowElevation = 10.dp,
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(
+                                                    horizontal = 18.dp,
+                                                    vertical = 12.dp,
+                                                ),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                            ) {
+                                                Text(
+                                                    text = formatMs(targetMs),
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                )
+                                                Text(
+                                                    text = seekDeltaLabel(delta),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(24.dp))
@@ -1645,10 +1759,18 @@ private fun ArtworkImage(
 ) {
     val context = LocalContext.current
     if (!artworkUrl.isNullOrBlank()) {
-        val imageRequest = remember(artworkUrl) {
+        // Сначала пробуем увеличенную обложку, при ошибке — исходную.
+        var useOriginal by remember(artworkUrl) { mutableStateOf(false) }
+        val targetUrl = if (useOriginal) {
+            artworkUrl
+        } else {
+            com.facet.music.core.ui.artwork.ArtworkUrl.highRes(artworkUrl) ?: artworkUrl
+        }
+        val imageRequest = remember(targetUrl) {
             ImageRequest.Builder(context)
-                .data(artworkUrl)
-                .crossfade(200)
+                .data(targetUrl)
+                .size(1024, 1024)
+                .crossfade(240)
                 .build()
         }
         AsyncImage(
@@ -1657,6 +1779,8 @@ private fun ArtworkImage(
             contentScale = ContentScale.Crop,
             placeholder = placeholderPainter,
             error = notePainter,
+            // maxres/500×500 есть не у всех треков: откатываемся на исходный URL.
+            onError = { useOriginal = true },
             modifier = Modifier
                 .fillMaxSize()
                 .clip(shape),
@@ -2175,6 +2299,12 @@ private fun formatMs(ms: Long): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "$min:${sec.toString().padStart(2, '0')}"
+}
+
+/** Подпись HUD: «+0:15» вперёд или «−0:15» назад. */
+private fun seekDeltaLabel(deltaMs: Long): String {
+    val prefix = if (deltaMs >= 0L) "+" else "−"
+    return prefix + formatMs(abs(deltaMs))
 }
 
 /**

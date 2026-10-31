@@ -1,5 +1,11 @@
 package com.facet.music.feature.library
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -112,6 +118,7 @@ fun LibraryScreen(
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val likedTracks by viewModel.likedTracks.collectAsState()
+    val appSettings by viewModel.appSettings.collectAsState()
     val downloadedIds by viewModel.downloadedIds.collectAsState()
     val downloadStates by viewModel.downloadStates.collectAsState()
     val downloadError by viewModel.downloadError.collectAsState()
@@ -141,6 +148,14 @@ fun LibraryScreen(
     // Диалог создания плейлиста прямо из медиатеки.
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var newPlaylistName by rememberSaveable { mutableStateOf("") }
+
+    // Импорт уже был (или контент уже есть) — FAB больше не показываем.
+    // Вход остаётся в заголовке «Плейлисты» → «Импорт».
+    val showImportFab = !appSettings.importCompleted &&
+        playlists.isEmpty() &&
+        likedTracks.isEmpty()
+    // Без входа в Spotify и после успешного импорта блок с подсказкой скрыт.
+    val showSpotifyImport = spotifyConnected && !appSettings.spotifyLikesImported
 
     // Очередь живёт в плеере: подтверждение действий — Snackbar.
     val handlePlayNext: (Track) -> Unit = { track ->
@@ -261,22 +276,34 @@ fun LibraryScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onImportClick,
-                icon = {
-                    Icon(
-                        imageVector = Icons.Rounded.AddLink,
-                        contentDescription = null,
-                    )
-                },
-                text = { Text(stringResource(R.string.import_entry)) },
-                // Док — оверлей: поднимаем FAB над ним, иначе кнопка под ним.
-                // Небольшой запас по краю не даёт кнопке липнуть к островку.
-                modifier = Modifier.padding(
-                    end = 4.dp,
-                    bottom = LocalBottomDockHeight.current + 12.dp,
+            AnimatedVisibility(
+                visible = showImportFab,
+                enter = fadeIn(tween(180)) + scaleIn(
+                    initialScale = 0.9f,
+                    animationSpec = tween(180),
                 ),
-            )
+                exit = fadeOut(tween(140)) + scaleOut(
+                    targetScale = 0.9f,
+                    animationSpec = tween(140),
+                ),
+            ) {
+                ExtendedFloatingActionButton(
+                    onClick = onImportClick,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Rounded.AddLink,
+                            contentDescription = null,
+                        )
+                    },
+                    text = { Text(stringResource(R.string.import_entry)) },
+                    // Док — оверлей: поднимаем FAB над ним, иначе кнопка под ним.
+                    // Небольшой запас по краю не даёт кнопке липнуть к островку.
+                    modifier = Modifier.padding(
+                        end = 4.dp,
+                        bottom = LocalBottomDockHeight.current + 12.dp,
+                    ),
+                )
+            }
         },
     ) { padding ->
         LazyColumn(
@@ -285,7 +312,8 @@ fun LibraryScreen(
                 .padding(padding),
             // Запас снизу: последний элемент не должен прятаться под FAB.
             contentPadding = PaddingValues(
-                bottom = 96.dp + LocalBottomDockHeight.current,
+                bottom = (if (showImportFab) 96.dp else 24.dp) +
+                    LocalBottomDockHeight.current,
             ),
         ) {
             item(key = "library_summary") {
@@ -312,35 +340,29 @@ fun LibraryScreen(
             }
 
             // ─── Импорт любимых Spotify ──────────────────────────────────
-            item(key = "library_import_likes") {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    AssistChip(
-                        onClick = { viewModel.importSpotifyLikes() },
-                        enabled = spotifyConnected && !spotifyLikesLoading,
-                        label = { Text(stringResource(R.string.library_import_likes)) },
-                        leadingIcon = {
-                            if (spotifyLikesLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Filled.Favorite,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        },
-                    )
-                    // Без входа кнопка неактивна — объясняем, чего не хватает.
-                    if (!spotifyConnected) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.library_import_likes_hint),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 12.dp),
+            // Без входа или после импорта блок не показываем: подсказка
+            // «Требуется вход в Spotify» больше не висит мёртвым грузом.
+            if (showSpotifyImport) {
+                item(key = "library_import_likes") {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        AssistChip(
+                            onClick = { viewModel.importSpotifyLikes() },
+                            enabled = !spotifyLikesLoading,
+                            label = { Text(stringResource(R.string.library_import_likes)) },
+                            leadingIcon = {
+                                if (spotifyLikesLoading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.Favorite,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            },
                         )
                     }
                 }
@@ -371,6 +393,7 @@ fun LibraryScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .animateItem()
                                 .padding(horizontal = 20.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {

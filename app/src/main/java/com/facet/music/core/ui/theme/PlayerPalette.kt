@@ -134,8 +134,12 @@ private suspend fun computePlayerColors(
 ): PlayerDynamicColors? = withContext(Dispatchers.IO) {
     try {
         val loader = imageLoader(context)
+        // Палитра считается с максимальной версии обложки: миниатюра 100×100
+        // даёт грязные цвета. Ключ кэша остаётся исходным URL.
+        val paletteUrl = com.facet.music.core.ui.artwork.ArtworkUrl.highRes(artworkUrl)
+            ?: artworkUrl
         val request = ImageRequest.Builder(context)
-            .data(artworkUrl)
+            .data(paletteUrl)
             .allowHardware(false)
             .build()
 

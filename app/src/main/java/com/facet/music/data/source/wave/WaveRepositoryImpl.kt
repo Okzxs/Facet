@@ -282,36 +282,69 @@ class WaveRepositoryImpl @Inject constructor(
     private fun Track.titleKey(): String =
         normalizeWords(artist) + "|" + normalizeWords(BRACKET_NOISE.replace(title, " "))
 
+    /**
+     * Артисты-семена с частотным весом: импортированные лайки (200 треков)
+     * дают артисту больший вес, чем редкий трек в истории. Taste-веса
+     * добавляются мягко, чтобы не перебить явные лайки.
+     */
     private suspend fun buildSeedArtists(
         liked: List<Track>,
         history: List<Track>,
     ): List<String> {
-        val artists = LinkedHashMap<String, String>()
+        val scores = LinkedHashMap<String, Pair<String, Double>>()
+
+        fun add(value: String?, weight: Double) {
+            val display = value?.trim()?.takeIf { it.isNotBlank() } ?: return
+            val key = display.lowercase(Locale.ROOT)
+            val current = scores[key]
+            scores[key] = if (current == null) {
+                display to weight
+            } else {
+                current.first to (current.second + weight)
+            }
+        }
 
         tasteRepository.getTopArtists(SEED_ARTIST_LIMIT).forEach { taste ->
-            addDistinct(artists, taste.value)
+            add(taste.value, taste.weight * TASTE_WEIGHT_FACTOR)
         }
-        (history + liked).forEach { track ->
-            addDistinct(artists, track.artist)
-        }
+        liked.forEach { add(it.artist, LIKE_WEIGHT) }
+        history.forEach { add(it.artist, HISTORY_WEIGHT) }
 
-        return artists.values.take(SEED_ARTIST_LIMIT)
+        return scores.values
+            .sortedByDescending { it.second }
+            .take(SEED_ARTIST_LIMIT)
+            .map { it.first }
     }
 
+    /** Жанры-семена по той же частотной логике, что и артисты. */
     private suspend fun buildSeedGenres(
         liked: List<Track>,
         history: List<Track>,
     ): List<String> {
-        val genres = LinkedHashMap<String, String>()
+        val scores = LinkedHashMap<String, Pair<String, Double>>()
+
+        fun add(value: String?, weight: Double) {
+            if (!isUsefulGenre(value)) return
+            val display = value!!.trim()
+            val key = display.lowercase(Locale.ROOT)
+            val current = scores[key]
+            scores[key] = if (current == null) {
+                display to weight
+            } else {
+                current.first to (current.second + weight)
+            }
+        }
 
         tasteRepository.getTopGenres(SEED_GENRE_LIMIT).forEach { taste ->
-            if (isUsefulGenre(taste.value)) addDistinct(genres, taste.value)
+            add(taste.value, taste.weight * TASTE_WEIGHT_FACTOR)
         }
-        (liked + history).forEach { track ->
-            if (isUsefulGenre(track.genre)) addDistinct(genres, track.genre)
-        }
+        liked.forEach { add(it.genre, LIKE_WEIGHT) }
+        history.forEach { add(it.genre, HISTORY_WEIGHT) }
 
-        return genres.values.take(SEED_GENRE_LIMIT)
+        return scores.values
+            .sortedByDescending { it.second }
+            .take(SEED_GENRE_LIMIT)
+            .map { it.first }
     }
 
     /**
@@ -547,6 +580,11 @@ class WaveRepositoryImpl @Inject constructor(
 
         const val SEED_ARTIST_LIMIT = 4
         const val SEED_GENRE_LIMIT = 5
+
+        /** Веса семян: лайк (в том числе импортированный) важнее истории. */
+        const val LIKE_WEIGHT = 1.0
+        const val HISTORY_WEIGHT = 0.4
+        const val TASTE_WEIGHT_FACTOR = 0.5
 
         const val SIMILAR_SEED_ARTISTS = 2
         const val SIMILAR_ARTISTS_PER_SEED = 4

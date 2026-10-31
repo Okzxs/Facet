@@ -180,7 +180,7 @@ data class Track(
 - **UI**: вкладка «Плейлисты» в `LibraryScreen` — кнопка «Импортировать по ссылке» (`Icons.Rounded.AddLink`), `AlertDialog` со ссылкой, превью (название, счётчик, первые 10 треков «название — артист»), прогресс `LinearProgressIndicator`, ошибки и успех — Snackbar. Сохранение — `PlaylistRepository.createPlaylist/addTrack`; состояние — `PlaylistImportState` в `LibraryViewModel`, тексты ошибок выбираются по `ImportError` (`import_error_*`).
 - **Экран артиста**: `feature/artist/ArtistScreen.kt` + `ArtistViewModel`, маршрут `Screen.Artist(name)` (`ARTIST_NAME_ARG`, `Uri.encode`) в `AppNavGraph` (док скрыт). Популярные треки — `DeezerProvider.fetchArtistTopTracks(name)` (`search/artist` → `artist/{id}/top?limit=20`), при пустом ответе `YouTubeRepository.search("<artist> official audio")`; «Слушать всё» играет весь список. Входы: тап по имени артиста в `PlayerScreen` (закрывает оверлей плеера, воспроизведение не прерывается) и долгий тап по `TrackCard` (`onArtistClick`, `combinedClickable` только если колбэк передан) в поиске, медиатеке и плейлисте. С сессии 59 долгий тап открывает меню действий, а переход к артисту — его пункт «К артисту».
 - **Строки**: `import_*`, `artist_*` в `values/strings.xml` и `values-ru/strings.xml` (388 ключей, наборы совпадают).
-- **Тесты**: `PlaylistLinkParserTest` (15), `PlaylistPayloadParserTest` (6), `PlaylistImportServiceTest` (5); всего на 1.0.0 — 42 suite / 279 тестов, 0 failures.
+- **Тесты**: `PlaylistLinkParserTest` (15), `PlaylistPayloadParserTest` (6), `PlaylistImportServiceTest` (5); всего на 1.0.0 — 43 suite / 283 теста, 0 failures.
 
 ---
 
@@ -255,7 +255,7 @@ data class Track(
 - **Медиатека.** `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior` и `nestedScroll`; `LibraryHeader` удалён, `CollectionSummary` — первая строка списка. Сетка плейлистов 2 колонки с отступами 20/16, FAB поднят на `LocalBottomDockHeight + 12dp`, нижний `contentPadding` 96dp + док, чтобы кнопка не перекрывала последний элемент.
 - **Настройки.** Плоский список: `SettingsSectionTitle` (`titleSmall`, `primary`), `SettingsDivider` (inset 20dp), `SettingsSwitchRow`; все `Surface`-карточки убраны, включая Spotify-секцию. Секции: Оформление, Язык, Интеграции, Моя волна, Разрешения, Загрузки и кэш (`settings_downloads_section`).
 - **Поиск.** `SearchSkeletonList` залит бегущим градиентом (`rememberShimmerBrush`, `infiniteRepeatable` 1200 мс) вместо статичных блоков.
-- **Релиз.** 42 suite / 279 тестов, 0 failures; EN/RU по 388 ключей; release APK 6 501 025 байт, SHA-256 `8171a524c77f2cd2f9486296253fb1a7b19e145255eb68f9f8af754b0f80ecbb`; установлен по mDNS `adb-R5CY552H83H-nxMtL5`. Живой прогон — на пользователе.
+- **Релиз.** 43 suite / 283 теста, 0 failures; EN/RU по 388 ключей; release APK 6 517 409 байт, SHA-256 `2468018e1576518e21a77b544fc39c548c4d3d226615bf53bf6489076db99205`; установлен по mDNS `adb-R5CY552H83H-nxMtL5`. Живой прогон — на пользователе.
 
 ## Сессия 67, продолжение: откат плеера и живые фиксы
 
@@ -268,3 +268,8 @@ data class Track(
 - **Волна от трека:** `startWaveFromTrack` ставит сид первым в очередь, затем похожие; `QueueOrigin` (`MAIN`/`WAVE`/`WAVE_FROM_TRACK`) в `PlayerState`, подпись в шапке `PlayerQueueSheet` («Обычная очередь»/«Моя волна»/«Волна по треку»). `WaveViewModel` помечает очередь `WAVE`.
 - **Spotify:** с 11.02.2026 новый Client ID требует Premium, Development Mode — один Client ID и до 5 пользователей; тексты в настройках/README обновлены, кнопка Spotify без ключей неактивна.
 - **Лайки SoundCloud, лимит и порядок:** `MAX_LIKES` поднят с 200 до 5000, пагинация идёт до `next_href = null`; в `SoundCloudLikesParser` появился `LikeItem.likedAtMillis` из `created_at`, `SoundCloudLikesProvider` отдаёт `likeTimes`. Импорт пишет реальную дату (`LikedTracksRepository.likeTrack(likedAt = …)`), а существующим трекам обновляет только `likedAt` через `updateLikeTime` — избранное сортируется по дате лайка, как в SoundCloud, без потери сезона/геометки. Повторный импорт синхронизирует и порядок старых 200.
+- **Анимации (сессия 67, финал):** `animateItem()` в медиатеке, поиске и очереди; `AnimatedContent` для вкладок импорта; `AnimatedVisibility`/`animateContentSize` для FAB, превью лайков и карточек; FAB и Spotify-блок скрываются с fade/scale. Свайп-закрытие плеера не тронут.
+- **Импортные входы:** `AppSettings.importCompleted` и `spotifyLikesImported` (ключи `import_completed`, `spotify_likes_imported`). FAB скрыт, если импорт уже был или в медиатеке есть лайки/плейлисты; Spotify-блок — только при подключённом Spotify и без импорта. Вход в импорт остаётся в заголовке «Плейлисты» → «Импорт».
+- **Волна:** `buildSeedArtists`/`buildSeedGenres` считают частоту артистов/жанров в лайках (`LIKE_WEIGHT = 1.0`), история — `0.4`, Taste — `×0.5`; импортированные 200 лайков реально поднимают артиста в топ-4.
+- **Перемотка:** вертикальный свайп по обложке (только по ней) — вверх +, вниз −, 1 dp = 300 мс, HUD с временем и дельтой, вибро каждые 10 с. Корневой dismiss-жест пропускает зону обложки; закрытие по шапке/фону не менялось.
+- **Обложки:** `core/ui/artwork/ArtworkUrl.kt` — SoundCloud `-large`/`-crop` → `-t500x500`, YouTube → `maxresdefault`, Deezer → `1000x1000`, Apple → `600x600bb`; плеер грузит `size(1024)` с fallback на исходный URL, палитра считает по увеличенной версии.

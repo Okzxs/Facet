@@ -47,6 +47,10 @@ data class AppSettings(
     val appLanguage: String = LANGUAGE_SYSTEM,
     /** Показан ли онбординг первого запуска; false — показываем при старте. */
     val onboardingCompleted: Boolean = false,
+    /** Был ли успешный импорт профиля/списка/лайков: FAB больше не нужен. */
+    val importCompleted: Boolean = false,
+    /** Импортированы ли любимые Spotify: блок импорта в медиатеке скрыт. */
+    val spotifyLikesImported: Boolean = false,
     /** Желаемое качество скачивания, кбит/с: 128, 256 или 320. */
     val downloadQualityKbps: Int = 320,
     /** client_id приложения SoundCloud: нужен только для импорта лайков. */
@@ -114,6 +118,12 @@ interface SettingsRepository {
 
     /** Отметить онбординг пройденным, чтобы не показывать его снова. */
     suspend fun setOnboardingCompleted(completed: Boolean)
+
+    /** Запомнить, что импорт уже был: FAB «Импорт профиля или списка» скрывается. */
+    suspend fun setImportCompleted(completed: Boolean)
+
+    /** Запомнить импорт любимых Spotify: блок с подсказкой больше не показываем. */
+    suspend fun setSpotifyLikesImported(imported: Boolean)
 
     /** Сохранить желаемое качество скачивания (128/256/320 кбит/с). */
     suspend fun setDownloadQuality(kbps: Int)

@@ -77,6 +77,8 @@ class SettingsRepositoryImpl @Inject constructor(
             ?: AppSettings.LANGUAGE_SYSTEM,
         // Онбординг показываем один раз: флаг пишется кнопкой «Начать».
         onboardingCompleted = prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false),
+        importCompleted = prefs.getBoolean(KEY_IMPORT_COMPLETED, false),
+        spotifyLikesImported = prefs.getBoolean(KEY_SPOTIFY_LIKES_IMPORTED, false),
         // Качество скачивания: неизвестное значение считаем 320.
         downloadQualityKbps = prefs.getInt(KEY_DOWNLOAD_QUALITY, 320)
             .takeIf { it in SettingsRepository.DOWNLOAD_QUALITIES } ?: 320,
@@ -192,6 +194,22 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(onboardingCompleted = completed) }
     }
 
+    override suspend fun setImportCompleted(completed: Boolean) {
+        awaitLoaded()
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_IMPORT_COMPLETED, completed).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(importCompleted = completed) }
+    }
+
+    override suspend fun setSpotifyLikesImported(imported: Boolean) {
+        awaitLoaded()
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_SPOTIFY_LIKES_IMPORTED, imported).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(spotifyLikesImported = imported) }
+    }
+
     override suspend fun setSoundCloudClientId(clientId: String) {
         awaitLoaded()
         val trimmed = clientId.trim()
@@ -223,6 +241,8 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret"
         const val KEY_APP_LANGUAGE = "app_language"
         const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
+        const val KEY_IMPORT_COMPLETED = "import_completed"
+        const val KEY_SPOTIFY_LIKES_IMPORTED = "spotify_likes_imported"
         const val KEY_DOWNLOAD_QUALITY = "download_quality"
         const val KEY_SOUNDCLOUD_CLIENT_ID = "soundcloud_client_id"
     }

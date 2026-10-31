@@ -10,6 +10,7 @@ import com.facet.music.core.import.TextTrackQuery
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlaylistRepository
+import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
 import com.facet.music.data.source.external.SoundCloudApiException
@@ -93,6 +94,7 @@ class ImportViewModel @Inject constructor(
     private val youTubeRepository: YouTubeRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val soundCloudLikesProvider: SoundCloudLikesProvider,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ImportUiState())
@@ -195,6 +197,7 @@ class ImportViewModel @Inject constructor(
                     message = null,
                 )
             }
+            runCatching { settingsRepository.setImportCompleted(true) }
         }
     }
 
@@ -300,6 +303,9 @@ class ImportViewModel @Inject constructor(
                     error = if (imported == 0) ImportError.NETWORK else null,
                 )
             }
+            if (imported > 0) {
+                runCatching { settingsRepository.setImportCompleted(true) }
+            }
         }
     }
 
@@ -346,6 +352,7 @@ class ImportViewModel @Inject constructor(
                         message = "Импортировано треков: ${state.textFound.size}",
                     )
                 }
+                runCatching { settingsRepository.setImportCompleted(true) }
             }.onFailure {
                 _uiState.update { it.copy(isImporting = false, error = ImportError.SAVE_FAILED) }
             }

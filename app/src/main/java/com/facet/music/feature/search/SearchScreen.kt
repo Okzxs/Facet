@@ -1262,6 +1262,7 @@ private fun ResultsList(
             ) { track ->
                 TrackCard(
                     track = track,
+                    modifier = Modifier.animateItem(),
                     isDownloaded = track.id in downloadedIds,
                     onClick = { onTrackClick(track, tracks) },
                     onAddToPlaylist = { onAddToPlaylist(track) },
