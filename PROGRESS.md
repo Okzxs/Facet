@@ -2,6 +2,30 @@
 
 ## Последнее обновление: 30.10.2026 (сессия 63)
 
+## Этап 3, части 2–4: импорт Spotify, очередь и импорт по ссылке — сессия 63
+
+### 1. Импорт любимых Spotify
+- `SpotifyProvider.fetchLikedTracks()`: `/v1/me/tracks` страницами по 50, максимум 1000 треков; без пользовательского токена возвращает ошибку «Требуется вход в Spotify».
+- В `SPOTIFY_SCOPES` добавлен `user-library-read` — после обновления приложения нужен повторный вход в Spotify.
+- `LibraryViewModel.importSpotifyLikes()`: считает уже сохранённые лайки, докладывает только новые, отдаёт количество в Snackbar. В медиатеке — чипс «Импортировать любимые»: без входа неактивен, под ним подсказка.
+
+### 2. Персистентность очереди
+- Room v13: таблица `queue` (`QueueEntity`, `QueueDao`), `MIGRATION_12_13`, схема `13.json`. Поля трека денормализованы, `position` — первичный ключ.
+- `QueueRepositoryImpl`: сохраняет треки и индекс текущего (индекс — в SharedPreferences `queue_state`), битые строки источника пропускает.
+- `PlayerController`: `restoreQueueFromDb()` поднимает очередь при старте без автоплея, `persistQueue()` пишет изменения с debounce 500 мс; первый Play на восстановленной очереди запускает трек, так как в контроллере ещё нет медиаэлемента.
+- `PlayerQueueSheet`: секции «Сейчас играет», «Далее», «Проиграно».
+
+### 3. Импорт плейлистов YouTube и SoundCloud
+- `PlaylistLinkParser`: YouTube (`list=` в query, включая `music.youtube.com` и watch-ссылки), SoundCloud (`/sets/`, id — канонический URL).
+- `PlaylistImportService`: общий загрузчик через NewPipe `PlaylistExtractor` (`playlistLHFactory.fromUrl` → `fetchPage` → `getPage(page.nextPage)`), до 5 страниц; `StreamInfoItem` → `Track` с `transcodingUrl`.
+- Текст ошибки распознавания ссылки обновлён в EN и RU.
+
+### Проверки
+- `assembleDebug testDebugUnitTest` — BUILD SUCCESSFUL, 37 suites / 256 тестов, 0 failures (+5 парсер, +4 `QueueRepositoryTest`, +1 миграция).
+- Release-сборки и установка на SM-A266B после каждого блока: Spotify 6 406 473 байт, очередь 6 407 761, импорт 6 407 801 — все `Success`.
+- Не проверено вживую: импорт лайков без Client ID, восстановление очереди после убийства процесса, импорт реальных YouTube/SoundCloud-плейлистов.
+- Осталось из Этапа 3: кэш прослушанного (`audio_cache`, 500 МБ, LRU, экран), качество 128/256/320 и ID3-теги.
+
 ## Этап 3, часть 1: аудио-фичи, сводный поиск и иконка «Призма» — сессия 63
 
 ### 1. Аудио-фичи

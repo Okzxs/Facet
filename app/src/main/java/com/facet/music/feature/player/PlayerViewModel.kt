@@ -4,6 +4,12 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.facet.music.core.cache.AudioCacheWorker
 import com.facet.music.core.download.DownloadManager
 import com.facet.music.core.download.DownloadMessages
 import com.facet.music.core.download.DownloadState
@@ -23,6 +29,7 @@ import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.entity.DislikedTrackEntity
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.LyricsResult
+import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.LikedTracksRepository
@@ -33,6 +40,7 @@ import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.TasteRepository
 import com.facet.music.data.repository.WaveRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -58,6 +66,7 @@ class PlayerViewModel @Inject constructor(
     private val waveRepository: WaveRepository,
     private val downloadManager: DownloadManager,
     private val navigationEvents: NavigationEvents,
+    @ApplicationContext private val appContext: android.content.Context,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
@@ -185,6 +194,7 @@ class PlayerViewModel @Inject constructor(
 
         observeTasteFeedback()
         observeWaveRefill()
+        observeAudioCache()
     }
 
     /**
@@ -593,6 +603,51 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    // ─── Кэш прослушанного ────────────────────────────────────────────────
+
+    private val cacheRequested = mutableSetOf<String>()
+
+    /**
+     * Через 20 секунд воспроизведения ставим трек в фоновую докачку.
+     * Позицию опрашиваем: плеер не эмитит состояние на каждый тик.
+     */
+    private fun observeAudioCache() {
+        viewModelScope.launch {
+            while (true) {
+                delay(CACHE_CHECK_INTERVAL_MS)
+                val state = playerController.state.value
+                val track = state.currentTrack ?: continue
+                if (!state.isPlaying || track.source == Source.LOCAL) continue
+                if (playerController.currentPositionMs() < CACHE_MIN_PLAYED_MS) continue
+                if (!cacheRequested.add(track.id)) continue
+                enqueueAudioCache(track)
+            }
+        }
+    }
+
+    private fun enqueueAudioCache(track: Track) {
+        val data = workDataOf(
+            AudioCacheWorker.KEY_ID to track.id,
+            AudioCacheWorker.KEY_SOURCE to track.source.name,
+            AudioCacheWorker.KEY_TITLE to track.title,
+            AudioCacheWorker.KEY_ARTIST to track.artist,
+            AudioCacheWorker.KEY_ARTWORK to track.artworkUrl,
+            AudioCacheWorker.KEY_STREAM_URL to track.streamUrl,
+            AudioCacheWorker.KEY_DURATION_MS to track.durationMs,
+            AudioCacheWorker.KEY_TRANSCODING_URL to track.transcodingUrl,
+        )
+        val request = OneTimeWorkRequestBuilder<AudioCacheWorker>()
+            .setInputData(data)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build(),
+            )
+            .addTag(CACHE_WORK_TAG)
+            .build()
+        WorkManager.getInstance(appContext).enqueue(request)
+    }
+
     /**
      * Подгружает следующую пачку заранее, пока в очереди волны
      * остаётся несколько треков.
@@ -630,6 +685,14 @@ class PlayerViewModel @Inject constructor(
 
         /** Размер первой пачки радио от трека. */
         const val RADIO_BATCH = 20
+
+        /** Сколько секунд трек должен отыграть, прежде чем кэшировать его. */
+        const val CACHE_MIN_PLAYED_MS = 20_000L
+
+        /** Как часто проверяем позицию для запуска кэширования. */
+        const val CACHE_CHECK_INTERVAL_MS = 5_000L
+
+        const val CACHE_WORK_TAG = "audio_cache"
 
         /** Сколько держать крестик ошибки/отмены перед возвратом иконки скачивания. */
         const val ERROR_ICON_DURATION_MS = 1_000L

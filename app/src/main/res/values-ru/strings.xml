@@ -119,6 +119,10 @@
     <string name="settings_location_denied_hint">Без доступа координаты лайков не сохраняются, а «Воспоминания» не привязываются к месту</string>
     <string name="settings_check_permissions">Проверить разрешения</string>
     <string name="settings_location_footer">Если доступ запрещён, кнопка откроет настройки приложения</string>
+    <string name="settings_cache_title">Кэш прослушанного</string>
+    <string name="settings_cache_empty">Пока пусто — треки сохраняются после 20 секунд прослушивания.</string>
+    <string name="settings_cache_summary">%1$s МБ · %2$d треков</string>
+    <string name="settings_cache_clear">Очистить кэш</string>
     <string name="settings_licenses">Лицензии</string>
     <string name="settings_licenses_title">Лицензии и компоненты</string>
     <string name="settings_licenses_body">Facet распространяется по GNU General Public License v3.0.\n\nИспользованы:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0</string>

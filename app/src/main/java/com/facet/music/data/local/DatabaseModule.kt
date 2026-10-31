@@ -3,6 +3,7 @@ package com.facet.music.data.local
 import android.content.Context
 import androidx.room.Room
 import com.facet.music.data.local.dao.DislikedTrackDao
+import com.facet.music.data.local.dao.AudioCacheDao
 import com.facet.music.data.local.dao.DownloadedTracksDao
 import com.facet.music.data.local.dao.LikedTracksDao
 import com.facet.music.data.local.dao.PlayHistoryDao
@@ -94,5 +95,11 @@ object DatabaseModule {
     @Singleton
     fun provideQueueDao(database: AppDatabase): QueueDao {
         return database.queueDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideAudioCacheDao(database: AppDatabase): AudioCacheDao {
+        return database.audioCacheDao()
     }
 }

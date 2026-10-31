@@ -4,6 +4,7 @@ import androidx.media3.common.MimeTypes
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.AudioCacheRepository
 import com.facet.music.data.repository.YouTubeRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,9 +26,21 @@ class StreamResolver @Inject constructor(
     private val youTubeRepository: YouTubeRepository,
     private val registry: MusicSourceRegistry,
     private val matcher: YouTubeMatcher,
+    private val audioCacheRepository: AudioCacheRepository,
 ) {
 
     suspend fun resolve(track: Track): Result<AudioStreamResult> {
+        // 0. Кэш прослушанного: локальный файл играется без сети.
+        audioCacheRepository.fileFor(track.id)?.let { file ->
+            return Result.success(
+                AudioStreamResult(
+                    url = file.toURI().toString(),
+                    isHls = false,
+                    mimeType = mimeFor(track.source),
+                ),
+            )
+        }
+
         // 1. Прямая ссылка: превью или локальный файл.
         track.streamUrl?.takeIf { it.isNotBlank() }?.let { url ->
             return Result.success(

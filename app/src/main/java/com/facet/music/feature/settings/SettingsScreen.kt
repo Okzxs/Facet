@@ -99,6 +99,7 @@ import com.facet.music.core.ui.components.TrackArtwork
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.ThemeMode
 import kotlinx.coroutines.launch
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -125,6 +126,8 @@ fun SettingsScreen(
     val spotifyAuth by viewModel.spotifyAuth.collectAsState()
     val spotifyAuthUrl by viewModel.spotifyAuthUrl.collectAsState()
     val spotifyAuthError by viewModel.spotifyAuthError.collectAsState()
+    val cacheBytes by viewModel.cacheBytes.collectAsState()
+    val cacheCount by viewModel.cacheCount.collectAsState()
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -595,6 +598,44 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(Modifier.height(24.dp))
+
+        // ─── Кэш прослушанного ──────────────────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 0.dp,
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = stringResource(R.string.settings_cache_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = if (cacheCount == 0) {
+                        stringResource(R.string.settings_cache_empty)
+                    } else {
+                        stringResource(
+                            R.string.settings_cache_summary,
+                            formatMegabytes(cacheBytes),
+                            cacheCount,
+                        )
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (cacheCount > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = viewModel::clearAudioCache) {
+                        Text(stringResource(R.string.settings_cache_clear))
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(32.dp))
 
         // Футер с версией сборки: читается как подпись экрана, а не как элемент списка.
@@ -690,6 +731,10 @@ private fun LicensesDialog(onDismiss: () -> Unit) {
 
 /** Ссылка на полный текст лицензии в репозитории. */
 private const val LICENSES_URL = "https://github.com/Okzxs/my-music-app/blob/main/LICENSE"
+
+/** Размер кэша в мегабайтах с одним знаком после запятой. */
+private fun formatMegabytes(bytes: Long): String =
+    String.format(Locale.ROOT, "%.1f", bytes / 1_048_576.0)
 
 @Composable
 private fun SettingsHeader(onBack: () -> Unit) {

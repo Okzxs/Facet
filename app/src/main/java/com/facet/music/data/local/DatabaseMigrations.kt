@@ -285,6 +285,27 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
+/**
+ * 13 → 14: кэш прослушанного. Файлы лежат в cacheDir, в таблице — путь,
+ * размер и время доступа для LRU-очистки.
+ */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `audio_cache` (
+                `trackId` TEXT NOT NULL,
+                `filePath` TEXT NOT NULL,
+                `sizeBytes` INTEGER NOT NULL,
+                `cachedAt` INTEGER NOT NULL,
+                `lastAccessAt` INTEGER NOT NULL,
+                PRIMARY KEY(`trackId`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -298,4 +319,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_10_11,
     MIGRATION_11_12,
     MIGRATION_12_13,
+    MIGRATION_13_14,
 )

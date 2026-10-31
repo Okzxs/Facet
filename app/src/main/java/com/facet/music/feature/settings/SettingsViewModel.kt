@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.facet.music.core.spotify.SpotifyAuthState
 import com.facet.music.data.repository.AppSettings
+import com.facet.music.data.repository.AudioCacheRepository
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SpotifyAuthRepository
 import com.facet.music.data.repository.TasteRepository
@@ -28,6 +29,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val tasteRepository: TasteRepository,
     private val spotifyAuthRepository: SpotifyAuthRepository,
+    private val audioCacheRepository: AudioCacheRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = settingsRepository.settings
@@ -54,9 +56,29 @@ class SettingsViewModel @Inject constructor(
     private val _russianPriority = MutableStateFlow(true)
     val russianPriority: StateFlow<Boolean> = _russianPriority.asStateFlow()
 
+    /** Кэш прослушанного: сколько файлов и байт, обновляется из Room. */
+    private val _cacheBytes = MutableStateFlow(0L)
+    val cacheBytes: StateFlow<Long> = _cacheBytes.asStateFlow()
+
+    private val _cacheCount = MutableStateFlow(0)
+    val cacheCount: StateFlow<Int> = _cacheCount.asStateFlow()
+
     init {
         viewModelScope.launch {
             _russianPriority.value = tasteRepository.isRussianPriority()
+        }
+        viewModelScope.launch {
+            audioCacheRepository.observeEntries().collect { entries ->
+                _cacheCount.value = entries.size
+                _cacheBytes.value = entries.sumOf { it.sizeBytes }
+            }
+        }
+    }
+
+    /** Очистка кэша прослушанного: файлы и записи в Room. */
+    fun clearAudioCache() {
+        viewModelScope.launch {
+            audioCacheRepository.clear()
         }
     }
 
