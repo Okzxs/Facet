@@ -82,6 +82,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Качество скачивания: 128/256/320 кбит/с. */
+    fun setDownloadQuality(kbps: Int) {
+        viewModelScope.launch {
+            settingsRepository.setDownloadQuality(kbps)
+        }
+    }
+
     fun setRussianPriority(enabled: Boolean) {
         _russianPriority.value = enabled
         viewModelScope.launch {

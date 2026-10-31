@@ -77,6 +77,9 @@ class SettingsRepositoryImpl @Inject constructor(
             ?: AppSettings.LANGUAGE_SYSTEM,
         // Онбординг показываем один раз: флаг пишется кнопкой «Начать».
         onboardingCompleted = prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false),
+        // Качество скачивания: неизвестное значение считаем 320.
+        downloadQualityKbps = prefs.getInt(KEY_DOWNLOAD_QUALITY, 320)
+            .takeIf { it in SettingsRepository.DOWNLOAD_QUALITIES } ?: 320,
     )
 
     /**
@@ -188,6 +191,15 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(onboardingCompleted = completed) }
     }
 
+    override suspend fun setDownloadQuality(kbps: Int) {
+        awaitLoaded()
+        val normalized = kbps.takeIf { it in SettingsRepository.DOWNLOAD_QUALITIES } ?: 320
+        withContext(Dispatchers.IO) {
+            prefs.edit().putInt(KEY_DOWNLOAD_QUALITY, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(downloadQualityKbps = normalized) }
+    }
+
     private companion object {
         // Имя файла совпадает с AppLocale: язык читает attachBaseContext напрямую.
         const val PREFS_NAME = AppLocale.PREFS_NAME
@@ -201,5 +213,6 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_SPOTIFY_CLIENT_SECRET = "spotify_client_secret"
         const val KEY_APP_LANGUAGE = "app_language"
         const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
+        const val KEY_DOWNLOAD_QUALITY = "download_quality"
     }
 }

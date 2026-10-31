@@ -8,8 +8,10 @@ import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.YouTubeRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.NewPipe
@@ -32,6 +34,7 @@ import javax.inject.Singleton
 @Singleton
 class YouTubeRepositoryImpl @Inject constructor(
     private val newPipeDownloader: NewPipeDownloader,
+    private val settingsRepository: SettingsRepository,
 ) : YouTubeRepository {
 
     override val downloadCapability: DownloadCapability = DownloadCapability.PROGRESSIVE
@@ -116,9 +119,21 @@ class YouTubeRepositoryImpl @Inject constructor(
                 }
 
                 // M4A (AAC) — максимально совместимый вариант для Android.
-                val m4a = progressive
-                    .filter { it.format == MediaFormat.M4A }
-                    .maxByOrNull { it.averageBitrate }
+                // Качество из настроек: берём поток, ближайший к выбранному
+                // битрейту (YouTube отдаёт фиксированный набор), при равенстве
+                // предпочитаем более высокий.
+                val preferredKbps = runCatching {
+                    settingsRepository.settings.first().downloadQualityKbps
+                }.getOrDefault(320)
+                val m4aCandidates = progressive.filter { it.format == MediaFormat.M4A }
+                val m4a = m4aCandidates
+                    .minWithOrNull(
+                        compareBy(
+                            { kotlin.math.abs(it.averageBitrate / 1000 - preferredKbps) },
+                            { -it.averageBitrate },
+                        ),
+                    )
+                    ?: m4aCandidates.maxByOrNull { it.averageBitrate }
                 // Запасной вариант — Opus в WebM.
                 val opus = progressive
                     .filter { it.format == MediaFormat.WEBMA_OPUS }

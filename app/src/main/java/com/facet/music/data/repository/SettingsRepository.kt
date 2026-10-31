@@ -47,6 +47,8 @@ data class AppSettings(
     val appLanguage: String = LANGUAGE_SYSTEM,
     /** Показан ли онбординг первого запуска; false — показываем при старте. */
     val onboardingCompleted: Boolean = false,
+    /** Желаемое качество скачивания, кбит/с: 128, 256 или 320. */
+    val downloadQualityKbps: Int = 320,
 ) {
     /** Настроены ли ключи Spotify: нужны оба поля, иначе поиск не работает. */
     val isSpotifyConfigured: Boolean
@@ -110,4 +112,12 @@ interface SettingsRepository {
 
     /** Отметить онбординг пройденным, чтобы не показывать его снова. */
     suspend fun setOnboardingCompleted(completed: Boolean)
+
+    /** Сохранить желаемое качество скачивания (128/256/320 кбит/с). */
+    suspend fun setDownloadQuality(kbps: Int)
+
+    companion object {
+        /** Допустимые варианты качества скачивания. */
+        val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)
+    }
 }

@@ -84,6 +84,11 @@ internal class DownloadEngine(
                 val bytes = downloadToFile(resolved.streamUrl, tempFile)
                 if (bytes == 0L) throw DownloadException("empty_file")
                 moveAtomically(tempFile, targetFile)
+                // MP3 помечаем ID3-тегами и обложкой; M4A/WebM не трогаем —
+                // у них другая структура контейнера.
+                if (mimeType == MimeTypes.AUDIO_MPEG) {
+                    runCatching { applyId3Tags(track, targetFile) }
+                }
             } catch (e: CancellationException) {
                 tempFile.delete()
                 throw e
@@ -119,6 +124,33 @@ internal class DownloadEngine(
      * Отмена корутины отменяет активный OkHttp [okhttp3.Call], а не только
      * прекращает чтение между пакетами.
      */
+    /** Теги поверх готового MP3: название, исполнитель и обложка из сети. */
+    private fun applyId3Tags(track: Track, file: File) {
+        val artwork = track.artworkUrl?.let { url ->
+            runCatching { fetchArtwork(url) }.getOrNull()
+        }
+        Id3Writer.write(
+            file = file,
+            title = track.title,
+            artist = track.artist,
+            artwork = artwork,
+        )
+    }
+
+    /** Обложка небольшая; гигантские картинки в теги не тянем. */
+    private fun fetchArtwork(url: String): ByteArray? {
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "Facet/1.0")
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val body = response.body ?: return null
+            if (body.contentLength() > MAX_ARTWORK_BYTES) return null
+            return body.bytes()
+        }
+    }
+
     private suspend fun downloadToFile(url: String, targetFile: File): Long {
         val request = Request.Builder()
             .url(url)
@@ -203,6 +235,9 @@ internal class DownloadEngine(
         private const val USER_AGENT = "FacetApp/1.0"
         private const val BUFFER_SIZE = 64 * 1024
         private const val PROGRESS_STEP = 5
+
+        /** Обложка больше 3 МБ в теги не влезет без раздувания файла. */
+        private const val MAX_ARTWORK_BYTES = 3L * 1024 * 1024
 
         /** Ссылка протухла: сервер больше не отдаёт файл по этому URL. */
         private val EXPIRED_URL_CODES = setOf(403, 410)

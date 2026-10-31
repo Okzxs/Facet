@@ -79,7 +79,9 @@ class DownloadEngineTest {
         assertTrue(savedMediaUrl!!.startsWith("file:"))
         assertTrue(savedMediaUrl!!.endsWith(".mp3"))
         assertEquals(MimeTypes.AUDIO_MPEG, savedMime)
-        assertArrayEquals(payload, targetFile(track).readBytes())
+        val bytes = targetFile(track).readBytes()
+        assertEquals("ID3", String(bytes.copyOfRange(0, 3), Charsets.US_ASCII))
+        assertArrayEquals(payload, bytes.copyOfRange(bytes.size - payload.size, bytes.size))
         assertNoPartFiles()
     }
 
@@ -168,7 +170,10 @@ class DownloadEngineTest {
 
         assertTrue(result.isSuccess)
         assertTrue(saved)
-        assertArrayEquals(payload, target.readBytes())
+        // MP3 теперь с ID3-тегами: полезная нагрузка идёт после тегов.
+        val bytes = target.readBytes()
+        assertEquals("ID3", String(bytes.copyOfRange(0, 3), Charsets.US_ASCII))
+        assertArrayEquals(payload, bytes.copyOfRange(bytes.size - payload.size, bytes.size))
         assertNoPartFiles()
     }
 

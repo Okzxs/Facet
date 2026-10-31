@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -92,6 +93,7 @@ import com.facet.music.BuildConfig
 import com.facet.music.R
 import com.facet.music.core.i18n.AppLocale
 import com.facet.music.core.location.LocationPermissions
+import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.core.ui.theme.AccentOption
 import com.facet.music.core.ui.theme.AccentOptions
 import com.facet.music.core.spotify.SpotifyAuthState
@@ -594,6 +596,40 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        // ─── Качество скачивания ────────────────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 0.dp,
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = stringResource(R.string.settings_quality_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.settings_quality_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsRepository.DOWNLOAD_QUALITIES.forEach { kbps ->
+                        FilterChip(
+                            selected = settings.downloadQualityKbps == kbps,
+                            onClick = { viewModel.setDownloadQuality(kbps) },
+                            label = { Text("$kbps") },
+                        )
+                    }
                 }
             }
         }

@@ -120,6 +120,8 @@
     <string name="settings_location_denied_hint">Without location, like coordinates are not saved and “Memories” are not tied to a place</string>
     <string name="settings_check_permissions">Check permissions</string>
     <string name="settings_location_footer">If access is denied, the button opens app settings</string>
+    <string name="settings_quality_title">Download quality</string>
+    <string name="settings_quality_hint">Bitrate for downloads. YouTube picks the closest available stream.</string>
     <string name="settings_cache_title">Listened cache</string>
     <string name="settings_cache_empty">Nothing cached yet — tracks are saved after 20 seconds of playback.</string>
     <string name="settings_cache_summary">%1$s MB · %2$d tracks</string>
