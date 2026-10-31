@@ -161,7 +161,7 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Spacer(Modifier.height(12.dp))
 
-        // Лайки SoundCloud: API требует client_id, публичная страница закрыта.
+        // Лайки SoundCloud: публичный client_id из NewPipe, профиль должен быть открыт.
         Text(
             text = stringResource(R.string.import_sc_likes_title),
             style = MaterialTheme.typography.titleMedium,
@@ -173,20 +173,58 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = state.clientId,
-            onValueChange = viewModel::setClientId,
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text(stringResource(R.string.import_sc_client_id)) },
-            shape = RoundedCornerShape(12.dp),
-        )
-        Spacer(Modifier.height(8.dp))
         Button(
-            onClick = viewModel::importSoundCloudLikes,
-            enabled = !state.isImporting,
+            onClick = viewModel::loadSoundCloudLikes,
+            enabled = !state.isLoading && state.link.isNotBlank(),
         ) {
+            if (state.isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             Text(stringResource(R.string.import_sc_likes_button))
+        }
+
+        if (state.likesPreview.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.import_sc_likes_found,
+                            state.likesPreview.size,
+                        ),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    state.likesPreview.take(5).forEach { track ->
+                        Text(
+                            text = "${track.artist} — ${track.title}",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = viewModel::importSoundCloudLikes,
+                        enabled = !state.isImporting,
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.import_sc_likes_import,
+                                state.likesPreview.size,
+                            ),
+                        )
+                    }
+                }
+            }
         }
 
         if (state.playlists.isNotEmpty()) {

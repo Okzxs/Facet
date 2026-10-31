@@ -241,3 +241,9 @@ data class Track(
 - Переход с главной на «Волну» — как переключение вкладки: `navigate(Wave) { popUpTo(Home) { saveState = true }; launchSingleTop = true; restoreState = true }`. Иначе Wave остаётся поверх Home и back возвращает на неё.
 - Лайки SoundCloud: публичная `/likes` не парсится (JS), API v2 требует `client_id`. `SoundCloudLikesProvider` резолвит профиль (`/resolve`), тянет `/users/{id}/likes` по 50 до 200 треков; id хранится в `AppSettings.soundcloudClientId` (ключ `soundcloud_client_id`). OAuth не добавлен: нужен secret зарегистрированного приложения.
 - Медиатека: импорт — ExtendedFAB над доком (`padding(bottom = LocalBottomDockHeight.current)`), не чипс в списке.
+
+## Лайки SoundCloud через api-v2 (сессия 66)
+
+- Официальный API SoundCloud требует приложения/Artist Pro — OAuth и client_secret не используются.
+- `SoundCloudLikesProvider`: `client_id` из `SoundcloudParsingHelper.clientId()` (NewPipe), `/resolve` → `/users/{id}/track_likes` на `api-v2.soundcloud.com`, пагинация по `next_href`, до 200 треков. `SoundCloudLikesParser` — чистый разбор `collection`/`next_href`.
+- UI импорта: поле client_id убрано; «Загрузить лайки» → превью (5 строк + счётчик) → «Импортировать N лайков» с дедупом. Подпись: работает для публичных профилей, приватный — лайки недоступны. Импорт текстом остаётся запасным путём.

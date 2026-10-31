@@ -10,7 +10,6 @@ import com.facet.music.core.import.TextTrackQuery
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlaylistRepository
-import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
 import com.facet.music.data.source.external.SoundCloudLikesProvider
@@ -53,8 +52,8 @@ data class ImportUiState(
     val textFound: List<Track> = emptyList(),
     val textMissing: Int = 0,
     val importedPlaylists: Int = 0,
-    /** client_id SoundCloud, если пользователь импортирует лайки. */
-    val clientId: String = "",
+    /** Превью лайков SoundCloud до импорта. */
+    val likesPreview: List<Track> = emptyList(),
     val likesImported: Int = 0,
 ) {
     val selectedCount: Int get() = playlists.count { it.selected }
@@ -70,7 +69,6 @@ class ImportViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val soundCloudRepository: SoundCloudRepository,
     private val youTubeRepository: YouTubeRepository,
-    private val settingsRepository: SettingsRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val soundCloudLikesProvider: SoundCloudLikesProvider,
 ) : ViewModel() {
@@ -78,50 +76,48 @@ class ImportViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ImportUiState())
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
 
-    fun setClientId(value: String) {
-        _uiState.update { it.copy(clientId = value.trim(), error = null) }
-    }
-
     /**
-     * Любимые SoundCloud: API требует client_id приложения, публичная
-     * страница лайков не парсится. Идём в API, докладываем только новые.
+     * Загрузка лайков SoundCloud для превью. client_id берётся публичный —
+     * тот же, что использует NewPipe; профиль должен быть публичным.
      */
-    fun importSoundCloudLikes() {
-        if (_uiState.value.isImporting) return
+    fun loadSoundCloudLikes() {
+        if (_uiState.value.isLoading) return
         viewModelScope.launch {
-            val typed = _uiState.value.clientId.trim()
-            val clientId = typed.ifBlank {
-                settingsRepository.settings.first().soundcloudClientId
+            _uiState.update {
+                it.copy(isLoading = true, error = null, likesPreview = emptyList())
             }
-            if (clientId.isBlank()) {
-                _uiState.update { it.copy(error = ImportError.SOUNDCLOUD_CLIENT_ID_REQUIRED) }
-                return@launch
-            }
-            if (typed.isNotBlank()) settingsRepository.setSoundCloudClientId(clientId)
-
-            _uiState.update { it.copy(isImporting = true, error = null) }
             val parsed = ProfileLinkParser.parse(_uiState.value.link)
             val profileUrl = parsed?.id
                 ?: "https://soundcloud.com/${_uiState.value.link.trim().trimStart('@')}"
 
-            soundCloudLikesProvider.fetchLikes(profileUrl, clientId)
+            soundCloudLikesProvider.fetchLikes(profileUrl)
                 .onSuccess { tracks ->
-                    val existing = runCatching {
-                        likedTracksRepository.getLikedTracks().first()
-                    }.getOrDefault(emptyList()).mapTo(HashSet()) { it.id }
-                    val fresh = tracks.filter { it.id !in existing }
-                    fresh.forEach { runCatching { likedTracksRepository.likeTrack(it) } }
-                    _uiState.update {
-                        it.copy(
-                            isImporting = false,
-                            likesImported = fresh.size,
-                            message = "Импортировано лайков SoundCloud: ${fresh.size}",
-                        )
-                    }
+                    _uiState.update { it.copy(isLoading = false, likesPreview = tracks) }
                 }
                 .onFailure {
-                    _uiState.update { it.copy(isImporting = false, error = ImportError.NETWORK) }
+                    _uiState.update { it.copy(isLoading = false, error = ImportError.NETWORK) }
                 }
+        }
+    }
+
+    /** Сохранение показанных лайков в избранное без дублей. */
+    fun importSoundCloudLikes() {
+        val preview = _uiState.value.likesPreview
+        if (preview.isEmpty() || _uiState.value.isImporting) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImporting = true) }
+            val existing = runCatching {
+                likedTracksRepository.getLikedTracks().first()
+            }.getOrDefault(emptyList()).mapTo(HashSet()) { it.id }
+            val fresh = preview.filter { it.id !in existing }
+            fresh.forEach { runCatching { likedTracksRepository.likeTrack(it) } }
+            _uiState.update {
+                it.copy(
+                    isImporting = false,
+                    likesImported = fresh.size,
+                    message = "Импортировано лайков SoundCloud: ${fresh.size}",
+                )
+            }
         }
     }
 
