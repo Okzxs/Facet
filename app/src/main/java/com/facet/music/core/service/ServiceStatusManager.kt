@@ -101,45 +101,49 @@ class ServiceStatusManager @Inject constructor(
             coroutineScope {
                 ServiceType.entries.forEach { type ->
                     launch {
-                        val isAvailable = checkService(type)
-                        _statuses.update { current ->
-                            current + (type to ServiceHealth(isAvailable = isAvailable))
-                        }
-                        Log.d(tag, "${type.displayName}: ${if (isAvailable) "онлайн" else "ошибка"}")
+                        val health = checkService(type)
+                        _statuses.update { current -> current + (type to health) }
+                        Log.d(
+                            tag,
+                            "${type.displayName}: ${if (health.isAvailable) "онлайн" else "ошибка"}" +
+                                if (!health.isConfigured) " (не настроен)" else "",
+                        )
                     }
                 }
             }
         }
     }
 
-    private suspend fun checkService(type: ServiceType): Boolean =
+    private suspend fun checkService(type: ServiceType): ServiceHealth =
         try {
             // Источники с собственным провайдером проверяются через реестр,
             // остальные — через свои репозитории.
             val provider = sourceRegistry.provider(type.source)
-            val result = if (provider != null) {
+            if (provider != null) {
                 // Ненастроенный источник (Spotify без ключей) недоступен по
                 // определению — сеть не дёргаем, чтобы не ждать таймаут.
                 if (!provider.isConfigured()) {
                     Log.d(tag, "${type.displayName}: источник не настроен")
-                    return false
+                    ServiceHealth(isAvailable = false, isConfigured = false)
+                } else {
+                    val result = provider.search(HEALTH_QUERY, HEALTH_LIMIT, useCache = false)
+                    ServiceHealth(isAvailable = result.isSuccess)
                 }
-                provider.search(HEALTH_QUERY, HEALTH_LIMIT, useCache = false)
             } else {
-                when (type) {
+                val result = when (type) {
                     ServiceType.SOUNDCLOUD -> soundCloudRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
                     ServiceType.YOUTUBE -> youTubeRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
                     ServiceType.DEEZER, ServiceType.APPLE, ServiceType.SPOTIFY -> Result.failure(
                         IllegalStateException("Нет провайдера для ${type.displayName}"),
                     )
                 }
+                ServiceHealth(isAvailable = result.isSuccess)
             }
-            result.isSuccess
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(tag, "${type.displayName}: проверка упала", e)
-            false
+            ServiceHealth(isAvailable = false)
         }
 
     private companion object {

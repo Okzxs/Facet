@@ -101,9 +101,9 @@
     <string name="settings_language_restart">Restart</string>
     <string name="settings_integrations">Integrations</string>
     <string name="settings_spotify">Spotify</string>
-    <string name="settings_spotify_hint">Keys are only needed to search in Spotify; streaming goes through YouTube</string>
-    <string name="settings_spotify_quota_warning">Extended Quota Mode in the Spotify Developer Dashboard is required to work on 10+ devices</string>
-    <string name="settings_spotify_where">Create an app in the Spotify developer dashboard and copy its Client ID and Client Secret</string>
+    <string name="settings_spotify_hint">Keys unlock Spotify search and imports. Since 11 Feb 2026 a new Client ID requires Spotify Premium.</string>
+    <string name="settings_spotify_quota_warning">Development Mode allows one Client ID and up to 5 users. More requires Extended Quota Mode.</string>
+    <string name="settings_spotify_where">Create an app in the Spotify developer dashboard (Premium is required for a new Client ID) and copy its Client ID and Client Secret</string>
     <string name="settings_spotify_client_id">Client ID</string>
     <string name="settings_spotify_client_secret">Client secret</string>
     <string name="settings_spotify_connected">Connected</string>
@@ -263,12 +263,16 @@
     <string name="player_lyrics_retry">Search lyrics again</string>
     <string name="player_download_failed">Couldn’t download the track (online only)</string>
     <string name="player_find_on_youtube">Find</string>
+    <string name="player_close_mini">Close player</string>
 
     <!-- Очередь -->
     <string name="queue_section_now">Now playing</string>
     <string name="queue_section_next">Up next</string>
     <string name="queue_section_played">Played</string>
     <string name="queue_title">Queue</string>
+    <string name="queue_origin_main">Regular queue</string>
+    <string name="queue_origin_wave">My Wave</string>
+    <string name="queue_origin_wave_track">Wave from track</string>
     <string name="queue_empty">Queue is empty</string>
     <string name="queue_remove_cd">Remove from queue</string>
     <string name="queue_playing_cd">Playing</string>
@@ -351,6 +355,9 @@
     <string name="import_tab_text">Text list</string>
     <string name="import_profile_hint_spotify">Paste a Spotify profile link — we’ll show its public playlists.</string>
     <string name="import_profile_hint_soundcloud">Paste a SoundCloud profile link — we’ll show its public playlists.</string>
+    <string name="import_profile_card_title">Profile</string>
+    <string name="import_profile_hint">Public Spotify and SoundCloud profiles. Paste a link or a username.</string>
+    <string name="import_profile_placeholder">soundcloud.com/username</string>
     <string name="import_profile_field">Profile link</string>
     <string name="import_profile_load">Load playlists</string>
     <string name="import_sc_likes_title">Liked tracks from SoundCloud</string>
@@ -358,12 +365,19 @@
     <string name="import_sc_likes_button">Load likes</string>
     <string name="import_sc_likes_found">Likes: %1$d</string>
     <string name="import_sc_likes_import">Import %1$d likes</string>
+    <string name="import_sc_likes_empty">This profile has no likes</string>
+    <string name="import_sc_likes_private">The profile is private or likes are hidden</string>
+    <string name="import_sc_likes_api_error">SoundCloud API error: %1$d</string>
+    <string name="import_sc_likes_network">Couldn’t reach SoundCloud</string>
+    <string name="import_sc_likes_done">Imported likes: %1$d</string>
+    <string name="import_sc_likes_duplicates">No new likes — everything is already in favourites</string>
     <string name="import_error_soundcloud_client">Add a SoundCloud client_id to import likes</string>
     <string name="import_profile_found">Playlists: %1$d · selected %2$d</string>
     <string name="import_profile_tracks">%1$d tracks</string>
     <string name="import_profile_import_selected">Import selected (%1$d)</string>
     <string name="import_profile_empty">No public playlists in this profile</string>
     <string name="import_text_hint">One track per line. Use “Artist - Title”, or just the title — we’ll search as is.</string>
+    <string name="import_text_card_title">Text list</string>
     <string name="import_text_field">Track list</string>
     <string name="import_text_parse">Find tracks</string>
     <string name="import_text_import">Save playlist</string>

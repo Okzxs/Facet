@@ -44,7 +44,6 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Speed
@@ -111,7 +110,6 @@ import com.facet.music.core.download.DownloadMessages
 import com.facet.music.core.download.DownloadState
 import com.facet.music.core.location.LocationPermissions
 import com.facet.music.core.ui.components.ExpressivePlayerSlider
-import com.facet.music.core.ui.components.PlayerActionItem
 import com.facet.music.core.ui.components.PlayerControlIsland
 import com.facet.music.core.ui.components.PlayerQueueSheet
 import com.facet.music.core.ui.components.PlayerSliderState
@@ -573,10 +571,27 @@ fun PlayerScreen(
                         }
                     },
                     title = {
-                        Text(
-                            text = stringResource(R.string.player_now_playing),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
+                        // Надпись «Сейчас играет» и артист: имя светится мягким
+                        // ореолом цвета обложки, чтобы шапка читалась и на тёмном фоне.
+                        Column {
+                            Text(
+                                text = stringResource(R.string.player_now_playing),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = track?.artist ?: "—",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    shadow = Shadow(
+                                        color = coverAccent.copy(alpha = 0.55f),
+                                        blurRadius = 18f,
+                                    ),
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     },
                     actions = {
                         Box {
@@ -619,52 +634,6 @@ fun PlayerScreen(
                                     },
                                 )
                                 HorizontalDivider()
-                                // Скорость ушла из транспорта в меню: там же
-                                // детюн и вариации, рядом логично.
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(
-                                                R.string.player_speed_value,
-                                                formatSpeed(playerState.playbackSpeed),
-                                            ),
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Speed,
-                                            contentDescription = null,
-                                        )
-                                    },
-                                    onClick = {
-                                        showMenu = false
-                                        viewModel.cyclePlaybackSpeed()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(
-                                                if (isDisliked) {
-                                                    R.string.player_undislike_cd
-                                                } else {
-                                                    R.string.player_dislike_cd
-                                                },
-                                            ),
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Filled.ThumbDown,
-                                            contentDescription = null,
-                                        )
-                                    },
-                                    enabled = track != null,
-                                    onClick = {
-                                        showMenu = false
-                                        viewModel.toggleDislike()
-                                    },
-                                )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.player_tuning)) },
                                     leadingIcon = {
@@ -747,6 +716,10 @@ fun PlayerScreen(
                         artist = track?.artist ?: "—",
                         source = track?.source,
                         artworkUrl = track?.artworkUrl,
+                        isLiked = isLiked,
+                        isDisliked = isDisliked,
+                        canDownload = canDownload,
+                        downloadState = downloadState,
                         isLyricsMode = isLyricsMode,
                         trackKey = track?.id,
                         lyricsResult = uiState.lyrics,
@@ -754,12 +727,18 @@ fun PlayerScreen(
                         lyricsError = uiState.lyricsError,
                         lyricsListState = lyricsListState,
                         palette = playerColors,
+                        actionAccent = coverAccent,
+                        actionContainer = heroActionContainer,
+                        actionIdleContainer = heroActionIdleContainer,
                         notePainter = notePainter,
                         placeholderPainter = placeholderPainter,
                         currentPositionMs = { viewModel.currentPositionMs() },
                         onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                         onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
                         onLyricsListBoundsChanged = { lyricsListBounds = it },
+                        onToggleLike = { toggleLikeWithPermission() },
+                        onToggleDislike = { viewModel.toggleDislike() },
+                        onDownloadClick = { viewModel.toggleDownload() },
                         // Подпись артиста под названием ведёт на его экран.
                         // Без трека (плейсхолдер «—») она некликабельна.
                         onArtistClick = if (track != null) onArtistClick else null,
@@ -812,8 +791,7 @@ fun PlayerScreen(
                     PlayerControlIsland(
                         isPlaying = playerState.isPlaying,
                         isBuffering = isBuffering,
-                        shuffleEnabled = playerState.isShuffle,
-                        repeatMode = playerState.repeatMode,
+                        playbackSpeed = playerState.playbackSpeed,
                         containerColor = if (dynamicColorsEnabled) {
                             lerpColor(
                                 MaterialTheme.colorScheme.surfaceContainerLow,
@@ -830,8 +808,16 @@ fun PlayerScreen(
                         onPlayPause = { viewModel.togglePlayPause() },
                         onPrev = { viewModel.playPrevious() },
                         onNext = { viewModel.playNext() },
-                        onToggleShuffle = { viewModel.toggleShuffle() },
-                        onToggleRepeat = { viewModel.toggleRepeat() },
+                        onSpeedClick = { viewModel.cyclePlaybackSpeed() },
+                        onQueueClick = { showQueueSheet = true },
+                        isLyricsMode = isLyricsMode,
+                        onLyricsClick = {
+                            val nextMode = !isLyricsMode
+                            isLyricsMode = nextMode
+                            if (nextMode) {
+                                viewModel.loadLyricsIfNeeded(track)
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(panelModifier)
@@ -839,73 +825,6 @@ fun PlayerScreen(
                             .onGloballyPositioned { controlIslandBounds = it.boundsInRoot() }
                             .padding(top = 8.dp)
                             .then(controlIslandSwipeGuard),
-                        actionsContent = {
-                            // Лайк — главное действие, поэтому крайний слева.
-                            PlayerActionItem(
-                                icon = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                label = stringResource(R.string.player_action_like),
-                                active = isLiked,
-                                accentColor = coverAccent,
-                                activeContainerColor = heroActionContainer,
-                                idleContainerColor = heroActionIdleContainer,
-                                onClick = { toggleLikeWithPermission() },
-                                modifier = Modifier.weight(1f),
-                            )
-                            // У локального трека скачивать нечего, но слот держим:
-                            // иначе оставшиеся действия прыгают по ширине.
-                            if (canDownload) {
-                                PlayerActionItem(
-                                    icon = downloadActionIcon(downloadState),
-                                    label = stringResource(R.string.player_action_download),
-                                    active = downloadState is DownloadState.Downloaded,
-                                    loading = downloadState is DownloadState.InProgress,
-                                    accentColor = coverAccent,
-                                    activeContainerColor = heroActionContainer,
-                                    idleContainerColor = heroActionIdleContainer,
-                                    onClick = { viewModel.toggleDownload() },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            } else {
-                                Spacer(Modifier.weight(1f))
-                            }
-                            PlayerActionItem(
-                                icon = Icons.Rounded.Lyrics,
-                                label = stringResource(R.string.player_action_lyrics),
-                                active = isLyricsMode,
-                                accentColor = coverAccent,
-                                activeContainerColor = heroActionContainer,
-                                idleContainerColor = heroActionIdleContainer,
-                                onClick = {
-                                    val nextMode = !isLyricsMode
-                                    isLyricsMode = nextMode
-                                    if (nextMode) viewModel.loadLyricsIfNeeded(track)
-                                },
-                                contentDescription = stringResource(R.string.player_lyrics),
-                                modifier = Modifier.weight(1f),
-                            )
-                            PlayerActionItem(
-                                icon = Icons.AutoMirrored.Rounded.QueueMusic,
-                                label = stringResource(R.string.player_action_queue),
-                                active = false,
-                                accentColor = coverAccent,
-                                activeContainerColor = heroActionContainer,
-                                idleContainerColor = heroActionIdleContainer,
-                                onClick = { showQueueSheet = true },
-                                contentDescription = stringResource(R.string.queue_title),
-                                modifier = Modifier.weight(1f),
-                            )
-                            PlayerActionItem(
-                                icon = Icons.Rounded.Speed,
-                                label = stringResource(R.string.player_action_variations),
-                                active = playerState.variation != PlaybackVariation.NORMAL,
-                                accentColor = coverAccent,
-                                activeContainerColor = heroActionContainer,
-                                idleContainerColor = heroActionIdleContainer,
-                                onClick = { showVariations = true },
-                                contentDescription = stringResource(R.string.player_variations),
-                                modifier = Modifier.weight(1f),
-                            )
-                        },
                     ) {
                         PlayerProgressSection(
                             isPlaying = playerState.isPlaying,
@@ -955,6 +874,7 @@ fun PlayerScreen(
             currentIndex = playerState.currentIndex,
             isShuffle = playerState.isShuffle,
             repeatMode = playerState.repeatMode,
+            queueOrigin = playerState.queueOrigin,
             onTrackClick = { index -> viewModel.playQueueTrack(index) },
             onRemoveTrack = { index -> viewModel.removeQueueTrack(index) },
             onToggleShuffle = { viewModel.toggleShuffle() },
@@ -1083,18 +1003,29 @@ private fun ExpressiveHeroZone(
     artist: String,
     source: Source?,
     artworkUrl: String?,
+    isLiked: Boolean,
+    isDisliked: Boolean,
+    canDownload: Boolean,
+    downloadState: DownloadState,
     isLyricsMode: Boolean,
     lyricsResult: LyricsResult?,
     isLyricsLoading: Boolean,
     lyricsError: String?,
     lyricsListState: LazyListState,
     palette: PlayerDynamicColors,
+    // Цвета кнопок под обложкой: акцент обложки/темы, его контейнер и подложка покоя.
+    actionAccent: Color,
+    actionContainer: Color,
+    actionIdleContainer: Color,
     notePainter: Painter,
     placeholderPainter: Painter,
     currentPositionMs: () -> Long,
     onSeekToLine: (Long) -> Unit,
     onRetryLyrics: () -> Unit,
     onLyricsListBoundsChanged: (Rect?) -> Unit,
+    onToggleLike: () -> Unit,
+    onToggleDislike: () -> Unit,
+    onDownloadClick: () -> Unit,
     /** Тап по имени артиста; null — подпись не кликабельна. */
     onArtistClick: ((String) -> Unit)? = null,
     coverModifier: Modifier = Modifier,
@@ -1228,9 +1159,36 @@ private fun ExpressiveHeroZone(
                             }
                         }
                     }
-                    // Действия (лайк, скачать, текст, очередь, вариации) переехали
-                    // под кнопку Play: там до них достаёт большой палец.
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (canDownload) {
+                            DownloadSquircle(
+                                state = downloadState,
+                                primaryColor = actionAccent,
+                                primaryContainerColor = actionContainer,
+                                idleContainerColor = actionIdleContainer,
+                                onClick = onDownloadClick,
+                            )
+                        } else {
+                            Spacer(Modifier.size(48.dp))
+                        }
+                        LikeSquircle(
+                            isLiked = isLiked,
+                            primaryColor = actionAccent,
+                            primaryContainerColor = actionContainer,
+                            idleContainerColor = actionIdleContainer,
+                            onToggleLike = onToggleLike,
+                        )
+                        DislikeSquircle(
+                            isDisliked = isDisliked,
+                            idleContainerColor = actionIdleContainer,
+                            onToggleDislike = onToggleDislike,
+                        )
+                    }
+                    Spacer(Modifier.height(24.dp))
                 }
             }
         }
@@ -2155,6 +2113,7 @@ private fun PlayerProgressSection(
                         thumbColor = MaterialTheme.colorScheme.onSurface,
                         bufferedFraction = bufferFrac,
                         enabled = durationMs > 0,
+                        isPlaying = isPlaying,
                     )
                 }
             }
@@ -2259,13 +2218,6 @@ private fun sourceLabel(source: Source): String = when (source) {
     else -> source.name
 }
 
-/** Иконка действия «Скачать» по состоянию загрузки. */
-private fun downloadActionIcon(state: DownloadState) = when (state) {
-    is DownloadState.Downloaded -> Icons.Rounded.DownloadDone
-    is DownloadState.Error -> Icons.Rounded.Close
-    else -> Icons.Rounded.Download
-}
-
 /** Строковый ресурс названия вариации. */
 private fun variationLabelRes(variation: PlaybackVariation): Int = when (variation) {
     PlaybackVariation.NORMAL -> R.string.variation_normal
@@ -2273,10 +2225,6 @@ private fun variationLabelRes(variation: PlaybackVariation): Int = when (variati
     PlaybackVariation.SLOWED -> R.string.variation_slowed
     PlaybackVariation.NIGHTCORE -> R.string.variation_nightcore
 }
-
-/** Скорость воспроизведения без лишнего нуля: 1×, 1.25×, 0.75×. */
-private fun formatSpeed(speed: Float): String =
-    if (speed % 1f == 0f) "${speed.toInt()}×" else "${speed}×"
 
 /**
  * Детюн: выбор строя. 440 Гц — стандарт, остальные сдвигают питч

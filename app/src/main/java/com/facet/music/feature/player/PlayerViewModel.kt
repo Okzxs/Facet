@@ -19,6 +19,7 @@ import com.facet.music.core.player.ERROR_LYRICS
 import com.facet.music.core.player.PlaybackVariation
 import com.facet.music.core.player.PlayerController
 import com.facet.music.core.player.PlayerState
+import com.facet.music.core.player.QueueOrigin
 import com.facet.music.core.player.SleepTimerState
 import com.facet.music.core.player.sleepTimerEndTime
 import com.facet.music.core.player.toFriendlyPlaybackMessage
@@ -358,7 +359,12 @@ class PlayerViewModel @Inject constructor(
     /**
      * Запустить трек в контексте списка-источника (очереди).
      */
-    fun playTrackWithQueue(track: Track, queue: List<Track>, resetWave: Boolean = true) {
+    fun playTrackWithQueue(
+        track: Track,
+        queue: List<Track>,
+        resetWave: Boolean = true,
+        origin: QueueOrigin = QueueOrigin.MAIN,
+    ) {
         val targetQueue = if (queue.isNotEmpty()) queue else listOf(track)
         val startIndex = targetQueue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
 
@@ -388,8 +394,11 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
-        playerController.setQueueAndPlay(targetQueue, startIndex)
+        playerController.setQueueAndPlay(targetQueue, startIndex, origin)
     }
+
+    /** Полностью закрыть плеер: стоп, пустая очередь, очистка сохранённой. */
+    fun clearQueue() = playerController.clearQueue()
 
     /**
      * Радио от трека: строим сессию волны на похожих артистах и сразу играем
@@ -404,11 +413,14 @@ class PlayerViewModel @Inject constructor(
             _uiState.update { it.copy(isRadioLoading = false) }
             result
                 .onSuccess { batch ->
-                    if (batch.tracks.isEmpty()) return@onSuccess
+                    // Первым играет сам трек-сид: волна подхватывает похожие
+                    // следом, а не начинает с чужого трека.
+                    val related = batch.tracks.filter { it.id != track.id }
                     playTrackWithQueue(
-                        track = batch.tracks.first(),
-                        queue = batch.tracks,
+                        track = track,
+                        queue = listOf(track) + related,
                         resetWave = false,
+                        origin = QueueOrigin.WAVE_FROM_TRACK,
                     )
                 }
                 .onFailure { error ->

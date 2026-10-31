@@ -35,7 +35,10 @@ fun ExpressiveBottomDock(
             val selected = item.screen.route == selectedRoute
             NavigationBarItem(
                 selected = selected,
-                onClick = { if (!selected) onSelect(item) },
+                // Выбранная вкладка тоже нажимается: на детальном экране
+                // (импорт) она подсвечена как «Библиотека», и тап должен
+                // вернуть на неё, а не молчать из-за selected.
+                onClick = { onSelect(item) },
                 icon = {
                     Icon(
                         imageVector = if (selected) item.selectedIcon else item.unselectedIcon,

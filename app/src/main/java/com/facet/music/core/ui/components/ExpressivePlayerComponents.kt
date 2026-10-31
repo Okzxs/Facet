@@ -12,11 +12,12 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,14 +26,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOne
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -43,15 +45,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.facet.music.R
-import com.facet.music.core.player.RepeatMode
 
 /** Пружинный press-scale (0.90 при нажатии) — общий микро-жест Expressive-кнопок. */
 @Composable
@@ -67,16 +67,15 @@ fun rememberPressScale(interactionSource: InteractionSource): Float {
 
 /**
  * Плавающий «остров» управления плеером:
- * - каплевидная асимметричная форма и цветная тень от палитры;
- * - внутри: слот прогресса, транспорт (шаффл, пред/плей/след, повтор)
- *   и необязательный ряд действий с подписями под Play.
+ * - каплевидная асимметричная форма (44dp сверху, 22dp снизу) и цветная тень от палитры;
+ * - к верхней кромке «прирос» язычок режима текста, выступающий над островом;
+ * - внутри: слот прогресса и ряд — скорость, пред/плей/след, очередь.
  */
 @Composable
 fun PlayerControlIsland(
     isPlaying: Boolean,
     isBuffering: Boolean,
-    shuffleEnabled: Boolean,
-    repeatMode: RepeatMode,
+    playbackSpeed: Float,
     containerColor: Color,
     contentColor: Color,
     accentColor: Color,
@@ -85,10 +84,11 @@ fun PlayerControlIsland(
     onPlayPause: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    onToggleShuffle: () -> Unit,
-    onToggleRepeat: () -> Unit,
+    onSpeedClick: () -> Unit,
+    onQueueClick: () -> Unit,
+    isLyricsMode: Boolean = false,
+    onLyricsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    actionsContent: (@Composable RowScope.() -> Unit)? = null,
     progressContent: @Composable () -> Unit,
 ) {
     val islandShape = MaterialTheme.shapes.extraLarge
@@ -101,34 +101,107 @@ fun PlayerControlIsland(
             tonalElevation = 0.dp,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                modifier = Modifier.padding(16.dp),
             ) {
                 progressContent()
 
-                // Запас между таймлайном и рядом кнопок: палец, целящийся в Play/Pause,
+                // Кнопка текста прямо на панели управления: режим переключается
+                // и из шапки, но под большим пальцем она ближе к Play/Pause.
+                if (onLyricsClick != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        FilledTonalButton(
+                            onClick = onLyricsClick,
+                            modifier = Modifier.height(34.dp),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            colors = if (isLyricsMode) {
+                                ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            } else {
+                                ButtonDefaults.filledTonalButtonColors()
+                            },
+                        ) {
+                            Icon(
+                                imageVector = if (isLyricsMode) {
+                                    Icons.Rounded.Album
+                                } else {
+                                    Icons.Rounded.Lyrics
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(
+                                    if (isLyricsMode) R.string.player_cover else R.string.player_lyrics,
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                    }
+                }
+
+                // Запас между волной и рядом кнопок: палец, целящийся в Play/Pause,
                 // не должен задевать зону перемотки
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IslandToggle(
-                        icon = Icons.Filled.Shuffle,
-                        active = shuffleEnabled,
-                        contentDescription = stringResource(R.string.queue_shuffle_cd),
-                        accentColor = accentColor,
+                    val speedInteraction = remember { MutableInteractionSource() }
+                    val speedScale = rememberPressScale(speedInteraction)
+                    Surface(
+                        onClick = onSpeedClick,
+                        interactionSource = speedInteraction,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .graphicsLayer {
+                                scaleX = speedScale
+                                scaleY = speedScale
+                            },
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = contentColor,
-                        onClick = onToggleShuffle,
-                    )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = if (playbackSpeed == 1.0f) "1×" else "${playbackSpeed}×",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            )
+                        }
+                    }
 
-                    TransportButton(
-                        icon = Icons.Filled.SkipPrevious,
-                        contentDescription = stringResource(R.string.common_previous_cd),
-                        contentColor = contentColor,
+                    val prevInteraction = remember { MutableInteractionSource() }
+                    val prevScale = rememberPressScale(prevInteraction)
+                    FilledIconButton(
                         onClick = onPrev,
-                    )
+                        interactionSource = prevInteraction,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .graphicsLayer {
+                                scaleX = prevScale
+                                scaleY = prevScale
+                            },
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = contentColor,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipPrevious,
+                            contentDescription = stringResource(R.string.common_previous_cd),
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
 
                     PlayMorphButton(
                         isPlaying = isPlaying,
@@ -138,168 +211,57 @@ fun PlayerControlIsland(
                         onClick = onPlayPause,
                     )
 
-                    TransportButton(
-                        icon = Icons.Filled.SkipNext,
-                        contentDescription = stringResource(R.string.common_next_cd),
-                        contentColor = contentColor,
+                    val nextInteraction = remember { MutableInteractionSource() }
+                    val nextScale = rememberPressScale(nextInteraction)
+                    FilledIconButton(
                         onClick = onNext,
-                    )
+                        interactionSource = nextInteraction,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .graphicsLayer {
+                                scaleX = nextScale
+                                scaleY = nextScale
+                            },
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = contentColor,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipNext,
+                            contentDescription = stringResource(R.string.common_next_cd),
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
 
-                    IslandToggle(
-                        icon = if (repeatMode == RepeatMode.ONE) {
-                            Icons.Filled.RepeatOne
-                        } else {
-                            Icons.Filled.Repeat
-                        },
-                        active = repeatMode != RepeatMode.OFF,
-                        contentDescription = stringResource(R.string.queue_repeat_cd),
-                        accentColor = accentColor,
+                    val queueInteraction = remember { MutableInteractionSource() }
+                    val queueScale = rememberPressScale(queueInteraction)
+                    Surface(
+                        onClick = onQueueClick,
+                        interactionSource = queueInteraction,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .graphicsLayer {
+                                scaleX = queueScale
+                                scaleY = queueScale
+                            },
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = contentColor,
-                        onClick = onToggleRepeat,
-                    )
-                }
-
-                if (actionsContent != null) {
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top,
-                        content = actionsContent,
-                    )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                                contentDescription = stringResource(R.string.queue_title),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
                 }
             }
         }
-    }
-}
 
-/** Кнопка транспорта 48dp без фона: пред/след не спорят с Play. */
-@Composable
-private fun TransportButton(
-    icon: ImageVector,
-    contentDescription: String,
-    contentColor: Color,
-    onClick: () -> Unit,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val scale = rememberPressScale(interaction)
-    FilledIconButton(
-        onClick = onClick,
-        interactionSource = interaction,
-        modifier = Modifier
-            .size(48.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            },
-        shape = CircleShape,
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = Color.Transparent,
-            contentColor = contentColor,
-        ),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(24.dp),
-        )
-    }
-}
-
-/**
- * Малый переключатель транспорта (шаффл/повтор): 40dp, в активном состоянии —
- * тональная подложка акцента. Нажатие пружинит, как и остальные кнопки острова.
- */
-@Composable
-private fun IslandToggle(
-    icon: ImageVector,
-    active: Boolean,
-    contentDescription: String,
-    accentColor: Color,
-    contentColor: Color,
-    onClick: () -> Unit,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val scale = rememberPressScale(interaction)
-    Surface(
-        onClick = onClick,
-        interactionSource = interaction,
-        modifier = Modifier
-            .size(40.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            },
-        shape = CircleShape,
-        color = if (active) accentColor.copy(alpha = 0.18f) else Color.Transparent,
-        contentColor = if (active) accentColor else contentColor,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(21.dp),
-            )
-        }
-    }
-}
-
-/**
- * Действие плеера: тональная иконка и подпись снизу.
- *
- * Ряд из пяти таких кнопок живёт под Play и заменяет прежние сквирклы над
- * островом: лайк, скачивание, текст, очередь и вариации теперь в одном месте.
- * Активное состояние красится контейнером и акцентом обложки, загрузка
- * показывается кольцом прогресса вместо иконки.
- */
-@Composable
-fun PlayerActionItem(
-    icon: ImageVector,
-    label: String,
-    active: Boolean,
-    accentColor: Color,
-    activeContainerColor: Color,
-    idleContainerColor: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    loading: Boolean = false,
-    contentDescription: String = label,
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        FilledTonalIconButton(
-            onClick = onClick,
-            modifier = Modifier.size(44.dp),
-            shape = CircleShape,
-            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = if (active) activeContainerColor else idleContainerColor,
-                contentColor = if (active) accentColor else MaterialTheme.colorScheme.onSurface,
-            ),
-        ) {
-            if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.5.dp,
-                    color = accentColor,
-                )
-            } else {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = contentDescription,
-                    modifier = Modifier.size(21.dp),
-                )
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-            color = if (active) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

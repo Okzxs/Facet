@@ -34,13 +34,19 @@ object SoundCloudLikesParser {
     }
 
     private fun toTrack(item: kotlinx.serialization.json.JsonObject): Track? {
-        val permalink = item["permalink_url"]?.jsonPrimitive?.contentOrNull ?: return null
-        val title = item["title"]?.jsonPrimitive?.contentOrNull ?: return null
+        // api-v2 отдаёт лайк объектом `{ "created_at": …, "track": { … } }`.
+        // Старые ответы и тесты могут присылать трек напрямую — поддерживаем оба.
+        val track = item["track"]?.jsonObject ?: item
+        val permalink = track["permalink_url"]?.jsonPrimitive?.contentOrNull ?: return null
+        val title = track["title"]?.jsonPrimitive?.contentOrNull ?: return null
         if (permalink.isBlank() || title.isBlank()) return null
-        val artist = item["user"]?.jsonObject?.get("username")
+        val artist = track["user"]?.jsonObject?.get("username")
             ?.jsonPrimitive?.contentOrNull.orEmpty()
-        val artwork = item["artwork_url"]?.jsonPrimitive?.contentOrNull
-        val duration = item["duration"]?.jsonPrimitive?.longOrNull ?: 0L
+        val artwork = track["artwork_url"]?.jsonPrimitive?.contentOrNull
+        // full_duration — полная длина; duration у превью-треков равна 30 с.
+        val duration = track["full_duration"]?.jsonPrimitive?.longOrNull
+            ?: track["duration"]?.jsonPrimitive?.longOrNull
+            ?: 0L
         return Track(
             id = permalink,
             source = Source.SOUNDCLOUD,

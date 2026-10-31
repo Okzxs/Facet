@@ -380,8 +380,14 @@ class PlayerController private constructor(
 
     /**
      * Задать новую очередь треков и начать воспроизведение с [startIndex].
+     * [origin] помечает, откуда очередь пришла: обычный запуск, «Моя волна»
+     * или «Волна по треку» — это показывается в шторке очереди.
      */
-    fun setQueueAndPlay(tracks: List<Track>, startIndex: Int = 0) {
+    fun setQueueAndPlay(
+        tracks: List<Track>,
+        startIndex: Int = 0,
+        origin: QueueOrigin = QueueOrigin.MAIN,
+    ) {
         if (tracks.isEmpty()) return
         val clampedIndex = startIndex.coerceIn(0, tracks.lastIndex)
         originalQueue = tracks
@@ -400,6 +406,7 @@ class PlayerController private constructor(
             it.copy(
                 queue = effectiveQueue,
                 currentIndex = effectiveIndex,
+                queueOrigin = origin,
             )
         }
 
@@ -913,6 +920,36 @@ class PlayerController private constructor(
         }
     }
 
+    /**
+     * Полностью закрыть плеер: остановить звук, очистить очередь и сохранённое
+     * состояние. Мини-плеер и экран плеера исчезают, следующий запуск — с нуля.
+     */
+    fun clearQueue() {
+        mediaController?.let { controller ->
+            runCatching {
+                controller.stop()
+                controller.clearMediaItems()
+            }
+        }
+        originalQueue = emptyList()
+        _state.update {
+            it.copy(
+                currentTrack = null,
+                isPlaying = false,
+                isLoading = false,
+                isBuffering = false,
+                playbackState = Player.STATE_IDLE,
+                queue = emptyList(),
+                currentIndex = -1,
+                error = null,
+                queueOrigin = QueueOrigin.MAIN,
+            )
+        }
+        scope.launch {
+            runCatching { queueRepository?.clear() }
+        }
+    }
+
     fun seekTo(positionMs: Long) {
         mediaController?.seekTo(positionMs)
     }
@@ -995,6 +1032,20 @@ class PlayerController private constructor(
 }
 
 /**
+ * Откуда пришла текущая очередь — для подписи в шторке очереди.
+ */
+enum class QueueOrigin {
+    /** Обычный запуск из поиска, медиатеки, плейлиста. */
+    MAIN,
+
+    /** Бесконечная «Моя волна» со вкладки. */
+    WAVE,
+
+    /** Радио от конкретного трека («Волна по треку»). */
+    WAVE_FROM_TRACK,
+}
+
+/**
  * Снимок состояния плеера и очереди для UI.
  */
 data class PlayerState(
@@ -1012,5 +1063,6 @@ data class PlayerState(
     val currentIndex: Int = -1,
     val repeatMode: RepeatMode = RepeatMode.OFF,
     val isShuffle: Boolean = false,
+    val queueOrigin: QueueOrigin = QueueOrigin.MAIN,
     val error: String? = null,
 )

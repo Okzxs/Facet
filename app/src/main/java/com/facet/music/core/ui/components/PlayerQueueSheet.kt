@@ -37,6 +37,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
+import com.facet.music.core.player.QueueOrigin
 import com.facet.music.core.player.RepeatMode
 import com.facet.music.data.model.Track
 
@@ -56,6 +57,7 @@ fun PlayerQueueSheet(
     currentIndex: Int,
     isShuffle: Boolean,
     repeatMode: RepeatMode,
+    queueOrigin: QueueOrigin,
     onTrackClick: (Int) -> Unit,
     onRemoveTrack: (Int) -> Unit,
     onToggleShuffle: () -> Unit,
@@ -113,6 +115,18 @@ fun PlayerQueueSheet(
                         text = pluralStringResource(R.plurals.track_count, queue.size, queue.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    // Откуда очередь: обычный запуск, «Моя волна» или радио от трека.
+                    Text(
+                        text = stringResource(
+                            when (queueOrigin) {
+                                QueueOrigin.MAIN -> R.string.queue_origin_main
+                                QueueOrigin.WAVE -> R.string.queue_origin_wave
+                                QueueOrigin.WAVE_FROM_TRACK -> R.string.queue_origin_wave_track
+                            },
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
 

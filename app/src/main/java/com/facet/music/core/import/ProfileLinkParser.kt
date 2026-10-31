@@ -40,10 +40,16 @@ object ProfileLinkParser {
 
     /** `soundcloud.com/<user>` — профиль, а не трек и не сет. */
     private fun parseSoundCloud(host: String, segments: List<String>): ParsedProfile? {
-        if (segments.size != 1) return null
-        val user = segments.single()
+        if (segments.isEmpty()) return null
+        val user = segments.first()
         if (user.equals("you", true) || user.equals("discover", true)) return null
-        return ParsedProfile(ImportService.SOUNDCLOUD, "https://$host/$user")
+        // Ссылки на вкладки профиля (`/likes`, `/tracks`, …) тоже ведут на профиль:
+        // люди копируют адрес прямо из открытой вкладки «Лайки».
+        val isProfileTab = segments.size == 1 ||
+            (segments.size == 2 && segments[1].lowercase() in PROFILE_TABS)
+        if (!isProfileTab) return null
+        val canonicalHost = host.removePrefix("www.").removePrefix("m.")
+        return ParsedProfile(ImportService.SOUNDCLOUD, "https://$canonicalHost/$user")
     }
 
     private fun isSpotifyHost(host: String): Boolean =
@@ -53,4 +59,7 @@ object ProfileLinkParser {
         host == "soundcloud.com" || host.endsWith(".soundcloud.com")
 
     private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
+
+    /** Вкладки профиля SoundCloud, которые не превращают ссылку в трек/сет. */
+    private val PROFILE_TABS = setOf("likes", "tracks", "albums", "playlists", "reposts")
 }

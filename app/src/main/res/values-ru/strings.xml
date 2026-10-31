@@ -100,9 +100,9 @@
     <string name="settings_language_restart">Перезапустить</string>
     <string name="settings_integrations">Интеграции</string>
     <string name="settings_spotify">Spotify</string>
-    <string name="settings_spotify_hint">Ключи нужны только для поиска: стрим идёт через YouTube</string>
-    <string name="settings_spotify_quota_warning">Для работы на 10+ устройствах требуется Extended Quota Mode в Spotify Developer Dashboard</string>
-    <string name="settings_spotify_where">Создайте приложение в кабинете Spotify for Developers и скопируйте Client ID и Client Secret</string>
+    <string name="settings_spotify_hint">Ключи открывают поиск и импорт Spotify. С 11.02.2026 новый Client ID выдаётся только аккаунтам с Spotify Premium.</string>
+    <string name="settings_spotify_quota_warning">Development Mode: один Client ID и до 5 пользователей. Для большего нужен Extended Quota Mode.</string>
+    <string name="settings_spotify_where">Создайте приложение в кабинете Spotify for Developers (для нового Client ID нужен Premium) и скопируйте Client ID и Client Secret</string>
     <string name="settings_spotify_client_id">Client ID</string>
     <string name="settings_spotify_client_secret">Client secret</string>
     <string name="settings_spotify_connected">Подключено</string>
@@ -264,12 +264,16 @@
     <string name="player_lyrics_retry">Повторить поиск текста</string>
     <string name="player_download_failed">Не удалось скачать трек (доступен только онлайн)</string>
     <string name="player_find_on_youtube">Найти</string>
+    <string name="player_close_mini">Закрыть плеер</string>
 
     <!-- Очередь -->
     <string name="queue_section_now">Сейчас играет</string>
     <string name="queue_section_next">Далее</string>
     <string name="queue_section_played">Проиграно</string>
     <string name="queue_title">Очередь</string>
+    <string name="queue_origin_main">Обычная очередь</string>
+    <string name="queue_origin_wave">Моя волна</string>
+    <string name="queue_origin_wave_track">Волна по треку</string>
     <string name="queue_empty">Очередь пуста</string>
     <string name="queue_remove_cd">Удалить из очереди</string>
     <string name="queue_playing_cd">Играет</string>
@@ -356,6 +360,9 @@
     <string name="import_tab_text">Список</string>
     <string name="import_profile_hint_spotify">Вставь ссылку на профиль Spotify — покажем публичные плейлисты.</string>
     <string name="import_profile_hint_soundcloud">Вставь ссылку на профиль SoundCloud — покажем публичные плейлисты.</string>
+    <string name="import_profile_card_title">Профиль</string>
+    <string name="import_profile_hint">Публичные профили Spotify и SoundCloud. Вставь ссылку или имя пользователя.</string>
+    <string name="import_profile_placeholder">soundcloud.com/username</string>
     <string name="import_profile_field">Ссылка на профиль</string>
     <string name="import_profile_load">Загрузить плейлисты</string>
     <string name="import_sc_likes_title">Любимые треки из SoundCloud</string>
@@ -363,12 +370,19 @@
     <string name="import_sc_likes_button">Загрузить лайки</string>
     <string name="import_sc_likes_found">Лайков: %1$d</string>
     <string name="import_sc_likes_import">Импортировать %1$d лайков</string>
+    <string name="import_sc_likes_empty">У профиля нет лайков</string>
+    <string name="import_sc_likes_private">Профиль приватный или лайки скрыты</string>
+    <string name="import_sc_likes_api_error">Ошибка API SoundCloud: %1$d</string>
+    <string name="import_sc_likes_network">Не удалось связаться с SoundCloud</string>
+    <string name="import_sc_likes_done">Импортировано лайков: %1$d</string>
+    <string name="import_sc_likes_duplicates">Новых лайков нет — всё уже в избранном</string>
     <string name="import_error_soundcloud_client">Добавь client_id SoundCloud для импорта лайков</string>
     <string name="import_profile_found">Плейлистов: %1$d · выбрано %2$d</string>
     <string name="import_profile_tracks">Треков: %1$d</string>
     <string name="import_profile_import_selected">Импортировать выбранные (%1$d)</string>
     <string name="import_profile_empty">В профиле нет публичных плейлистов</string>
     <string name="import_text_hint">Один трек на строку. Формат «Артист - Название» или просто название — тогда ищем как есть.</string>
+    <string name="import_text_card_title">Список треков</string>
     <string name="import_text_field">Список треков</string>
     <string name="import_text_parse">Найти треки</string>
     <string name="import_text_import">Сохранить плейлист</string>

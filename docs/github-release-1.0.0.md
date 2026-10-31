@@ -27,8 +27,8 @@ Apple Music и Spotify в одном приложении на каноничн�
 распространяется только как APK: публикация в сторах невозможна из-за парсинга
 стриминговых сервисов.
 
-- Файл: `app-release.apk`, 6 477 737 байт
-- SHA-256: `e627d69c56081e108ad16c01b9e5294b6ccbc115b6f3449f363e37becc68ea5d`
+- Файл: `app-release.apk`, 6 501 021 байт
+- SHA-256: `e43682c02b204357cac02c304960637a66159465a314736d89029fe0b1d0daae`
 - versionName `1.0.0`, versionCode `1`
 
 Проверить контрольную сумму на Windows:
@@ -41,6 +41,8 @@ Get-FileHash .\app-release.apk -Algorithm SHA256
 
 - Deezer и Apple Music — превью 30 секунд; полный трек подтягивается с YouTube.
 - Spotify-вход нужен для метаданных и импорта; звук Spotify недоступен.
+  С 11.02.2026 новый Development Mode Client ID требует Spotify Premium
+  (один Client ID и до 5 пользователей).
 - Импорт любимых SoundCloud работает для публичных профилей через `api-v2` и
   публичный `client_id`; закрытый профиль лайки не отдаёт.
 - Slowed меняет скорость и питч, без reverb.

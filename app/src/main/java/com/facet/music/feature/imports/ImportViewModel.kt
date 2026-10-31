@@ -12,6 +12,8 @@ import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlaylistRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
+import com.facet.music.data.source.external.SoundCloudApiException
+import com.facet.music.data.source.external.SoundCloudLikesPrivateException
 import com.facet.music.data.source.external.SoundCloudLikesProvider
 import com.facet.music.data.source.imports.PlaylistImportResult
 import com.facet.music.data.source.imports.PlaylistImportService
@@ -27,6 +29,21 @@ import javax.inject.Inject
 
 /** Вкладка экрана импорта. */
 enum class ImportTab { PROFILE, TEXT }
+
+/** Почему лайки SoundCloud не загрузились — текст выбирает экран. */
+enum class LikesError {
+    /** У профиля действительно нет лайков. */
+    EMPTY,
+
+    /** API ответил пусто, хотя лайки есть: профиль закрыт или скрыл их. */
+    PRIVATE,
+
+    /** HTTP-ошибка api-v2 (например, 401/403 из-за client_id). */
+    API,
+
+    /** Сеть недоступна или ответ не разобрался. */
+    NETWORK,
+}
 
 /** Плейлист профиля с отметкой выбора. */
 data class ProfilePlaylistItem(
@@ -54,7 +71,10 @@ data class ImportUiState(
     val importedPlaylists: Int = 0,
     /** Превью лайков SoundCloud до импорта. */
     val likesPreview: List<Track> = emptyList(),
-    val likesImported: Int = 0,
+    val likesImported: Int? = null,
+    /** Ошибка загрузки лайков и HTTP-код, если виноват API. */
+    val likesError: LikesError? = null,
+    val likesApiCode: Int? = null,
 ) {
     val selectedCount: Int get() = playlists.count { it.selected }
 }
@@ -84,18 +104,51 @@ class ImportViewModel @Inject constructor(
         if (_uiState.value.isLoading) return
         viewModelScope.launch {
             _uiState.update {
-                it.copy(isLoading = true, error = null, likesPreview = emptyList())
+                it.copy(
+                    isLoading = true,
+                    error = null,
+                    likesPreview = emptyList(),
+                    likesError = null,
+                    likesApiCode = null,
+                )
             }
-            val parsed = ProfileLinkParser.parse(_uiState.value.link)
-            val profileUrl = parsed?.id
-                ?: "https://soundcloud.com/${_uiState.value.link.trim().trimStart('@')}"
+            val rawLink = _uiState.value.link
+            // Если ссылка распознана как профиль — берём канонический URL;
+            // иначе провайдер сам добавит https://soundcloud.com/.
+            val profileUrl = ProfileLinkParser.parse(rawLink)
+                ?.takeIf { it.service == ImportService.SOUNDCLOUD }
+                ?.id
+                ?: rawLink.trim().trimStart('@')
 
             soundCloudLikesProvider.fetchLikes(profileUrl)
-                .onSuccess { tracks ->
-                    _uiState.update { it.copy(isLoading = false, likesPreview = tracks) }
+                .onSuccess { result ->
+                    val emptyReason = when {
+                        result.tracks.isNotEmpty() -> null
+                        result.likesCount == 0 -> LikesError.EMPTY
+                        else -> LikesError.PRIVATE
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            likesPreview = result.tracks,
+                            likesError = emptyReason,
+                            likesApiCode = null,
+                        )
+                    }
                 }
-                .onFailure {
-                    _uiState.update { it.copy(isLoading = false, error = ImportError.NETWORK) }
+                .onFailure { error ->
+                    val api = error as? SoundCloudApiException
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            likesError = when {
+                                error is SoundCloudLikesPrivateException -> LikesError.PRIVATE
+                                api != null -> LikesError.API
+                                else -> LikesError.NETWORK
+                            },
+                            likesApiCode = api?.code,
+                        )
+                    }
                 }
         }
     }
@@ -115,7 +168,7 @@ class ImportViewModel @Inject constructor(
                 it.copy(
                     isImporting = false,
                     likesImported = fresh.size,
-                    message = "Импортировано лайков SoundCloud: ${fresh.size}",
+                    message = null,
                 )
             }
         }
@@ -151,6 +204,11 @@ class ImportViewModel @Inject constructor(
 
     fun consumeMessage() {
         _uiState.update { it.copy(message = null, error = null) }
+    }
+
+    /** Показали итог импорта лайков — сбрасываем, чтобы он не повторялся. */
+    fun consumeLikesImported() {
+        _uiState.update { it.copy(likesImported = null) }
     }
 
     /** Загрузка публичных плейлистов профиля. */

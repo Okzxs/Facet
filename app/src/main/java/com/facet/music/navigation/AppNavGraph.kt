@@ -42,6 +42,8 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavBackStackEntry
@@ -83,6 +85,17 @@ fun AppNavGraph() {
     // остаётся скомпонованной под ним и реально проглядывает при свайпе вниз.
     var isPlayerOpen by rememberSaveable { mutableStateOf(false) }
 
+    // Плеер — оверлей поверх вкладки: если открыть его с клавиатурой в поиске,
+    // поле остаётся в фокусе и клавиатура висит над плеером. Гасим и фокус, и IME.
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(isPlayerOpen) {
+        if (isPlayerOpen) {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
+
     // Скрываем BottomBar на полноэкранных экранах (плеер, настройки, плейлист, артист).
     val showBottomBar by remember {
         derivedStateOf {
@@ -99,10 +112,14 @@ fun AppNavGraph() {
     // а не на каждой рекомпозиции дока.
     val selectedRoute by remember {
         derivedStateOf {
-            bottomNavItems.firstOrNull { item ->
-                navBackStackEntry?.destination?.hierarchy
-                    ?.any { it.route == item.screen.route } == true
-            }?.screen?.route
+            // Импорт — детальный экран медиатеки: подсвечиваем вкладку «Библиотека»,
+            // иначе на нём не выбрана ни одна вкладка.
+            val route = when (val current = navBackStackEntry?.destination?.route) {
+                Screen.Import.route -> Screen.Library.route
+                else -> current
+            }
+            bottomNavItems.firstOrNull { item -> item.screen.route == route }
+                ?.screen?.route
         }
     }
 
@@ -119,16 +136,31 @@ fun AppNavGraph() {
     }
     val miniTrack = currentTrack ?: lastTrack
 
+    // Крестик мини-плеера скрывает островок сразу, но lastTrack остаётся:
+    // так exit-анимация доигрывает с обложкой, а не пустой плашкой.
+    var isMiniPlayerDismissed by remember { mutableStateOf(false) }
+    LaunchedEffect(currentTrack) {
+        if (currentTrack != null) isMiniPlayerDismissed = false
+    }
+
     // Стабильные колбэки: не пересоздаются при рекомпозиции дока.
     val onTabSelect: (BottomNavItem) -> Unit = remember(navController) {
         { item ->
-            navController.navigate(item.screen.route) {
-                // Избегаем накопления back stack
-                popUpTo(navController.graph.findStartDestination().id) {
-                    saveState = true
+            val current = navController.currentDestination?.route
+            // Если вкладка уже лежит в стеке (например, из неё открыли импорт),
+            // сначала снимаем верхние экраны. Без этого restoreState возвращал
+            // сохранённый стек вместе с импортом — «Библиотека» не открывалась.
+            val popped = current != item.screen.route &&
+                navController.popBackStack(item.screen.route, inclusive = false)
+            if (!popped && current != item.screen.route) {
+                navController.navigate(item.screen.route) {
+                    // Избегаем накопления back stack
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
                 }
-                launchSingleTop = true
-                restoreState = true
             }
         }
     }
@@ -167,7 +199,10 @@ fun AppNavGraph() {
 
     // Островок показываем только когда есть трек и бар уже измерен: иначе
     // он не знает, на сколько подняться над навигацией.
-    val showMiniPlayer = showBottomBar && miniTrack != null && navBarHeightPx > 0
+    val showMiniPlayer = showBottomBar &&
+        miniTrack != null &&
+        navBarHeightPx > 0 &&
+        !isMiniPlayerDismissed
 
     // Резерв под островок в нижнем contentPadding вкладок. Анимируем, чтобы
     // контент не прыгал в момент появления/исчезновения мини-плеера.
@@ -388,6 +423,12 @@ fun AppNavGraph() {
                             onPlayPauseClick = { playerViewModel.togglePlayPause() },
                             onNext = { playerViewModel.playNext() },
                             onPrevious = { playerViewModel.playPrevious() },
+                            // lastTrack не трогаем: exit-анимация должна доиграть
+                            // с обложкой, а не пустой плашкой.
+                            onCloseClick = {
+                                isMiniPlayerDismissed = true
+                                playerViewModel.clearQueue()
+                            },
                             currentFraction = { playerViewModel.currentFraction() },
                             coverModifier = coverModifier,
                         )

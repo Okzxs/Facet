@@ -27,6 +27,14 @@ class ProfileLinkParserTest {
     }
 
     @Test
+    fun `soundcloud profile tab still points to profile`() {
+        val parsed = ProfileLinkParser.parse("https://soundcloud.com/onda-andar/likes")
+
+        assertEquals(ImportService.SOUNDCLOUD, parsed?.service)
+        assertEquals("https://soundcloud.com/onda-andar", parsed?.id)
+    }
+
+    @Test
     fun `soundcloud track and set links are not profiles`() {
         assertNull(ProfileLinkParser.parse("https://soundcloud.com/onda-andar/cachalot"))
         assertNull(ProfileLinkParser.parse("https://soundcloud.com/onda-andar/sets/mix"))

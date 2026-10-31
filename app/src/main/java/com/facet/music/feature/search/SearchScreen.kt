@@ -37,7 +37,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -247,7 +246,7 @@ fun SearchScreen(
                 onSelect = viewModel::onServiceSelected,
                 onAllSourcesSelect = viewModel::onAllSourcesSelected,
                 onRefreshStatuses = viewModel::refreshStatuses,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp),
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp),
             )
 
             AnimatedVisibility(
@@ -341,7 +340,7 @@ fun SearchScreen(
 @Composable
 private fun SearchHeader() {
     Column(
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
     ) {
         Text(
             text = stringResource(R.string.search_title),
@@ -369,58 +368,72 @@ private fun SourceSwitcher(
     val selectedHealth = statuses[selected] ?: ServiceHealth(isChecking = true)
 
     Column(modifier = modifier) {
-        AssistChip(
-            onClick = onAllSourcesSelect,
-            label = { Text(stringResource(R.string.search_all_sources)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Rounded.AutoAwesome,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = if (allSources) {
+        // Верхняя строка компактная: чипс сводного поиска и статус сервисов.
+        // Ряд отдельных источников ниже прячется, когда выбран «Все источники».
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AssistChip(
+                onClick = onAllSourcesSelect,
+                label = {
+                    Text(
+                        text = stringResource(R.string.search_all_sources),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = if (allSources) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                    )
+                },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = if (allSources) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+                    labelColor = if (allSources) {
                         MaterialTheme.colorScheme.onSecondaryContainer
                     } else {
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                )
-            },
-            colors = AssistChipDefaults.assistChipColors(
-                containerColor = if (allSources) {
-                    MaterialTheme.colorScheme.secondaryContainer
+                ),
+                border = if (allSources) {
+                    null
                 } else {
-                    Color.Transparent
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 },
-                labelColor = if (allSources) {
-                    MaterialTheme.colorScheme.onSecondaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            ),
-            border = if (allSources) {
-                null
-            } else {
-                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            },
-            modifier = Modifier.padding(bottom = 10.dp),
-        )
-        // 5 кнопок по 48dp, 4 промежутка по 10dp и кнопка статусов справа:
-        // 280 + 46 + отступы = 326dp — помещается в 411dp без прокрутки.
-        // На узких экранах (360dp) промежуток сжимается до 4dp, кнопки не сплющиваются.
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val buttonSize = 48.dp
-            val statusButtonSize = 46.dp
-            val maxGap = 10.dp
-            val minGap = 4.dp
-            // Остаток ширины после кнопок и статуса делим на 4 промежутка.
-            val gap = ((maxWidth - buttonSize * sourceButtonOrder.size - statusButtonSize) / 4)
-                .coerceIn(minGap, maxGap)
+                modifier = Modifier.height(34.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            ServiceStatusButton(
+                statuses = statuses,
+                onRefresh = onRefreshStatuses,
+            )
+        }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+        AnimatedVisibility(
+            visible = !allSources,
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(120)),
+        ) {
+            Column {
+                Spacer(Modifier.height(8.dp))
+                // Пять кнопок по 42dp и промежутки 6dp: 210 + 24 = 234dp,
+                // панель заметно ниже прежней и не спорит с полем поиска.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     sourceButtonOrder.forEach { service ->
                         SourceButton(
                             service = service,
@@ -429,19 +442,15 @@ private fun SourceSwitcher(
                             onClick = { onSelect(service) },
                         )
                     }
+                    Spacer(Modifier.weight(1f))
                 }
 
-                ServiceStatusButton(
-                    statuses = statuses,
-                    onRefresh = onRefreshStatuses,
+                UnavailableServiceWarning(
+                    service = selected,
+                    health = selectedHealth,
                 )
             }
         }
-
-        UnavailableServiceWarning(
-            service = selected,
-            health = selectedHealth,
-        )
     }
 }
 
@@ -461,6 +470,7 @@ private fun SourceButton(
 ) {
     val brand = service.brandColor()
     val unavailable = !health.isAvailable && !health.isChecking
+    val configured = health.isConfigured
     val sourceName = service.displayName
     val contentDescription = stringResource(R.string.search_source_cd, sourceName)
 
@@ -477,7 +487,9 @@ private fun SourceButton(
 
     Surface(
         onClick = onClick,
-        modifier = modifier.size(48.dp),
+        // Ненастроенный источник (Spotify без ключей) не выбирается.
+        enabled = configured,
+        modifier = modifier.size(42.dp),
         shape = MaterialTheme.shapes.medium,
         color = containerColor,
         contentColor = brand,
@@ -488,10 +500,10 @@ private fun SourceButton(
                 painter = painterResource(service.brandIconRes()),
                 contentDescription = contentDescription,
                 tint = brand,
-                // Недоступный сервис виден по приглушённой иконке, а не по всей кнопке.
+                // Недоступный или ненастроенный сервис виден по приглушённой иконке.
                 modifier = Modifier
-                    .size(26.dp)
-                    .alpha(if (unavailable) 0.4f else 1f),
+                    .size(23.dp)
+                    .alpha(if (!configured) 0.35f else if (unavailable) 0.4f else 1f),
             )
         }
     }
@@ -532,7 +544,7 @@ private fun ServiceStatusButton(
     Box {
         Surface(
             onClick = { expanded = true },
-            modifier = Modifier.size(46.dp),
+            modifier = Modifier.size(40.dp),
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             border = BorderStroke(
@@ -554,13 +566,13 @@ private fun ServiceStatusButton(
                         else -> stringResource(R.string.search_status_cd_online)
                     },
                     tint = iconTint,
-                    modifier = Modifier.size(23.dp),
+                    modifier = Modifier.size(21.dp),
                 )
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 9.dp, end = 9.dp)
-                        .size(8.dp)
+                        .padding(top = 8.dp, end = 8.dp)
+                        .size(7.dp)
                         .clip(CircleShape)
                         .background(indicatorColor),
                 )
@@ -822,18 +834,18 @@ private fun ExpressiveSearchField(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp),
+            .height(56.dp),
         shape = shape,
         color = containerColor,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 10.dp),
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
                 shape = CircleShape,
                 color = iconContainerColor,
             ) {
@@ -842,12 +854,12 @@ private fun ExpressiveSearchField(
                         imageVector = Icons.Rounded.Search,
                         contentDescription = null,
                         tint = iconTint,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
 
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
 
             Box(
                 modifier = Modifier.weight(1f),

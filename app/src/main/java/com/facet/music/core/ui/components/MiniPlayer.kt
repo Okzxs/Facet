@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -118,6 +119,7 @@ internal fun FloatingMiniPlayer(
     onPlayPauseClick: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
+    onCloseClick: () -> Unit,
     currentFraction: () -> Float,
     modifier: Modifier = Modifier,
     coverModifier: Modifier = Modifier,
@@ -323,6 +325,25 @@ internal fun FloatingMiniPlayer(
                         )
                     }
                 }
+            }
+
+            Spacer(Modifier.width(2.dp))
+
+            // Крестик закрывает плеер целиком: стоп, пустая очередь, скрытие
+            // островка. Маленький, чтобы не конкурировать с Play.
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button, onClick = onCloseClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.player_close_mini),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
 

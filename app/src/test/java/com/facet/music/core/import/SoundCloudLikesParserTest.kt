@@ -59,6 +59,36 @@ class SoundCloudLikesParserTest {
     }
 
     @Test
+    fun `unwraps like object with nested track`() {
+        // Реальный ответ api-v2: элемент коллекции — лайк, а трек внутри `track`.
+        val body = """
+            {
+              "collection": [
+                {
+                  "created_at": "2026-08-21T04:15:41Z",
+                  "kind": "like",
+                  "track": {
+                    "permalink_url": "https://soundcloud.com/user/nested",
+                    "title": "Nested Track",
+                    "duration": 30000,
+                    "full_duration": 240000,
+                    "user": { "username": "Nested Artist" }
+                  }
+                }
+              ],
+              "next_href": null
+            }
+        """.trimIndent()
+
+        val page = SoundCloudLikesParser.parse(body, json)
+
+        assertEquals(1, page.tracks.size)
+        assertEquals("Nested Track", page.tracks.single().title)
+        assertEquals("Nested Artist", page.tracks.single().artist)
+        assertEquals(240000L, page.tracks.single().durationMs)
+    }
+
+    @Test
     fun `broken items are skipped`() {
         val body = """
             {

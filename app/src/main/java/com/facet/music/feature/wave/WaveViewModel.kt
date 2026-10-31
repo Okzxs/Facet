@@ -3,6 +3,7 @@ package com.facet.music.feature.wave
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.facet.music.core.player.PlayerController
+import com.facet.music.core.player.QueueOrigin
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.WaveRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -131,7 +132,7 @@ class WaveViewModel @Inject constructor(
                                         error = null,
                                     )
                                 }
-                                playerController.setQueueAndPlay(batch.tracks, startIndex = 0)
+                                playerController.setQueueAndPlay(batch.tracks, startIndex = 0, origin = QueueOrigin.WAVE)
                             }
                         }
                         .onFailure { error ->
@@ -163,7 +164,7 @@ class WaveViewModel @Inject constructor(
         if (tracks.isEmpty()) return
         val index = tracks.indexOfFirst { it.id == track.id }
         if (index < 0) return
-        playerController.setQueueAndPlay(tracks, startIndex = index)
+        playerController.setQueueAndPlay(tracks, startIndex = index, origin = QueueOrigin.WAVE)
     }
 
     /**
