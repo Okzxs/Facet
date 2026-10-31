@@ -538,9 +538,10 @@ class PlayerController private constructor(
      * Переход к предыдущему треку.
      * Если прошло больше 3 секунд от начала — перезапускает текущий трек.
      */
-    fun playPrevious() {
+    /** [force] — свайп по обложке всегда переключает трек, а не перематывает в 0. */
+    fun playPrevious(force: Boolean = false) {
         val controller = mediaController
-        if (controller != null && controller.currentPosition > 3000L) {
+        if (!force && controller != null && controller.currentPosition > 3000L) {
             controller.seekTo(0)
             return
         }

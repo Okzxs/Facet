@@ -255,7 +255,7 @@ data class Track(
 - **Медиатека.** `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior` и `nestedScroll`; `LibraryHeader` удалён, `CollectionSummary` — первая строка списка. Сетка плейлистов 2 колонки с отступами 20/16, FAB поднят на `LocalBottomDockHeight + 12dp`, нижний `contentPadding` 96dp + док, чтобы кнопка не перекрывала последний элемент.
 - **Настройки.** Плоский список: `SettingsSectionTitle` (`titleSmall`, `primary`), `SettingsDivider` (inset 20dp), `SettingsSwitchRow`; все `Surface`-карточки убраны, включая Spotify-секцию. Секции: Оформление, Язык, Интеграции, Моя волна, Разрешения, Загрузки и кэш (`settings_downloads_section`).
 - **Поиск.** `SearchSkeletonList` залит бегущим градиентом (`rememberShimmerBrush`, `infiniteRepeatable` 1200 мс) вместо статичных блоков.
-- **Релиз.** 43 suite / 283 теста, 0 failures; EN/RU по 388 ключей; release APK 6 517 409 байт, SHA-256 `2468018e1576518e21a77b544fc39c548c4d3d226615bf53bf6489076db99205`; установлен по mDNS `adb-R5CY552H83H-nxMtL5`. Живой прогон — на пользователе.
+- **Релиз.** 43 suite / 283 теста, 0 failures; EN/RU по 388 ключей; release APK 6 518 329 байт, SHA-256 `bd61317908792a0e6a92a585958990cb8649c7cd8dc64502e52b27fcd23e417d`; установлен по mDNS `adb-R5CY552H83H-nxMtL5`. Живой прогон — на пользователе.
 
 ## Сессия 67, продолжение: откат плеера и живые фиксы
 
@@ -271,5 +271,5 @@ data class Track(
 - **Анимации (сессия 67, финал):** `animateItem()` в медиатеке, поиске и очереди; `AnimatedContent` для вкладок импорта; `AnimatedVisibility`/`animateContentSize` для FAB, превью лайков и карточек; FAB и Spotify-блок скрываются с fade/scale. Свайп-закрытие плеера не тронут.
 - **Импортные входы:** `AppSettings.importCompleted` и `spotifyLikesImported` (ключи `import_completed`, `spotify_likes_imported`). FAB скрыт, если импорт уже был или в медиатеке есть лайки/плейлисты; Spotify-блок — только при подключённом Spotify и без импорта. Вход в импорт остаётся в заголовке «Плейлисты» → «Импорт».
 - **Волна:** `buildSeedArtists`/`buildSeedGenres` считают частоту артистов/жанров в лайках (`LIKE_WEIGHT = 1.0`), история — `0.4`, Taste — `×0.5`; импортированные 200 лайков реально поднимают артиста в топ-4.
-- **Перемотка:** вертикальный свайп по обложке (только по ней) — вверх +, вниз −, 1 dp = 300 мс, HUD с временем и дельтой, вибро каждые 10 с. Корневой dismiss-жест пропускает зону обложки; закрытие по шапке/фону не менялось.
+- **Свайп по обложке:** вверх — следующий трек, вниз — предыдущий (порог 56dp, HUD «Следующий/Предыдущий трек», вибро). `playPrevious(force = true)` игнорирует «>3 c → в начало». Корневой dismiss-жест пропускает зону обложки, но работает по шапке/фону; `artworkBounds` читается через `rememberUpdatedState`, а во время закрытия не обновляется — иначе смена bounds перезапускала жест и ломала закрытие.
 - **Обложки:** `core/ui/artwork/ArtworkUrl.kt` — SoundCloud `-large`/`-crop` → `-t500x500`, YouTube → `maxresdefault`, Deezer → `1000x1000`, Apple → `600x600bb`; плеер грузит `size(1024)` с fallback на исходный URL, палитра считает по увеличенной версии.

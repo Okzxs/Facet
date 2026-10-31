@@ -479,8 +479,8 @@ class PlayerViewModel @Inject constructor(
         _sleepTimer.value = null
     }
 
-    fun playPrevious() {
-        playerController.playPrevious()
+    fun playPrevious(force: Boolean = false) {
+        playerController.playPrevious(force)
     }
 
     fun toggleShuffle() {

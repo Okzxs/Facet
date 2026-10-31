@@ -265,6 +265,8 @@
     <string name="player_download_failed">Не удалось скачать трек (доступен только онлайн)</string>
     <string name="player_find_on_youtube">Найти</string>
     <string name="player_close_mini">Закрыть плеер</string>
+    <string name="player_swipe_next">Следующий трек</string>
+    <string name="player_swipe_previous">Предыдущий трек</string>
 
     <!-- Очередь -->
     <string name="queue_section_now">Сейчас играет</string>

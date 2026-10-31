@@ -43,6 +43,8 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -145,11 +147,8 @@ private const val PLAYER_LAYOUT_VARIANT = 1
 /** Порог закрытия свайпом вниз: 30% высоты экрана. */
 private const val DISMISS_THRESHOLD = 0.30f
 
-/** Перемотка свайпом по обложке: 1 dp пути = 300 мс трека. */
-private const val SEEK_MS_PER_DP = 300f
-
-/** Вибро-отклик каждые 10 секунд перемотки. */
-private const val SEEK_HAPTIC_STEP_MS = 10_000L
+/** Свайп по обложке: порог переключения трека. */
+private val SWIPE_TRACK_THRESHOLD = 56.dp
 
 /**
  * Постоянный слот под полоску прогресса активной строки текста.
@@ -414,8 +413,9 @@ fun PlayerScreen(
     // Границы острова управления в координатах корня: касание из этой зоны
     // не запускает закрытие — кнопки и слайдер должны работать как обычно.
     var controlIslandBounds by remember { mutableStateOf<Rect?>(null) }
-    // Границы обложки: свайп по ней — перемотка, а не закрытие плеера.
+    // Границы обложки: свайп по ней переключает трек, а не закрывает плеер.
     var artworkBounds by remember { mutableStateOf<Rect?>(null) }
+    val artworkBoundsState = rememberUpdatedState(artworkBounds)
     // Границы самого LazyColumn с текстом: только по нему решаем,
     // скроллить текст или тянуть плеер (шапка и пустые зоны — всегда плеер).
     var lyricsListBounds by remember { mutableStateOf<Rect?>(null) }
@@ -464,7 +464,7 @@ fun PlayerScreen(
     val swipeToDismissModifier = if (showQueueSheet || swipeState.isDismissed) {
         Modifier
     } else {
-        Modifier.pointerInput(artworkBounds) {
+        Modifier.pointerInput(Unit) {
             awaitEachGesture {
                 // Initial-проход: корень получает событие раньше списка текста,
                 // поэтому может забрать вертикальный жест себе.
@@ -477,8 +477,8 @@ fun PlayerScreen(
                 if (island != null && island.contains(down.position)) {
                     return@awaitEachGesture
                 }
-                // Обложка отдана свайпу-перемотке: вниз по ней не закрывает.
-                val artwork = artworkBounds
+                // Обложка отдана свайпу-переключению трека.
+                val artwork = artworkBoundsState.value
                 if (artwork != null && artwork.contains(down.position)) {
                     return@awaitEachGesture
                 }
@@ -749,9 +749,10 @@ fun PlayerScreen(
                         notePainter = notePainter,
                         placeholderPainter = placeholderPainter,
                         currentPositionMs = { viewModel.currentPositionMs() },
-                        durationMs = track?.durationMs ?: 0L,
-                        onSeekToMs = { timeMs -> viewModel.seekToMs(timeMs) },
+                        onNext = { viewModel.playNext() },
+                        onPrevious = { viewModel.playPrevious(force = true) },
                         onArtworkBoundsChanged = { artworkBounds = it },
+                        isDismissDragging = swipeState.isDragging,
                         onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                         onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
                         onLyricsListBoundsChanged = { lyricsListBounds = it },
@@ -1039,9 +1040,10 @@ private fun ExpressiveHeroZone(
     notePainter: Painter,
     placeholderPainter: Painter,
     currentPositionMs: () -> Long,
-    durationMs: Long,
-    onSeekToMs: (Long) -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
     onArtworkBoundsChanged: (Rect?) -> Unit,
+    isDismissDragging: Boolean = false,
     onSeekToLine: (Long) -> Unit,
     onRetryLyrics: () -> Unit,
     onLyricsListBoundsChanged: (Rect?) -> Unit,
@@ -1061,14 +1063,12 @@ private fun ExpressiveHeroZone(
         TrackDisplay(trackKey, title, artist, artworkUrl)
     }
 
-    // Перемотка свайпом по обложке: вверх — вперёд, вниз — назад.
-    // Жест живёт только на обложке, поэтому не конфликтует с закрытием плеера.
+    // Переключение трека свайпом по обложке: вверх — следующий, вниз — предыдущий.
+    // Жест живёт только на обложке, чтобы не мешать закрытию плеера.
     val haptics = LocalHapticFeedback.current
-    val msPerPx = SEEK_MS_PER_DP / LocalDensity.current.density
-    var seekTargetMs by remember(trackKey) { mutableStateOf<Long?>(null) }
-    var seekBaseMs by remember(trackKey) { mutableLongStateOf(0L) }
-    var seekDeltaPx by remember(trackKey) { mutableFloatStateOf(0f) }
-    var seekHapticStep by remember(trackKey) { mutableIntStateOf(0) }
+    val switchThresholdPx = with(LocalDensity.current) { SWIPE_TRACK_THRESHOLD.toPx() }
+    var swipeDirection by remember(trackKey) { mutableIntStateOf(0) }
+    var swipeDistancePx by remember(trackKey) { mutableFloatStateOf(0f) }
 
     Box(modifier = modifier) {
         AnimatedContent(
@@ -1130,44 +1130,46 @@ private fun ExpressiveHeroZone(
                                     .aspectRatio(1f)
                                     .then(coverSwipeModifier)
                                     .onGloballyPositioned {
-                                        onArtworkBoundsChanged(it.boundsInRoot())
+                                        // Во время закрытия обложка едет/сжимается:
+                                        // не дёргаем границы на каждый кадр.
+                                        if (!isDismissDragging) {
+                                            onArtworkBoundsChanged(it.boundsInRoot())
+                                        }
                                     }
-                                    .pointerInput(trackKey, durationMs) {
+                                    .pointerInput(trackKey) {
                                         detectVerticalDragGestures(
                                             onDragStart = {
-                                                seekBaseMs = currentPositionMs()
-                                                    .coerceIn(0L, durationMs.coerceAtLeast(0L))
-                                                seekDeltaPx = 0f
-                                                seekHapticStep = 0
-                                                seekTargetMs = seekBaseMs
+                                                swipeDistancePx = 0f
+                                                swipeDirection = 0
                                             },
                                             onVerticalDrag = { change, dragAmount ->
                                                 change.consume()
-                                                seekDeltaPx += dragAmount
-                                                val candidate = seekBaseMs -
-                                                    (seekDeltaPx * msPerPx).toLong()
-                                                val target = candidate.coerceIn(
-                                                    0L,
-                                                    durationMs.coerceAtLeast(0L),
-                                                )
-                                                seekTargetMs = target
-                                                val step = (abs(target - seekBaseMs) /
-                                                    SEEK_HAPTIC_STEP_MS).toInt()
-                                                if (step > seekHapticStep) {
-                                                    seekHapticStep = step
-                                                    haptics.performHapticFeedback(
-                                                        HapticFeedbackType.TextHandleMove,
-                                                    )
+                                                swipeDistancePx += dragAmount
+                                                val direction = when {
+                                                    swipeDistancePx <= -switchThresholdPx -> -1
+                                                    swipeDistancePx >= switchThresholdPx -> 1
+                                                    else -> 0
+                                                }
+                                                if (direction != swipeDirection) {
+                                                    swipeDirection = direction
+                                                    if (direction != 0) {
+                                                        haptics.performHapticFeedback(
+                                                            HapticFeedbackType.TextHandleMove,
+                                                        )
+                                                    }
                                                 }
                                             },
                                             onDragEnd = {
-                                                seekTargetMs?.let(onSeekToMs)
-                                                seekTargetMs = null
-                                                seekDeltaPx = 0f
+                                                when {
+                                                    swipeDirection < 0 -> onNext()
+                                                    swipeDirection > 0 -> onPrevious()
+                                                }
+                                                swipeDirection = 0
+                                                swipeDistancePx = 0f
                                             },
                                             onDragCancel = {
-                                                seekTargetMs = null
-                                                seekDeltaPx = 0f
+                                                swipeDirection = 0
+                                                swipeDistancePx = 0f
                                             },
                                         )
                                     },
@@ -1192,16 +1194,14 @@ private fun ExpressiveHeroZone(
                                         placeholderPainter = placeholderPainter,
                                     )
                                 }
-                                // HUD перемотки: целевое время и смещение от текущего.
+                                // HUD переключения: какой трек сейчас будет запущен.
                                 Crossfade(
-                                    targetState = seekTargetMs != null,
+                                    targetState = swipeDirection,
                                     modifier = Modifier.align(Alignment.Center),
                                     animationSpec = tween(140),
-                                    label = "seekHud",
-                                ) { visible ->
-                                    if (visible) {
-                                        val targetMs = seekTargetMs ?: seekBaseMs
-                                        val delta = targetMs - seekBaseMs
+                                    label = "trackSwipeHud",
+                                ) { direction ->
+                                    if (direction != 0) {
                                         Surface(
                                             shape = MaterialTheme.shapes.large,
                                             color = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -1209,22 +1209,34 @@ private fun ExpressiveHeroZone(
                                             tonalElevation = 4.dp,
                                             shadowElevation = 10.dp,
                                         ) {
-                                            Column(
+                                            Row(
                                                 modifier = Modifier.padding(
                                                     horizontal = 18.dp,
                                                     vertical = 12.dp,
                                                 ),
-                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalAlignment = Alignment.CenterVertically,
                                             ) {
-                                                Text(
-                                                    text = formatMs(targetMs),
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                Icon(
+                                                    imageVector = if (direction < 0) {
+                                                        Icons.Filled.SkipNext
+                                                    } else {
+                                                        Icons.Filled.SkipPrevious
+                                                    },
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(22.dp),
                                                 )
+                                                Spacer(Modifier.width(8.dp))
                                                 Text(
-                                                    text = seekDeltaLabel(delta),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary,
+                                                    text = stringResource(
+                                                        if (direction < 0) {
+                                                            R.string.player_swipe_next
+                                                        } else {
+                                                            R.string.player_swipe_previous
+                                                        },
+                                                    ),
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = MaterialTheme.colorScheme.onSurface,
                                                 )
                                             }
                                         }
@@ -2299,12 +2311,6 @@ private fun formatMs(ms: Long): String {
     val min = totalSec / 60
     val sec = totalSec % 60
     return "$min:${sec.toString().padStart(2, '0')}"
-}
-
-/** Подпись HUD: «+0:15» вперёд или «−0:15» назад. */
-private fun seekDeltaLabel(deltaMs: Long): String {
-    val prefix = if (deltaMs >= 0L) "+" else "−"
-    return prefix + formatMs(abs(deltaMs))
 }
 
 /**

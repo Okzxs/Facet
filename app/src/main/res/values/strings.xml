@@ -264,6 +264,8 @@
     <string name="player_download_failed">Couldn’t download the track (online only)</string>
     <string name="player_find_on_youtube">Find</string>
     <string name="player_close_mini">Close player</string>
+    <string name="player_swipe_next">Next track</string>
+    <string name="player_swipe_previous">Previous track</string>
 
     <!-- Очередь -->
     <string name="queue_section_now">Now playing</string>
