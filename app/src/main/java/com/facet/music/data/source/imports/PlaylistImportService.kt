@@ -7,6 +7,8 @@ import com.facet.music.core.import.ImportedPlaylist
 import com.facet.music.core.import.PlaylistLinkParseResult
 import com.facet.music.core.import.PlaylistLinkParser
 import com.facet.music.core.import.PlaylistPayloadParser
+import com.facet.music.core.import.ProfileLinkParser
+import com.facet.music.core.import.ProfilePlaylist
 import com.facet.music.core.network.RateLimiter
 import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
@@ -21,6 +23,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.StreamingService
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -41,6 +44,14 @@ sealed interface PlaylistImportResult {
 }
 
 /**
+ * Результат загрузки публичного профиля: список плейлистов для выбора.
+ */
+sealed interface ProfileImportResult {
+    data class Success(val playlists: List<ProfilePlaylist>) : ProfileImportResult
+    data class Failure(val error: ImportError, val message: String) : ProfileImportResult
+}
+
+/**
  * Загрузчик плейлиста по ссылке.
  *
  * Разбирает ссылку, ходит в сеть и возвращает треки — но ничего не пишет
@@ -52,6 +63,12 @@ interface PlaylistImportService {
 
     /** Загружает плейлист по ссылке. Отмену корутины пробрасывает дальше. */
     suspend fun load(link: String): PlaylistImportResult
+
+    /**
+     * Публичные плейлисты профиля Spotify или SoundCloud — для экрана
+     * «Импорт профиля». Ссылки на треки и плейлисты не принимаются.
+     */
+    suspend fun loadProfile(link: String): ProfileImportResult
 }
 
 /**
@@ -233,6 +250,105 @@ class PlaylistImportServiceImpl @Inject constructor(
         }
     }
 
+    override suspend fun loadProfile(link: String): ProfileImportResult =
+        withContext(Dispatchers.IO) {
+            val parsed = ProfileLinkParser.parse(link)
+                ?: return@withContext ProfileImportResult.Failure(
+                    ImportError.UNSUPPORTED_LINK,
+                    "Ссылка должна вести на профиль Spotify или SoundCloud",
+                )
+            when (parsed.service) {
+                ImportService.SPOTIFY -> loadSpotifyProfile(parsed.id)
+                ImportService.SOUNDCLOUD -> loadSoundCloudProfile(parsed.id)
+                else -> ProfileImportResult.Failure(
+                    ImportError.UNSUPPORTED_LINK,
+                    "Импорт профилей этого сервиса не поддерживается",
+                )
+            }
+        }
+
+    /** Публичные плейлисты Spotify: нужны ключи, вход не обязателен. */
+    private suspend fun loadSpotifyProfile(userId: String): ProfileImportResult {
+        if (!spotifyProvider.isConfigured()) {
+            return ProfileImportResult.Failure(
+                ImportError.SPOTIFY_NOT_CONFIGURED,
+                SPOTIFY_NOT_CONFIGURED_MESSAGE,
+            )
+        }
+        return spotifyProvider.fetchUserPlaylists(userId).fold(
+            onSuccess = { playlists ->
+                if (playlists.isEmpty()) {
+                    ProfileImportResult.Failure(ImportError.EMPTY_PLAYLIST, NO_PUBLIC_PLAYLISTS)
+                } else {
+                    ProfileImportResult.Success(
+                        playlists.map { playlist ->
+                            ProfilePlaylist(
+                                service = ImportService.SPOTIFY,
+                                id = playlist.id,
+                                url = "https://open.spotify.com/playlist/${playlist.id}",
+                                name = playlist.name,
+                                coverUrl = playlist.coverUrl,
+                                trackCount = playlist.trackCount,
+                            )
+                        },
+                    )
+                }
+            },
+            onFailure = { error ->
+                ProfileImportResult.Failure(ImportError.NETWORK, error.message.orEmpty())
+            },
+        )
+    }
+
+    /**
+     * Публичные плейлисты SoundCloud: профиль открываем через NewPipe,
+     * обходим вкладки канала и собираем `PlaylistInfoItem`.
+     */
+    private suspend fun loadSoundCloudProfile(profileUrl: String): ProfileImportResult =
+        runCatching {
+            val service = ServiceList.SoundCloud
+            val handler = service.channelLHFactory.fromUrl(profileUrl)
+            val extractor = service.getChannelExtractor(handler)
+            extractor.fetchPage()
+
+            val found = LinkedHashMap<String, ProfilePlaylist>()
+            for (tab in extractor.tabs) {
+                val tabExtractor = runCatching {
+                    service.getChannelTabExtractor(tab)
+                }.getOrNull() ?: continue
+                tabExtractor.fetchPage()
+                var page = tabExtractor.initialPage
+                var pages = 0
+                while (true) {
+                    page.items.filterIsInstance<PlaylistInfoItem>().forEach { item ->
+                        if (item.url.isNotBlank() && item.name.isNotBlank()) {
+                            found.putIfAbsent(
+                                item.url,
+                                ProfilePlaylist(
+                                    service = ImportService.SOUNDCLOUD,
+                                    id = item.url,
+                                    url = item.url,
+                                    name = item.name,
+                                    coverUrl = item.thumbnails.lastOrNull()?.url,
+                                    trackCount = item.streamCount.coerceAtLeast(0L).toInt(),
+                                ),
+                            )
+                        }
+                    }
+                    if (!page.hasNextPage() || pages++ >= MAX_NEWPIPE_PAGES) break
+                    page = tabExtractor.getPage(page.nextPage)
+                }
+            }
+            if (found.isEmpty()) {
+                ProfileImportResult.Failure(ImportError.EMPTY_PLAYLIST, NO_PUBLIC_PLAYLISTS)
+            } else {
+                ProfileImportResult.Success(found.values.toList())
+            }
+        }.rethrowCancellation()
+            .getOrElse { error ->
+                ProfileImportResult.Failure(ImportError.NETWORK, error.message.orEmpty())
+            }
+
     private companion object {
         const val TAG = "PlaylistImportService"
 
@@ -242,6 +358,7 @@ class PlaylistImportServiceImpl @Inject constructor(
         const val DEEZER_PLAYLIST_URL = "https://api.deezer.com/playlist/"
         const val ITUNES_LOOKUP_URL = "https://itunes.apple.com/lookup"
         const val SPOTIFY_NOT_CONFIGURED_MESSAGE = "Добавьте ключи Spotify в настройках"
+        const val NO_PUBLIC_PLAYLISTS = "В профиле нет публичных плейлистов"
         const val APPLE_PLAYLIST_MESSAGE =
             "Импорт плейлистов Apple Music недоступен без Apple Music API"
     }

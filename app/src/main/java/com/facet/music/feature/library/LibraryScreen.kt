@@ -102,6 +102,7 @@ fun LibraryScreen(
     onLikedTracksClick: () -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
+    onImportClick: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val likedTracks by viewModel.likedTracks.collectAsState()
@@ -292,6 +293,22 @@ fun LibraryScreen(
                         )
                     }
                 }
+            }
+
+            // ─── Импорт профиля или текстового списка ────────────────────
+            item(key = "library_import_entry") {
+                AssistChip(
+                    onClick = onImportClick,
+                    label = { Text(stringResource(R.string.import_entry)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.AddLink,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
 
             // ─── Плейлисты ───────────────────────────────────────────────

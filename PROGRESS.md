@@ -2,6 +2,30 @@
 
 ## Последнее обновление: 30.10.2026 (сессия 63)
 
+## Редизайн, импорт профиля и списка, релиз 1.0.0 — сессия 64
+
+### 1. Токены
+- Fallback-палитра без Dynamic Color строится из seed `#3A4E6E` через `accentColorScheme`; Dynamic Color и пользовательский акцент остаются приоритетнее.
+- Скругления 12/16/24 (`AppShapes`), типографика — M3-шкала на Google Sans Flex. Плавающий островок и мини-плеер сохранены, переведены на `surfaceContainer`-роли.
+
+### 2. Главная
+- `WavePromoCard` — переход на вкладку «Волна».
+- `NewReleasesBlock` — новинки Deezer (`/editorial/0/releases`), нажатие грузит альбом через `DeezerProvider.fetchAlbumTracks` и отдаёт в плеер событием `openPlayer`.
+- `ChartsBlock` — топ SoundCloud (`SoundCloudChartsRepository.getTop50`), нумерация 01–10.
+- `GenrePlaylistsBlock` — жанровые подборки из истории и лайков.
+- `ExtrasSkeleton` — пульсирующие плейсхолдеры, пока грузятся блоки; ошибки сети не рушат главную.
+
+### 3. Импорт профиля и списка
+- `core/import/TextPlaylistParser.kt`: одна строка — один трек, разделитель « - », без дефиса вся строка уходит в поиск, пустые строки и дубли отбрасываются.
+- `core/import/ProfileLinkParser.kt`: Spotify `/user/<id>`, SoundCloud `/<user>`; ссылки на треки и плейлисты профилями не считаются.
+- `PlaylistImportService.loadProfile`: Spotify — `/users/{id}/playlists` (нужны ключи), SoundCloud — обход вкладок канала через NewPipe и `PlaylistInfoItem`.
+- `feature/imports/ImportScreen` + `ImportViewModel`: вкладки «Профиль» и «Список», выбор плейлистов, «Импортировать выбранные», разбор списка и сохранение в плейлист. Вход — чипс в медиатеке, маршрут `import`.
+- Тесты: `TextPlaylistParserTest` (5, включая реальный список на 220 строк), `ProfileLinkParserTest` (5).
+
+### 4. Релиз
+- `CHANGELOG.md` 1.0.0 и `docs/github-release-1.0.0.md` (текст для GitHub Release).
+- Финальные проверки: 41 suite / 274 теста, 0 failures; строки EN/RU 361/361.
+
 ## Этап 3, части 5–6: кэш, качество и ID3 — сессия 63
 
 ### 1. Кэш прослушанного

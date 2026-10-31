@@ -1,9 +1,14 @@
 package com.facet.music.feature.home
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -87,6 +94,7 @@ import com.facet.music.core.ui.theme.PillShape
 import com.facet.music.core.util.SeasonProvider
 import com.facet.music.data.model.SeasonMemory
 import com.facet.music.data.model.Track
+import com.facet.music.data.source.external.DeezerRelease
 import com.facet.music.navigation.LocalBottomDockHeight
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -103,6 +111,7 @@ private const val MEMORY_PREVIEW_LIMIT = 3
 fun HomeScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
     onSettingsClick: () -> Unit,
+    onWaveClick: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -110,6 +119,11 @@ fun HomeScreen(
     val heroTrack = recentTracks.firstOrNull()
     val homeListState = rememberLazyListState()
     val recommendationsListState = rememberLazyListState()
+
+    // Новинка — альбом: треки приходят из ViewModel, открываем плеер здесь.
+    LaunchedEffect(Unit) {
+        viewModel.openPlayer.collect { (track, queue) -> onTrackClick(track, queue) }
+    }
 
     PullToRefreshBox(
         isRefreshing = uiState.isRefreshing,
@@ -151,8 +165,47 @@ fun HomeScreen(
                 }
             }
 
-            item(key = "recommendations") {
+            // Волна: вход в бесконечный поток.
+            item(key = "wave_promo") {
                 RevealBlock(index = 2) {
+                    WavePromoCard(onClick = onWaveClick)
+                }
+            }
+
+            // Новинки и чарты: пока грузятся — скелетоны, а не пустота.
+            if (uiState.isExtrasLoading) {
+                item(key = "extras_skeleton") {
+                    ExtrasSkeleton()
+                }
+            } else {
+                if (uiState.newReleases.isNotEmpty()) {
+                    item(key = "new_releases") {
+                        NewReleasesBlock(
+                            releases = uiState.newReleases,
+                            onClick = viewModel::playRelease,
+                        )
+                    }
+                }
+                if (uiState.charts.isNotEmpty()) {
+                    item(key = "charts") {
+                        ChartsBlock(
+                            tracks = uiState.charts,
+                            onTrackClick = onTrackClick,
+                        )
+                    }
+                }
+            }
+
+            if (uiState.genreSections.isNotEmpty()) {
+                item(key = "genre_playlists") {
+                    GenrePlaylistsBlock(
+                        sections = uiState.genreSections,
+                        onTrackClick = onTrackClick,
+                    )
+                }
+            }
+
+            item(key = "recommendations") {                RevealBlock(index = 2) {
                     RecommendationsBlock(
                         tracks = uiState.recommendations,
                         isLoading = uiState.isRecommendationsLoading,
@@ -303,6 +356,212 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
  * Заголовок секции Home — стандартный titleLarge. Без надзаголовков и капса:
  * иерархию задают размер и воздух между секциями.
  */
+@Composable
+private fun WavePromoCard(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Waves,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(32.dp),
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.home_wave_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    text = stringResource(R.string.home_wave_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+            }
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NewReleasesBlock(
+    releases: List<DeezerRelease>,
+    onClick: (DeezerRelease) -> Unit,
+) {
+    Column {
+        HomeSectionHeader(title = stringResource(R.string.home_new_releases))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items = releases, key = { it.id }) { release ->
+                Column(
+                    modifier = Modifier
+                        .width(132.dp)
+                        .clickable { onClick(release) },
+                ) {
+                    AsyncImage(
+                        model = release.coverUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(MaterialTheme.shapes.large),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = release.title,
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = release.artist,
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChartsBlock(
+    tracks: List<Track>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+) {
+    Column {
+        HomeSectionHeader(title = stringResource(R.string.home_charts))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items = tracks, key = { it.id }) { track ->
+                Column(
+                    modifier = Modifier
+                        .width(132.dp)
+                        .clickable { onTrackClick(track, tracks) },
+                ) {
+                    Box {
+                        AsyncImage(
+                            model = track.artworkUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(MaterialTheme.shapes.large),
+                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(6.dp),
+                        ) {
+                            Text(
+                                text = (tracks.indexOf(track) + 1).toString().padStart(2, '0'),
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = track.title,
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = track.artist,
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GenrePlaylistsBlock(
+    sections: List<GenreSection>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+) {
+    Column {
+        HomeSectionHeader(title = stringResource(R.string.home_genre_playlists))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items = sections, key = { it.genre }) { section ->
+                Surface(
+                    onClick = { onTrackClick(section.tracks.first(), section.tracks) },
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.width(164.dp),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = section.genre,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.home_genre_tracks,
+                                section.tracks.size,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Скелетоны блоков: пульсирующие прямоугольники вместо пустого экрана. */
+@Composable
+private fun ExtrasSkeleton() {
+    val transition = rememberInfiniteTransition(label = "extrasSkeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.10f,
+        targetValue = 0.22f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "extrasSkeletonAlpha",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        repeat(2) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 132.dp, height = 132.dp)
+                            .clip(MaterialTheme.shapes.large)
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeSectionHeader(title: String) {
     Text(

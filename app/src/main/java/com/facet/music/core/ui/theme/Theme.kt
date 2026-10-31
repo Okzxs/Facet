@@ -214,6 +214,13 @@ private fun ColorScheme.withAiryNeutrals(darkTheme: Boolean): ColorScheme = if (
  * @param customAccentColor собственный акцентный цвет из RGB-пикера — переопределяет
  * primary/secondary/tertiary на всех версиях Android, в том числе поверх Dynamic Color.
  */
+/** Seed-цвет fallback-палитры: глубокий серо-синий. */
+private val FallbackSeed = Color(0xFF3A4E6E)
+
+/** Палитра без Dynamic Color и без пользовательского акцента. */
+private val FallbackLightScheme = accentColorScheme(FallbackSeed, darkTheme = false)
+private val FallbackDarkScheme = accentColorScheme(FallbackSeed, darkTheme = true)
+
 @Composable
 fun FacetTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -235,8 +242,8 @@ fun FacetTheme(
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         accentColor != null -> accentColorScheme(accentColor, darkTheme)
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> FallbackDarkScheme
+        else -> FallbackLightScheme
     }
     val colorScheme = rawColorScheme.withAiryNeutrals(darkTheme)
 

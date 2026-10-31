@@ -199,6 +199,7 @@ fun AppNavGraph() {
                     HomeScreen(
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
                         onSettingsClick = { navController.navigate(Screen.Settings.route) },
+                        onWaveClick = { navController.navigate(Screen.Wave.route) },
                     )
                 }
                 composable(Screen.Search.route) {
@@ -214,6 +215,7 @@ fun AppNavGraph() {
                 composable(Screen.Library.route) {
                     LibraryScreen(
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        onImportClick = { navController.navigate(Screen.Import.route) },
                         onOpenSearch = {
                             navController.navigate(Screen.Search.route) {
                                 // Вкладки сохраняем: поиск открывается поверх стартового графа
@@ -239,6 +241,12 @@ fun AppNavGraph() {
                 }
                 // Любимые треки — отдельный экран коллекции: в медиатеке от них
                 // остался только крупный чипс.
+                composable(Screen.Import.route) {
+                    com.facet.music.feature.imports.ImportScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
                 composable(Screen.LikedTracks.route) {
                     LikedTracksScreen(
                         onBack = { navController.popBackStack() },

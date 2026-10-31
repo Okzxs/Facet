@@ -16,6 +16,8 @@ import com.facet.music.data.repository.RecentlyShownRepository
 import com.facet.music.data.repository.SoundCloudChartsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
+import com.facet.music.data.source.external.DeezerProvider
+import com.facet.music.data.source.external.DeezerRelease
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -23,7 +25,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -48,6 +52,12 @@ data class HomeUiState(
     val memories: List<SeasonMemory> = emptyList(),
     val memorySeason: String = SeasonProvider.currentSeason(),
     val genreSections: List<GenreSection> = emptyList(),
+    /** Чарты SoundCloud для блока «Чарты». */
+    val charts: List<Track> = emptyList(),
+    /** Новинки лейблов Deezer для блока «Недавние релизы». */
+    val newReleases: List<DeezerRelease> = emptyList(),
+    /** Идёт загрузка чартов и новинок — показываем скелетоны. */
+    val isExtrasLoading: Boolean = true,
 )
 
 private data class LocalSignals(
@@ -67,6 +77,7 @@ class HomeViewModel @Inject constructor(
     private val youtubeRepository: YouTubeRepository,
     private val soundCloudRepository: SoundCloudRepository,
     private val chartsRepository: SoundCloudChartsRepository,
+    private val deezerProvider: DeezerProvider,
     private val downloadRepository: DownloadRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
@@ -87,6 +98,51 @@ class HomeViewModel @Inject constructor(
 
     init {
         observeLocalData()
+        loadHomeExtras()
+    }
+
+    // ─── Блоки главной: чарты и новинки ──────────────────────────────────
+
+    /** Событие «открыть плеер»: навигация — забота экрана, не ViewModel. */
+    private val _openPlayer = kotlinx.coroutines.flow.MutableSharedFlow<Pair<Track, List<Track>>>(
+        extraBufferCapacity = 1,
+    )
+    val openPlayer: SharedFlow<Pair<Track, List<Track>>> = _openPlayer.asSharedFlow()
+
+    /**
+     * Чарты SoundCloud и новинки Deezer. Ошибки не рушат главную: блок просто
+     * не показывается, если данных нет.
+     */
+    fun loadHomeExtras(forceRefresh: Boolean = false) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(isExtrasLoading = it.charts.isEmpty() && it.newReleases.isEmpty())
+            }
+            val charts = runCatching { chartsRepository.getTop50(forceRefresh) }
+                .getOrNull()
+                ?.getOrNull()
+                .orEmpty()
+                .take(HOME_CHARTS_LIMIT)
+            val releases = runCatching { deezerProvider.fetchNewReleases(HOME_RELEASES_LIMIT) }
+                .getOrNull()
+                ?.getOrNull()
+                .orEmpty()
+            _uiState.update {
+                it.copy(
+                    charts = charts.ifEmpty { it.charts },
+                    newReleases = releases.ifEmpty { it.newReleases },
+                    isExtrasLoading = false,
+                )
+            }
+        }
+    }
+
+    /** Новинка — это альбом: треки грузим при нажатии и отдаём в плеер. */
+    fun playRelease(release: DeezerRelease) {
+        viewModelScope.launch {
+            val tracks = deezerProvider.fetchAlbumTracks(release.id).getOrNull().orEmpty()
+            if (tracks.isNotEmpty()) _openPlayer.emit(tracks.first() to tracks)
+        }
     }
 
     /**
@@ -554,9 +610,12 @@ class HomeViewModel @Inject constructor(
     /** Принудительное обновление для Pull-to-refresh. */
     fun refresh() {
         updateRecommendations(forceRefresh = true)
+        loadHomeExtras(forceRefresh = true)
     }
 
     private companion object {
+        const val HOME_CHARTS_LIMIT = 10
+        const val HOME_RELEASES_LIMIT = 10
         const val RECOMMENDATION_SEARCH_LIMIT = 24
         const val RELATED_ITEMS_LIMIT = 30
         const val MIN_RECOMMENDATION_TRACKS = 10

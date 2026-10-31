@@ -6,6 +6,7 @@ import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
 import com.facet.music.core.source.MusicSourceProvider
 import com.facet.music.core.source.SourceCapabilities
+import com.facet.music.core.spotify.SpotifyPlaylistSummary
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.SearchCacheRepository
@@ -142,6 +143,38 @@ class SpotifyProvider @Inject constructor(
      * Треки плейлиста без названия — удобный вход для импорта.
      * Название берётся тем же запросом внутри [fetchPlaylist].
      */
+    /**
+     * Публичные плейлисты произвольного пользователя: `/users/{id}/playlists`.
+     * Нужен только действующий токен (Client Credentials подойдёт для
+     * публичных плейлистов, пользовательский — если профиль свой).
+     */
+    suspend fun fetchUserPlaylists(userId: String): Result<List<SpotifyPlaylistSummary>> =
+        runCatching {
+            val body = rateLimiter.acquire {
+                authorizedBody(
+                    "$API_URL/users/${encode(userId)}/playlists?limit=50",
+                    credentials(),
+                )
+            }
+            parsePlaylistSummaries(body)
+        }
+
+    /** Разбор списка плейлистов: id, название, обложка и число треков. */
+    private fun parsePlaylistSummaries(body: String): List<SpotifyPlaylistSummary> =
+        json.parseToJsonElement(body).jsonObject["items"]?.jsonArray
+            ?.mapNotNull { element ->
+                val item = element.jsonObject
+                val id = item["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val name = item["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val cover = item["images"]?.jsonArray
+                    ?.firstOrNull()?.jsonObject?.get("url")
+                    ?.jsonPrimitive?.contentOrNull
+                val count = item["tracks"]?.jsonObject?.get("total")
+                    ?.jsonPrimitive?.intOrNull ?: 0
+                SpotifyPlaylistSummary(id = id, name = name, coverUrl = cover, trackCount = count)
+            }
+            .orEmpty()
+
     suspend fun fetchPlaylistTracks(playlistId: String): Result<List<Track>> =
         fetchPlaylist(playlistId).map { playlist -> playlist.tracks }
 

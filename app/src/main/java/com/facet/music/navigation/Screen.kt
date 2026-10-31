@@ -28,6 +28,9 @@ sealed class Screen(val route: String) {
     /** Коллекция любимых треков — открывается из чипса медиатеки. */
     object LikedTracks : Screen("liked")
 
+    /** Импорт из профиля Spotify/SoundCloud и из текстового списка. */
+    object Import : Screen("import")
+
     /** Экран одного плейлиста: маршрут с аргументом-id. */
     object Playlist : Screen("playlist/{$PLAYLIST_ID_ARG}") {
         const val ARG_ID = PLAYLIST_ID_ARG

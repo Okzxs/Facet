@@ -56,6 +56,14 @@ data class DeezerArtistRef(
     val pictureUrl: String?,
 )
 
+/** Свежий релиз Deezer для блока «Недавние релизы» на главной. */
+data class DeezerRelease(
+    val id: Long,
+    val title: String,
+    val artist: String,
+    val coverUrl: String?,
+)
+
 /**
  * Deezer — бесплатный публичный поиск без авторизации.
  *
@@ -85,8 +93,7 @@ class DeezerProvider @Inject constructor(
         supportsDownload = false,
     )
 
-    override suspend fun search(
-        query: String,
+    override suspend fun search(        query: String,
         limit: Int,
         useCache: Boolean,
     ): Result<List<Track>> =
@@ -224,6 +231,28 @@ class DeezerProvider @Inject constructor(
         }
 
     /** Поиск артиста по имени: id нужен для топа, альбомов и похожих. */
+    /**
+     * Новинки лейблов: `/editorial/0/releases` отдаёт альбомы, поэтому карточка
+     * хранит id альбома, а треки подгружаются при нажатии.
+     */
+    suspend fun fetchNewReleases(limit: Int = 10): Result<List<DeezerRelease>> = runCatching {
+        val body = rateLimiter.acquire {
+            requestBody("$BASE_URL/editorial/0/releases?limit=${limit.coerceIn(1, MAX_LIMIT)}")
+        }
+        json.parseToJsonElement(body).jsonObject["data"]?.jsonArray
+            ?.mapNotNull { element ->
+                val item = element.jsonObject
+                val id = item["id"]?.jsonPrimitive?.longOrNull ?: return@mapNotNull null
+                val title = item["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val artist = item["artist"]?.jsonObject?.get("name")
+                    ?.jsonPrimitive?.contentOrNull.orEmpty()
+                val cover = item["cover_medium"]?.jsonPrimitive?.contentOrNull
+                    ?: item["cover_big"]?.jsonPrimitive?.contentOrNull
+                DeezerRelease(id = id, title = title, artist = artist, coverUrl = cover)
+            }
+            .orEmpty()
+    }
+
     private suspend fun findArtistId(artistName: String): Long? {
         val searchUrl = "$BASE_URL/search/artist?q=${encode(artistName)}" +
             "&limit=$ARTIST_SEARCH_LIMIT"

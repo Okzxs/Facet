@@ -467,6 +467,7 @@ class HomeViewModelRecommendationsTest {
             recentlyShownRepository = recentlyShownRepository,
             dislikedTrackDao = dislikedTrackDao,
             recommendationPlanner = recommendationPlanner,
+            deezerProvider = mockk(relaxed = true),
         )
 
     private fun track(

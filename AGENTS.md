@@ -228,3 +228,10 @@ data class Track(
 - Кэш прослушанного: Room v14, `audio_cache` (`AudioCacheEntity`/`AudioCacheDao`, `MIGRATION_13_14`). Файлы — в `cacheDir/audio_cache`, имя по хэшу id; `AudioCacheRepositoryImpl.fileFor` проверяет диск, чистит мёртвые записи и обновляет `lastAccessAt`; `enforceLimit` вытесняет LRU до 500 МБ. `AudioCacheWorker` резолвит поток заново (ссылки протухают), HLS не кэширует. `PlayerViewModel.observeAudioCache()` ставит трек в очередь после 20 секунд; `StreamResolver` проверяет кэш первым.
 - Качество скачивания: `AppSettings.downloadQualityKbps` (128/256/320, по умолчанию 320), ключ `download_quality`; `YouTubeRepositoryImpl` выбирает M4A-поток, ближайший к выбранному битрейту.
 - ID3: `core/download/Id3Writer.kt` — ID3v2.3, TIT2/TPE1/APIC, UTF-16 с BOM, старая шапка ID3 заменяется. `DownloadEngine` пишет теги только для `MimeTypes.AUDIO_MPEG` (MP3), обложка качается из `artworkUrl` (до 3 МБ).
+
+## Редизайн и импорт (сессия 64)
+
+- Fallback-палитра — `accentColorScheme(Color(0xFF3A4E6E), darkTheme)`; Dynamic Color и пользовательский акцент важнее. Скругления 12/16/24 в `AppShapes`, типографика M3 на Google Sans Flex.
+- Главная: `WavePromoCard` (вкладка «Волна»), `NewReleasesBlock` (Deezer `/editorial/0/releases`, альбом грузится при нажатии, событие `HomeViewModel.openPlayer`), `ChartsBlock` (SoundCloud top50), `GenrePlaylistsBlock`, `ExtrasSkeleton`.
+- Импорт: `TextPlaylistParser` (строка = трек, « - » делит артиста и название, без дефиса — поиск как есть), `ProfileLinkParser` (Spotify `/user/<id>`, SoundCloud `/<user>`), `PlaylistImportService.loadProfile` (Spotify `/users/{id}/playlists`, SoundCloud — вкладки канала NewPipe), экран `feature/imports/ImportScreen` с вкладками «Профиль/Список», вход из медиатеки (маршрут `import`).
+- Релизные тексты: `CHANGELOG.md`, `docs/github-release-1.0.0.md`.
