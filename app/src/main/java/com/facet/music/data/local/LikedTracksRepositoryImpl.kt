@@ -51,14 +51,20 @@ class LikedTracksRepositoryImpl @Inject constructor(
         latitude: Double?,
         longitude: Double?,
         season: String?,
+        likedAt: Long,
     ) = withContext(Dispatchers.IO) {
         likedTracksDao.insertLikedTrack(
             track.toLikedEntity(
                 latitude = latitude,
                 longitude = longitude,
                 season = season,
+                likedAt = likedAt,
             ),
         )
+    }
+
+    override suspend fun updateLikeTime(trackId: String, likedAt: Long) = withContext(Dispatchers.IO) {
+        likedTracksDao.updateLikedAt(trackId, likedAt)
     }
 
     override suspend fun unlikeTrack(trackId: String) = withContext(Dispatchers.IO) {

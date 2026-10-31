@@ -29,6 +29,10 @@ interface LikedTracksDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLikedTrack(track: LikedTrackEntity)
 
+    /** Импорт обновляет только дату лайка, не трогая сезон и геометку. */
+    @Query("UPDATE liked_tracks SET likedAt = :likedAt WHERE id = :id")
+    suspend fun updateLikedAt(id: String, likedAt: Long)
+
     @Query("DELETE FROM liked_tracks WHERE id = :id")
     suspend fun deleteLikedTrack(id: String)
 

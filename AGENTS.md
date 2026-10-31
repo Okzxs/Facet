@@ -239,13 +239,13 @@ data class Track(
 ## Навигация и импорт SoundCloud (сессия 65)
 
 - Переход с главной на «Волну» — как переключение вкладки: `navigate(Wave) { popUpTo(Home) { saveState = true }; launchSingleTop = true; restoreState = true }`. Иначе Wave остаётся поверх Home и back возвращает на неё.
-- Лайки SoundCloud: публичная `/likes` не парсится (JS), API v2 требует `client_id`. `SoundCloudLikesProvider` резолвит профиль (`/resolve`), тянет `/users/{id}/likes` по 50 до 200 треков; id хранится в `AppSettings.soundcloudClientId` (ключ `soundcloud_client_id`). OAuth не добавлен: нужен secret зарегистрированного приложения.
+- Лайки SoundCloud: публичная `/likes` не парсится (JS), API v2 требует `client_id`. `SoundCloudLikesProvider` резолвит профиль (`/resolve`), тянет `/users/{id}/likes` по 50 (все страницы); id хранится в `AppSettings.soundcloudClientId` (ключ `soundcloud_client_id`). OAuth не добавлен: нужен secret зарегистрированного приложения.
 - Медиатека: импорт — ExtendedFAB над доком (`padding(bottom = LocalBottomDockHeight.current)`), не чипс в списке.
 
 ## Лайки SoundCloud через api-v2 (сессия 66)
 
 - Официальный API SoundCloud требует приложения/Artist Pro — OAuth и client_secret не используются.
-- `SoundCloudLikesProvider`: `client_id` из `SoundcloudParsingHelper.clientId()` (NewPipe), `/resolve` → `/users/{id}/track_likes` на `api-v2.soundcloud.com`, пагинация по `next_href`, до 200 треков. `SoundCloudLikesParser` — чистый разбор `collection`/`next_href`.
+- `SoundCloudLikesProvider`: `client_id` из `SoundcloudParsingHelper.clientId()` (NewPipe), `/resolve` → `/users/{id}/track_likes` на `api-v2.soundcloud.com`, пагинация по `next_href` до 5000 треков (лимит 200 снят в сессии 67), порядок — как в SoundCloud (новые первыми). `SoundCloudLikesParser` разбирает `collection`/`next_href`, вложенный `track` и `created_at`.
 - UI импорта: поле client_id убрано; «Загрузить лайки» → превью (5 строк + счётчик) → «Импортировать N лайков» с дедупом. Подпись: работает для публичных профилей, приватный — лайки недоступны. Импорт текстом остаётся запасным путём.
 
 ## Плоский редизайн и релиз 1.0.0 (сессия 67)
@@ -255,7 +255,7 @@ data class Track(
 - **Медиатека.** `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior` и `nestedScroll`; `LibraryHeader` удалён, `CollectionSummary` — первая строка списка. Сетка плейлистов 2 колонки с отступами 20/16, FAB поднят на `LocalBottomDockHeight + 12dp`, нижний `contentPadding` 96dp + док, чтобы кнопка не перекрывала последний элемент.
 - **Настройки.** Плоский список: `SettingsSectionTitle` (`titleSmall`, `primary`), `SettingsDivider` (inset 20dp), `SettingsSwitchRow`; все `Surface`-карточки убраны, включая Spotify-секцию. Секции: Оформление, Язык, Интеграции, Моя волна, Разрешения, Загрузки и кэш (`settings_downloads_section`).
 - **Поиск.** `SearchSkeletonList` залит бегущим градиентом (`rememberShimmerBrush`, `infiniteRepeatable` 1200 мс) вместо статичных блоков.
-- **Релиз.** 42 suite / 279 тестов, 0 failures; EN/RU по 388 ключей; release APK 6 501 021 байт, SHA-256 `e43682c02b204357cac02c304960637a66159465a314736d89029fe0b1d0daae`; установлен по mDNS `adb-R5CY552H83H-nxMtL5`. Живой прогон — на пользователе.
+- **Релиз.** 42 suite / 279 тестов, 0 failures; EN/RU по 388 ключей; release APK 6 501 025 байт, SHA-256 `8171a524c77f2cd2f9486296253fb1a7b19e145255eb68f9f8af754b0f80ecbb`; установлен по mDNS `adb-R5CY552H83H-nxMtL5`. Живой прогон — на пользователе.
 
 ## Сессия 67, продолжение: откат плеера и живые фиксы
 
@@ -267,3 +267,4 @@ data class Track(
 - **Навигация:** `onTabSelect` сначала `popBackStack(route, false)` (Import → Library), иначе `navigate` с `saveState/restoreState`; выбранная вкладка в доке теперь тоже кликабельна. `selectedRoute` для `import` подсвечивает «Библиотеку».
 - **Волна от трека:** `startWaveFromTrack` ставит сид первым в очередь, затем похожие; `QueueOrigin` (`MAIN`/`WAVE`/`WAVE_FROM_TRACK`) в `PlayerState`, подпись в шапке `PlayerQueueSheet` («Обычная очередь»/«Моя волна»/«Волна по треку»). `WaveViewModel` помечает очередь `WAVE`.
 - **Spotify:** с 11.02.2026 новый Client ID требует Premium, Development Mode — один Client ID и до 5 пользователей; тексты в настройках/README обновлены, кнопка Spotify без ключей неактивна.
+- **Лайки SoundCloud, лимит и порядок:** `MAX_LIKES` поднят с 200 до 5000, пагинация идёт до `next_href = null`; в `SoundCloudLikesParser` появился `LikeItem.likedAtMillis` из `created_at`, `SoundCloudLikesProvider` отдаёт `likeTimes`. Импорт пишет реальную дату (`LikedTracksRepository.likeTrack(likedAt = …)`), а существующим трекам обновляет только `likedAt` через `updateLikeTime` — избранное сортируется по дате лайка, как в SoundCloud, без потери сезона/геометки. Повторный импорт синхронизирует и порядок старых 200.

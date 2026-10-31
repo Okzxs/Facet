@@ -369,7 +369,7 @@
     <string name="import_sc_likes_private">The profile is private or likes are hidden</string>
     <string name="import_sc_likes_api_error">SoundCloud API error: %1$d</string>
     <string name="import_sc_likes_network">Couldn’t reach SoundCloud</string>
-    <string name="import_sc_likes_done">Imported likes: %1$d</string>
+    <string name="import_sc_likes_done">Synced likes: %1$d</string>
     <string name="import_sc_likes_duplicates">No new likes — everything is already in favourites</string>
     <string name="import_error_soundcloud_client">Add a SoundCloud client_id to import likes</string>
     <string name="import_profile_found">Playlists: %1$d · selected %2$d</string>

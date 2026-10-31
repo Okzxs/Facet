@@ -38,7 +38,12 @@ interface LikedTracksRepository {
         latitude: Double? = null,
         longitude: Double? = null,
         season: String? = null,
+        /** Время лайка; для импорта — реальная дата из источника. */
+        likedAt: Long = System.currentTimeMillis(),
     )
+
+    /** Обновить только дату лайка (импорт не должен терять сезон и геометку). */
+    suspend fun updateLikeTime(trackId: String, likedAt: Long)
 
     /**
      * Удалить трек из избранного.

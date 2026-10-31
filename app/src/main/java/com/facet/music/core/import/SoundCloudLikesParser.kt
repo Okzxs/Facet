@@ -18,22 +18,31 @@ import kotlinx.serialization.json.longOrNull
  */
 object SoundCloudLikesParser {
 
-    data class Page(
-        val tracks: List<Track>,
-        val nextHref: String?,
+    /** Один лайк: трек и момент, когда он был поставлен (0 — неизвестно). */
+    data class LikeItem(
+        val track: Track,
+        val likedAtMillis: Long,
     )
+
+    data class Page(
+        val likes: List<LikeItem>,
+        val nextHref: String?,
+    ) {
+        /** Только треки — удобно для превью и старых тестов. */
+        val tracks: List<Track> get() = likes.map { it.track }
+    }
 
     fun parse(body: String, json: Json = Json): Page {
         val root = json.parseToJsonElement(body).jsonObject
-        val tracks = root["collection"]?.jsonArray
-            ?.mapNotNull { element -> toTrack(element.jsonObject) }
+        val likes = root["collection"]?.jsonArray
+            ?.mapNotNull { element -> toLike(element.jsonObject) }
             .orEmpty()
         val next = root["next_href"]?.jsonPrimitive?.contentOrNull
             ?.takeIf { it.isNotBlank() }
-        return Page(tracks = tracks, nextHref = next)
+        return Page(likes = likes, nextHref = next)
     }
 
-    private fun toTrack(item: kotlinx.serialization.json.JsonObject): Track? {
+    private fun toLike(item: kotlinx.serialization.json.JsonObject): LikeItem? {
         // api-v2 отдаёт лайк объектом `{ "created_at": …, "track": { … } }`.
         // Старые ответы и тесты могут присылать трек напрямую — поддерживаем оба.
         val track = item["track"]?.jsonObject ?: item
@@ -47,16 +56,26 @@ object SoundCloudLikesParser {
         val duration = track["full_duration"]?.jsonPrimitive?.longOrNull
             ?: track["duration"]?.jsonPrimitive?.longOrNull
             ?: 0L
-        return Track(
-            id = permalink,
-            source = Source.SOUNDCLOUD,
-            title = title,
-            artist = artist,
-            artworkUrl = artwork,
-            streamUrl = null,
-            durationMs = duration,
-            genre = null,
-            transcodingUrl = permalink,
+        // Время лайка храним, чтобы избранное сортировалось как в SoundCloud,
+        // а не по порядку импорта.
+        val likedAt = item["created_at"]?.jsonPrimitive?.contentOrNull
+            ?.let { createdAt ->
+                runCatching { java.time.Instant.parse(createdAt).toEpochMilli() }.getOrNull()
+            }
+            ?: 0L
+        return LikeItem(
+            track = Track(
+                id = permalink,
+                source = Source.SOUNDCLOUD,
+                title = title,
+                artist = artist,
+                artworkUrl = artwork,
+                streamUrl = null,
+                durationMs = duration,
+                genre = null,
+                transcodingUrl = permalink,
+            ),
+            likedAtMillis = likedAt,
         )
     }
 }

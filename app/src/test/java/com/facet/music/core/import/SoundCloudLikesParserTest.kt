@@ -82,10 +82,14 @@ class SoundCloudLikesParserTest {
 
         val page = SoundCloudLikesParser.parse(body, json)
 
-        assertEquals(1, page.tracks.size)
-        assertEquals("Nested Track", page.tracks.single().title)
-        assertEquals("Nested Artist", page.tracks.single().artist)
-        assertEquals(240000L, page.tracks.single().durationMs)
+        assertEquals(1, page.likes.size)
+        assertEquals("Nested Track", page.likes.single().track.title)
+        assertEquals("Nested Artist", page.likes.single().track.artist)
+        assertEquals(240000L, page.likes.single().track.durationMs)
+        assertEquals(
+            java.time.Instant.parse("2026-08-21T04:15:41Z").toEpochMilli(),
+            page.likes.single().likedAtMillis,
+        )
     }
 
     @Test

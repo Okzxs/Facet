@@ -75,6 +75,8 @@ data class ImportUiState(
     /** Ошибка загрузки лайков и HTTP-код, если виноват API. */
     val likesError: LikesError? = null,
     val likesApiCode: Int? = null,
+    /** id трека → реальное время лайка в SoundCloud. */
+    val likesTimes: Map<String, Long> = emptyMap(),
 ) {
     val selectedCount: Int get() = playlists.count { it.selected }
 }
@@ -110,6 +112,7 @@ class ImportViewModel @Inject constructor(
                     likesPreview = emptyList(),
                     likesError = null,
                     likesApiCode = null,
+                    likesTimes = emptyMap(),
                 )
             }
             val rawLink = _uiState.value.link
@@ -133,6 +136,7 @@ class ImportViewModel @Inject constructor(
                             likesPreview = result.tracks,
                             likesError = emptyReason,
                             likesApiCode = null,
+                            likesTimes = result.likeTimes,
                         )
                     }
                 }
@@ -155,19 +159,39 @@ class ImportViewModel @Inject constructor(
 
     /** Сохранение показанных лайков в избранное без дублей. */
     fun importSoundCloudLikes() {
-        val preview = _uiState.value.likesPreview
-        if (preview.isEmpty() || _uiState.value.isImporting) return
+        val state = _uiState.value
+        val preview = state.likesPreview
+        if (preview.isEmpty() || state.isImporting) return
         viewModelScope.launch {
             _uiState.update { it.copy(isImporting = true) }
             val existing = runCatching {
                 likedTracksRepository.getLikedTracks().first()
             }.getOrDefault(emptyList()).mapTo(HashSet()) { it.id }
-            val fresh = preview.filter { it.id !in existing }
-            fresh.forEach { runCatching { likedTracksRepository.likeTrack(it) } }
+
+            // Время лайка из SoundCloud: избранное сортируется по нему, а не
+            // по порядку импорта. Существующим трекам обновляем только дату,
+            // чтобы не потерять сезон и геометку «Воспоминаний».
+            preview.forEach { track ->
+                val likedAt = state.likesTimes[track.id]?.takeIf { it > 0 }
+                if (track.id in existing) {
+                    if (likedAt != null) {
+                        runCatching { likedTracksRepository.updateLikeTime(track.id, likedAt) }
+                    }
+                } else {
+                    runCatching {
+                        likedTracksRepository.likeTrack(
+                            track = track,
+                            likedAt = likedAt ?: System.currentTimeMillis(),
+                        )
+                    }
+                }
+            }
             _uiState.update {
                 it.copy(
                     isImporting = false,
-                    likesImported = fresh.size,
+                    // Считаем все обработанные лайки: существующим обновилась
+                    // дата, и пользователь видит реальное число, а не «0 новых».
+                    likesImported = preview.size,
                     message = null,
                 )
             }

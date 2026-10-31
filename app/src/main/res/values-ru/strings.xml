@@ -374,7 +374,7 @@
     <string name="import_sc_likes_private">Профиль приватный или лайки скрыты</string>
     <string name="import_sc_likes_api_error">Ошибка API SoundCloud: %1$d</string>
     <string name="import_sc_likes_network">Не удалось связаться с SoundCloud</string>
-    <string name="import_sc_likes_done">Импортировано лайков: %1$d</string>
+    <string name="import_sc_likes_done">Синхронизировано лайков: %1$d</string>
     <string name="import_sc_likes_duplicates">Новых лайков нет — всё уже в избранном</string>
     <string name="import_error_soundcloud_client">Добавь client_id SoundCloud для импорта лайков</string>
     <string name="import_profile_found">Плейлистов: %1$d · выбрано %2$d</string>

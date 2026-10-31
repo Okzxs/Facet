@@ -24,6 +24,8 @@ import javax.inject.Singleton
 data class SoundCloudLikesResult(
     val tracks: List<Track>,
     val likesCount: Int,
+    /** id трека → момент лайка в SoundCloud (0, если API не сообщил). */
+    val likeTimes: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -64,7 +66,7 @@ class SoundCloudLikesProvider @Inject constructor(
             val clientId = SoundcloudParsingHelper.clientId()
                 ?: error("SoundCloud не выдал client_id")
             val profile = resolveProfile(profileUrl, clientId)
-            val result = LinkedHashMap<String, Track>()
+            val result = LinkedHashMap<String, SoundCloudLikesParser.LikeItem>()
             var next: String? = "$API/users/${profile.userId}/track_likes" +
                 "?limit=$PAGE_SIZE&client_id=$clientId"
 
@@ -77,13 +79,15 @@ class SoundCloudLikesProvider @Inject constructor(
                     throw e
                 }
                 val page = SoundCloudLikesParser.parse(body, json)
-                page.tracks.forEach { track -> result.putIfAbsent(track.id, track) }
-                if (page.tracks.isEmpty()) break
+                page.likes.forEach { like -> result.putIfAbsent(like.track.id, like) }
+                if (page.likes.isEmpty()) break
                 next = page.nextHref
             }
+            val likes = result.values.take(limit).toList()
             SoundCloudLikesResult(
-                tracks = result.values.take(limit).toList(),
+                tracks = likes.map { it.track },
                 likesCount = profile.likesCount,
+                likeTimes = likes.associate { it.track.id to it.likedAtMillis },
             )
         }
     }
@@ -138,6 +142,7 @@ class SoundCloudLikesProvider @Inject constructor(
     private companion object {
         const val API = "https://api-v2.soundcloud.com"
         const val PAGE_SIZE = 50
-        const val MAX_LIKES = 200
+        /** Потолок на случай бесконечной пагинации; 229 лайков проходят целиком. */
+        const val MAX_LIKES = 5000
     }
 }
