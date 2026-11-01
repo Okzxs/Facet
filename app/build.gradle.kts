@@ -37,9 +37,9 @@ android {
         applicationId = "com.facet.music"
         minSdk = 26
         targetSdk = 35
-        // 3 — обновление 01.11.2026: выровненная иконка и островок в «Любимых».
+        // 4 — обновление 01.11.2026: иконка отцентрована, без themed-перекраски.
         // versionName остаётся 1.0.0.
-        versionCode = 3
+        versionCode = 4
         versionName = "1.0.0"
 
         val escapedLastFmKey = lastFmApiKey
