@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.R
@@ -83,6 +84,8 @@ fun LikedTracksScreen(
     onArtistClick: (String) -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
+    /** Запас под островок мини-плеера: док здесь скрыт, но островок виден. */
+    bottomInset: Dp = 0.dp,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val likedTracks by viewModel.likedTracks.collectAsState()
@@ -166,7 +169,7 @@ fun LikedTracksScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .navigationBarsPadding(),
-            contentPadding = PaddingValues(bottom = 24.dp),
+            contentPadding = PaddingValues(bottom = 24.dp + bottomInset),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "liked_hero") {

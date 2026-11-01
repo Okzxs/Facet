@@ -21,7 +21,9 @@ import androidx.compose.animation.slideOutVertically
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -107,6 +109,11 @@ fun AppNavGraph() {
                 route != Screen.Artist.route
         }
     }
+
+    // На «Любимых» дока нет, но островок мини-плеера оставляем: экран —
+    // обычная коллекция, и уходить в полноэкранный плеер ради паузы неудобно.
+    val isLikedTracksScreen =
+        navBackStackEntry?.destination?.route == Screen.LikedTracks.route
 
     // Выбранная вкладка пересчитывается только при смене back stack,
     // а не на каждой рекомпозиции дока.
@@ -196,12 +203,17 @@ fun AppNavGraph() {
     val density = LocalDensity.current
     var navBarHeightPx by remember { mutableStateOf(0) }
     val navBarHeight = with(density) { navBarHeightPx.toDp() }
+    // На экране без дока островку нужен только системный нижний инсет,
+    // иначе он висел бы на высоте скрытой панели.
+    val navigationBarInset = with(density) {
+        WindowInsets.navigationBars.getBottom(density).toDp()
+    }
 
-    // Островок показываем только когда есть трек и бар уже измерен: иначе
-    // он не знает, на сколько подняться над навигацией.
-    val showMiniPlayer = showBottomBar &&
+    // Островок показываем, когда есть трек и известна геометрия низа.
+    // На «Любимых» док скрыт, но островок остаётся.
+    val showMiniPlayer = (showBottomBar || isLikedTracksScreen) &&
         miniTrack != null &&
-        navBarHeightPx > 0 &&
+        (navBarHeightPx > 0 || isLikedTracksScreen) &&
         !isMiniPlayerDismissed
 
     // Резерв под островок в нижнем contentPadding вкладок. Анимируем, чтобы
@@ -212,6 +224,18 @@ fun AppNavGraph() {
         label = "miniPlayerReserve",
     )
     val bottomDockHeight = navBarHeight + miniPlayerReserve
+
+    // На вкладках островок стоит над доком, на «Любимых» — над системной
+    // навигацией. Смена позиции анимируется вместе с уходом дока.
+    val miniPlayerBottom by animateDpAsState(
+        targetValue = if (showBottomBar) {
+            navBarHeight + MiniPlayerGap
+        } else {
+            navigationBarInset + MiniPlayerGap
+        },
+        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+        label = "miniPlayerBottom",
+    )
 
     Box(
         modifier = Modifier
@@ -308,6 +332,9 @@ fun AppNavGraph() {
                         },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
+                        // Док на экране скрыт, но островок мини-плеера занимает
+                        // место — список не должен уходить под него.
+                        bottomInset = miniPlayerReserve,
                     )
                 }
                 // Экран плейлиста — отдельный маршрут с id. Нижний док скрыт:
@@ -404,8 +431,8 @@ fun AppNavGraph() {
                         .padding(
                             start = MiniPlayerHorizontalMargin,
                             end = MiniPlayerHorizontalMargin,
-                            // 12dp воздуха между островком и верхней кромкой бара.
-                            bottom = navBarHeight + MiniPlayerGap,
+                            // 12dp воздуха между островком и низом экрана/доком.
+                            bottom = miniPlayerBottom,
                         ),
                 ) {
                     val animatedScope = this
