@@ -33,9 +33,4 @@ interface TasteRepository {
     suspend fun getTopGenres(limit: Int = 5): List<TasteWeight>
 
     suspend fun getTopArtists(limit: Int = 5): List<TasteWeight>
-
-    /** Приоритет кириллицы в волне, по умолчанию включён. */
-    suspend fun isRussianPriority(): Boolean
-
-    suspend fun setRussianPriority(enabled: Boolean)
 }

@@ -127,6 +127,11 @@
     <string name="settings_cache_empty">Nothing cached yet — tracks are saved after 20 seconds of playback.</string>
     <string name="settings_cache_summary">%1$s MB · %2$d tracks</string>
     <string name="settings_cache_clear">Clear cache</string>
+    <string name="settings_privacy_section">Privacy</string>
+    <string name="settings_analytics_title">Anonymous statistics</string>
+    <string name="settings_analytics_hint">App launches and playback counts only. No account, tracks, searches, or location.</string>
+    <string name="settings_support_title">Support development</string>
+    <string name="settings_support_hint">DonationAlerts — one-time or monthly donation</string>
     <string name="settings_licenses">Licenses</string>
     <string name="settings_licenses_title">Licenses and components</string>
     <string name="settings_licenses_body">Facet is distributed under the GNU General Public License v3.0.\n\nBuilt with:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0</string>

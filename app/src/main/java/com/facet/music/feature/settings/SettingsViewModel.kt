@@ -9,7 +9,6 @@ import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.AudioCacheRepository
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SpotifyAuthRepository
-import com.facet.music.data.repository.TasteRepository
 import com.facet.music.data.repository.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +26,6 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
-    private val tasteRepository: TasteRepository,
     private val spotifyAuthRepository: SpotifyAuthRepository,
     private val audioCacheRepository: AudioCacheRepository,
 ) : ViewModel() {
@@ -53,9 +51,6 @@ class SettingsViewModel @Inject constructor(
     private val _spotifyAuthError = MutableStateFlow(false)
     val spotifyAuthError: StateFlow<Boolean> = _spotifyAuthError.asStateFlow()
 
-    private val _russianPriority = MutableStateFlow(true)
-    val russianPriority: StateFlow<Boolean> = _russianPriority.asStateFlow()
-
     /** Кэш прослушанного: сколько файлов и байт, обновляется из Room. */
     private val _cacheBytes = MutableStateFlow(0L)
     val cacheBytes: StateFlow<Long> = _cacheBytes.asStateFlow()
@@ -64,9 +59,6 @@ class SettingsViewModel @Inject constructor(
     val cacheCount: StateFlow<Int> = _cacheCount.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            _russianPriority.value = tasteRepository.isRussianPriority()
-        }
         viewModelScope.launch {
             audioCacheRepository.observeEntries().collect { entries ->
                 _cacheCount.value = entries.size
@@ -82,17 +74,17 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Согласие на анонимную статистику. */
+    fun setAnalyticsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAnalyticsEnabled(enabled)
+        }
+    }
+
     /** Качество скачивания: 128/256/320 кбит/с. */
     fun setDownloadQuality(kbps: Int) {
         viewModelScope.launch {
             settingsRepository.setDownloadQuality(kbps)
-        }
-    }
-
-    fun setRussianPriority(enabled: Boolean) {
-        _russianPriority.value = enabled
-        viewModelScope.launch {
-            tasteRepository.setRussianPriority(enabled)
         }
     }
 

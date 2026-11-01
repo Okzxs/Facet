@@ -32,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.LocationOn
@@ -125,7 +126,6 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsState()
-    val russianPriority by viewModel.russianPriority.collectAsState()
     val spotifyAuth by viewModel.spotifyAuth.collectAsState()
     val spotifyAuthUrl by viewModel.spotifyAuthUrl.collectAsState()
     val spotifyAuthError by viewModel.spotifyAuthError.collectAsState()
@@ -361,15 +361,6 @@ fun SettingsScreen(
                 onOpenGuide = { showSpotifyGuide = true },
             )
 
-            // ─── Моя волна ──────────────────────────────────────────────────
-            SettingsSectionTitle(R.string.settings_wave)
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_russian_first),
-                hint = stringResource(R.string.settings_russian_first_hint),
-                checked = russianPriority,
-                onCheckedChange = viewModel::setRussianPriority,
-            )
-
             // ─── Разрешения ────────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_permissions)
 
@@ -510,6 +501,53 @@ fun SettingsScreen(
                     TextButton(onClick = viewModel::clearAudioCache) {
                         Text(stringResource(R.string.settings_cache_clear))
                     }
+                }
+            }
+
+            // ─── Приватность ───────────────────────────────────────────────
+            SettingsSectionTitle(R.string.settings_privacy_section)
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_analytics_title),
+                hint = stringResource(R.string.settings_analytics_hint),
+                checked = settings.analyticsEnabled,
+                onCheckedChange = viewModel::setAnalyticsEnabled,
+            )
+
+            // ─── Поддержка ─────────────────────────────────────────────────
+            // Публичная страница DonationAlerts: SDK и ключи не нужны, ссылка
+            // открывается в системном браузере.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(SUPPORT_URL)),
+                            )
+                        }
+                    }
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Favorite,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.settings_support_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = stringResource(R.string.settings_support_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
@@ -663,6 +701,9 @@ private fun LicensesDialog(onDismiss: () -> Unit) {
 
 /** Ссылка на полный текст лицензии в репозитории. */
 private const val LICENSES_URL = "https://github.com/Okzxs/my-music-app/blob/main/LICENSE"
+
+/** Публичная страница поддержки разработки. */
+private const val SUPPORT_URL = "https://www.donationalerts.com/r/facetapp"
 
 /** Размер кэша в мегабайтах с одним знаком после запятой. */
 private fun formatMegabytes(bytes: Long): String =

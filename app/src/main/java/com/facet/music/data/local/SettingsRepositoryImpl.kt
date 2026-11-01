@@ -83,6 +83,8 @@ class SettingsRepositoryImpl @Inject constructor(
         downloadQualityKbps = prefs.getInt(KEY_DOWNLOAD_QUALITY, 320)
             .takeIf { it in SettingsRepository.DOWNLOAD_QUALITIES } ?: 320,
         soundcloudClientId = prefs.getString(KEY_SOUNDCLOUD_CLIENT_ID, null).orEmpty(),
+        // Статистика — только по явному согласию.
+        analyticsEnabled = prefs.getBoolean(KEY_ANALYTICS_ENABLED, false),
     )
 
     /**
@@ -219,6 +221,14 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(soundcloudClientId = trimmed) }
     }
 
+    override suspend fun setAnalyticsEnabled(enabled: Boolean) {
+        awaitLoaded()
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_ANALYTICS_ENABLED, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(analyticsEnabled = enabled) }
+    }
+
     override suspend fun setDownloadQuality(kbps: Int) {
         awaitLoaded()
         val normalized = kbps.takeIf { it in SettingsRepository.DOWNLOAD_QUALITIES } ?: 320
@@ -245,5 +255,6 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_SPOTIFY_LIKES_IMPORTED = "spotify_likes_imported"
         const val KEY_DOWNLOAD_QUALITY = "download_quality"
         const val KEY_SOUNDCLOUD_CLIENT_ID = "soundcloud_client_id"
+        const val KEY_ANALYTICS_ENABLED = "analytics_enabled"
     }
 }

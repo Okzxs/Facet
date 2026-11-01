@@ -1,7 +1,6 @@
 package com.facet.music.data.local
 
 import com.facet.music.data.local.dao.TasteDao
-import com.facet.music.data.local.entity.UserPreferenceEntity
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.TasteRepository
 import com.facet.music.data.repository.TasteWeight
@@ -49,19 +48,6 @@ class TasteRepositoryImpl @Inject constructor(
         tasteDao.getTopArtists(limit).map { TasteWeight(it.artist, it.weight) }
     }
 
-    override suspend fun isRussianPriority(): Boolean = withContext(Dispatchers.IO) {
-        tasteDao.getPreference(KEY_RU_PRIORITY)?.toBooleanStrictOrNull() ?: true
-    }
-
-    override suspend fun setRussianPriority(enabled: Boolean) = withContext(Dispatchers.IO) {
-        tasteDao.upsertPreference(
-            UserPreferenceEntity(
-                preferenceKey = KEY_RU_PRIORITY,
-                preferenceValue = enabled.toString(),
-            ),
-        )
-    }
-
     private suspend fun changeWeight(track: Track, delta: Double): Unit =
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
@@ -80,6 +66,5 @@ class TasteRepositoryImpl @Inject constructor(
         const val TRACK_FINISHED_DELTA = 1.0
         const val SKIP_DELTA = -1.0
         const val LIKE_DELTA = 3.0
-        const val KEY_RU_PRIORITY = "pref_ru_language"
     }
 }

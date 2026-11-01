@@ -22,7 +22,7 @@ data class WaveUiState(
     val fromGenres: Int = 0,
     val fromSimilar: Int = 0,
     val genres: List<String> = emptyList(),
-    val isRussianPriority: Boolean = true,
+    val isRussianPriority: Boolean = false,
     val isExhausted: Boolean = false,
     val error: String? = null,
 )

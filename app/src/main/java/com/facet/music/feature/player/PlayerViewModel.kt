@@ -9,6 +9,8 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.facet.music.core.analytics.AnalyticsEvents
+import com.facet.music.core.analytics.AnalyticsTracker
 import com.facet.music.core.cache.AudioCacheWorker
 import com.facet.music.core.download.DownloadManager
 import com.facet.music.core.download.DownloadMessages
@@ -67,6 +69,7 @@ class PlayerViewModel @Inject constructor(
     private val waveRepository: WaveRepository,
     private val downloadManager: DownloadManager,
     private val navigationEvents: NavigationEvents,
+    private val analyticsTracker: AnalyticsTracker,
     @ApplicationContext private val appContext: android.content.Context,
 ) : ViewModel() {
 
@@ -77,6 +80,7 @@ class PlayerViewModel @Inject constructor(
     private var feedbackLastTickAt = 0L
     private var feedbackWasPlaying = false
     private var waveRefillJob: Job? = null
+    private var analyticsTrackId: String? = null
 
     // Доступные скорости воспроизведения (по референсу MD3 плеера)
     val availableSpeeds = listOf(1.0f, 1.25f, 1.5f, 2.0f, 0.5f)
@@ -196,6 +200,22 @@ class PlayerViewModel @Inject constructor(
         observeTasteFeedback()
         observeWaveRefill()
         observeAudioCache()
+        observeAnalytics()
+    }
+
+    /** Один старт воспроизведения на трек; название и артист не отправляются. */
+    private fun observeAnalytics() {
+        viewModelScope.launch {
+            playerController.state
+                .map { it.currentTrack?.id to it.isPlaying }
+                .distinctUntilChanged()
+                .collect { (trackId, isPlaying) ->
+                    if (isPlaying && trackId != null && trackId != analyticsTrackId) {
+                        analyticsTrackId = trackId
+                        analyticsTracker.track(AnalyticsEvents.TRACK_PLAY)
+                    }
+                }
+        }
     }
 
     /**

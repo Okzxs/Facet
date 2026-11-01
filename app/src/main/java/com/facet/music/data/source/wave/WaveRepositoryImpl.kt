@@ -31,12 +31,9 @@ import kotlin.math.roundToInt
  * Собирает бесконечную волну из лайков, истории, похожих артистов Last.fm
  * и находок по жанрам. Соотношение источников — 40/30/20/10.
  *
- * Чтобы подборка не превращалась в кашу, кандидаты каждого источника
- * делятся на два пула:
- * - строгий — кириллица (при RU-приоритете) и подтверждённое совпадение
- *   артиста/жанра; он заполняет квоту первым;
- * - запасной — латиница и неподтверждённые результаты; он подключается,
- *   только когда строгих треков не хватило на всю пачку.
+ * Кандидаты каждого источника делятся на два пула: строгий — подтверждённое
+ * совпадение артиста/жанра, он заполняет квоту первым; запасной — остальные
+ * результаты, он подключается, только когда строгих треков не хватило.
  */
 @Singleton
 class WaveRepositoryImpl @Inject constructor(
@@ -67,7 +64,7 @@ class WaveRepositoryImpl @Inject constructor(
                         seedArtists = buildSeedArtists(liked, history),
                         seedGenres = buildSeedGenres(liked, history),
                         shownTrackIds = seeds.toSet(),
-                        isRussianPriority = tasteRepository.isRussianPriority(),
+                        isRussianPriority = false,
                     )
                     _activeSession.value = session
                     session
@@ -94,7 +91,7 @@ class WaveRepositoryImpl @Inject constructor(
                             seed.genre?.takeIf { isUsefulGenre(it) },
                         ),
                         shownTrackIds = setOf(seed.id),
-                        isRussianPriority = tasteRepository.isRussianPriority(),
+                        isRussianPriority = false,
                         radioMode = true,
                     )
                     _activeSession.value = session
@@ -141,7 +138,8 @@ class WaveRepositoryImpl @Inject constructor(
         }
 
         val target = size.coerceIn(MIN_BATCH_SIZE, MAX_BATCH_SIZE)
-        val russianPriority = tasteRepository.isRussianPriority()
+        // Приоритет русскоязычных треков удалён: волна собирается без языкового смещения.
+        val russianPriority = false
 
         val liked = likedTracksRepository.getLikedTracks().first()
         val history = playHistoryRepository.getPlayHistory().first()
@@ -574,7 +572,9 @@ class WaveRepositoryImpl @Inject constructor(
         const val MIN_BATCH_SIZE = 5
         const val MAX_BATCH_SIZE = 30
 
-        const val LIKES_SHARE = 0.3f
+        // 15% вместо 30%: при большой медиатеке лайки слишком часто повторялись
+        // в каждой пачке. Волна должна открывать новое, а не переигрывать избранное.
+        const val LIKES_SHARE = 0.15f
         const val HISTORY_SHARE = 0.2f
         const val GENRES_SHARE = 0.1f
 

@@ -126,6 +126,11 @@
     <string name="settings_cache_empty">Пока пусто — треки сохраняются после 20 секунд прослушивания.</string>
     <string name="settings_cache_summary">%1$s МБ · %2$d треков</string>
     <string name="settings_cache_clear">Очистить кэш</string>
+    <string name="settings_privacy_section">Приватность</string>
+    <string name="settings_analytics_title">Анонимная статистика</string>
+    <string name="settings_analytics_hint">Только запуски и число прослушиваний. Без аккаунта, треков, поисковых запросов и геолокации.</string>
+    <string name="settings_support_title">Поддержать разработку</string>
+    <string name="settings_support_hint">DonationAlerts — разовый или ежемесячный донат</string>
     <string name="settings_licenses">Лицензии</string>
     <string name="settings_licenses_title">Лицензии и компоненты</string>
     <string name="settings_licenses_body">Facet распространяется по GNU General Public License v3.0.\n\nИспользованы:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0</string>

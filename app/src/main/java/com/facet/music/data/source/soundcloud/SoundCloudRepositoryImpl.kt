@@ -12,19 +12,29 @@ import com.facet.music.data.repository.SoundCloudRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.search.SearchInfo
+import org.schabi.newpipe.extractor.services.soundcloud.SoundcloudParsingHelper
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SoundCloudRepositoryImpl @Inject constructor(
     private val newPipeDownloader: NewPipeDownloader,
+    private val okHttpClient: OkHttpClient,
+    private val json: Json,
 ) : SoundCloudRepository {
 
     // Большинство треков SoundCloud отдаёт progressive MP3, поэтому пробуем
@@ -113,6 +123,12 @@ class SoundCloudRepositoryImpl @Inject constructor(
                     e.suppressed.forEach { suppressed ->
                         Log.e("NP_SUPPRESSED", suppressed.message, suppressed)
                     }
+                    // NewPipe не умеет HLS-only треки SoundCloud: StreamInfo падает
+                    // ещё до выдачи потоков. Для онлайн-плеера берём HLS напрямую
+                    // из api-v2; для скачивания это по-прежнему непригодно.
+                    if (!requireProgressive) {
+                        return@runCatching resolveHlsViaApi(transcodingUrl)
+                    }
                     throw e
                 }
 
@@ -187,6 +203,82 @@ class SoundCloudRepositoryImpl @Inject constructor(
             }.rethrowCancellation()
         }
 
+    /**
+     * HLS-фолбэк для треков, у которых нет progressive MP3.
+     *
+     * api-v2 отдаёт `media.transcodings`; каждый элемент — endpoint, который
+     * в ответ на GET возвращает подписанный URL плейлиста. NewPipe такие треки
+     * не разбирает и падает с «Could not get any stream», поэтому идём в API сами.
+     */
+    private fun resolveHlsViaApi(transcodingUrl: String): AudioStreamResult {
+        val clientId = SoundcloudParsingHelper.clientId()
+            ?: error("SoundCloud не выдал client_id")
+
+        val resolveUrl = "$API/resolve?url=${encode(transcodingUrl)}&client_id=$clientId"
+        val trackBody = apiGet(resolveUrl)
+        val track = json.parseToJsonElement(trackBody).jsonObject
+        val media = track["media"]?.jsonObject
+        val transcodings = (media?.get("transcodings") ?: track["transcodings"])?.jsonArray
+            ?: error("У трека нет транскодингов SoundCloud")
+
+        val hls = transcodings
+            .map { it.jsonObject }
+            .filter { element ->
+                element["format"]?.jsonObject
+                    ?.get("protocol")?.jsonPrimitive?.content
+                    ?.equals("HLS", ignoreCase = true) == true
+            }
+            .maxByOrNull { hlsScore(it["preset"]?.jsonPrimitive?.content.orEmpty()) }
+            ?: error("У трека нет HLS-потока")
+
+        val endpoint = hls["url"]?.jsonPrimitive?.content
+            ?: error("HLS-транскодинг без URL")
+        val streamUrl = json.parseToJsonElement(apiGet(endpoint))
+            .jsonObject["url"]?.jsonPrimitive?.content
+            ?: error("SoundCloud не вернул URL HLS-плейлиста")
+
+        Log.d(
+            tag,
+            "HLS через api-v2: preset=${hls["preset"]}, url=${streamUrl.take(100)}",
+        )
+        return AudioStreamResult(
+            url = streamUrl,
+            isHls = true,
+            mimeType = MimeTypes.APPLICATION_M3U8,
+        )
+    }
+
+    private fun apiGet(url: String): String {
+        val withClientId = if (url.contains("client_id=")) {
+            url
+        } else {
+            val separator = if (url.contains('?')) '&' else '?'
+            "$url${separator}client_id=${SoundcloudParsingHelper.clientId()}"
+        }
+        val request = Request.Builder()
+            .url(withClientId)
+            .header("User-Agent", "Facet/1.0")
+            .header("Accept", "application/json")
+            .build()
+        return okHttpClient.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                error("SoundCloud API HTTP ${response.code}: ${body.take(160)}")
+            }
+            body
+        }
+    }
+
+    /** Чем выше битрейт пресета, тем раньше он в списке выбора. */
+    private fun hlsScore(preset: String): Int = when {
+        preset.contains("160") -> 160
+        preset.contains("96") -> 96
+        preset.contains("abr") -> 80
+        else -> 0
+    }
+
+    private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
+
     // ─── Mapping ─────────────────────────────────────────────────────────────
 
     private fun StreamInfoItem.toDomain(): Track {
@@ -208,6 +300,8 @@ class SoundCloudRepositoryImpl @Inject constructor(
     }
 
     companion object {
+        const val API = "https://api-v2.soundcloud.com"
+
         /** Единый текст ошибки, когда progressive MP3 недоступен. */
         const val ERROR_PROGRESSIVE_UNAVAILABLE =
             "Трек доступен только для онлайн-прослушивания"

@@ -55,6 +55,8 @@ data class AppSettings(
     val downloadQualityKbps: Int = 320,
     /** client_id приложения SoundCloud: нужен только для импорта лайков. */
     val soundcloudClientId: String = "",
+    /** Согласие на анонимную статистику; по умолчанию выключено. */
+    val analyticsEnabled: Boolean = false,
 ) {
     /** Настроены ли ключи Spotify: нужны оба поля, иначе поиск не работает. */
     val isSpotifyConfigured: Boolean
@@ -130,6 +132,9 @@ interface SettingsRepository {
 
     /** Сохранить client_id SoundCloud для импорта лайков. */
     suspend fun setSoundCloudClientId(clientId: String)
+
+    /** Включить/выключить анонимную статистику. */
+    suspend fun setAnalyticsEnabled(enabled: Boolean)
 
     companion object {
         /** Допустимые варианты качества скачивания. */

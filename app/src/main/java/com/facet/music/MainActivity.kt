@@ -32,6 +32,8 @@ import com.facet.music.core.i18n.AppLocale
 import com.facet.music.core.ui.theme.FacetTheme
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.SettingsRepository
+import com.facet.music.core.analytics.AnalyticsEvents
+import com.facet.music.core.analytics.AnalyticsTracker
 import com.facet.music.data.repository.SpotifyAuthRepository
 import com.facet.music.feature.onboarding.OnboardingScreen
 import com.facet.music.navigation.AppNavGraph
@@ -49,6 +51,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var spotifyAuthRepository: SpotifyAuthRepository
 
+    @Inject
+    lateinit var analyticsTracker: AnalyticsTracker
+
     /**
      * Язык, с которым Activity уже создана. Читается синхронно из настроек:
      * `attachBaseContext` выполняется раньше `onCreate`, когда Hilt ещё
@@ -64,6 +69,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Считаем только холодный старт: пересоздание Activity при смене языка
+        // или темы не должно раздувать статистику запусков.
+        if (savedInstanceState == null) {
+            analyticsTracker.track(AnalyticsEvents.APP_OPEN)
+        }
         // Холодный старт по ссылке из браузера: сразу завершаем вход.
         handleSpotifyRedirect(intent)
         setContent {

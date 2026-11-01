@@ -20,8 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -75,8 +76,8 @@ import com.facet.music.data.source.external.DeezerArtistRef
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/** Шапка и заголовок секции занимают первые два элемента списка. */
-private const val ARTIST_LIST_HEADER_ITEMS = 2
+/** Сколько популярных треков показываем на одной странице карусели. */
+private const val TOP_TRACKS_PER_PAGE = 5
 
 /** Высота hero-зоны артиста: хватает на аватар, имя, статистику и кнопки. */
 private val ArtistHeroHeight = 372.dp
@@ -102,6 +103,10 @@ fun ArtistScreen(
     val isPlaying by viewModel.isPlaying.collectAsState()
     val albumError by viewModel.albumError.collectAsState()
     val listState = rememberLazyListState()
+    // Популярные треки листаются горизонтально страницами по пять: длинный
+    // вертикальный список отодвигал альбомы и похожих артистов далеко вниз.
+    val trackPages = state.tracks.chunked(TOP_TRACKS_PER_PAGE)
+    val pagerState = rememberPagerState(pageCount = { trackPages.size })
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -114,7 +119,8 @@ fun ArtistScreen(
         if (scrolledToCurrent) return@LaunchedEffect
         val index = state.tracks.indexOfFirst { it.id == currentTrackId }
         if (index >= 0) {
-            listState.animateScrollToItem(index + ARTIST_LIST_HEADER_ITEMS)
+            listState.animateScrollToItem(1)
+            pagerState.animateScrollToPage(index / TOP_TRACKS_PER_PAGE)
             scrolledToCurrent = true
         }
     }
@@ -214,17 +220,65 @@ fun ArtistScreen(
                 item(key = "artist_section") {
                     SectionHeader(title = stringResource(R.string.artist_top_tracks))
                 }
-                items(items = state.tracks, key = { it.id }) { track ->
-                    TrackCard(
-                        track = track,
-                        isPlaying = track.id == currentTrackId,
-                        isPaused = track.id == currentTrackId && !isPlaying,
-                        artworkSize = 60,
-                        artworkCornerDp = 16,
-                        onClick = { onTrackClick(track, state.tracks) },
-                        onPlayNext = { handlePlayNext(track) },
-                        onAddToQueue = { handleAddToQueue(track) },
-                    )
+                item(key = "artist_top_pager") {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        HorizontalPager(
+                            state = pagerState,
+                            pageSpacing = 12.dp,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { page ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                trackPages[page].forEach { track ->
+                                    TrackCard(
+                                        track = track,
+                                        isPlaying = track.id == currentTrackId,
+                                        isPaused = track.id == currentTrackId && !isPlaying,
+                                        artworkSize = 60,
+                                        artworkCornerDp = 16,
+                                        onClick = { onTrackClick(track, state.tracks) },
+                                        onPlayNext = { handlePlayNext(track) },
+                                        onAddToQueue = { handleAddToQueue(track) },
+                                    )
+                                }
+                                // Последняя страница короче: держим высоту, чтобы
+                                // при листании не прыгала вся нижняя часть экрана.
+                                repeat(TOP_TRACKS_PER_PAGE - trackPages[page].size) {
+                                    Spacer(Modifier.height(64.dp))
+                                }
+                            }
+                        }
+                        if (trackPages.size > 1) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                repeat(trackPages.size) { index ->
+                                    val selected = pagerState.currentPage == index
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(horizontal = 3.dp)
+                                            .size(if (selected) 8.dp else 6.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (selected) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.outlineVariant
+                                                },
+                                            ),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (state.albums.isNotEmpty()) {

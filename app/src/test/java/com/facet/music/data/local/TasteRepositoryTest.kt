@@ -8,8 +8,6 @@ import com.facet.music.data.model.Track
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -68,18 +66,12 @@ class TasteRepositoryTest {
     }
 
     @Test
-    fun `unlike removes like weight and russian priority is stored`() = runBlocking {
+    fun `unlike removes like weight`() = runBlocking {
         repository.onLike(sampleTrack)
         repository.onUnlike(sampleTrack)
 
         assertEquals(0.0, database.tasteDao().getGenreWeight("rock") ?: 0.0, 0.0001)
         assertEquals(0.0, database.tasteDao().getArtistWeight("artist") ?: 0.0, 0.0001)
-
-        assertTrue(repository.isRussianPriority())
-
-        repository.setRussianPriority(false)
-
-        assertFalse(repository.isRussianPriority())
     }
 
     private val sampleTrack = track(artist = "Artist", genre = "Rock")

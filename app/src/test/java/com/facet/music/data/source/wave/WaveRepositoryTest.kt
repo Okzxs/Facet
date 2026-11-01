@@ -41,7 +41,6 @@ class WaveRepositoryTest {
             Result.success(emptyList())
         coEvery { tasteRepository.getTopArtists(any()) } returns emptyList()
         coEvery { tasteRepository.getTopGenres(any()) } returns emptyList()
-        coEvery { tasteRepository.isRussianPriority() } returns false
 
         repository = WaveRepositoryImpl(
             likedTracksRepository = likedTracksRepository,
@@ -117,28 +116,6 @@ class WaveRepositoryTest {
     }
 
     @Test
-    fun `russian priority puts cyrillic tracks first`() = runBlocking {
-        coEvery { tasteRepository.isRussianPriority() } returns true
-        coEvery { chartsRepository.getTop50() } returns Result.success(
-            listOf(
-                track("e1", null, title = "English one"),
-                track("e2", null, title = "English two"),
-                track("r1", null, title = "Русский трек"),
-                track("e3", null, title = "English three"),
-                track("r2", null, title = "Ещё один трек"),
-            ),
-        )
-
-        repository.startSession().getOrThrow()
-        val batch = repository.nextBatch(size = 5).getOrThrow()
-
-        assertEquals(5, batch.tracks.size)
-        val cyrillic = '\u0400'..'\u04FF'
-        assertTrue(batch.tracks.take(2).all { it.title.any { char -> char in cyrillic } })
-        assertTrue(batch.tracks.drop(2).none { it.title.any { char -> char in cyrillic } })
-    }
-
-    @Test
     fun `empty sources yield an empty terminated wave`() = runBlocking {
         repository.startSession().getOrThrow()
 
@@ -147,28 +124,6 @@ class WaveRepositoryTest {
         assertTrue(batch.tracks.isEmpty())
         assertTrue(batch.session.isTerminated)
         assertTrue(repository.activeSession.value?.isTerminated ?: false)
-    }
-
-    @Test
-    fun `russian priority fills the wave with local tracks before foreign ones`() = runBlocking {
-        coEvery { tasteRepository.isRussianPriority() } returns true
-        val liked = (1..12).map {
-            track("ru$it", null, title = "Русский трек $it", artist = "Артист $it")
-        }
-        every { likedTracksRepository.getLikedTracks() } returns flowOf(liked)
-        coEvery { chartsRepository.getTop50() } returns Result.success(
-            (1..10).map { track("en$it", null, title = "English $it", artist = "Foreign $it") },
-        )
-
-        repository.startSession().getOrThrow()
-        val batch = repository.nextBatch(size = 20).getOrThrow()
-
-        val cyrillic = '\u0400'..'\u04FF'
-        assertEquals(20, batch.tracks.size)
-        assertEquals(12, batch.session.fromLikes)
-        // Пока хватает своих треков, западные идут только после них
-        assertTrue(batch.tracks.take(12).all { it.title.any { char -> char in cyrillic } })
-        assertTrue(batch.tracks.drop(12).none { it.title.any { char -> char in cyrillic } })
     }
 
     @Test

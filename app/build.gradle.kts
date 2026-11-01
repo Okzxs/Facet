@@ -37,7 +37,8 @@ android {
         applicationId = "com.facet.music"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        // 2 — обновление 01.11.2026: новая иконка и фиксы. versionName остаётся 1.0.0.
+        versionCode = 2
         versionName = "1.0.0"
 
         val escapedLastFmKey = lastFmApiKey
