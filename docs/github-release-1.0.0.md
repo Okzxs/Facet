@@ -45,9 +45,9 @@ Apple Music и Spotify в одном приложении на каноничн�
 распространяется только как APK: публикация в сторах невозможна из-за парсинга
 стриминговых сервисов.
 
-- Файл: `app-release.apk`, 6 589 785 байт
-- SHA-256: `37fe12a57c5f7283841f55e732abec092ec033ce437129e02a0ec0d05e834bc5`
-- versionName `1.0.0`, versionCode `4`
+- Файл: `app-release.apk`, 6 583 521 байт
+- SHA-256: `e1680171aa184ad4e282758c7ab8f62437b11f35bbfb0d5e801567931cf1db08`
+- versionName `1.0.0`, versionCode `5`
 
 Проверить контрольную сумму на Windows:
 
