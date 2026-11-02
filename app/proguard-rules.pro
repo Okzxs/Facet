@@ -7,6 +7,17 @@
 -renamesourcefileattribute SourceFile
 
 # ---------------------------------------------------------------------------
+# Логи
+# ---------------------------------------------------------------------------
+# В релизе отладочные строки не должны попадать в APK и в logcat:
+# R8 вырезает вызовы целиком вместе с конкатенацией аргументов.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}
+
+# ---------------------------------------------------------------------------
 # NewPipe Extractor и Rhino
 # ---------------------------------------------------------------------------
 # NewPipe тянет за собой Rhino (org.mozilla.javascript), а тот ссылается на
@@ -78,3 +89,11 @@
 
 # Hilt генерирует код по аннотациям; аннотации должны пережить R8.
 -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations
+
+# ---------------------------------------------------------------------------
+# Tink (шифрование секретов)
+# ---------------------------------------------------------------------------
+# Tink регистрирует примитивы по typeUrl и разбирает protobuf по именам классов.
+-keep class com.google.crypto.tink.** { *; }
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**

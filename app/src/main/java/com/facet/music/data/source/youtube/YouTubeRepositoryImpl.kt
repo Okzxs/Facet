@@ -71,7 +71,7 @@ class YouTubeRepositoryImpl @Inject constructor(
                 val related = streamInfo.relatedItems
                     .ifEmpty { streamInfo.relatedStreams }
 
-                Log.d(tag, "Related для $trackUrl: ${related.size} элементов")
+                Log.d(tag, "Похожие: ${related.size} элементов")
 
                 related
                     .filterIsInstance<StreamInfoItem>()
@@ -94,20 +94,11 @@ class YouTubeRepositoryImpl @Inject constructor(
                     StreamInfo.getInfo(service, videoUrl)
                 }
 
-                Log.d(tag, "=== Аудиопотоки для $videoUrl ===")
-                streamInfo.audioStreams.forEachIndexed { index, stream ->
-                    Log.d(
-                        tag,
-                        "[$index] deliveryMethod=${stream.deliveryMethod}" +
-                            " format=${stream.format}" +
-                            " bitrate=${stream.averageBitrate}" +
-                            " url=${stream.content.take(80)}",
-                    )
-                }
+                Log.d(tag, "Аудиопотоков от NewPipe: ${streamInfo.audioStreams.size}")
                 streamInfo.errors.forEach { error ->
                     Log.e(
                         tag,
-                        "StreamInfo error: ${error.javaClass.simpleName}: ${error.message}",
+                        "StreamInfo: ${error.javaClass.simpleName}: ${redact(error)}",
                         error,
                     )
                 }
@@ -187,5 +178,11 @@ class YouTubeRepositoryImpl @Inject constructor(
         /** Текст ошибки, когда YouTube не отдал одиночный progressive-поток. */
         const val ERROR_PROGRESSIVE_UNAVAILABLE =
             "YouTube не отдал progressive-аудио для этого трека"
+
+        private val URL_REGEX = Regex("""https?://\S+""")
+
+        /** Убирает ссылки (в том числе подписанные) из текста ошибки. */
+        fun redact(error: Throwable): String =
+            (error.message ?: error.javaClass.simpleName).replace(URL_REGEX, "<url>")
     }
 }

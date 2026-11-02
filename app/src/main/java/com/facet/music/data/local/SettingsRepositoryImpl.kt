@@ -2,6 +2,7 @@ package com.facet.music.data.local
 
 import android.content.Context
 import com.facet.music.core.i18n.AppLocale
+import com.facet.music.core.security.SecureStore
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.ThemeMode
@@ -33,10 +34,16 @@ class SettingsRepositoryImpl @Inject constructor(
     @ApplicationContext context: Context,
 ) : SettingsRepository {
 
+    private val appContext: Context = context.applicationContext
+
     // Открываем лениво: сам getSharedPreferences тоже читает диск.
     private val prefs by lazy {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
+
+    // Client secret шифруется Tink; Keystore инициализируется только при
+    // наличии секрета, поэтому обычные настройки от него не зависят.
+    private val secureStore by lazy { SecureStore(appContext) }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val loaded = CompletableDeferred<Unit>()
@@ -70,7 +77,7 @@ class SettingsRepositoryImpl @Inject constructor(
         accentEnabled = prefs.getBoolean(KEY_ACCENT_ENABLED, false),
         // Ключи Spotify: пустая строка — интеграция не настроена.
         spotifyClientId = prefs.getString(KEY_SPOTIFY_CLIENT_ID, null).orEmpty(),
-        spotifyClientSecret = prefs.getString(KEY_SPOTIFY_CLIENT_SECRET, null).orEmpty(),
+        spotifyClientSecret = readSpotifyClientSecret(),
         // Язык интерфейса: «как в системе», пока пользователь не выбрал другой.
         appLanguage = prefs.getString(KEY_APP_LANGUAGE, null)
             ?.takeIf { it in AppSettings.SUPPORTED_LANGUAGES }
@@ -163,10 +170,14 @@ class SettingsRepositoryImpl @Inject constructor(
         val trimmedId = clientId.trim()
         val trimmedSecret = secret.trim()
         withContext(Dispatchers.IO) {
-            prefs.edit()
-                .putString(KEY_SPOTIFY_CLIENT_ID, trimmedId)
-                .putString(KEY_SPOTIFY_CLIENT_SECRET, trimmedSecret)
-                .apply()
+            prefs.edit().putString(KEY_SPOTIFY_CLIENT_ID, trimmedId).apply()
+            if (trimmedSecret.isEmpty()) {
+                secureStore.remove(KEY_SPOTIFY_CLIENT_SECRET)
+                prefs.edit().remove(KEY_SPOTIFY_CLIENT_SECRET).apply()
+            } else if (secureStore.putString(KEY_SPOTIFY_CLIENT_SECRET, trimmedSecret)) {
+                // Открытое значение прошлой версии больше не нужно.
+                prefs.edit().remove(KEY_SPOTIFY_CLIENT_SECRET).apply()
+            }
         }
         _settings.update {
             (it ?: AppSettings()).copy(
@@ -174,6 +185,18 @@ class SettingsRepositoryImpl @Inject constructor(
                 spotifyClientSecret = trimmedSecret,
             )
         }
+    }
+
+    /**
+     * Читает client secret из шифрованного хранилища, предварительно перенеся
+     * открытое значение прошлых версий. Без секрета Keystore не трогается.
+     */
+    private fun readSpotifyClientSecret(): String {
+        if (prefs.contains(KEY_SPOTIFY_CLIENT_SECRET)) {
+            secureStore.migrateLegacy(prefs, listOf(KEY_SPOTIFY_CLIENT_SECRET))
+        }
+        if (!secureStore.contains(KEY_SPOTIFY_CLIENT_SECRET)) return ""
+        return secureStore.getString(KEY_SPOTIFY_CLIENT_SECRET).orEmpty()
     }
 
     override suspend fun setAppLanguage(language: String) {

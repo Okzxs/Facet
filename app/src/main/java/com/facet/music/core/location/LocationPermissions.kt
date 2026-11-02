@@ -13,11 +13,11 @@ import androidx.core.content.ContextCompat
  */
 object LocationPermissions {
 
-    /** Оба разрешения запрашиваются вместе: пользователь может выбрать «Приблизительно». */
-    val permissions = arrayOf(
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION,
-    )
+    /**
+     * Только приблизительная геопозиция: для воспоминаний достаточно района,
+     * а точный доступ просит лишнее разрешение и расходует батарею.
+     */
+    val permissions = arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
 
     fun hasPermission(context: Context): Boolean = permissions.any { permission ->
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED

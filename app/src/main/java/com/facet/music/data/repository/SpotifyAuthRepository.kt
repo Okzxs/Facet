@@ -1,19 +1,24 @@
 package com.facet.music.data.repository
 
+import com.facet.music.core.spotify.SpotifyAuthEvent
 import com.facet.music.core.spotify.SpotifyAuthState
 import com.facet.music.core.spotify.SpotifyPlaylistSummary
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Вход в Spotify по OAuth 2.0 + PKCE и доступ к данным пользователя.
  *
- * Токены живут в SharedPreferences: приложение не хранит пароль Spotify,
- * только выданные провайдером токены, которые можно отозвать.
+ * Токены хранятся в шифрованном виде (Tink + Android Keystore): приложение
+ * не видит пароль Spotify, только выданные провайдером токены.
  */
 interface SpotifyAuthRepository {
 
     /** Текущее состояние входа — UI подписывается на поток. */
     val authState: StateFlow<SpotifyAuthState>
+
+    /** Одноразовые события завершения входа для тостов. */
+    val events: Flow<SpotifyAuthEvent>
 
     /** Похож ли адрес на возврат от Spotify (deep link `facet://spotify-auth`). */
     fun isRedirect(uri: String): Boolean

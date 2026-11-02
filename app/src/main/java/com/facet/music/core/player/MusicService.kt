@@ -10,6 +10,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommands
 import com.facet.music.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -102,8 +103,38 @@ class MusicService : MediaSessionService() {
         exoPlayer = player
         return MediaSession.Builder(this, forwardingPlayer)
             .setSessionActivity(sessionActivity)
+            .setCallback(sessionCallback)
             .build()
             .also { mediaSession = it }
+    }
+
+    /**
+     * Свои экраны, уведомление, Bluetooth, Android Auto и SystemUI (Now Bar)
+     * получают полный набор команд. Посторонним контроллерам остаётся только
+     * транспорт: play/pause, переключение и seek.
+     */
+    private val sessionCallback = object : MediaSession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult {
+            val trusted = controller.packageName == packageName ||
+                controller.isTrusted ||
+                session.isMediaNotificationController(controller) ||
+                session.isAutomotiveController(controller) ||
+                session.isAutoCompanionController(controller)
+            return if (trusted) {
+                MediaSession.ConnectionResult.accept(
+                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS,
+                    MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS,
+                )
+            } else {
+                MediaSession.ConnectionResult.accept(
+                    SessionCommands.EMPTY,
+                    SAFE_CONTROLLER_COMMANDS,
+                )
+            }
+        }
     }
 
     /**
@@ -121,10 +152,31 @@ class MusicService : MediaSessionService() {
 
     @UnstableApi
     override fun onDestroy() {
-        mediaSession?.release()
-        mediaSession = null
+        // Сначала плеер: сессия не должна обращаться к освобождённому ExoPlayer.
         exoPlayer?.release()
         exoPlayer = null
+        mediaSession?.release()
+        mediaSession = null
         super.onDestroy()
+    }
+
+    private companion object {
+        val SAFE_CONTROLLER_COMMANDS: Player.Commands = Player.Commands.Builder()
+            .addAll(
+                Player.COMMAND_PLAY_PAUSE,
+                Player.COMMAND_PREPARE,
+                Player.COMMAND_STOP,
+                Player.COMMAND_SEEK_TO_DEFAULT_POSITION,
+                Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
+                Player.COMMAND_SEEK_TO_PREVIOUS,
+                Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                Player.COMMAND_SEEK_TO_NEXT,
+                Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
+                Player.COMMAND_GET_TIMELINE,
+                Player.COMMAND_GET_METADATA,
+                Player.COMMAND_GET_AUDIO_ATTRIBUTES,
+            )
+            .build()
     }
 }

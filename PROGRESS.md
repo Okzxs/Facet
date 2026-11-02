@@ -1,6 +1,51 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 01.11.2026 (сессия 68)
+## Последнее обновление: 03.11.2026 (сессия 69)
+
+## Сессия 69: глобальный рефакторинг, фаза 1 — безопасность и быстрые фиксы
+
+**Статус:** фаза 1 из 11 закрыта; следующие фазы не начаты. Живой смоук на телефоне — после восстановления adb-подключения.
+
+### Что сделано
+- **Spotify redirect.** `MainActivity` обрабатывает deep link только на холодном старте (`savedInstanceState == null`) и в `onNewIntent`; `intent.data` стирается сразу после чтения. Обмен кода идёт в `@ApplicationScope` (`SupervisorJob + Dispatchers.IO`), результат — событием `SpotifyAuthEvent` (`Channel` → `Flow`), тост показывает UI. В `SpotifyAuthRepositoryImpl.completeAuthorization` — `Mutex`, повторный вызов с тем же кодом no-op.
+- **Секреты.** `core/security/SecureStore.kt`: Tink AES-256-GCM, keyset под Android Keystore. Токены Spotify (access/refresh/expiry/verifier/state/client_id/профиль) и `spotify_client_secret` больше не лежат открыто; одноразовая миграция из `spotify_auth` и `facet_settings` удаляет открытые ключи. Ошибки Keystore не крашат приложение.
+- **Бэкап.** `android:dataExtractionRules` + `android:fullBackupContent`; исключены shared_prefs, БД, файлы, external и кэш для cloud-backup и device-transfer.
+- **Геопозиция.** Только `ACCESS_COARSE_LOCATION`; `FusedLocationProvider` просит `PRIORITY_BALANCED_POWER_ACCURACY` и добирает `lastLocation`.
+- **MediaSession.** `onConnect` отдаёт полный набор своим экранам, уведомлению, Bluetooth, Android Auto и SystemUI (Now Bar); остальным — только play/pause, next/prev, seek и чтение метаданных. В `onDestroy` сначала `player.release()`, затем `mediaSession.release()`.
+- **Release.** `-assumenosideeffects` для `Log.v/d/i` (проверено по dex: отладочных строк нет), keep Tink; правила NewPipe/Rhino не сужались — живой прогон SoundCloud/YouTube в релизе не выполнялся (устройство недоступно).
+- **Логи.** Из `PlayerController`, `SoundCloudRepositoryImpl`, `YouTubeRepositoryImpl` убраны URL потоков/подписанные ссылки; тексты ошибок NewPipe редактируются (`redact`).
+- **Тесты.** `SecureStoreTest` — 6 кейсов (миграция String/Long, пустые значения, идемпотентность, put/remove, повреждённое значение, недоступный Keystore).
+- **AGENTS.md.** Правило комментариев заменено на «комментариев нет» (финальная фаза).
+
+### Проверка
+- `assembleDebug` — BUILD SUCCESSFUL; `assembleRelease` — BUILD SUCCESSFUL (5m02s), APK 7 207 355 байт, SHA-256 `62c4b5403f897fe734b3227fbc89c7fbd8d321e5e481064ae305c1091bca5afd`.
+- `testDebugUnitTest` — BUILD SUCCESSFUL, 44 suite / 287 тестов (было 43/281), 0 failures.
+- `aapt2`: в релизном манифесте нет `ACCESS_FINE_LOCATION`, есть `dataExtractionRules`/`fullBackupContent`.
+- Live-проверка не выполнена: `adb devices` пуст, телефон 192.168.0.102:38711 не отвечает.
+
+### Файлы
+```
+AGENTS.md
+app/build.gradle.kts
+app/proguard-rules.pro
+app/src/main/AndroidManifest.xml
+app/src/main/res/xml/backup_rules.xml
+app/src/main/res/xml/data_extraction_rules.xml
+app/src/main/java/com/facet/music/MainActivity.kt
+app/src/main/java/com/facet/music/core/di/CoroutineModule.kt
+app/src/main/java/com/facet/music/core/security/SecureStore.kt
+app/src/main/java/com/facet/music/core/spotify/SpotifyAuthEvent.kt
+app/src/main/java/com/facet/music/core/location/FusedLocationProvider.kt
+app/src/main/java/com/facet/music/core/location/LocationPermissions.kt
+app/src/main/java/com/facet/music/core/player/MusicService.kt
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/data/local/SettingsRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/repository/SpotifyAuthRepository.kt
+app/src/main/java/com/facet/music/data/source/external/SpotifyAuthRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/test/java/com/facet/music/core/security/SecureStoreTest.kt
+```
 
 ## Сессия 68: иконка, приватность, HLS и карусель артиста
 

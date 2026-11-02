@@ -760,25 +760,22 @@ class PlayerController private constructor(
             }.rethrowCancellation()
 
             if (downloaded != null) {
-                Log.d(
-                    tag,
-                    "Офлайн-воспроизведение трека '${track.title}' из кэша: ${downloaded.mediaUrl}",
-                )
+                Log.d(tag, "Офлайн-воспроизведение из кэша")
             }
 
             streamResult
                 .onSuccess { result ->
                     Log.d(
                         tag,
-                        "Воспроизведение трека '${track.title}': " +
-                            "isHls=${result.isHls}, mime=${result.mimeType ?: "auto"}",
+                        "Поток готов: isHls=${result.isHls}, mime=${result.mimeType ?: "auto"}",
                     )
                     playStream(track, result)
                 }
                 .onFailure { error ->
-                    // В UI уходит только дружелюбное сообщение, сырое исключение — в лог
+                    // В UI уходит только дружелюбное сообщение, сырое исключение — в лог.
+                    // Название трека и ссылку не логируем: id SoundCloud — это URL.
                     val friendlyMessage = error.toFriendlyPlaybackMessage()
-                    Log.e(tag, "Ошибка resolve для трека '${track.title}': $friendlyMessage", error)
+                    Log.e(tag, "Ошибка resolve (${track.source}): $friendlyMessage", error)
                     _state.update {
                         it.copy(
                             isLoading = false,
@@ -871,7 +868,7 @@ class PlayerController private constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(tag, "Не удалось запустить поток для трека '${track.title}'", e)
+            Log.e(tag, "Не удалось запустить поток (${track.source})", e)
             _state.update {
                 it.copy(
                     isLoading = false,

@@ -29,6 +29,7 @@
 | Изображения | Coil 3 | 3.0.4 |
 | Сеть | OkHttp | 4.12.0 |
 | Сериализация | kotlinx.serialization | 1.7.3 |
+| Шифрование | Tink (AES-256-GCM + Android Keystore) | 1.15.0 |
 | AGP | Android Gradle Plugin | 8.5.2 |
 | compileSdk / minSdk | — | 35 / 26 |
 
@@ -123,7 +124,7 @@ com.facet.music
 - При падении сборки: **самостоятельно** исправлять файлы и пересобирать (до 2 попыток на одну ошибку), не спрашивая пользователя
 - В НАЧАЛЕ сессии: сверить PROGRESS.md с фактическим кодом и дополнить, если он устарел
 - Если обновление PROGRESS.md не удалось или зациклилось — НЕ повторять, пропустить: доки обновятся в начале следующей сессии
-- Комментарии в коде — **только на русском**
+- Комментарии в коде **отсутствуют**: правило «только на русском» заменено в сессии 69 рефакторинга — финальная фаза удаляет все комментарии из Kotlin-кода
 - Все служебные файлы (`MEMORY.md`, `PROGRESS.md` и т.д.) и документация пишутся **строго на русском языке**
 - Не трогать UI-компоненты при изменении бизнес-логики
 
@@ -134,6 +135,7 @@ com.facet.music
 
 ### Релиз и подпись
 - `keystore.jks` и `keystore.properties` лежат в корне и **никогда** не коммитятся (`.gitignore`: `*.jks`, `/keystore.properties`). Без этого ключа обновления установленного приложения невозможны.
+- **Секреты шифруются.** Токены Spotify и `spotify_client_secret` лежат только в `SecureStore` (`core/security/SecureStore.kt`): AES-256-GCM через Tink, набор ключей защищён Android Keystore (`android-keystore://facet_master_key`). Открытые значения прошлых версий переносятся одноразово и удаляются. `allowBackup=false` плюс `res/xml/backup_rules.xml` и `res/xml/data_extraction_rules.xml` исключают shared_prefs, БД, файлы и кэш из облака и переноса между устройствами.
 - Release: `applicationId com.facet.music`, `versionName` вида `1.0.0`, `isMinifyEnabled` + `isShrinkResources`, правила — `app/proguard-rules.pro` (NewPipe/Rhino, kotlinx.serialization, Room, enum-константы).
 - Deep link Spotify `facet://spotify-auth` должен совпадать с Redirect URI в Spotify Dashboard; при смене схемы обновляются манифест, `SPOTIFY_REDIRECT_URI` и `SpotifyPkceTest`.
 
@@ -196,7 +198,7 @@ data class Track(
 - **Медиатека — один экран без вкладок** (`LibraryScreen`): шапка с `CollectionSummary`, чипс «Любимые треки» (`CollectionChipCard`), секция «Плейлисты» (сетка `PlaylistTile` в две колонки, создание и импорт), секция «Скачанное». Лайки живут на отдельном маршруте `Screen.LikedTracks` (`liked`, док скрыт) в `LikedTracksScreen`. Общие компоненты коллекций — `core/ui/components/CollectionComponents.kt` (`SectionHeader`, `EmptyState`, `CollectionChipCard`, `PlaylistCover`, `PlaylistTile`); новые экраны коллекций собираются из них, а не из локальных копий.
 - **Обложка плейлиста** — `Playlist.coverUrl` из подзапроса `PlaylistWithCount` (первый трек с картинкой). Схема Room не менялась; при отсутствии обложки `PlaylistCover` рисует детерминированный градиент от названия.
 - **Экран артиста** — Deezer: `fetchArtist`, `fetchArtistAlbums` (год из `release_date`, `nb_tracks` в ответе нет), `fetchRelatedArtists`, `fetchAlbumTracks`. Топ Deezer может содержать один трек — список дополняется поиском по имени с фильтром по исполнителю (`artist:"…"` публичный API не поддерживает). Горизонтальные карусели — `Row` + `horizontalScroll`, не `LazyRow` (внутри `LazyColumn` он обрезал подпись под обложкой).
-- **Spotify-вход (OAuth PKCE)** — `core/spotify/SpotifyPkce.kt`, `SpotifyAuth.kt` (`facet://spotify-auth`), `SpotifyAuthRepositoryImpl` (токены в SharedPreferences `spotify_auth`, refresh, профиль, `/v1/me/playlists`). Redirect URI **обязан** совпадать с Dashboard; вход не требует `client_secret`, секрет нужен только поиску без входа. `SpotifyProvider` предпочитает пользовательский токен Client Credentials и на 401 обновляет его.
+- **Spotify-вход (OAuth PKCE)** — `core/spotify/SpotifyPkce.kt`, `SpotifyAuth.kt` (`facet://spotify-auth`), `SpotifyAuthRepositoryImpl` (токены в `SecureStore`, refresh, профиль, `/v1/me/playlists`). Redirect URI **обязан** совпадать с Dashboard; вход не требует `client_secret`, секрет нужен только поиску без входа. `SpotifyProvider` предпочитает пользовательский токен Client Credentials и на 401 обновляет его.
 - **Действия плеера** — старый вид до `6eaaaf0`: сквирклы «Скачать/Лайк/Дизлайк» над островом, пилюля «Текст песни» на острове. Кнопки текста в шапке больше нет: там «Сейчас играет» и имя артиста с мягким свечением (сессия 67, откат).
 
 ## Иконка, сплэш и онбординг (сессия 62)

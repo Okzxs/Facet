@@ -1,26 +1,37 @@
 package com.facet.music.data.source.external
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
+import com.facet.music.core.di.ApplicationScope
 import com.facet.music.core.network.RateLimiter
 import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
+import com.facet.music.core.security.SecureStore
 import com.facet.music.core.spotify.SPOTIFY_AUTHORIZE_URL
 import com.facet.music.core.spotify.SPOTIFY_ME_URL
 import com.facet.music.core.spotify.SPOTIFY_MY_PLAYLISTS_URL
 import com.facet.music.core.spotify.SPOTIFY_REDIRECT_URI
 import com.facet.music.core.spotify.SPOTIFY_TOKEN_URL
+import com.facet.music.core.spotify.SpotifyAuthEvent
 import com.facet.music.core.spotify.SpotifyAuthState
 import com.facet.music.core.spotify.SpotifyPkce
 import com.facet.music.core.spotify.SpotifyPlaylistSummary
 import com.facet.music.core.spotify.spotifyAuthorizeUrl
+import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.repository.SpotifyAuthRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -44,25 +55,57 @@ import javax.inject.Singleton
  * его можно вытащить из APK. Секрет остаётся опциональным и нужен только
  * для поиска без входа.
  *
- * Токены лежат в SharedPreferences `spotify_auth` рядом с остальными
- * настройками: пароль Spotify приложение не видит и не хранит.
+ * Код на токены меняется в области процесса, а не Activity: пересоздание
+ * экрана (язык, тема, поворот) не должно запускать обмен повторно.
  */
 @Singleton
 class SpotifyAuthRepositoryImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @ApplicationContext context: Context,
     private val client: OkHttpClient,
     private val json: Json,
     @SourceRateLimiter(RateLimiterKeys.SPOTIFY) private val rateLimiter: RateLimiter,
+    @ApplicationScope private val applicationScope: CoroutineScope,
 ) : SpotifyAuthRepository {
 
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+
+    // Старый открытый файл: нужен только как источник одноразовой миграции.
+    private val legacyPrefs: SharedPreferences =
+        appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private val secureStore by lazy { SecureStore(appContext) }
 
     // Обновление токена одно на всё приложение: параллельные запросы
     // не должны одновременно дёргать refresh и затирать результат.
     private val tokenMutex = Mutex()
 
-    private val _authState = MutableStateFlow(readState())
+    // Обмен кода сериализован: повторный deep link не должен отправлять
+    // тот же одноразовый код второй раз.
+    private val completionMutex = Mutex()
+    private var lastCompletedCode: String? = null
+
+    private val eventChannel = Channel<SpotifyAuthEvent>(Channel.BUFFERED)
+    override val events: Flow<SpotifyAuthEvent> = eventChannel.receiveAsFlow()
+
+    private val _authState = MutableStateFlow(
+        SpotifyAuthState(connected = hasStoredSession()),
+    )
     override val authState: StateFlow<SpotifyAuthState> = _authState.asStateFlow()
+
+    // Пока миграция не завершена, suspend-методы не читают шифрованные ключи:
+    // иначе старые токены на миг выглядели бы отсутствующими.
+    private val migrated = CompletableDeferred<Unit>()
+
+    init {
+        applicationScope.launch {
+            runCatching { secureStore.migrateLegacy(legacyPrefs, LEGACY_KEYS) }
+                .onFailure { error ->
+                    Log.w(TAG, "Миграция секретов Spotify не удалась: ${error.message}")
+                }
+            _authState.value = readState()
+            migrated.complete(Unit)
+        }
+    }
 
     override fun isRedirect(uri: String): Boolean =
         uri.startsWith(SPOTIFY_REDIRECT_URI, ignoreCase = true)
@@ -74,11 +117,15 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
                 require(id.isNotEmpty()) { MISSING_CLIENT_ID }
                 val verifier = SpotifyPkce.generateVerifier()
                 val state = SpotifyPkce.generateState()
-                prefs.edit()
-                    .putString(KEY_VERIFIER, verifier)
-                    .putString(KEY_STATE, state)
-                    .putString(KEY_CLIENT_ID, id)
-                    .apply()
+                check(secureStore.putString(KEY_VERIFIER, verifier)) {
+                    "Не удалось сохранить code_verifier"
+                }
+                check(secureStore.putString(KEY_STATE, state)) {
+                    "Не удалось сохранить state"
+                }
+                check(secureStore.putString(KEY_CLIENT_ID, id)) {
+                    "Не удалось сохранить Client ID"
+                }
                 spotifyAuthorizeUrl(
                     clientId = id,
                     redirectUri = SPOTIFY_REDIRECT_URI,
@@ -92,57 +139,77 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
 
     override suspend fun completeAuthorization(uri: String): Result<Unit> =
         withContext(Dispatchers.IO) {
-            runCatching {
-                val parsed = Uri.parse(uri)
-                parsed.getQueryParameter("error")?.let { error ->
-                    error("Spotify вернул ошибку авторизации: $error")
+            migrated.await()
+            val parsed = Uri.parse(uri)
+            val code = parsed.getQueryParameter("code")
+            completionMutex.withLock {
+                // Тот же код уже обменян: молча выходим, без второго тоста.
+                if (code != null && code == lastCompletedCode) {
+                    return@withLock Result.success(Unit)
                 }
-                val code = parsed.getQueryParameter("code")
-                    ?: error("В ответе Spotify нет кода авторизации")
-                val returnedState = parsed.getQueryParameter("state")
-                    ?: error("В ответе Spotify нет state")
-                val expectedState = prefs.getString(KEY_STATE, null)
-                if (expectedState == null || expectedState != returnedState) {
-                    error("state не совпал: ответ пришёл не на наш запрос")
-                }
-                val verifier = prefs.getString(KEY_VERIFIER, null)
-                    ?: error("Потерян code_verifier — начните вход заново")
-                val clientId = prefs.getString(KEY_CLIENT_ID, null)
-                    ?: error(MISSING_CLIENT_ID)
-
-                rateLimiter.awaitSlot()
-                val form = FormBody.Builder()
-                    .add("grant_type", GRANT_TYPE_CODE)
-                    .add("code", code)
-                    .add("redirect_uri", SPOTIFY_REDIRECT_URI)
-                    .add("client_id", clientId)
-                    .add("code_verifier", verifier)
-                    .build()
-                val tokenBody = postForm(SPOTIFY_TOKEN_URL, form)
-                saveTokens(tokenBody)
-                // Профиль нужен карточке настроек: имя и аватар.
-                runCatching { loadProfile() }.onFailure { error ->
-                    Log.w(TAG, "Профиль Spotify не загрузился: ${error.message}")
-                }
-                prefs.edit().remove(KEY_VERIFIER).remove(KEY_STATE).apply()
-                _authState.value = readState()
-            }.onFailure { error ->
-                Log.w(TAG, "Вход Spotify не завершён: ${error.message}")
+                val result = runCatching { exchangeCode(parsed) }
+                    .rethrowCancellation()
+                    .onFailure { error ->
+                        Log.w(TAG, "Вход Spotify не завершён: ${error.message}")
+                    }
+                if (result.isSuccess) lastCompletedCode = code
+                eventChannel.trySend(
+                    if (result.isSuccess) SpotifyAuthEvent.SignedIn else SpotifyAuthEvent.Failed,
+                )
+                result
             }
         }
 
+    private suspend fun exchangeCode(parsed: Uri) {
+        parsed.getQueryParameter("error")?.let { error ->
+            error("Spotify вернул ошибку авторизации: $error")
+        }
+        val code = parsed.getQueryParameter("code")
+            ?: error("В ответе Spotify нет кода авторизации")
+        val returnedState = parsed.getQueryParameter("state")
+            ?: error("В ответе Spotify нет state")
+        val expectedState = secureStore.getString(KEY_STATE)
+        if (expectedState == null || expectedState != returnedState) {
+            error("state не совпал: ответ пришёл не на наш запрос")
+        }
+        val verifier = secureStore.getString(KEY_VERIFIER)
+            ?: error("Потерян code_verifier — начните вход заново")
+        val clientId = secureStore.getString(KEY_CLIENT_ID)
+            ?: error(MISSING_CLIENT_ID)
+
+        rateLimiter.awaitSlot()
+        val form = FormBody.Builder()
+            .add("grant_type", GRANT_TYPE_CODE)
+            .add("code", code)
+            .add("redirect_uri", SPOTIFY_REDIRECT_URI)
+            .add("client_id", clientId)
+            .add("code_verifier", verifier)
+            .build()
+        val tokenBody = postForm(SPOTIFY_TOKEN_URL, form)
+        saveTokens(tokenBody)
+        // Профиль нужен карточке настроек: имя и аватар.
+        runCatching { loadProfile() }.onFailure { error ->
+            Log.w(TAG, "Профиль Spotify не загрузился: ${error.message}")
+        }
+        secureStore.remove(KEY_VERIFIER)
+        secureStore.remove(KEY_STATE)
+        _authState.value = readState()
+    }
+
     override suspend fun accessToken(forceRefresh: Boolean): String? =
         withContext(Dispatchers.IO) {
-            val refreshToken = prefs.getString(KEY_REFRESH, null) ?: return@withContext null
-            val cached = prefs.getString(KEY_ACCESS, null)
+            migrated.await()
+            val refreshToken = secureStore.getString(KEY_REFRESH) ?: return@withContext null
+            val cached = secureStore.getString(KEY_ACCESS)
             if (!forceRefresh && cached != null && isFresh()) return@withContext cached
 
             tokenMutex.withLock {
-                val current = prefs.getString(KEY_ACCESS, null)
+                val current = secureStore.getString(KEY_ACCESS)
                 if (!forceRefresh && current != null && isFresh()) return@withLock current
-                val clientId = prefs.getString(KEY_CLIENT_ID, null)
+                val clientId = secureStore.getString(KEY_CLIENT_ID)
                 if (clientId.isNullOrBlank()) return@withLock null
                 runCatching { refresh(clientId, refreshToken) }
+                    .rethrowCancellation()
                     .onFailure { error ->
                         Log.w(TAG, "Токен Spotify не обновился: ${error.message}")
                     }
@@ -152,25 +219,32 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
 
     override suspend fun fetchMyPlaylists(): Result<List<SpotifyPlaylistSummary>> =
         withContext(Dispatchers.IO) {
+            migrated.await()
             runCatching {
                 val token = accessToken() ?: error("Нужен вход в Spotify")
                 val body = get("$SPOTIFY_MY_PLAYLISTS_URL?limit=$PLAYLISTS_LIMIT", token)
                 parsePlaylists(body)
-            }.onFailure { error ->
-                Log.w(TAG, "Плейлисты Spotify не загрузились: ${error.message}")
-            }
+            }.rethrowCancellation()
+                .onFailure { error ->
+                    Log.w(TAG, "Плейлисты Spotify не загрузились: ${error.message}")
+                }
         }
 
     override suspend fun signOut() {
-        prefs.edit().clear().apply()
-        _authState.value = SpotifyAuthState()
+        withContext(Dispatchers.IO) {
+            migrated.await()
+            AUTH_KEYS.forEach(secureStore::remove)
+            // Открытые ключи прошлых версий тоже не должны пережить выход.
+            legacyPrefs.edit().clear().apply()
+            _authState.value = SpotifyAuthState()
+        }
     }
 
     /** Токен ещё жив с запасом в минуту — не тратим запрос на обновление. */
     private fun isFresh(): Boolean =
-        System.currentTimeMillis() < prefs.getLong(KEY_EXPIRES_AT, 0L) - TOKEN_MARGIN_MS
+        System.currentTimeMillis() < secureStore.getLong(KEY_EXPIRES_AT) - TOKEN_MARGIN_MS
 
-    private suspend fun refresh(clientId: String, refreshToken: String): String {
+    private suspend fun refresh(clientId: String, refreshToken: String): String? {
         rateLimiter.awaitSlot()
         val form = FormBody.Builder()
             .add("grant_type", GRANT_TYPE_REFRESH)
@@ -180,7 +254,7 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
         val body = postForm(SPOTIFY_TOKEN_URL, form)
         saveTokens(body)
         _authState.value = readState()
-        return prefs.getString(KEY_ACCESS, null).orEmpty()
+        return secureStore.getString(KEY_ACCESS)
     }
 
     /** Разбор ответа token endpoint: access, refresh и срок жизни. */
@@ -192,19 +266,23 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
         val refresh = root["refresh_token"]?.jsonPrimitive?.contentOrNull
             ?.takeIf { it.isNotBlank() }
         val expiresIn = root["expires_in"]?.jsonPrimitive?.intOrNull ?: DEFAULT_TTL_SECONDS
-        prefs.edit()
-            .putString(KEY_ACCESS, access)
-            .putLong(KEY_EXPIRES_AT, System.currentTimeMillis() + expiresIn * 1000L)
-            .apply {
-                // При обновлении Spotify может не прислать refresh_token —
-                // тогда остаётся прежний.
-                if (refresh != null) putString(KEY_REFRESH, refresh)
+        check(secureStore.putString(KEY_ACCESS, access)) {
+            "Не удалось сохранить access_token"
+        }
+        check(secureStore.putLong(KEY_EXPIRES_AT, System.currentTimeMillis() + expiresIn * 1000L)) {
+            "Не удалось сохранить срок токена"
+        }
+        // При обновлении Spotify может не прислать refresh_token —
+        // тогда остаётся прежний.
+        if (refresh != null) {
+            check(secureStore.putString(KEY_REFRESH, refresh)) {
+                "Не удалось сохранить refresh_token"
             }
-            .apply()
+        }
     }
 
     private fun loadProfile() {
-        val access = prefs.getString(KEY_ACCESS, null) ?: return
+        val access = secureStore.getString(KEY_ACCESS) ?: return
         val root = json.parseToJsonElement(get(SPOTIFY_ME_URL, access)).jsonObject
         val name = root["display_name"]?.jsonPrimitive?.contentOrNull
             ?.takeIf { it.isNotBlank() }
@@ -213,10 +291,8 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
             ?.firstOrNull()
             ?.jsonObject
             ?.get("url")?.jsonPrimitive?.contentOrNull
-        prefs.edit()
-            .putString(KEY_NAME, name)
-            .putString(KEY_IMAGE, image)
-            .apply()
+        secureStore.putString(KEY_NAME, name.orEmpty())
+        secureStore.putString(KEY_IMAGE, image.orEmpty())
     }
 
     private fun parsePlaylists(body: String): List<SpotifyPlaylistSummary> =
@@ -248,14 +324,19 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
             .orEmpty()
 
     private fun readState(): SpotifyAuthState {
-        val connected = !prefs.getString(KEY_REFRESH, null).isNullOrBlank() ||
-            !prefs.getString(KEY_ACCESS, null).isNullOrBlank()
+        val connected = !secureStore.getString(KEY_REFRESH).isNullOrBlank() ||
+            !secureStore.getString(KEY_ACCESS).isNullOrBlank()
         return SpotifyAuthState(
             connected = connected,
-            displayName = prefs.getString(KEY_NAME, null),
-            imageUrl = prefs.getString(KEY_IMAGE, null),
+            displayName = secureStore.getString(KEY_NAME)?.takeIf { it.isNotBlank() },
+            imageUrl = secureStore.getString(KEY_IMAGE)?.takeIf { it.isNotBlank() },
         )
     }
+
+    /** Быстрая проверка без расшифровки: есть ли вообще сохранённая сессия. */
+    private fun hasStoredSession(): Boolean =
+        secureStore.contains(KEY_REFRESH) || secureStore.contains(KEY_ACCESS) ||
+            legacyPrefs.contains(KEY_REFRESH) || legacyPrefs.contains(KEY_ACCESS)
 
     private fun postForm(url: String, form: FormBody): String {
         val request = Request.Builder().url(url).post(form).build()
@@ -296,5 +377,18 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
         const val TOKEN_MARGIN_MS = 60_000L
         const val PLAYLISTS_LIMIT = 50
         const val MISSING_CLIENT_ID = "Не задан Client ID Spotify"
+
+        val AUTH_KEYS = listOf(
+            KEY_ACCESS,
+            KEY_REFRESH,
+            KEY_EXPIRES_AT,
+            KEY_VERIFIER,
+            KEY_STATE,
+            KEY_CLIENT_ID,
+            KEY_NAME,
+            KEY_IMAGE,
+        )
+
+        val LEGACY_KEYS = AUTH_KEYS
     }
 }

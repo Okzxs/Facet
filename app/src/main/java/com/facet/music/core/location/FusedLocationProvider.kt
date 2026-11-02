@@ -5,6 +5,7 @@ import android.content.Context
 import android.location.Location
 import android.util.Log
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.Task
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -33,20 +34,28 @@ class FusedLocationProvider @Inject constructor(
             return null
         }
 
-        // Последняя известная точка обычно отдаётся мгновенно; таймаут защищает лайк от зависания
+        // Сначала свежая точка с пониженной точностью; если её нет или она
+        // не успела за таймаут — добираем последнюю известную.
         val location = withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
-            try {
-                client.lastLocation.awaitResult()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(tag, "Не удалось получить геопозицию", e)
-                null
-            }
+            requestCurrentLocation()
+        } ?: withTimeoutOrNull(LAST_KNOWN_TIMEOUT_MS) {
+            client.lastLocation.awaitResult()
         }
 
         return location?.let { GeoPoint(latitude = it.latitude, longitude = it.longitude) }
     }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun requestCurrentLocation(): Location? =
+        try {
+            client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+                .awaitResult()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(tag, "Текущая геопозиция недоступна", e)
+            null
+        }
 
     private suspend fun Task<Location?>.awaitResult(): Location? =
         suspendCancellableCoroutine { continuation ->
@@ -60,6 +69,7 @@ class FusedLocationProvider @Inject constructor(
         }
 
     private companion object {
-        const val LOCATION_TIMEOUT_MS = 4_000L
+        const val LOCATION_TIMEOUT_MS = 3_000L
+        const val LAST_KNOWN_TIMEOUT_MS = 1_000L
     }
 }

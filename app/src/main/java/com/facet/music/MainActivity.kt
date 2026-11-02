@@ -26,9 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import com.facet.music.core.di.ApplicationScope
 import com.facet.music.core.i18n.AppLocale
+import com.facet.music.core.spotify.SpotifyAuthEvent
 import com.facet.music.core.ui.theme.FacetTheme
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.SettingsRepository
@@ -37,6 +38,7 @@ import com.facet.music.core.analytics.AnalyticsTracker
 import com.facet.music.data.repository.SpotifyAuthRepository
 import com.facet.music.feature.onboarding.OnboardingScreen
 import com.facet.music.navigation.AppNavGraph
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -53,6 +55,11 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var analyticsTracker: AnalyticsTracker
+
+    /** Обмен OAuth-кода переживает пересоздание Activity. */
+    @Inject
+    @ApplicationScope
+    lateinit var applicationScope: CoroutineScope
 
     /**
      * Язык, с которым Activity уже создана. Читается синхронно из настроек:
@@ -73,9 +80,10 @@ class MainActivity : ComponentActivity() {
         // или темы не должно раздувать статистику запусков.
         if (savedInstanceState == null) {
             analyticsTracker.track(AnalyticsEvents.APP_OPEN)
+            // Холодный старт по ссылке из браузера: сразу завершаем вход.
+            // При recreate() intent уже обработан и очищен — второй раз не идём.
+            handleSpotifyRedirect(intent)
         }
-        // Холодный старт по ссылке из браузера: сразу завершаем вход.
-        handleSpotifyRedirect(intent)
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
             // До первого чтения настроек нельзя решать, показывать ли онбординг:
@@ -117,6 +125,17 @@ class MainActivity : ComponentActivity() {
                 customAccentColor = customAccentOverride,
             ) {
                 val context = LocalContext.current
+                // Результат входа приходит из repository отдельным событием:
+                // тост не зависит от того, жива ли Activity в момент обмена.
+                LaunchedEffect(Unit) {
+                    spotifyAuthRepository.events.collect { event ->
+                        val message = when (event) {
+                            SpotifyAuthEvent.SignedIn -> R.string.spotify_signed_in_toast
+                            SpotifyAuthEvent.Failed -> R.string.spotify_sign_in_failed
+                        }
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    }
+                }
                 // Уведомление медиасессии на Android 13+ требует разрешения.
                 // Спрашиваем один раз — после онбординга, когда экран уже понятен.
                 val notificationPermission = rememberLauncherForActivityResult(
@@ -159,26 +178,19 @@ class MainActivity : ComponentActivity() {
         handleSpotifyRedirect(intent)
     }
 
-    /** Обмен кода на токены + профиль. Ошибку показываем тостом. */
+    /**
+     * Обмен кода на токены. Deep link читается один раз и сразу стирается
+     * из intent: recreate() не должен запускать обмен повторно.
+     */
     private fun handleSpotifyRedirect(intent: Intent?) {
         val data = intent?.dataString ?: return
         if (!spotifyAuthRepository.isRedirect(data)) return
-        lifecycleScope.launch {
+        intent.data = null
+        setIntent(intent)
+        // Обмен живёт в области процесса: закрытие или пересоздание экрана
+        // не отменяет запрос, а результат придёт событием в UI.
+        applicationScope.launch {
             spotifyAuthRepository.completeAuthorization(data)
-                .onSuccess {
-                    Toast.makeText(
-                        this@MainActivity,
-                        getString(R.string.spotify_signed_in_toast),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-                .onFailure {
-                    Toast.makeText(
-                        this@MainActivity,
-                        getString(R.string.spotify_sign_in_failed),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
         }
     }
 }

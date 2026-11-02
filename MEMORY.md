@@ -1,9 +1,17 @@
-# Активный контекст — Обновлено 31.10.2026
+# Активный контекст — Обновлено 03.11.2026
 
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 67 (31.10.2026): анимации, скрытие импортных входов, вес лайков в волне, свайп-переключение треков, качественные обложки; релиз `v1.0.0` обновлён, 43 suite / 283 теста | Живой смоук-тест звука, кэша и тегов на телефоне |
+| Facet | активен  | Сессия 69, фаза 1 (03.11.2026): шифрование секретов Tink, безопасный Spotify redirect, backup-правила, coarse location, MediaSession onConnect, чистка логов; 44 suite / 287 тестов | Живой смоук на телефоне и фаза 2 по команде пользователя |
+
+### Сессия 69, фаза 1: безопасность и быстрые фиксы
+- **Spotify.** Deep link только на холодном старте/`onNewIntent`, `intent.data` сразу очищается; обмен кода — в `@ApplicationScope` (`CoroutineModule`), тост по событию `SpotifyAuthEvent`; `Mutex` + повторный code no-op.
+- **Секреты.** `core/security/SecureStore.kt` — Tink AES-256-GCM + Android Keystore; миграция токенов `spotify_auth` и `spotify_client_secret` из `facet_settings` с удалением открытых ключей; ошибки Keystore не крашат.
+- **Бэкап/гео.** `dataExtractionRules` + `fullBackupContent` исключают всё; только `ACCESS_COARSE_LOCATION`, `PRIORITY_BALANCED_POWER_ACCURACY`.
+- **MediaSession.** `onConnect` — полный набор своим/системным/Bluetooth/Auto/Now Bar, остальным только транспорт; `onDestroy` — сначала player, затем session.
+- **Release.** `-assumenosideeffects` Log.v/d/i (в dex отладочных строк нет), Tink keep; URL/подписи убраны из логов, ошибки NewPipe редактируются.
+- **Проверка.** debug/release зелёные, release APK 7 207 355 байт (SHA-256 `62c4b540…5afd`), 44/287 тестов. Live не проверено: adb-устройств нет.
 
 ### Сессия 67, продолжение: откат и фиксы
 - **Плеер откатан** к `6eaaaf0^`: волновой `ExpressivePlayerSlider`, старый `PlayerControlIsland` (скорость/пред/Play/след/очередь + пилюля текста), сквирклы действий. В шапке только «Сейчас играет» + артист со свечением; кнопки текста в шапке нет.

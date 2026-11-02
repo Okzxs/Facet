@@ -77,7 +77,7 @@ class SoundCloudRepositoryImpl @Inject constructor(
                 val related = streamInfo.relatedItems
                     .ifEmpty { streamInfo.relatedStreams }
 
-                Log.d(tag, "Related для $trackUrl: ${related.size} элементов")
+                Log.d(tag, "Похожие: ${related.size} элементов")
 
                 related
                     .filterIsInstance<StreamInfoItem>()
@@ -116,12 +116,10 @@ class SoundCloudRepositoryImpl @Inject constructor(
                 } catch (e: Throwable) {
                     // Отмена — не сетевая ошибка: не засоряем лог и пробрасываем дальше.
                     if (e is CancellationException) throw e
-                    Log.e("NP_ERROR", "Ошибка при вызове StreamInfo.getInfo(): ${e.message}", e)
-                    if (e.cause != null) {
-                        Log.e("NP_ERROR", "Причина (cause): ${e.cause?.message}", e.cause)
-                    }
-                    e.suppressed.forEach { suppressed ->
-                        Log.e("NP_SUPPRESSED", suppressed.message, suppressed)
+                    // Сообщения NewPipe могут содержать ссылку на трек — редактируем.
+                    Log.e("NP_ERROR", "StreamInfo.getInfo: ${redact(e)}")
+                    e.cause?.let { cause ->
+                        Log.e("NP_ERROR", "Причина: ${redact(cause)}")
                     }
                     // NewPipe не умеет HLS-only треки SoundCloud: StreamInfo падает
                     // ещё до выдачи потоков. Для онлайн-плеера берём HLS напрямую
@@ -132,21 +130,11 @@ class SoundCloudRepositoryImpl @Inject constructor(
                     throw e
                 }
 
-                // ─── Отладочный дамп всех потоков ────────────────────────────
-                Log.d(tag, "=== Потоки для $transcodingUrl ===")
-                streamInfo.audioStreams.forEachIndexed { i, s ->
-                    Log.d(
-                        tag,
-                        "[$i] deliveryMethod=${s.deliveryMethod}" +
-                            " format=${s.format}" +
-                            " bitrate=${s.averageBitrate}" +
-                            " url=${s.content.take(80)}",
-                    )
-                }
+                Log.d(tag, "Потоков от NewPipe: ${streamInfo.audioStreams.size}")
 
                 // Если NewPipe вернул ошибки в StreamInfo — логируем их
                 streamInfo.errors.forEach { error ->
-                    Log.e("NP_ERROR", "StreamInfo error: ${error.javaClass.simpleName}: ${error.message}", error)
+                    Log.e("NP_ERROR", "StreamInfo: ${error.javaClass.simpleName}: ${redact(error)}", error)
                 }
 
                 // ─── Выбор потока ─────────────────────────────────────────────
@@ -177,8 +165,8 @@ class SoundCloudRepositoryImpl @Inject constructor(
                         error(ERROR_PROGRESSIVE_UNAVAILABLE)
                     }
                     error(
-                        "Не удалось получить поток для '$transcodingUrl': " +
-                            (newPipeError ?: "нет доступных аудио-потоков"),
+                        "Не удалось получить поток: " +
+                            (newPipeError?.let { redact(it) } ?: "нет доступных аудио-потоков"),
                     )
                 }
 
@@ -197,9 +185,9 @@ class SoundCloudRepositoryImpl @Inject constructor(
                 }
 
                 // 4) Совсем нет потоков — реальная причина из NewPipe
-                val newPipeError = streamInfo.errors.firstOrNull()
-                val cause = newPipeError?.message ?: "нет доступных аудио-потоков"
-                error("Не удалось получить поток для '$transcodingUrl': $cause")
+                val newPipeError = streamInfo.errors.firstOrNull()?.message
+                val cause = newPipeError?.let { redact(it) } ?: "нет доступных аудио-потоков"
+                error("Не удалось получить поток: $cause")
             }.rethrowCancellation()
         }
 
@@ -239,7 +227,7 @@ class SoundCloudRepositoryImpl @Inject constructor(
 
         Log.d(
             tag,
-            "HLS через api-v2: preset=${hls["preset"]}, url=${streamUrl.take(100)}",
+            "HLS через api-v2: preset=${hls["preset"]?.jsonPrimitive?.content}",
         )
         return AudioStreamResult(
             url = streamUrl,
@@ -263,7 +251,7 @@ class SoundCloudRepositoryImpl @Inject constructor(
         return okHttpClient.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                error("SoundCloud API HTTP ${response.code}: ${body.take(160)}")
+                error("SoundCloud API HTTP ${response.code}: ${redact(body.take(160))}")
             }
             body
         }
@@ -305,5 +293,13 @@ class SoundCloudRepositoryImpl @Inject constructor(
         /** Единый текст ошибки, когда progressive MP3 недоступен. */
         const val ERROR_PROGRESSIVE_UNAVAILABLE =
             "Трек доступен только для онлайн-прослушивания"
+
+        private val URL_REGEX = Regex("""https?://\S+""")
+
+        /** Убирает ссылки (в том числе подписанные) из текста ошибки. */
+        fun redact(value: String): String = value.replace(URL_REGEX, "<url>")
+
+        fun redact(error: Throwable): String =
+            redact(error.message ?: error.javaClass.simpleName)
     }
 }

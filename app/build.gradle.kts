@@ -148,6 +148,9 @@ dependencies {
     // Геопозиция для «Воспоминаний»
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
+    // Шифрование секретов (токены Spotify, client_secret): Tink + Android Keystore
+    implementation("com.google.crypto.tink:tink-android:1.15.0")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
