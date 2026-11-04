@@ -72,11 +72,11 @@ interface PlaylistImportService {
 }
 
 /**
- * Spotify — Client Credentials через [SpotifyProvider]; Deezer и iTunes —
- * открытые API без авторизации.
+ * Spotify — Client Credentials через [SpotifyProvider]; Deezer — открытый
+ * API без авторизации.
  *
- * У Deezer и iTunes ответы разбирает [PlaylistPayloadParser] (чистые JVM-функции),
- * а сеть идёт через общий [OkHttpClient] проекта с лимитерами источников.
+ * Ответы Deezer разбирает [PlaylistPayloadParser] (чистые JVM-функции),
+ * а сеть идёт через общий [OkHttpClient] проекта с лимитером источника.
  */
 @Singleton
 class PlaylistImportServiceImpl @Inject constructor(
@@ -84,7 +84,6 @@ class PlaylistImportServiceImpl @Inject constructor(
     private val json: Json,
     private val spotifyProvider: SpotifyProvider,
     @SourceRateLimiter(RateLimiterKeys.DEEZER) private val deezerRateLimiter: RateLimiter,
-    @SourceRateLimiter(RateLimiterKeys.APPLE) private val appleRateLimiter: RateLimiter,
 ) : PlaylistImportService {
 
     override suspend fun load(link: String): PlaylistImportResult =
@@ -102,7 +101,6 @@ class PlaylistImportServiceImpl @Inject constructor(
         when (link.service) {
             ImportService.SPOTIFY -> loadSpotify(link.id)
             ImportService.DEEZER -> loadDeezer(link.id)
-            ImportService.APPLE -> loadApple(link)
             ImportService.YANDEX -> failure(
                 ImportError.YANDEX_UNSUPPORTED,
                 "Импорт плейлистов Яндекс Музыки недоступен: нужен закрытый API",
@@ -186,36 +184,6 @@ class PlaylistImportServiceImpl @Inject constructor(
             successOrEmpty(playlist.name, ImportService.DEEZER, playlist.tracks)
         }.rethrowCancellation()
             .getOrElse { error -> networkFailure(error) }
-
-    /**
-     * Apple Music: полноценные плейлисты недоступны без Apple Music API,
-     * поэтому поддерживаем только ссылку на конкретный трек (`i=`).
-     */
-    private suspend fun loadApple(
-        link: PlaylistLinkParseResult.Success,
-    ): PlaylistImportResult {
-        val trackId = link.trackId
-            ?: return failure(ImportError.APPLE_PLAYLIST_UNSUPPORTED, APPLE_PLAYLIST_MESSAGE)
-
-        return runCatching {
-            val body = appleRateLimiter.acquire {
-                requestBody("$ITUNES_LOOKUP_URL?id=$trackId&entity=song")
-            }
-            val track = PlaylistPayloadParser.appleLookupTracks(body, json).firstOrNull()
-                ?: return@runCatching failure(
-                    ImportError.EMPTY_PLAYLIST,
-                    "Apple не вернул трек по ссылке",
-                )
-            PlaylistImportResult.Success(
-                ImportedPlaylist(
-                    name = track.title,
-                    service = ImportService.APPLE,
-                    tracks = listOf(track),
-                ),
-            )
-        }.rethrowCancellation()
-            .getOrElse { error -> networkFailure(error) }
-    }
 
     private fun successOrEmpty(
         name: String,
@@ -356,10 +324,7 @@ class PlaylistImportServiceImpl @Inject constructor(
         const val MAX_NEWPIPE_PAGES = 5
         const val UNKNOWN_ARTIST = "Unknown artist"
         const val DEEZER_PLAYLIST_URL = "https://api.deezer.com/playlist/"
-        const val ITUNES_LOOKUP_URL = "https://itunes.apple.com/lookup"
         const val SPOTIFY_NOT_CONFIGURED_MESSAGE = "Добавьте ключи Spotify в настройках"
         const val NO_PUBLIC_PLAYLISTS = "В профиле нет публичных плейлистов"
-        const val APPLE_PLAYLIST_MESSAGE =
-            "Импорт плейлистов Apple Music недоступен без Apple Music API"
     }
 }

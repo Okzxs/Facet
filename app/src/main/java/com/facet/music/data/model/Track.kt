@@ -23,8 +23,8 @@ data class Track(
     /** ISRC из метаданных Deezer — ключ для точного сопоставления между источниками. */
     val isrc: String? = null,
     /**
-     * Длина превью в секундах (Deezer/iTunes отдают только 30-секундный отрывок).
-     * null — трек играет целиком.
+     * Длина превью в секундах. Поле осталось только для чтения старых строк БД:
+     * новые треки превью не содержат и всегда играют полную версию.
      */
     val previewSeconds: Int? = null,
     /**
@@ -35,3 +35,14 @@ data class Track(
 )
 
 enum class Source { SOUNDCLOUD, YOUTUBE, SPOTIFY, YANDEX, VK, DEEZER, APPLE, LOCAL }
+
+/**
+ * У источника нет собственного полного аудиопотока: Deezer и Apple отдают
+ * только метаданные, Spotify закрыт DRM. Такие треки всегда играются через
+ * YouTube-матч, а их `streamUrl` (превью из старых данных) игнорируется.
+ *
+ * Значения [Source.DEEZER] и [Source.APPLE] остаются в enum только для чтения
+ * старых строк БД.
+ */
+val Source.isMetadataOnly: Boolean
+    get() = this == Source.DEEZER || this == Source.APPLE || this == Source.SPOTIFY

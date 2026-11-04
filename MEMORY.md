@@ -3,7 +3,15 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 69, фаза 1 (03.11.2026): шифрование секретов Tink, безопасный Spotify redirect, backup-правила, coarse location, MediaSession onConnect, чистка логов; 44 suite / 287 тестов | Живой смоук на телефоне и фаза 2 по команде пользователя |
+| Facet | активен  | Сессия 69, фаза 2 (03.11.2026): Deezer/Apple без превью, `DeezerMetadataClient`, Room 14→15; 45 suite / 286 тестов | Живой смоук на SM-A266B и фаза 3 по команде пользователя |
+
+### Сессия 69, фаза 2: удаление Deezer и Apple как источников воспроизведения
+- **Apple удалён полностью:** `AppleMusicProvider`, DI, лимитер, бренд-иконка, поиск/статусы, Apple-импорт и iTunes lookup; ссылки Apple Music → `UNSUPPORTED_LINK`.
+- **Deezer — метаданные:** `DeezerMetadataClient` без `search`/`resolve`/preview; треки с `streamUrl=null`, ISRC; остались новинки, альбомы, артисты (до фазы 7) и импорт плейлистов.
+- **Плеер:** `Source.isMetadataOnly` (Deezer/Apple/Spotify) — `StreamResolver` и `PlayerController` всегда идут в YouTube, `streamUrl` старых строк игнорируется.
+- **UI/поиск:** `ServiceType` = 3 сервиса, 3 кнопки, без бейджа превью; строка источника скрыта для metadata-only.
+- **БД:** Room v15, `MIGRATION_14_15` чистит `queue.streamUrl`/`previewSeconds` и кэш Deezer/Apple; тесты 14→15 и 1→15.
+- **Проверка:** debug/release зелёные, release APK 7 204 499 байт (SHA-256 `75091b7a…ff39`), 45/286 тестов. Live: миграция 14→15 в logcat, 3 кнопки поиска, `ParisLove` из Deezer играет полную версию 1:48 с YouTube, Now Bar видит трек.
 
 ### Сессия 69, фаза 1: безопасность и быстрые фиксы
 - **Spotify.** Deep link только на холодном старте/`onNewIntent`, `intent.data` сразу очищается; обмен кода — в `@ApplicationScope` (`CoroutineModule`), тост по событию `SpotifyAuthEvent`; `Mutex` + повторный code no-op.

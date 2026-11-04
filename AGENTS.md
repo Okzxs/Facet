@@ -63,7 +63,7 @@ com.facet.music
 └── FacetApp.kt        # @HiltAndroidApp, NewPipe.init()
 ```
 
-**БД:** Room v14, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
+**БД:** Room v15, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). `MIGRATION_14_15` обнуляет `streamUrl`/`previewSeconds` у старых строк Deezer/Apple и удаляет их кэш поиска и аудио. Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
 
 ---
 
@@ -71,13 +71,23 @@ com.facet.music
 
 | Источник | Метод | Версия |
 |----------|-------|--------|
-| **SoundCloud** | NewPipe Extractor | ✅ v1 |
+| **SoundCloud** | NewPipe Extractor (полный стрим) | ✅ v1 |
+| **YouTube** | NewPipe Extractor (полный стрим) | ✅ v1 |
+| **Spotify** | Web API OAuth 2.0 PKCE (поиск; стрим через YouTube) | v2 |
+| **Deezer** | Метаданные: новинки, альбомы, артисты, импорт (без потока) | v1 |
 | LRCLIB (тексты) | REST API (открытый) | ✅ v1 |
 | Last.fm (похожие артисты) | Web API | ✅ v1 |
-| Spotify | Web API OAuth 2.0 PKCE | v2 |
 | Яндекс Музыка | Неофициальный API | v2 |
 | ВК Музыка | VK API | v2 |
-| YouTube Music | innertube | v2 |
+
+---
+
+## Сессия 69, фаза 2: Deezer и Apple без превью (03.11.2026)
+
+- **Источники воспроизведения:** только полный SoundCloud/YouTube. Deezer — `DeezerMetadataClient` (новинки, альбомы, артисты, импорт), `streamUrl` всегда `null`; Apple-провайдер и iTunes lookup удалены.
+- **Поиск:** `ServiceType` = SOUNDCLOUD/YOUTUBE/SPOTIFY, три кнопки брендов; `Source.DEEZER/APPLE` в enum только для старых строк. `Source.isMetadataOnly` — единый признак для Deezer/Apple/Spotify: `StreamResolver` и `PlayerController` игнорируют `streamUrl` и идут в YouTube-матч.
+- **БД:** v15, `MIGRATION_14_15` обнуляет `queue.streamUrl`/`previewSeconds` для Deezer/Apple и удаляет их `search_cache`/`audio_cache`; тест 14→15 и сквозной 1→15.
+- **Импорт:** Apple Music-ссылки → `UNSUPPORTED_LINK`; Deezer-плейлисты импортируются как метаданные без превью.
 
 ---
 
@@ -96,12 +106,11 @@ com.facet.music
 - `windowBackground` задан в `values/themes.xml` и `values-night/themes.xml` (#FAFAFA / #121212, совпадает с Color.kt) — без ночного варианта окно оставалось белым и давало вспышку на холодном старте.
 - Текст песни (`LyricLineItem` в `PlayerScreen.kt`): у строк списка **нет** `Modifier.animateItem()` — на каждый `animateScrollToItem` (смена активной строки) он запускает анимацию появления у уже видимых строк, и весь текст гаснет в ноль и проявляется ~250 мс. Полоска прогресса живёт в постоянном слоте `LyricBarSlot = 12.dp` и не меняет высоту строки — иначе список прыгает при каждой смене строки (сессия 51).
 - Кнопки под обложкой (`DownloadSquircle`/`LikeSquircle`/`DislikeSquircle`) получают цвета палитры плеера через `ExpressiveHeroZone` (`actionAccent`, `actionContainer`, `actionIdleContainer`): акцент `coverAccent`, контейнер `playerColors.primaryContainer`, подложка покоя `coverAccent.copy(alpha = 0.14f)`. В плеере одна кнопка текста — пилюля на `PlayerControlIsland`; в шапке её нет, там «Сейчас играет» и артист со свечением (сессия 67, откат).
-- Внешние источники: `core/source/MusicSourceProvider` (+ `MusicSourceRegistry`, регистрация `@IntoSet` в `core/di/MusicSourceModule`). `DeezerProvider` — `api.deezer.com/search` без авторизации, 30-сек MP3-превью + ISRC; `AppleMusicProvider` — `itunes.apple.com/search`, `previewUrl` M4A, `country=RU` для кириллицы. Полный трек у обоих невозможен (DRM/ARL) — полный стрим только через YouTube-матч. `StreamResolver`: прямая ссылка → `provider.resolve()` → `YouTubeMatcher` (порог 5.0, штрафы cover/remix/live, бонус official/topic, ISRC). `PlayerController` зовёт резолвер только для `Source.DEEZER`/`APPLE`. `ServiceType` = SOUNDCLOUD/YOUTUBE/DEEZER/APPLE и несёт `source`.
+- Внешние источники: `core/source/MusicSourceProvider` (+ `MusicSourceRegistry`, регистрация `@IntoSet` в `core/di/MusicSourceModule`); единственный провайдер — Spotify. Deezer — `DeezerMetadataClient`: новинки, альбомы, артисты и импорт плейлистов, `streamUrl = null`; Apple-провайдер удалён. `Source.DEEZER`/`APPLE` остались в enum только для чтения старых строк БД; `Source.isMetadataOnly` (Deezer/Apple/Spotify) заставляет `StreamResolver` игнорировать `streamUrl` и искать полную версию на YouTube через `YouTubeMatcher` (порог 5.0, штрафы cover/remix/live, бонус official/topic, ISRC). `PlayerController` зовёт резолвер для metadata-only источников. `ServiceType` = SOUNDCLOUD/YOUTUBE/SPOTIFY и несёт `source`.
 - Сеть внешних источников: `RateLimiter` (`awaitSlot()` / `acquire { }`, 1000 мс, `Mutex` + `delay` — главный поток не блокируется) по одному на источник через `@SourceRateLimiter` и `RateLimiterModule`; у Spotify лимитер общий для поиска и запроса токена. Успешный ответ поиска кэшируется сырым JSON в Room (`search_cache`, TTL 24 ч), ошибки сети не кэшируются, health-проверка идёт мимо кэша (`useCache = false`) — сессия 56.
-- Кнопки источников в поиске — 5 иконок 42×42dp (радиус `MaterialTheme.shapes.medium`) в брендовых цветах с шагом 6dp; кнопка статусов 40dp. При выбранном «Все источники» ряд скрыт. Spotify без ключей неактивен (`ServiceHealth.isConfigured`). Иконки — VectorDrawable `ic_brand_*` из Simple Icons (CC0), у недоступного сервиса alpha 0.4, у активного фон 0.25 + рамка 2dp (сессии 55, 67).
-- Локализация: весь UI-текст — только `stringResource`/`pluralStringResource`; EN — `values/strings.xml`, RU — `values-ru/strings.xml` (395 ключей, наборы обязаны совпадать). Не переводятся названия брендов, URL, логи и константы ошибок ViewModel/движка (`DownloadMessages`, `PlaybackErrorMessages`, `*_FAILED_MESSAGE`) — они приходят в UI готовыми строками (сессия 55).
-- Смена языка: `MainActivity` пересоздаёт Activity через `LaunchedEffect(settings.appLanguage)`, а `SettingsScreen` дополнительно показывает Snackbar «Язык изменён» с action «Перезапустить» (`findActivity()?.recreate()`) — сессия 55.
-- Поиск: `SearchHistoryStore` (SharedPreferences `search_history`, 8 записей) — чипсы «Недавние»; пустая выдача предлагает другие источники; карточка показывает «превью 30 с». Рекомендации: исключаются лайки/история/скачанное, дедуп по `(artist, title)`, волна фильтрует дизлайки, холодный старт — чарт SoundCloud, YouTube-поиск — последний фолбэк (сессия 53).
+- Кнопки источников в поиске — 3 иконки 42×42dp (SoundCloud, YouTube, Spotify; радиус `MaterialTheme.shapes.medium`) в брендовых цветах с шагом 6dp; кнопка статусов 40dp. При выбранном «Все источники» ряд скрыт. Spotify без ключей неактивен (`ServiceHealth.isConfigured`). Иконки — VectorDrawable `ic_brand_*` из Simple Icons (CC0), у недоступного сервиса alpha 0.4, у активного фон 0.25 + рамка 2dp (сессии 55, 67, 69).
+- Локализация: весь UI-текст — только `stringResource`/`pluralStringResource`; EN — `values/strings.xml`, RU — `values-ru/strings.xml` (396 ключей, наборы обязаны совпадать). Не переводятся названия брендов, URL, логи и константы ошибок ViewModel/движка (`DownloadMessages`, `PlaybackErrorMessages`, `*_FAILED_MESSAGE`) — они приходят в UI готовыми строками (сессия 55).
+- Поиск: `SearchHistoryStore` (SharedPreferences `search_history`, 8 записей) — чипсы «Недавние»; пустая выдача предлагает другие источники; карточка показывает длительность и жанр. Рекомендации: исключаются лайки/история/скачанное, дедуп по `(artist, title)`, волна фильтрует дизлайки, холодный старт — чарт SoundCloud, YouTube-поиск — последний фолбэк (сессия 53).
 
 ---
 
@@ -174,13 +183,13 @@ data class Track(
 
 ## Импорт плейлистов по ссылке и экран артиста (сессия 58)
 
-- **Парсер** `core/import/PlaylistLinkParser.kt`: `PlaylistLinkParser.parse(link)` → `PlaylistLinkParseResult.Success(service, id, trackId?)` или `Failure(ImportError, message)`. Поддержаны Spotify (`open.spotify.com|spotify.com/playlist/<id>`), Яндекс (`music.yandex.ru/users/<user>/playlists/<id>` и `/playlists/<id>`), Apple (`music.apple.com/.../playlist/.../pl.<uuid>`, а `?i=<numeric>` — отдельный трек), Deezer (`deezer.com[/ru]/playlist/<id>`). Ссылку можно вставлять без схемы, query-параметры (`?si=`, `utm_*`) игнорируются. Модели — `core/import/PlaylistImportModels.kt` (`ImportService`, `ImportError`, `ImportedPlaylist`).
+- **Парсер** `core/import/PlaylistLinkParser.kt`: `PlaylistLinkParser.parse(link)` → `PlaylistLinkParseResult.Success(service, id)` или `Failure(ImportError, message)`. Поддержаны Spotify (`open.spotify.com|spotify.com/playlist/<id>`), Яндекс (`music.yandex.ru/users/<user>/playlists/<id>` и `/playlists/<id>`), Deezer (`deezer.com[/ru]/playlist/<id>`), YouTube (`list=`) и SoundCloud (`/sets/`). Ссылку можно вставлять без схемы, query-параметры (`?si=`, `utm_*`) игнорируются. Apple Music-ссылки после фазы 2 не поддерживаются. Модели — `core/import/PlaylistImportModels.kt` (`ImportService`, `ImportError`, `ImportedPlaylist`).
 - **Загрузчик** `data/source/imports/PlaylistImportService.kt` (интерфейс + `PlaylistImportServiceImpl`, `@Singleton`, биндинг в `RepositoryModule`) — `load(link): PlaylistImportResult`. Пакет называется `imports`, потому что `import` — зарезервированное слово, и Java-код Hilt с таким пакетом не компилируется.
 - **Spotify**: `SpotifyProvider.fetchPlaylist(id)` (название + треки: `/v1/playlists/{id}` и `/v1/playlists/{id}/tracks?limit=100`) и `fetchPlaylistTracks(id)`; Client Credentials и общий лимитер. Без ключей — `ImportError.SPOTIFY_NOT_CONFIGURED` без похода в сеть.
-- **Deezer**: `api.deezer.com/playlist/{id}`, разбор `PlaylistPayloadParser.deezerPlaylist` (`title`, `tracks.data` → `Track(source=DEEZER, streamUrl=preview, previewSeconds=30)`, `cover_big`, isrc). Ответ с `error` → ошибка сети с сообщением. Лимитер `@SourceRateLimiter(RateLimiterKeys.DEEZER)`.
-- **Apple/iTunes**: `PlaylistPayloadParser.appleLookupTracks` для `itunes.apple.com/lookup?id={trackId}&entity=song` (только `wrapperType=track`, обложка 600×600, preview 30 с). Плейлист Apple (`pl.…`) без Apple Music API не импортируется — `APPLE_PLAYLIST_UNSUPPORTED`. Яндекс — `YANDEX_UNSUPPORTED` (закрытый API).
+- **Deezer**: `api.deezer.com/playlist/{id}`, разбор `PlaylistPayloadParser.deezerPlaylist` (`title`, `tracks.data` → `Track(source=DEEZER, streamUrl=null, previewSeconds=null)`, `cover_big`, isrc). Ответ с `error` → ошибка сети с сообщением. Лимитер `@SourceRateLimiter(RateLimiterKeys.DEEZER)`.
+- **Apple/iTunes**: удалён в фазе 2 вместе с `AppleMusicProvider` и `appleLookupTracks`; ссылки Apple Music теперь дают `UNSUPPORTED_LINK`. Яндекс — `YANDEX_UNSUPPORTED` (закрытый API).
 - **UI**: вкладка «Плейлисты» в `LibraryScreen` — кнопка «Импортировать по ссылке» (`Icons.Rounded.AddLink`), `AlertDialog` со ссылкой, превью (название, счётчик, первые 10 треков «название — артист»), прогресс `LinearProgressIndicator`, ошибки и успех — Snackbar. Сохранение — `PlaylistRepository.createPlaylist/addTrack`; состояние — `PlaylistImportState` в `LibraryViewModel`, тексты ошибок выбираются по `ImportError` (`import_error_*`).
-- **Экран артиста**: `feature/artist/ArtistScreen.kt` + `ArtistViewModel`, маршрут `Screen.Artist(name)` (`ARTIST_NAME_ARG`, `Uri.encode`) в `AppNavGraph` (док скрыт). Популярные треки — `DeezerProvider.fetchArtistTopTracks(name)` (`search/artist` → `artist/{id}/top?limit=20`), при пустом ответе `YouTubeRepository.search("<artist> official audio")`; «Слушать всё» играет весь список. Входы: тап по имени артиста в `PlayerScreen` (закрывает оверлей плеера, воспроизведение не прерывается) и долгий тап по `TrackCard` (`onArtistClick`, `combinedClickable` только если колбэк передан) в поиске, медиатеке и плейлисте. С сессии 59 долгий тап открывает меню действий, а переход к артисту — его пункт «К артисту».
+- **Экран артиста**: `feature/artist/ArtistScreen.kt` + `ArtistViewModel`, маршрут `Screen.Artist(name)` (`ARTIST_NAME_ARG`, `Uri.encode`) в `AppNavGraph` (док скрыт). Популярные треки — `DeezerMetadataClient.fetchArtistTopTracks(name)` (`search/artist` → `artist/{id}/top?limit=20`), при пустом ответе `YouTubeRepository.search("<artist> official audio")`; «Слушать всё» играет весь список. Входы: тап по имени артиста в `PlayerScreen` (закрывает оверлей плеера, воспроизведение не прерывается) и долгий тап по `TrackCard` (`onArtistClick`, `combinedClickable` только если колбэк передан) в поиске, медиатеке и плейлисте. С сессии 59 долгий тап открывает меню действий, а переход к артисту — его пункт «К артисту». В фазе 7 экран переедет на YouTube/SoundCloud.
 - **Строки**: `import_*`, `artist_*` в `values/strings.xml` и `values-ru/strings.xml` (395 ключей, наборы совпадают).
 - **Тесты**: `PlaylistLinkParserTest` (15), `PlaylistPayloadParserTest` (6), `PlaylistImportServiceTest` (5); всего на 1.0.0 — 43 suite / 283 теста, 0 failures.
 

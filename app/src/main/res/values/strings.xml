@@ -12,7 +12,7 @@
     <!-- Онбординг первого запуска -->
     <string name="onboarding_tagline">Every platform. One player.</string>
     <string name="onboarding_feature_sources_title">All your sources</string>
-    <string name="onboarding_feature_sources_text">Search SoundCloud, YouTube, Deezer, Apple Music and Spotify in one place.</string>
+    <string name="onboarding_feature_sources_text">Search SoundCloud, YouTube and Spotify in one place.</string>
     <string name="onboarding_feature_offline_title">Listen offline</string>
     <string name="onboarding_feature_offline_text">Download tracks and keep them on your device for when the network is gone.</string>
     <string name="onboarding_feature_wave_title">Endless wave</string>
@@ -221,7 +221,6 @@
     </plurals>
 
     <!-- Карточка трека -->
-    <string name="track_preview">preview %1$d s</string>
     <string name="track_downloaded_cd">Track downloaded</string>
     <string name="track_download_cd">Download track</string>
     <string name="track_download_failed_cd">Download failed</string>
@@ -392,9 +391,8 @@
     <string name="import_text_missing">Not found: %1$d</string>
     <string name="import_entry">Import profile or list</string>
     <string name="import_error_empty">Paste a playlist link</string>
-    <string name="import_error_unsupported">Couldn’t recognize the link. Spotify, Deezer, Yandex Music, Apple Music, YouTube and SoundCloud links are supported</string>
+    <string name="import_error_unsupported">Couldn’t recognize the link. Spotify, Deezer, Yandex Music, YouTube and SoundCloud links are supported</string>
     <string name="import_error_yandex">Yandex Music import is not available yet</string>
-    <string name="import_error_apple">Importing Apple Music playlists is unavailable without the Apple Music API</string>
     <string name="import_error_spotify_keys">Add Spotify keys in settings</string>
     <string name="import_error_empty_playlist">The playlist has no tracks</string>
     <string name="import_error_network">Couldn’t load the playlist. Check the link and your connection</string>

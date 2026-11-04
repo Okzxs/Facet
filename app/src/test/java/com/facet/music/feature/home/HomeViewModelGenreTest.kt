@@ -74,7 +74,7 @@ class HomeViewModelGenreTest {
             recentlyShownRepository = recentlyShownRepository,
             dislikedTrackDao = dislikedTrackDao,
             recommendationPlanner = recommendationPlanner,
-            deezerProvider = mockk(relaxed = true),
+            deezerMetadataClient = mockk(relaxed = true),
         )
     }
 

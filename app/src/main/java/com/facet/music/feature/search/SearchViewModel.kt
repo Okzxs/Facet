@@ -152,7 +152,7 @@ class SearchViewModel @Inject constructor(
 
     /**
      * Сводный поиск по всем источникам: тот же запрос уходит параллельно
-     * в SoundCloud, YouTube, Deezer, Apple и Spotify, результаты сливаются.
+     * в SoundCloud, YouTube и Spotify, результаты сливаются.
      */
     fun onAllSourcesSelected() {
         if (_uiState.value.allSources) return
@@ -185,8 +185,8 @@ class SearchViewModel @Inject constructor(
     }
 
     /**
-     * Поиск в выбранном источнике: сначала провайдер из реестра (Deezer, Apple,
-     * Spotify), затем репозитории для исторических источников (SoundCloud, YouTube).
+     * Поиск в выбранном источнике: сначала провайдер из реестра (Spotify),
+     * затем репозитории для исторических источников (SoundCloud, YouTube).
      */
     private suspend fun searchInSource(service: ServiceType, query: String): Result<List<Track>> {
         sourceRegistry.provider(service.source)?.let { provider ->
@@ -195,7 +195,7 @@ class SearchViewModel @Inject constructor(
         return when (service) {
             ServiceType.SOUNDCLOUD -> soundCloudRepository.search(query)
             ServiceType.YOUTUBE -> youTubeRepository.search(query)
-            ServiceType.DEEZER, ServiceType.APPLE, ServiceType.SPOTIFY -> Result.failure(
+            ServiceType.SPOTIFY -> Result.failure(
                 IllegalStateException("Источник ${service.displayName} не подключён"),
             )
         }

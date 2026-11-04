@@ -18,6 +18,7 @@ import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.isMetadataOnly
 import com.facet.music.data.repository.DownloadRepository
 import com.facet.music.data.repository.PlayHistoryRepository
 import com.facet.music.data.repository.QueueRepository
@@ -731,11 +732,9 @@ class PlayerController private constructor(
                         )
                     }
                 }
-                // Внешние источники (Deezer/Apple/Spotify): ссылка может быть превью
-                // или отсутствовать — резолвер обновит её либо сматчит трек на YouTube.
-                track.source == Source.DEEZER ||
-                    track.source == Source.APPLE ||
-                    track.source == Source.SPOTIFY -> {
+                // Deezer/Apple/Spotify — только метаданные: их streamUrl
+                // (превью из старых данных) не играем, всегда идём в YouTube.
+                track.source.isMetadataOnly -> {
                     val resolver = streamResolver
                     if (resolver != null) {
                         resolver.resolve(track)

@@ -4,7 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * Сырой JSON-ответ поиска внешнего источника (Deezer, Apple, Spotify).
+ * Сырой JSON-ответ поиска внешнего источника (Spotify).
  *
  * Кэш живёт в Room, поэтому переживает перезапуск приложения: повторный
  * поиск того же запроса не ходит в сеть, пока запись моложе TTL.

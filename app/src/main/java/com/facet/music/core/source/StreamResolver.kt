@@ -4,6 +4,7 @@ import androidx.media3.common.MimeTypes
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.isMetadataOnly
 import com.facet.music.data.repository.AudioCacheRepository
 import com.facet.music.data.repository.YouTubeRepository
 import javax.inject.Inject
@@ -13,13 +14,15 @@ import javax.inject.Singleton
  * Единая точка получения ссылки на поток для «внешних» источников.
  *
  * Порядок:
- * 1. ссылка уже есть в треке (превью Deezer/iTunes, локальный файл) — играем её;
- * 2. провайдер умеет добыть ссылку сам — спрашиваем его (например, обновление
- *    истёкшего preview-URL);
- * 3. иначе ищем трек на YouTube через NewPipe и проверяем совпадение
+ * 1. локальный файл из кэша прослушанного — играем без сети;
+ * 2. прямая ссылка в треке (локальный файл, SoundCloud), но только если
+ *    у источника есть собственный поток;
+ * 3. провайдер умеет добыть ссылку сам — спрашиваем его;
+ * 4. иначе ищем трек на YouTube через NewPipe и проверяем совпадение
  *    [YouTubeMatcher]-ом.
  *
- * Если ничего не сработало — честная ошибка, а не чужой трек.
+ * Deezer, Apple и Spotify — metadata-only: их `streamUrl` (превью из старых
+ * данных) никогда не играется, только полная версия с YouTube.
  */
 @Singleton
 class StreamResolver @Inject constructor(
@@ -41,24 +44,26 @@ class StreamResolver @Inject constructor(
             )
         }
 
-        // 1. Прямая ссылка: превью или локальный файл.
-        track.streamUrl?.takeIf { it.isNotBlank() }?.let { url ->
-            return Result.success(
-                AudioStreamResult(
-                    url = url,
-                    isHls = url.contains(".m3u8", ignoreCase = true),
-                    mimeType = mimeFor(track.source),
-                ),
-            )
+        // 1. Прямая ссылка: локальный файл или источник с полным потоком.
+        if (!track.source.isMetadataOnly) {
+            track.streamUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                return Result.success(
+                    AudioStreamResult(
+                        url = url,
+                        isHls = url.contains(".m3u8", ignoreCase = true),
+                        mimeType = mimeFor(track.source),
+                    ),
+                )
+            }
         }
 
-        // 2. Провайдер может обновить ссылку (например, просроченный preview).
+        // 2. Провайдер может обновить ссылку (например, просроченный поток).
         val provider = registry.provider(track.source)
         if (provider != null) {
             provider.resolve(track).onSuccess { return Result.success(it) }
         }
 
-        // 3. Внешний матч на YouTube.
+        // 3. Внешний матч на YouTube — единственный путь для metadata-only.
         return resolveViaYouTube(track)
     }
 

@@ -58,7 +58,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 14 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 15 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -95,7 +95,7 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(14, database.openHelper.writableDatabase.version)
+            assertEquals(15, database.openHelper.writableDatabase.version)
 
             // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
@@ -287,6 +287,69 @@ class DatabaseMigrationTest {
         MIGRATION_3_4.migrate(db)
 
         assertTrue("season" in tableColumns(db, "liked_tracks"))
+    }
+
+    @Test
+    fun `migration 14 to 15 clears deezer and apple preview streams and caches`() {
+        val db = openLegacyDatabase("m-14-15.db", 14) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(QUEUE_V13_DDL)
+            it.execSQL(SEARCH_CACHE_V10_DDL)
+            it.execSQL(AUDIO_CACHE_V14_DDL)
+            it.execSQL(
+                """
+                INSERT INTO `queue`
+                    (`position`, `trackId`, `source`, `title`, `artist`, `artworkUrl`,
+                     `streamUrl`, `durationMs`, `genre`, `transcodingUrl`, `isrc`, `previewSeconds`)
+                VALUES
+                    (0, 'deezer:1', 'DEEZER', 'Deezer track', 'Artist', NULL,
+                     'https://cdns-preview.deezer.com/1.mp3', 30000, NULL,
+                     'https://www.deezer.com/track/1', NULL, 30),
+                    (1, 'apple:2', 'APPLE', 'Apple track', 'Artist', NULL,
+                     'https://audio.mzstatic.com/2.m4a', 30000, NULL,
+                     'https://music.apple.com/2', NULL, 30),
+                    (2, 'sc:3', 'SOUNDCLOUD', 'SC track', 'Artist', NULL,
+                     'https://api.soundcloud.com/3.mp3', 60000, NULL,
+                     'https://soundcloud.com/a/3', NULL, NULL)
+                """.trimIndent(),
+            )
+            it.execSQL(
+                """
+                INSERT INTO `search_cache` (`query`, `source`, `jsonResponse`, `timestamp`)
+                VALUES
+                    ('deezer', 'DEEZER', '{"data":[]}', 1000),
+                    ('apple', 'APPLE', '{"data":[]}', 1000),
+                    ('spotify', 'SPOTIFY', '{"data":[]}', 1000)
+                """.trimIndent(),
+            )
+            it.execSQL(
+                """
+                INSERT INTO `audio_cache` (`trackId`, `filePath`, `sizeBytes`, `cachedAt`, `lastAccessAt`)
+                VALUES
+                    ('deezer:1', '/tmp/1', 100, 1, 1),
+                    ('apple:2', '/tmp/2', 100, 1, 1),
+                    ('sc:3', '/tmp/3', 100, 1, 1)
+                """.trimIndent(),
+            )
+        }
+
+        MIGRATION_14_15.migrate(db)
+
+        assertNullColumn(db, "SELECT `streamUrl` FROM `queue` WHERE `position` = 0")
+        assertNullColumn(db, "SELECT `streamUrl` FROM `queue` WHERE `position` = 1")
+        assertNullColumn(db, "SELECT `previewSeconds` FROM `queue` WHERE `position` = 0")
+        assertNullColumn(db, "SELECT `previewSeconds` FROM `queue` WHERE `position` = 1")
+        assertEquals(
+            "https://api.soundcloud.com/3.mp3",
+            queryString(db, "SELECT `streamUrl` FROM `queue` WHERE `position` = 2"),
+        )
+        assertEquals(0, countWhere(db, "search_cache", "source IN ('DEEZER', 'APPLE')"))
+        assertEquals(1, countWhere(db, "search_cache", "source = 'SPOTIFY'"))
+        assertEquals(
+            0,
+            countWhere(db, "audio_cache", "trackId LIKE 'deezer:%' OR trackId LIKE 'apple:%'"),
+        )
+        assertEquals(1, countWhere(db, "audio_cache", "trackId = 'sc:3'"))
     }
 
     @Test
@@ -623,6 +686,26 @@ class DatabaseMigrationTest {
         }
     }
 
+    /** Строковое значение первого столбца или null. */
+    private fun queryString(db: SupportSQLiteDatabase, sql: String): String? =
+        db.query(sql).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+
+    /** Проверяет, что первый столбец первой строки равен SQL NULL. */
+    private fun assertNullColumn(db: SupportSQLiteDatabase, sql: String) {
+        db.query(sql).use { cursor ->
+            assertTrue("Запрос не вернул строку: $sql", cursor.moveToFirst())
+            assertTrue("Ожидался NULL: $sql", cursor.isNull(0))
+        }
+    }
+
+    /** Число строк, удовлетворяющих условию WHERE. */
+    private fun countWhere(db: SupportSQLiteDatabase, table: String, where: String): Int =
+        db.query("SELECT COUNT(*) FROM `$table` WHERE $where").use { cursor ->
+            if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+
     /** Колонки первичного ключа в порядке составного ключа. */
     private fun primaryKeyColumns(db: SupportSQLiteDatabase, table: String): List<String> {
         db.query("PRAGMA table_info(`$table`)").use { cursor ->
@@ -719,6 +802,46 @@ class DatabaseMigrationTest {
                 `mimeType` TEXT NOT NULL,
                 `downloadedAt` INTEGER NOT NULL,
                 PRIMARY KEY(`id`)
+            )
+        """.trimIndent()
+
+        /** queue состояния v13 — схема не меняется в 14 и 15. */
+        val QUEUE_V13_DDL = """
+            CREATE TABLE IF NOT EXISTS `queue` (
+                `position` INTEGER NOT NULL,
+                `trackId` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `streamUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `genre` TEXT,
+                `transcodingUrl` TEXT,
+                `isrc` TEXT,
+                `previewSeconds` INTEGER,
+                PRIMARY KEY(`position`)
+            )
+        """.trimIndent()
+
+        val SEARCH_CACHE_V10_DDL = """
+            CREATE TABLE IF NOT EXISTS `search_cache` (
+                `query` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `jsonResponse` TEXT NOT NULL,
+                `timestamp` INTEGER NOT NULL,
+                PRIMARY KEY(`query`)
+            )
+        """.trimIndent()
+
+        val AUDIO_CACHE_V14_DDL = """
+            CREATE TABLE IF NOT EXISTS `audio_cache` (
+                `trackId` TEXT NOT NULL,
+                `filePath` TEXT NOT NULL,
+                `sizeBytes` INTEGER NOT NULL,
+                `cachedAt` INTEGER NOT NULL,
+                `lastAccessAt` INTEGER NOT NULL,
+                PRIMARY KEY(`trackId`)
             )
         """.trimIndent()
     }

@@ -46,9 +46,9 @@ class SearchCacheRepositoryTest {
 
     @Test
     fun `put и get возвращают сохранённый json`() = runBlocking {
-        repository.put("muse", Source.DEEZER, payload)
+        repository.put("muse", Source.SPOTIFY, payload)
 
-        assertEquals(payload, repository.get("muse", Source.DEEZER))
+        assertEquals(payload, repository.get("muse", Source.SPOTIFY))
     }
 
     @Test
@@ -56,21 +56,21 @@ class SearchCacheRepositoryTest {
         dao.upsert(
             SearchCacheEntity(
                 query = "muse",
-                source = Source.DEEZER.name,
+                source = Source.SPOTIFY.name,
                 jsonResponse = payload,
                 timestamp = 1_000L,
             ),
         )
 
-        assertNull(repository.get("muse", Source.DEEZER))
-        assertNull(dao.get("muse", Source.DEEZER.name))
+        assertNull(repository.get("muse", Source.SPOTIFY))
+        assertNull(dao.get("muse", Source.SPOTIFY.name))
     }
 
     @Test
     fun `запись другого источника не отдаётся`() = runBlocking {
-        repository.put("muse", Source.DEEZER, payload)
+        repository.put("muse", Source.SPOTIFY, payload)
 
-        assertNull(repository.get("muse", Source.APPLE))
+        assertNull(repository.get("muse", Source.SOUNDCLOUD))
     }
 
     @Test
@@ -79,15 +79,15 @@ class SearchCacheRepositoryTest {
         dao.upsert(
             SearchCacheEntity(
                 query = "muse",
-                source = Source.DEEZER.name,
+                source = Source.SPOTIFY.name,
                 jsonResponse = payload,
                 timestamp = now - 5_000L,
             ),
         )
 
-        assertNotNull(repository.get("muse", Source.DEEZER, ttlMs = 60_000L))
+        assertNotNull(repository.get("muse", Source.SPOTIFY, ttlMs = 60_000L))
         // С этим TTL запись уже просрочена и должна исчезнуть.
-        assertNull(repository.get("muse", Source.DEEZER, ttlMs = 1_000L))
+        assertNull(repository.get("muse", Source.SPOTIFY, ttlMs = 1_000L))
     }
 
     @Test
@@ -95,27 +95,27 @@ class SearchCacheRepositoryTest {
         dao.upsert(
             SearchCacheEntity(
                 query = "old",
-                source = Source.APPLE.name,
+                source = Source.SOUNDCLOUD.name,
                 jsonResponse = payload,
                 timestamp = 1L,
             ),
         )
 
-        repository.put("new", Source.DEEZER, payload)
+        repository.put("new", Source.SPOTIFY, payload)
 
-        assertNull(dao.get("old", Source.APPLE.name))
-        assertEquals(payload, dao.get("new", Source.DEEZER.name)?.jsonResponse)
+        assertNull(dao.get("old", Source.SOUNDCLOUD.name))
+        assertEquals(payload, dao.get("new", Source.SPOTIFY.name)?.jsonResponse)
     }
 
     @Test
     fun `clear удаляет весь кэш`() = runBlocking {
-        repository.put("muse", Source.DEEZER, payload)
-        repository.put("nirvana", Source.APPLE, payload)
+        repository.put("muse", Source.SPOTIFY, payload)
+        repository.put("nirvana", Source.SOUNDCLOUD, payload)
 
         repository.clear()
 
-        assertNull(repository.get("muse", Source.DEEZER))
-        assertNull(repository.get("nirvana", Source.APPLE))
+        assertNull(repository.get("muse", Source.SPOTIFY))
+        assertNull(repository.get("nirvana", Source.SOUNDCLOUD))
     }
 
     @Test

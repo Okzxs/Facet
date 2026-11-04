@@ -61,32 +61,12 @@ class PlaylistLinkParserTest {
     }
 
     @Test
-    fun `apple music плейлист берёт сегмент pl`() {
-        val result = success(
+    fun `apple music больше не поддерживается`() {
+        val result = failure(
             "https://music.apple.com/ru/playlist/my-favourites/pl.u-1a2b3c4d",
         )
 
-        assertEquals(ImportService.APPLE, result.service)
-        assertEquals("pl.u-1a2b3c4d", result.id)
-    }
-
-    @Test
-    fun `apple music с параметром i это трек`() {
-        val result = success(
-            "https://music.apple.com/ru/playlist/my-favourites/pl.u-1a2b3c4d?i=1450331355",
-        )
-
-        assertEquals(ImportService.APPLE, result.service)
-        assertEquals("pl.u-1a2b3c4d", result.id)
-        assertEquals("1450331355", result.trackId)
-    }
-
-    @Test
-    fun `apple music ссылка на трек по song`() {
-        val result = success("https://music.apple.com/ru/song/cachalot/1440833098")
-
-        assertEquals(ImportService.APPLE, result.service)
-        assertEquals("1440833098", result.trackId)
+        assertEquals(ImportError.UNSUPPORTED_LINK, result.error)
     }
 
     @Test

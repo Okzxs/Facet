@@ -17,6 +17,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v9 → v10: таблица дизлайков для фильтрации рекомендаций.
  * v10 → v11: кэш сырых JSON-ответов поиска внешних источников.
  * v11 → v12: плейлисты пользователя и их треки.
+ * v12 → v13: очередь воспроизведения переживает перезапуск.
+ * v13 → v14: кэш прослушанного в cacheDir.
+ * v14 → v15: превью Deezer/Apple обнулены, их кэш поиска и аудио удалён.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -306,6 +309,28 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
+/**
+ * 14 → 15: Deezer и Apple больше не источники воспроизведения.
+ *
+ * Старые строки очереди могут хранить 30-секундные превью — обнуляем их,
+ * чтобы плеер резолвил полную версию на YouTube. Кэш поиска и аудиокэш
+ * этих источников тоже больше не нужны: первые ответы содержали превью,
+ * вторые могли быть скачанными отрывками.
+ */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "UPDATE `queue` SET `streamUrl` = NULL, `previewSeconds` = NULL " +
+                "WHERE `source` IN ('DEEZER', 'APPLE')",
+        )
+        database.execSQL("DELETE FROM `search_cache` WHERE `source` IN ('DEEZER', 'APPLE')")
+        database.execSQL(
+            "DELETE FROM `audio_cache` " +
+                "WHERE `trackId` LIKE 'deezer:%' OR `trackId` LIKE 'apple:%'",
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -320,4 +345,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_11_12,
     MIGRATION_12_13,
     MIGRATION_13_14,
+    MIGRATION_14_15,
 )

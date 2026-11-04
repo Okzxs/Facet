@@ -55,7 +55,7 @@ class RateLimiter(
 }
 
 /**
- * Отдельный лимитер на источник: у Deezer, Apple и Spotify свои квоты,
+ * Отдельный лимитер на источник: у Deezer и Spotify свои квоты,
  * поэтому запрос в один сервис не должен задерживать запрос в другой.
  */
 @Qualifier
@@ -65,6 +65,5 @@ annotation class SourceRateLimiter(val value: String)
 /** Имена источников для [SourceRateLimiter]. */
 object RateLimiterKeys {
     const val DEEZER = "deezer"
-    const val APPLE = "apple"
     const val SPOTIFY = "spotify"
 }

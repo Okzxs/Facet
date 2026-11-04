@@ -11,25 +11,24 @@ import javax.inject.Singleton
  * чтобы не зашивать поведение конкретного сервиса в `when` по [Source].
  *
  * @param search поиск по текстовому запросу
- * @param preview отдаёт только короткий отрывок (Deezer/iTunes — 30 секунд)
  * @param fullStream умеет отдать полный трек без внешнего матчинга
  * @param requiresAuth нужен токен/ключи пользователя
  * @param supportsDownload из источника можно собрать цельный файл
  */
 data class SourceCapabilities(
     val search: Boolean = true,
-    val preview: Boolean = false,
     val fullStream: Boolean = false,
     val requiresAuth: Boolean = false,
     val supportsDownload: Boolean = false,
 )
 
 /**
- * Один внешний источник музыки: метаданные + (если умеет) ссылка на поток.
+ * Один внешний источник с онлайн-поиском: метаданные и (если умеет) ссылка на поток.
  *
  * Провайдер не знает ни о плеере, ни о UI: он только отдаёт [Track] и умеет
  * по нему получить [AudioStreamResult]. Всё, что не умеет сам, добирает
- * [StreamResolver] внешним матчем на YouTube.
+ * [StreamResolver] внешним матчем на YouTube. Deezer и Apple сюда не входят:
+ * это metadata-only источники без собственного потока.
  */
 interface MusicSourceProvider {
 

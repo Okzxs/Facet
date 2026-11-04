@@ -74,7 +74,6 @@ class SpotifyProvider @Inject constructor(
 
     override val capabilities = SourceCapabilities(
         search = true,
-        preview = false,
         fullStream = false,
         requiresAuth = true,
         supportsDownload = false,

@@ -133,7 +133,7 @@ class ServiceStatusManager @Inject constructor(
                 val result = when (type) {
                     ServiceType.SOUNDCLOUD -> soundCloudRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
                     ServiceType.YOUTUBE -> youTubeRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
-                    ServiceType.DEEZER, ServiceType.APPLE, ServiceType.SPOTIFY -> Result.failure(
+                    ServiceType.SPOTIFY -> Result.failure(
                         IllegalStateException("Нет провайдера для ${type.displayName}"),
                     )
                 }

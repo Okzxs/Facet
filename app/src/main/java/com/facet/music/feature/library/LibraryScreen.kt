@@ -879,7 +879,6 @@ private fun importErrorRes(error: ImportError): Int = when (error) {
     ImportError.EMPTY_LINK -> R.string.import_error_empty
     ImportError.UNSUPPORTED_LINK -> R.string.import_error_unsupported
     ImportError.YANDEX_UNSUPPORTED -> R.string.import_error_yandex
-    ImportError.APPLE_PLAYLIST_UNSUPPORTED -> R.string.import_error_apple
     ImportError.SPOTIFY_NOT_CONFIGURED -> R.string.import_error_spotify_keys
     ImportError.SOUNDCLOUD_CLIENT_ID_REQUIRED -> R.string.import_error_soundcloud_client
     ImportError.EMPTY_PLAYLIST -> R.string.import_error_empty_playlist

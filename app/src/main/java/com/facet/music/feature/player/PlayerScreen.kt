@@ -131,6 +131,7 @@ import com.facet.music.core.player.PlaybackVariation
 import com.facet.music.data.model.LyricsResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.isMetadataOnly
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Date
@@ -1272,7 +1273,7 @@ private fun ExpressiveHeroZone(
                                 textAlign = TextAlign.Center,
                                 modifier = artistModifier,
                             )
-                            if (source != null) {
+                            if (source != null && !source.isMetadataOnly) {
                                 Spacer(Modifier.height(2.dp))
                                 Text(
                                     text = stringResource(R.string.player_source, sourceLabel(source)),
@@ -2347,8 +2348,6 @@ private fun blendPaletteWithAccent(
 private fun sourceLabel(source: Source): String = when (source) {
     Source.SOUNDCLOUD -> "SoundCloud"
     Source.YOUTUBE -> "YouTube"
-    Source.DEEZER -> "Deezer"
-    Source.APPLE -> "Apple Music"
     Source.SPOTIFY -> "Spotify"
     Source.LOCAL -> "Local"
     else -> source.name

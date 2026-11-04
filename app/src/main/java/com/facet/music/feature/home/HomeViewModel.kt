@@ -16,7 +16,7 @@ import com.facet.music.data.repository.RecentlyShownRepository
 import com.facet.music.data.repository.SoundCloudChartsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
-import com.facet.music.data.source.external.DeezerProvider
+import com.facet.music.data.source.external.DeezerMetadataClient
 import com.facet.music.data.source.external.DeezerRelease
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -77,7 +77,7 @@ class HomeViewModel @Inject constructor(
     private val youtubeRepository: YouTubeRepository,
     private val soundCloudRepository: SoundCloudRepository,
     private val chartsRepository: SoundCloudChartsRepository,
-    private val deezerProvider: DeezerProvider,
+    private val deezerMetadataClient: DeezerMetadataClient,
     private val downloadRepository: DownloadRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val playHistoryRepository: PlayHistoryRepository,
@@ -123,7 +123,7 @@ class HomeViewModel @Inject constructor(
                 ?.getOrNull()
                 .orEmpty()
                 .take(HOME_CHARTS_LIMIT)
-            val releases = runCatching { deezerProvider.fetchNewReleases(HOME_RELEASES_LIMIT) }
+            val releases = runCatching { deezerMetadataClient.fetchNewReleases(HOME_RELEASES_LIMIT) }
                 .getOrNull()
                 ?.getOrNull()
                 .orEmpty()
@@ -140,7 +140,7 @@ class HomeViewModel @Inject constructor(
     /** Новинка — это альбом: треки грузим при нажатии и отдаём в плеер. */
     fun playRelease(release: DeezerRelease) {
         viewModelScope.launch {
-            val tracks = deezerProvider.fetchAlbumTracks(release.id).getOrNull().orEmpty()
+            val tracks = deezerMetadataClient.fetchAlbumTracks(release.id).getOrNull().orEmpty()
             if (tracks.isNotEmpty()) _openPlayer.emit(tracks.first() to tracks)
         }
     }

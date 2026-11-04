@@ -118,10 +118,6 @@ fun TrackCard(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val shape = MaterialTheme.shapes.medium
-    // Превью-источники (Deezer, Apple) играют только отрывок — это честно видно
-    // в карточке, а не выясняется на середине. Строку считаем здесь: buildString
-    // ниже — не @Composable, stringResource внутри него вызвать нельзя.
-    val previewLabel = track.previewSeconds?.let { stringResource(R.string.track_preview, it) }
 
     val containerColor by animateColorAsState(
         targetValue = when {
@@ -227,7 +223,6 @@ fun TrackCard(
                                 append(track.artist)
                                 if (!track.genre.isNullOrBlank()) append(" · ${track.genre}")
                                 if (track.durationMs > 0) append(" · ${formatDuration(track.durationMs)}")
-                                previewLabel?.let { append(" · $it") }
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

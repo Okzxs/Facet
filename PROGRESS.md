@@ -1,6 +1,60 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 03.11.2026 (сессия 69)
+## Последнее обновление: 03.11.2026 (сессия 69, фаза 2)
+
+## Сессия 69: глобальный рефакторинг, фаза 2 — Deezer и Apple без превью
+
+**Статус:** фаза 2 из 11 закрыта; следующие фазы не начаты.
+
+### Что сделано
+- **Apple удалён.** Удалены `AppleMusicProvider`, DI-биндинг, `RateLimiterKeys.APPLE`/лимитер, брендовая иконка, ветки в `ServiceType`, `SearchScreen`, `ServiceStatusManager`, `PlaylistLinkParser`, `PlaylistPayloadParser` (iTunes lookup), `PlaylistImportService` (Apple-ветка и лимитер), строки `import_error_apple`/`track_preview`. Ссылки Apple Music теперь дают `UNSUPPORTED_LINK`.
+- **Deezer — только метаданные.** `DeezerProvider` переименован в `DeezerMetadataClient`; удалены `search`, `resolve`, кэш поиска, preview-поля и `firstOrNull()`-фолбэк. Остались `fetchNewReleases`, `fetchAlbumTracks`, артистские методы (до фазы 7) и импорт плейлистов. Все треки Deezer создаются с `streamUrl = null` и ISRC.
+- **Воспроизведение.** `Source.isMetadataOnly` (Deezer/Apple/Spotify) заставляет `StreamResolver` игнорировать `streamUrl` и `PlayerController` всегда идти через YouTube-матч. `Source.DEEZER`/`APPLE` остались в enum только для старых строк.
+- **Поиск и UI.** `ServiceType` = SOUNDCLOUD/YOUTUBE/SPOTIFY; в поиске 3 брендовые кнопки; убраны бейджи превью в `TrackCard`, строка источника в плеере скрыта для metadata-only, онбординг и строки импорта обновлены.
+- **Room 14→15.** `MIGRATION_14_15`: `queue.streamUrl`/`previewSeconds` → NULL для Deezer/Apple, удалены их `search_cache` и `audio_cache`; схема 15 экспортирована; тесты 14→15 и сквозной 1→15.
+
+### Проверка
+- `assembleDebug` — BUILD SUCCESSFUL; `assembleRelease` — BUILD SUCCESSFUL (6m47s), APK 7 204 499 байт, SHA-256 `75091b7aebb68885801f63ed094fd56380eadbf9bd003f919cad2ec92777ff39`.
+- `testDebugUnitTest` — 45 suite / 286 тестов, 0 failures.
+- **Live на SM-A266B (`192.168.1.105:37871`):** release установлен поверх 1.0.0, logcat `SQLiteOpenHelper: DB version upgrading from 14 to 15`; в поиске ровно 3 кнопки (YouTube, SoundCloud, Spotify); экран артиста Deezer открылся, трек `ParisLove` (FORTUNA 812) играет полную версию 1:48 с YouTube — `PlaybackState=PLAYING`, аудиовыход speaker, Now Bar/SystemUI показывает метаданные, строка «Источник» у metadata-only скрыта. Превью 30 с не встретилось.
+
+### Файлы
+```
+AGENTS.md
+app/src/main/java/com/facet/music/core/di/MusicSourceModule.kt
+app/src/main/java/com/facet/music/core/di/RateLimiterModule.kt
+app/src/main/java/com/facet/music/core/import/PlaylistLinkParser.kt
+app/src/main/java/com/facet/music/core/import/PlaylistPayloadParser.kt
+app/src/main/java/com/facet/music/core/network/RateLimiter.kt
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/core/service/ServiceType.kt
+app/src/main/java/com/facet/music/core/service/ServiceStatusManager.kt
+app/src/main/java/com/facet/music/core/source/MusicSourceProvider.kt
+app/src/main/java/com/facet/music/core/source/StreamResolver.kt
+app/src/main/java/com/facet/music/core/ui/components/TrackCard.kt
+app/src/main/java/com/facet/music/data/local/AppDatabase.kt
+app/src/main/java/com/facet/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/facet/music/data/local/SearchCacheRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/local/entity/SearchCacheEntity.kt
+app/src/main/java/com/facet/music/data/model/Track.kt
+app/src/main/java/com/facet/music/data/source/external/DeezerMetadataClient.kt
+app/src/main/java/com/facet/music/data/source/imports/PlaylistImportService.kt
+app/src/main/java/com/facet/music/feature/home/HomeViewModel.kt
+app/src/main/java/com/facet/music/feature/artist/ArtistViewModel.kt
+app/src/main/java/com/facet/music/feature/library/LibraryScreen.kt
+app/src/main/java/com/facet/music/feature/player/PlayerScreen.kt
+app/src/main/java/com/facet/music/feature/search/SearchScreen.kt
+app/src/main/java/com/facet/music/feature/search/SearchViewModel.kt
+app/src/main/res/values/strings.xml
+app/src/main/res/values-ru/strings.xml
+app/schemas/com.facet.music.data.local.AppDatabase/15.json
+app/src/test/java/com/facet/music/data/local/DatabaseMigrationTest.kt
+app/src/test/java/com/facet/music/data/model/SourcePlaybackTest.kt
+app/src/test/java/com/facet/music/core/import/PlaylistLinkParserTest.kt
+app/src/test/java/com/facet/music/core/import/PlaylistPayloadParserTest.kt
+app/src/test/java/com/facet/music/data/source/imports/PlaylistImportServiceTest.kt
+app/src/test/java/com/facet/music/data/local/SearchCacheRepositoryTest.kt
+```
 
 ## Сессия 69: глобальный рефакторинг, фаза 1 — безопасность и быстрые фиксы
 

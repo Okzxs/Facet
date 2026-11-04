@@ -8,12 +8,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Разбор JSON Deezer и iTunes: проверяем поля доменной модели без сети.
+ * Разбор JSON Deezer: проверяем поля доменной модели без сети.
  */
 class PlaylistPayloadParserTest {
 
     @Test
-    fun `deezer отдаёт название и треки с превью`() {
+    fun `deezer отдаёт метаданные без превью`() {
         val playlist = PlaylistPayloadParser.deezerPlaylist(DEEZER_BODY)
 
         assertEquals("Морская", playlist.name)
@@ -27,8 +27,8 @@ class PlaylistPayloadParserTest {
         assertEquals("Deep Sea", track.artist)
         assertEquals("https://cdn.deezer.com/cover.jpg", track.artworkUrl)
         assertEquals(184_000L, track.durationMs)
-        assertEquals("https://cdn.deezer.com/preview.mp3", track.streamUrl)
-        assertEquals(30, track.previewSeconds)
+        assertNull(track.streamUrl)
+        assertNull(track.previewSeconds)
         assertEquals("ABC123", track.isrc)
         assertEquals("https://www.deezer.com/track/3135556", track.transcodingUrl)
     }
@@ -65,30 +65,6 @@ class PlaylistPayloadParserTest {
         assertTrue(playlist.tracks.isEmpty())
     }
 
-    @Test
-    fun `itunes lookup возвращает только треки и крупную обложку`() {
-        val tracks = PlaylistPayloadParser.appleLookupTracks(APPLE_BODY)
-
-        assertEquals(1, tracks.size)
-        val track = tracks.single()
-        assertEquals("apple:1440833098", track.id)
-        assertEquals(Source.APPLE, track.source)
-        assertEquals("Cachalot", track.title)
-        assertEquals("Deep Sea", track.artist)
-        assertEquals("https://is1.mzstatic.com/600x600bb.jpg", track.artworkUrl)
-        assertEquals(184_000L, track.durationMs)
-        assertEquals("https://audio.mzstatic.com/preview.m4a", track.streamUrl)
-        assertEquals(30, track.previewSeconds)
-        assertEquals("Electronic", track.genre)
-    }
-
-    @Test
-    fun `itunes lookup без результатов даёт пустой список`() {
-        assertTrue(
-            PlaylistPayloadParser.appleLookupTracks("""{"resultCount":0,"results":[]}""").isEmpty(),
-        )
-    }
-
     private companion object {
         const val DEEZER_BODY = """
         {
@@ -112,30 +88,6 @@ class PlaylistPayloadParserTest {
               }
             ]
           }
-        }
-        """
-
-        const val APPLE_BODY = """
-        {
-          "resultCount": 2,
-          "results": [
-            {
-              "wrapperType": "collection",
-              "collectionType": "Album",
-              "collectionName": "Морская"
-            },
-            {
-              "wrapperType": "track",
-              "trackId": 1440833098,
-              "trackName": "Cachalot",
-              "artistName": "Deep Sea",
-              "artworkUrl100": "https://is1.mzstatic.com/100x100bb.jpg",
-              "trackTimeMillis": 184000,
-              "previewUrl": "https://audio.mzstatic.com/preview.m4a",
-              "primaryGenreName": "Electronic",
-              "trackViewUrl": "https://music.apple.com/ru/song/1440833098"
-            }
-          ]
         }
         """
     }

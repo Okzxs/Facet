@@ -8,7 +8,7 @@ import com.facet.music.data.model.Track
 import com.facet.music.data.repository.YouTubeRepository
 import com.facet.music.data.source.external.DeezerAlbum
 import com.facet.music.data.source.external.DeezerArtistRef
-import com.facet.music.data.source.external.DeezerProvider
+import com.facet.music.data.source.external.DeezerMetadataClient
 import com.facet.music.navigation.ARTIST_NAME_ARG
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -61,7 +61,7 @@ data class ArtistUiState(
 @HiltViewModel
 class ArtistViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val deezerProvider: DeezerProvider,
+    private val deezerMetadataClient: DeezerMetadataClient,
     private val youTubeRepository: YouTubeRepository,
     playerController: PlayerController,
 ) : ViewModel() {
@@ -111,7 +111,7 @@ class ArtistViewModel @Inject constructor(
     /** Воспроизведение альбома целиком: треки приходят одним запросом. */
     fun playAlbum(albumId: Long) {
         viewModelScope.launch {
-            val tracks = deezerProvider.fetchAlbumTracks(albumId).getOrNull().orEmpty()
+            val tracks = deezerMetadataClient.fetchAlbumTracks(albumId).getOrNull().orEmpty()
             if (tracks.isEmpty()) {
                 _albumError.value = true
             } else {
@@ -132,19 +132,19 @@ class ArtistViewModel @Inject constructor(
             val artist = if (artistName.isBlank()) {
                 null
             } else {
-                deezerProvider.fetchArtist(artistName).getOrNull()
+                deezerMetadataClient.fetchArtist(artistName).getOrNull()
             }
 
             val deezerTracks = when {
-                artist != null -> deezerProvider.fetchArtistTopTracks(artist.id).getOrNull()
-                artistName.isNotBlank() -> deezerProvider.fetchArtistTopTracks(artistName).getOrNull()
+                artist != null -> deezerMetadataClient.fetchArtistTopTracks(artist.id).getOrNull()
+                artistName.isNotBlank() -> deezerMetadataClient.fetchArtistTopTracks(artistName).getOrNull()
                 else -> null
             }.orEmpty()
 
             // У части артистов Deezer отдаёт в топ один трек — дополняем поиском
             // по `artist:"имя"`, иначе секция выглядит обрезанной.
             val filledTracks = if (deezerTracks.size < MIN_TOP_TRACKS && artistName.isNotBlank()) {
-                val extra = deezerProvider.searchArtistTracks(artistName).getOrNull().orEmpty()
+                val extra = deezerMetadataClient.searchArtistTracks(artistName).getOrNull().orEmpty()
                 (deezerTracks + extra)
                     .distinctBy { it.id }
                     .take(ARTIST_TRACK_LIMIT)
@@ -156,11 +156,11 @@ class ArtistViewModel @Inject constructor(
             val tracks = filledTracks.ifEmpty { youTubeFallback() }
 
             val albums = artist?.let {
-                deezerProvider.fetchArtistAlbums(it.id).getOrNull()
+                deezerMetadataClient.fetchArtistAlbums(it.id).getOrNull()
             }.orEmpty()
 
             val related = artist?.let {
-                deezerProvider.fetchRelatedArtists(it.id).getOrNull()
+                deezerMetadataClient.fetchRelatedArtists(it.id).getOrNull()
             }.orEmpty()
 
             _uiState.update { current ->

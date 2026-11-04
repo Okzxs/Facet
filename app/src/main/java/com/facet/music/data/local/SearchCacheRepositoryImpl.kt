@@ -19,6 +19,8 @@ class SearchCacheRepositoryImpl @Inject constructor(
 ) : SearchCacheRepository {
 
     override suspend fun get(query: String, source: Source, ttlMs: Long): String? {
+        // Deezer и Apple больше не источники поиска: их старый кэш не отдаём.
+        if (source == Source.DEEZER || source == Source.APPLE) return null
         val entity = dao.get(query, source.name) ?: return null
         val ageMs = System.currentTimeMillis() - entity.timestamp
         if (ageMs > ttlMs) {
@@ -30,6 +32,7 @@ class SearchCacheRepositoryImpl @Inject constructor(
     }
 
     override suspend fun put(query: String, source: Source, json: String) {
+        if (source == Source.DEEZER || source == Source.APPLE) return
         val now = System.currentTimeMillis()
         dao.upsert(
             SearchCacheEntity(

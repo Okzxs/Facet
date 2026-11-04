@@ -13,7 +13,5 @@ import com.facet.music.data.model.Source
 enum class ServiceType(val displayName: String, val source: Source) {
     SOUNDCLOUD("SoundCloud", Source.SOUNDCLOUD),
     YOUTUBE("YouTube", Source.YOUTUBE),
-    DEEZER("Deezer", Source.DEEZER),
-    APPLE("Apple Music", Source.APPLE),
     SPOTIFY("Spotify", Source.SPOTIFY),
 }

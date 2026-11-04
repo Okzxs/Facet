@@ -11,7 +11,7 @@
     <!-- Онбординг первого запуска -->
     <string name="onboarding_tagline">Все платформы. Один плеер.</string>
     <string name="onboarding_feature_sources_title">Все источники</string>
-    <string name="onboarding_feature_sources_text">Поиск по SoundCloud, YouTube, Deezer, Apple Music и Spotify в одном месте.</string>
+    <string name="onboarding_feature_sources_text">Поиск по SoundCloud, YouTube и Spotify в одном месте.</string>
     <string name="onboarding_feature_offline_title">Слушай офлайн</string>
     <string name="onboarding_feature_offline_text">Скачивай треки на телефон и слушай их без интернета.</string>
     <string name="onboarding_feature_wave_title">Бесконечная волна</string>
@@ -222,7 +222,6 @@
     </plurals>
 
     <!-- Карточка трека -->
-    <string name="track_preview">превью %1$d с</string>
     <string name="track_downloaded_cd">Трек скачан</string>
     <string name="track_download_cd">Скачать трек</string>
     <string name="track_download_failed_cd">Не удалось скачать</string>
@@ -397,9 +396,8 @@
     <string name="import_text_missing">Не найдено: %1$d</string>
     <string name="import_entry">Импорт профиля или списка</string>
     <string name="import_error_empty">Вставьте ссылку на плейлист</string>
-    <string name="import_error_unsupported">Не удалось распознать ссылку. Поддержаны Spotify, Deezer, Яндекс Музыка, Apple Music, YouTube и SoundCloud</string>
+    <string name="import_error_unsupported">Не удалось распознать ссылку. Поддержаны Spotify, Deezer, Яндекс Музыка, YouTube и SoundCloud</string>
     <string name="import_error_yandex">Импорт плейлистов Яндекс Музыки пока недоступен</string>
-    <string name="import_error_apple">Импорт плейлистов Apple Music недоступен без Apple Music API</string>
     <string name="import_error_spotify_keys">Добавьте ключи Spotify в настройках</string>
     <string name="import_error_empty_playlist">В плейлисте нет треков</string>
     <string name="import_error_network">Не удалось загрузить плейлист. Проверьте ссылку и подключение</string>

@@ -4,7 +4,6 @@ package com.facet.music.core.import
 enum class ImportService {
     SPOTIFY,
     YANDEX,
-    APPLE,
     DEEZER,
     YOUTUBE,
     SOUNDCLOUD,
@@ -20,7 +19,6 @@ enum class ImportError {
     EMPTY_LINK,
     UNSUPPORTED_LINK,
     YANDEX_UNSUPPORTED,
-    APPLE_PLAYLIST_UNSUPPORTED,
     SPOTIFY_NOT_CONFIGURED,
     SOUNDCLOUD_CLIENT_ID_REQUIRED,
     EMPTY_PLAYLIST,
@@ -31,15 +29,12 @@ enum class ImportError {
 /**
  * Результат разбора ссылки: сервис и его идентификатор либо понятная ошибка.
  *
- * @param id идентификатор плейлиста (у Apple — сегмент `pl.…`);
- * @param trackId для Apple — числовой id трека из query-параметра `i=`,
- *   такую ссылку импортируем как один трек.
+ * @param id идентификатор плейлиста.
  */
 sealed interface PlaylistLinkParseResult {
     data class Success(
         val service: ImportService,
         val id: String,
-        val trackId: String? = null,
     ) : PlaylistLinkParseResult
 
     data class Failure(
@@ -49,12 +44,12 @@ sealed interface PlaylistLinkParseResult {
 }
 
 /**
- * Разбор ссылок на плейлисты Spotify, Яндекс Музыки, Apple Music и Deezer.
+ * Разбор ссылок на плейлисты Spotify, Яндекс Музыки и Deezer.
  *
  * Разбор намеренно не использует `android.net.Uri` и `java.net.URI`: ссылки
- * часто копируют без схемы, с пробелами и кириллицей в пути (Apple Music),
- * а `URI` на таких строках падает. Поэтому путь и query-параметры разбираются
- * обычными строковыми операциями — это ещё и делает парсер чистым JVM-кодом.
+ * часто копируют без схемы, с пробелами и query-параметрами, а `URI` на таких
+ * строках падает. Поэтому путь и query-параметры разбираются обычными
+ * строковыми операциями — это ещё и делает парсер чистым JVM-кодом.
  */
 object PlaylistLinkParser {
 
@@ -79,7 +74,6 @@ object PlaylistLinkParser {
         return when {
             isSpotifyHost(host) -> parseSpotify(segments.drop(1))
             isYandexHost(host) -> parseYandex(segments.drop(1))
-            isAppleHost(host) -> parseApple(segments.drop(1), query)
             isDeezerHost(host) -> parseDeezer(segments.drop(1))
             isYouTubeHost(host) -> parseYouTube(query)
             isSoundCloudHost(host) -> parseSoundCloud(host, segments.drop(1))
@@ -152,45 +146,6 @@ object PlaylistLinkParser {
         return PlaylistLinkParseResult.Success(ImportService.YANDEX, id)
     }
 
-    /**
-     * `music.apple.com/.../playlist/.../pl.<uuid>` — id плейлиста берём из
-     * сегмента `pl.…`. Ссылка с query-параметром `i=` указывает на трек:
-     * возвращаем ещё и его числовой id, чтобы импортировать один трек.
-     */
-    private fun parseApple(segments: List<String>, query: String): PlaylistLinkParseResult {
-        val trackFromQuery = queryParam(query, TRACK_QUERY_PARAM)
-            ?.takeIf { it.isNotEmpty() && it.all { char -> char.isDigit() } }
-        val trackFromSongPath = segments.lastOrNull()
-            ?.takeIf { it.all { char -> char.isDigit() } && segments.any { it.equals("song", true) } }
-
-        val playlistSegment = segments.firstOrNull { it.startsWith(APPLE_PLAYLIST_PREFIX, true) }
-        val trackId = trackFromQuery ?: trackFromSongPath
-        if (trackId != null) {
-            return PlaylistLinkParseResult.Success(
-                service = ImportService.APPLE,
-                // Ссылка вида «плейлист + i=» — это трек, но id плейлиста сохраняем.
-                id = playlistSegment ?: trackId,
-                trackId = trackId,
-            )
-        }
-
-        if (playlistSegment != null) {
-            return PlaylistLinkParseResult.Success(ImportService.APPLE, playlistSegment)
-        }
-
-        // Ссылка на альбом: iTunes умеет отдать его треки обычным lookup.
-        val albumId = segments.lastOrNull()
-            ?.takeIf { it.all { char -> char.isDigit() } }
-        if (albumId != null && segments.any { it.equals("album", true) }) {
-            return PlaylistLinkParseResult.Success(ImportService.APPLE, albumId)
-        }
-
-        return failure(
-            ImportError.UNSUPPORTED_LINK,
-            "Не удалось найти идентификатор в ссылке Apple Music",
-        )
-    }
-
     /** `deezer.com/playlist/<id>` и `deezer.com/ru/playlist/<id>`. */
     private fun parseDeezer(segments: List<String>): PlaylistLinkParseResult {
         val index = segments.indexOfFirst { it.equals(PLAYLIST_SEGMENT, ignoreCase = true) }
@@ -211,9 +166,6 @@ object PlaylistLinkParser {
         host == "yandex.ru" || host.endsWith(".yandex.ru") ||
             host == "yandex.com" || host.endsWith(".yandex.com")
 
-    private fun isAppleHost(host: String): Boolean =
-        host == "music.apple.com" || host == "itunes.apple.com"
-
     private fun isDeezerHost(host: String): Boolean =
         host == "deezer.com" || host.endsWith(".deezer.com")
 
@@ -232,7 +184,7 @@ object PlaylistLinkParser {
     private fun unsupported(): PlaylistLinkParseResult.Failure = failure(
         ImportError.UNSUPPORTED_LINK,
         "Не удалось распознать ссылку: поддержаны Spotify, Deezer, Яндекс Музыка, " +
-            "Apple Music, YouTube и SoundCloud",
+            "YouTube и SoundCloud",
     )
 
     private fun failure(error: ImportError, message: String): PlaylistLinkParseResult.Failure =
@@ -240,9 +192,7 @@ object PlaylistLinkParser {
 
     private const val PLAYLIST_SEGMENT = "playlist"
     private const val YANDEX_PLAYLISTS_SEGMENT = "playlists"
-    private const val TRACK_QUERY_PARAM = "i"
     private const val LIST_QUERY_PARAM = "list"
     private const val SOUNDCLOUD_SETS_SEGMENT = "sets"
-    private const val APPLE_PLAYLIST_PREFIX = "pl."
     private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
 }

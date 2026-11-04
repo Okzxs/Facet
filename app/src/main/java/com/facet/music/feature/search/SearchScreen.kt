@@ -24,10 +24,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.TextButton
@@ -130,24 +128,18 @@ private val searchSuggestions = listOf("Electronic", "Hip-Hop", "Rock", "Chill",
 private val sourceButtonOrder = listOf(
     ServiceType.YOUTUBE,
     ServiceType.SOUNDCLOUD,
-    ServiceType.DEEZER,
-    ServiceType.APPLE,
     ServiceType.SPOTIFY,
 )
 
 // Брендовые цвета источников: фон кнопки — с альфой, текст — чистый цвет.
 private val YoutubeRed = Color(0xFFFF0000)
 private val SoundCloudOrange = Color(0xFFFF5500)
-private val DeezerPurple = Color(0xFFA238FF)
-private val ApplePink = Color(0xFFFA243C)
 private val SpotifyGreen = Color(0xFF1DB954)
 
 /** Векторная иконка бренда внутри квадратной кнопки источника. */
 private fun ServiceType.brandIconRes(): Int = when (this) {
     ServiceType.YOUTUBE -> R.drawable.ic_brand_youtube
     ServiceType.SOUNDCLOUD -> R.drawable.ic_brand_soundcloud
-    ServiceType.DEEZER -> R.drawable.ic_brand_deezer
-    ServiceType.APPLE -> R.drawable.ic_brand_apple
     ServiceType.SPOTIFY -> R.drawable.ic_brand_spotify
 }
 
@@ -155,8 +147,6 @@ private fun ServiceType.brandIconRes(): Int = when (this) {
 private fun ServiceType.brandColor(): Color = when (this) {
     ServiceType.YOUTUBE -> YoutubeRed
     ServiceType.SOUNDCLOUD -> SoundCloudOrange
-    ServiceType.DEEZER -> DeezerPurple
-    ServiceType.APPLE -> ApplePink
     ServiceType.SPOTIFY -> SpotifyGreen
 }
 
@@ -427,8 +417,8 @@ private fun SourceSwitcher(
         ) {
             Column {
                 Spacer(Modifier.height(8.dp))
-                // Пять кнопок по 42dp и промежутки 6dp: 210 + 24 = 234dp,
-                // панель заметно ниже прежней и не спорит с полем поиска.
+                // Три кнопки по 42dp и промежутки 6dp: панель компактная
+                // и не спорит с полем поиска.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -788,8 +778,6 @@ private fun UnavailableServiceWarning(
 private fun serviceIcon(service: ServiceType) = when (service) {
     ServiceType.SOUNDCLOUD -> Icons.Rounded.Cloud
     ServiceType.YOUTUBE -> Icons.Rounded.SmartDisplay
-    ServiceType.DEEZER -> Icons.Rounded.Equalizer
-    ServiceType.APPLE -> Icons.Rounded.MusicNote
     ServiceType.SPOTIFY -> Icons.Rounded.GraphicEq
 }
 

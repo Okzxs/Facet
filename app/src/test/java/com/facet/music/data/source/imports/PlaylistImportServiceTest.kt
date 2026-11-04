@@ -20,7 +20,7 @@ import org.junit.Test
 
 /**
  * Загрузчик плейлистов: проверяем ветки, которые не требуют сети —
- * пустую ссылку, мусор, Яндекс, Apple-плейлист и Spotify без ключей.
+ * пустую ссылку, мусор, Яндекс, Apple-ссылку и Spotify без ключей.
  */
 class PlaylistImportServiceTest {
 
@@ -55,7 +55,6 @@ class PlaylistImportServiceTest {
             json = json,
             spotifyProvider = spotify,
             deezerRateLimiter = RateLimiter(),
-            appleRateLimiter = RateLimiter(),
         )
     }
 
@@ -87,12 +86,12 @@ class PlaylistImportServiceTest {
     }
 
     @Test
-    fun `apple плейлист без api даёт понятную ошибку`() = runTest {
+    fun `apple music больше не импортируется`() = runTest {
         val result = failure(
             service().load("https://music.apple.com/ru/playlist/my-favourites/pl.u-1a2b3c4d"),
         )
 
-        assertEquals(ImportError.APPLE_PLAYLIST_UNSUPPORTED, result.error)
+        assertEquals(ImportError.UNSUPPORTED_LINK, result.error)
     }
 
     @Test

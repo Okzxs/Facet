@@ -48,7 +48,7 @@ import com.facet.music.data.local.entity.UserPreferenceEntity
         QueueEntity::class,
         AudioCacheEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
