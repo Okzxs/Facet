@@ -124,8 +124,8 @@
     <string name="settings_quality_title">Download quality</string>
     <string name="settings_quality_hint">Bitrate for downloads. YouTube picks the closest available stream.</string>
     <string name="settings_cache_title">Listened cache</string>
-    <string name="settings_cache_empty">Nothing cached yet — tracks are saved after 20 seconds of playback.</string>
-    <string name="settings_cache_summary">%1$s MB · %2$d tracks</string>
+    <string name="settings_cache_empty">Nothing cached yet — Media3 saves tracks as you play.</string>
+    <string name="settings_cache_summary">%1$s MB · %2$d entries</string>
     <string name="settings_cache_clear">Clear cache</string>
     <string name="settings_privacy_section">Privacy</string>
     <string name="settings_analytics_title">Anonymous statistics</string>

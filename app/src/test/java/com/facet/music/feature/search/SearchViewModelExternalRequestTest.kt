@@ -4,7 +4,7 @@ import com.facet.music.core.navigation.NavigationEvents
 import com.facet.music.core.service.ServiceHealth
 import com.facet.music.core.search.SearchHistoryStore
 import com.facet.music.core.service.ServiceStatusManager
-import com.facet.music.core.source.MusicSourceRegistry
+import com.facet.music.core.source.PlayableSourceRegistry
 import com.facet.music.core.service.ServiceType
 import com.facet.music.data.repository.DownloadRepository
 import com.facet.music.data.repository.SoundCloudRepository
@@ -75,7 +75,7 @@ class SearchViewModelExternalRequestTest {
     private fun createViewModel(events: NavigationEvents): SearchViewModel = SearchViewModel(
         soundCloudRepository = soundCloudRepository,
         youTubeRepository = youTubeRepository,
-        sourceRegistry = MusicSourceRegistry(emptySet()),
+        sourceRegistry = PlayableSourceRegistry(emptySet()),
         searchHistoryStore = mockk(relaxed = true),
         serviceStatusManager = statusManager,
         navigationEvents = events,

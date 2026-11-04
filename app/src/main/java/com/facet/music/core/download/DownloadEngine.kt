@@ -134,6 +134,7 @@ internal class DownloadEngine(
             title = track.title,
             artist = track.artist,
             artwork = artwork,
+            artworkMime = artwork?.let(Id3Writer::artworkMimeType) ?: "image/jpeg",
         )
     }
 

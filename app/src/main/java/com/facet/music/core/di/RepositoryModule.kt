@@ -123,11 +123,5 @@ abstract class RepositoryModule {
     abstract fun bindQueueRepository(
         impl: com.facet.music.data.local.QueueRepositoryImpl,
     ): com.facet.music.data.repository.QueueRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindAudioCacheRepository(
-        impl: com.facet.music.data.local.AudioCacheRepositoryImpl,
-    ): com.facet.music.data.repository.AudioCacheRepository
 }
 

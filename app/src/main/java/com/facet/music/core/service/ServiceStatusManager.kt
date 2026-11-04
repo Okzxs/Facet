@@ -1,7 +1,7 @@
 package com.facet.music.core.service
 
 import android.util.Log
-import com.facet.music.core.source.MusicSourceRegistry
+import com.facet.music.core.source.PlayableSourceRegistry
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
 import kotlinx.coroutines.CancellationException
@@ -31,7 +31,7 @@ import javax.inject.Singleton
 class ServiceStatusManager @Inject constructor(
     private val soundCloudRepository: SoundCloudRepository,
     private val youTubeRepository: YouTubeRepository,
-    private val sourceRegistry: MusicSourceRegistry,
+    private val sourceRegistry: PlayableSourceRegistry,
 ) {
 
     private val tag = "ServiceStatus"

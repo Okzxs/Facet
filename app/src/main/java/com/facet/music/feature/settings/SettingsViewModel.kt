@@ -4,13 +4,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.facet.music.core.player.PlaybackCache
 import com.facet.music.core.spotify.SpotifyAuthState
 import com.facet.music.data.repository.AppSettings
-import com.facet.music.data.repository.AudioCacheRepository
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SpotifyAuthRepository
 import com.facet.music.data.repository.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +28,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val spotifyAuthRepository: SpotifyAuthRepository,
-    private val audioCacheRepository: AudioCacheRepository,
+    private val playbackCache: PlaybackCache,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = settingsRepository.settings
@@ -51,7 +52,7 @@ class SettingsViewModel @Inject constructor(
     private val _spotifyAuthError = MutableStateFlow(false)
     val spotifyAuthError: StateFlow<Boolean> = _spotifyAuthError.asStateFlow()
 
-    /** Кэш прослушанного: сколько файлов и байт, обновляется из Room. */
+    /** Кэш Media3: размер и число ключей, обновляется при открытии экрана. */
     private val _cacheBytes = MutableStateFlow(0L)
     val cacheBytes: StateFlow<Long> = _cacheBytes.asStateFlow()
 
@@ -59,18 +60,21 @@ class SettingsViewModel @Inject constructor(
     val cacheCount: StateFlow<Int> = _cacheCount.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            audioCacheRepository.observeEntries().collect { entries ->
-                _cacheCount.value = entries.size
-                _cacheBytes.value = entries.sumOf { it.sizeBytes }
-            }
+        refreshCacheStats()
+    }
+
+    private fun refreshCacheStats() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _cacheBytes.value = playbackCache.sizeBytes()
+            _cacheCount.value = playbackCache.keyCount()
         }
     }
 
-    /** Очистка кэша прослушанного: файлы и записи в Room. */
+    /** Очистка кэша Media3. */
     fun clearAudioCache() {
-        viewModelScope.launch {
-            audioCacheRepository.clear()
+        viewModelScope.launch(Dispatchers.IO) {
+            playbackCache.clear()
+            refreshCacheStats()
         }
     }
 

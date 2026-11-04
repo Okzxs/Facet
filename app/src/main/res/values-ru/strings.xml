@@ -123,8 +123,8 @@
     <string name="settings_quality_title">Качество загрузки</string>
     <string name="settings_quality_hint">Битрейт для скачивания. YouTube выбирает ближайший доступный поток.</string>
     <string name="settings_cache_title">Кэш прослушанного</string>
-    <string name="settings_cache_empty">Пока пусто — треки сохраняются после 20 секунд прослушивания.</string>
-    <string name="settings_cache_summary">%1$s МБ · %2$d треков</string>
+    <string name="settings_cache_empty">Пока пусто — Media3 сохраняет треки по мере воспроизведения.</string>
+    <string name="settings_cache_summary">%1$s МБ · %2$d записей</string>
     <string name="settings_cache_clear">Очистить кэш</string>
     <string name="settings_privacy_section">Приватность</string>
     <string name="settings_analytics_title">Анонимная статистика</string>

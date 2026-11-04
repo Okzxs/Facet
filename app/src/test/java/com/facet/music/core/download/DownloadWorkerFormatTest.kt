@@ -71,17 +71,22 @@ class DownloadWorkerFormatTest {
     }
 
     @Test
-    fun `file name uses requested extension and sanitizes it`() {
+    fun `file name is sha256 of track id and sanitizes extension`() {
+        val trackId = "https://soundcloud.com/artist/track"
+        val expectedHash = java.security.MessageDigest
+            .getInstance("SHA-256")
+            .digest(trackId.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
         val name = DownloadTrackWorker.downloadFileName(
-            trackId = "https://soundcloud.com/artist/track",
+            trackId = trackId,
             extension = "m4a",
         )
         val unsafeName = DownloadTrackWorker.downloadFileName(
-            trackId = "https://soundcloud.com/artist/track",
+            trackId = trackId,
             extension = "../mp3",
         )
 
-        assertTrue(name.endsWith(".m4a"))
-        assertTrue(unsafeName.endsWith(".mp3"))
+        assertEquals("$expectedHash.m4a", name)
+        assertEquals("$expectedHash.mp3", unsafeName)
     }
 }

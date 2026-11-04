@@ -1,9 +1,17 @@
-# Активный контекст — Обновлено 03.11.2026
+# Активный контекст — Обновлено 04.11.2026
 
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 69, фаза 2 (03.11.2026): Deezer/Apple без превью, `DeezerMetadataClient`, Room 14→15; 45 suite / 286 тестов | Живой смоук на SM-A266B и фаза 3 по команде пользователя |
+| Facet | активен  | Сессия 69, фаза 3 (04.11.2026): единый `PlaybackResolver`, кэш Media3, Room 15→16; 46 suite / 282 теста | Живой смоук пройден; фаза 4 — по команде пользователя |
+
+### Сессия 69, фаза 3: единый резолвер и кэш Media3
+- **PlayableSource:** `MusicSourceProvider`/`MusicSourceRegistry` заменены на `PlayableSource`/`PlayableSourceRegistry`; YouTube, SoundCloud и Spotify зарегистрированы `@IntoSet`; YouTube/SoundCloud отдают полный поток, Spotify — только метаданные.
+- **PlaybackResolver:** единственная точка резолва. Скачанный файл → свой провайдер → параллельный матч SC/YT (`TrackMatcher`, ±7 с, штрафы cover/remix/live/nightcore/sped up/slowed/karaoke) → `resolved_matches` → in-memory кэш. Single-flight `Deferred` под `Mutex`, повторный Play не отменяет резолв, до 3 повторов 400/1200/3000 мс, типизированные `ResolveError`.
+- **Media3-кэш:** `PlaybackCache` (`SimpleCache` в `cacheDir/media3_cache`, LRU 1 ГБ), `CacheDataSource` → `ResolvingDataSource` → `OkHttpDataSource`, `DefaultMediaSourceFactory`; URI `facet://track/{id}`, `setCustomCacheKey(track.id)`, HLS и progressive через кэш. `PlaybackLoadErrorPolicy` на 401/403/404/410 сбрасывает поток (максимум 2 раза).
+- **Старый кэш удалён:** `AudioCacheWorker`/`AudioCacheRepository`/DAO/Entity, `observeAudioCache`/`enqueueAudioCache`; `MIGRATION_15_16` (`DROP audio_cache`, `resolved_matches`); `FacetApp` чистит каталог и WorkManager-тег `audio_cache`.
+- **Скачивание:** через `PlaybackResolver` с progressive-only, имя файла SHA-256, `Id3Writer` потоковый, MIME обложки по сигнатуре; теги только MP3.
+- **Проверка:** debug/release зелёные, 46 suite / 282 теста, release APK 7 237 251 байт (SHA-256 `9f4f8ead…b83c`). Live: миграция 15→16, `ParisLove`, SoundCloud HLS `type london`, кэш 3.1 МБ / 10 записей, Now Bar.
 
 ### Сессия 69, фаза 2: удаление Deezer и Apple как источников воспроизведения
 - **Apple удалён полностью:** `AppleMusicProvider`, DI, лимитер, бренд-иконка, поиск/статусы, Apple-импорт и iTunes lookup; ссылки Apple Music → `UNSUPPORTED_LINK`.

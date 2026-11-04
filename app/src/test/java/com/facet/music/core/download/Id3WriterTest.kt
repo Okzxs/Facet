@@ -65,6 +65,23 @@ class Id3WriterTest {
     }
 
     @Test
+    fun `detects artwork mime by signature`() {
+        assertEquals("image/jpeg", Id3Writer.artworkMimeType(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())))
+        assertEquals(
+            "image/png",
+            Id3Writer.artworkMimeType(
+                byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte()),
+            ),
+        )
+        assertEquals(
+            "image/webp",
+            Id3Writer.artworkMimeType(
+                "RIFF0000WEBP".toByteArray(Charsets.US_ASCII),
+            ),
+        )
+    }
+
+    @Test
     fun `missing file is not modified`() {
         val file = File(folder.root, "absent.mp3")
 

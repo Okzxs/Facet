@@ -1,6 +1,71 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 03.11.2026 (сессия 69, фаза 2)
+## Последнее обновление: 04.11.2026 (сессия 69, фаза 3)
+
+## Сессия 69: глобальный рефакторинг, фаза 3 — единый резолвер и кэш Media3
+
+**Статус:** фаза 3 из 11 закрыта; следующие фазы не начаты.
+
+### Что сделано
+- **PlayableSource.** `MusicSourceProvider`/`MusicSourceRegistry` заменены на `PlayableSource`/`PlayableSourceRegistry`; интерфейс расширен `search(page)`, `searchArtists` и `resolveStream(): Result<ResolvedStream>`. `YouTubePlayableSource` и `SoundCloudPlayableSource` — полноценные источники, Spotify остаётся metadata-only; все три в `@IntoSet` (`MusicSourceModule`).
+- **PlaybackResolver.** Единственная точка резолва: скачанный файл → свой провайдер → параллельный матч SoundCloud/YouTube с `TrackMatcher` (±7 с, штрафы cover/remix/live/nightcore/sped up/slowed/karaoke, ISRC) → `resolved_matches` → in-memory `ResolvedStream` с TTL. Single-flight `Map<trackId, Deferred>` под `Mutex`; повторный Play и `ResolvingDataSource` не отменяют первый резолв. До трёх повторов с задержками 400/1200/3000 мс и jitter для сети/5xx/401/403; ошибки типизированы `ResolveError`.
+- **Room 15→16.** `MIGRATION_15_16` удаляет `audio_cache` и создаёт `resolved_matches` (`originalTrackId` PK, `matchedSource`, `matchedUrl`, `confidence`, `createdAt`); схема 16 экспортирована, тесты 15→16 и 1→16.
+- **Media3-кэш.** `PlaybackCache` — один `SimpleCache` на процесс в `cacheDir/media3_cache`, LRU 1 ГБ, `StandaloneDatabaseProvider`. `MusicService` строит `CacheDataSource` → `ResolvingDataSource` → `OkHttpDataSource` (медиа-клиент без `callTimeout`), `DefaultMediaSourceFactory`. MediaItem — `facet://track/{encoded id}`, `setCustomCacheKey(track.id)`, HLS и progressive идут через кэш. `PlaybackLoadErrorPolicy` на 401/403/404/410 инвалидирует поток и повторяет (максимум 2 раза).
+- **Старый кэш удалён.** Нет `AudioCacheWorker`/`EntryPoint`, `AudioCacheRepository`/`Impl`, `AudioCacheDao`/`Entity`, `observeAudioCache`/`enqueueAudioCache`. `FacetApp` при старте отменяет WorkManager-задачи с тегом `audio_cache` и удаляет старый каталог.
+- **Скачивание.** `DownloadSourceResolver` и `DownloadEngine` переведены на `PlaybackResolver` с `requireProgressive = true`; `Id3Writer` пишет теги потоково, MIME обложки — по сигнатуре JPEG/PNG/WebP, теги только MP3 (M4A/WebM без тегов). Имя файла — SHA-256 от `trackId`.
+- **UI.** Настройки показывают размер и число записей Media3-кэша; строка «сохраняется после 20 секунд» заменена на «Media3 сохраняет по мере воспроизведения».
+
+### Проверка
+- `assembleDebug` — BUILD SUCCESSFUL; `assembleRelease` — BUILD SUCCESSFUL, APK 7 237 251 байт, SHA-256 `9f4f8ead4c1344fe87fbec981129b3d5abce0498933c4fc074b0b31a1c56b83c`.
+- `testDebugUnitTest` — 46 suite / 282 теста, 0 failures.
+- **Live на SM-A266B (`192.168.1.105:40191`):** release установлен поверх 1.0.0; миграция 15→16 прошла без краша. `ParisLove` (FORTUNA 812) играет, затем автоматически перешёл на следующий трек; SoundCloud HLS `type london` (ONDA ANDAR) играет — `PlaybackState=PLAYING`, аудиовыход speaker, Now Bar показывает метаданные. В настройках кэш Media3 — 3.1 МБ / 10 записей. Старый `audio_cache` в приложении больше не используется.
+
+### Файлы
+```
+AGENTS.md
+app/build.gradle.kts
+app/schemas/com.facet.music.data.local.AppDatabase/16.json
+app/src/main/java/com/facet/music/FacetApp.kt
+app/src/main/java/com/facet/music/core/di/MusicSourceModule.kt
+app/src/main/java/com/facet/music/core/di/RepositoryModule.kt
+app/src/main/java/com/facet/music/core/download/DownloadEngine.kt
+app/src/main/java/com/facet/music/core/download/DownloadSourceResolver.kt
+app/src/main/java/com/facet/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/facet/music/core/download/Id3Writer.kt
+app/src/main/java/com/facet/music/core/network/NetworkModule.kt
+app/src/main/java/com/facet/music/core/player/MusicService.kt
+app/src/main/java/com/facet/music/core/player/PlaybackCache.kt
+app/src/main/java/com/facet/music/core/player/PlaybackDataSpecResolver.kt
+app/src/main/java/com/facet/music/core/player/PlaybackDataSourceFactory.kt
+app/src/main/java/com/facet/music/core/player/PlaybackLoadErrorPolicy.kt
+app/src/main/java/com/facet/music/core/player/PlaybackUri.kt
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/core/player/PlaybackErrorMessages.kt
+app/src/main/java/com/facet/music/core/source/PlayableSource.kt
+app/src/main/java/com/facet/music/core/source/PlaybackResolver.kt
+app/src/main/java/com/facet/music/core/source/ResolveError.kt
+app/src/main/java/com/facet/music/core/source/SoundCloudPlayableSource.kt
+app/src/main/java/com/facet/music/core/source/TrackMatcher.kt
+app/src/main/java/com/facet/music/core/source/YouTubePlayableSource.kt
+app/src/main/java/com/facet/music/data/local/AppDatabase.kt
+app/src/main/java/com/facet/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/facet/music/data/local/DatabaseModule.kt
+app/src/main/java/com/facet/music/data/local/dao/ResolvedMatchDao.kt
+app/src/main/java/com/facet/music/data/local/entity/ResolvedMatchEntity.kt
+app/src/main/java/com/facet/music/data/source/external/SpotifyProvider.kt
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/facet/music/feature/settings/SettingsViewModel.kt
+app/src/main/res/values/strings.xml
+app/src/main/res/values-ru/strings.xml
+app/src/test/java/com/facet/music/data/local/DatabaseMigrationTest.kt
+app/src/test/java/com/facet/music/core/source/PlaybackResolverTest.kt
+app/src/test/java/com/facet/music/core/source/TrackMatcherTest.kt
+app/src/test/java/com/facet/music/core/player/PlayerControllerQueueTest.kt
+app/src/test/java/com/facet/music/core/player/PlaybackUriTest.kt
+app/src/test/java/com/facet/music/core/download/DownloadPlaybackSourceResolverTest.kt
+app/src/test/java/com/facet/music/core/download/DownloadWorkerFormatTest.kt
+app/src/test/java/com/facet/music/core/download/Id3WriterTest.kt
+```
 
 ## Сессия 69: глобальный рефакторинг, фаза 2 — Deezer и Apple без превью
 

@@ -1,25 +1,39 @@
 package com.facet.music.core.di
 
-import com.facet.music.core.source.MusicSourceProvider
+import com.facet.music.core.source.PlayableSource
+import com.facet.music.core.source.SoundCloudPlayableSource
+import com.facet.music.core.source.YouTubePlayableSource
 import com.facet.music.data.source.external.SpotifyProvider
+import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
+import javax.inject.Singleton
 
 /**
- * Внешние источники с собственным поиском.
+ * Источники с собственным поиском и потоком.
  *
- * Deezer и Apple больше не источники воспроизведения: Deezer остаётся
- * справочником метаданных, Apple удалён. Единственный провайдер —
- * Spotify; SoundCloud и YouTube работают через свои репозитории.
+ * Deezer остаётся справочником метаданных, Apple удалён. YouTube и SoundCloud
+ * отдают полный поток, Spotify — только метаданные; для metadata-only
+ * источников работает внешний матч [com.facet.music.core.source.PlaybackResolver].
  */
 @Module
 @InstallIn(SingletonComponent::class)
-object MusicSourceModule {
+abstract class MusicSourceModule {
 
-    @Provides
+    @Binds
+    @Singleton
     @IntoSet
-    fun provideSpotifyProvider(provider: SpotifyProvider): MusicSourceProvider = provider
+    abstract fun bindSpotifySource(provider: SpotifyProvider): PlayableSource
+
+    @Binds
+    @Singleton
+    @IntoSet
+    abstract fun bindYouTubeSource(source: YouTubePlayableSource): PlayableSource
+
+    @Binds
+    @Singleton
+    @IntoSet
+    abstract fun bindSoundCloudSource(source: SoundCloudPlayableSource): PlayableSource
 }

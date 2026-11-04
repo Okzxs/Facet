@@ -20,6 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v12 → v13: очередь воспроизведения переживает перезапуск.
  * v13 → v14: кэш прослушанного в cacheDir.
  * v14 → v15: превью Deezer/Apple обнулены, их кэш поиска и аудио удалён.
+ * v15 → v16: старый audio_cache удалён, появились сохранённые внешние матчи.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -331,6 +332,28 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+/**
+ * 15 → 16: старый кэш `audio_cache` заменён Media3 SimpleCache, а внешние
+ * матчи metadata-only треков теперь переживают перезапуск.
+ */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("DROP TABLE IF EXISTS `audio_cache`")
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `resolved_matches` (
+                `originalTrackId` TEXT NOT NULL,
+                `matchedSource` TEXT NOT NULL,
+                `matchedUrl` TEXT NOT NULL,
+                `confidence` REAL NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                PRIMARY KEY(`originalTrackId`)
+            )
+            """.trimIndent(),
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -346,4 +369,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_12_13,
     MIGRATION_13_14,
     MIGRATION_14_15,
+    MIGRATION_15_16,
 )

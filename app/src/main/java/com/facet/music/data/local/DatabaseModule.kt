@@ -3,13 +3,13 @@ package com.facet.music.data.local
 import android.content.Context
 import androidx.room.Room
 import com.facet.music.data.local.dao.DislikedTrackDao
-import com.facet.music.data.local.dao.AudioCacheDao
 import com.facet.music.data.local.dao.DownloadedTracksDao
 import com.facet.music.data.local.dao.LikedTracksDao
 import com.facet.music.data.local.dao.PlayHistoryDao
 import com.facet.music.data.local.dao.PlaylistDao
 import com.facet.music.data.local.dao.QueueDao
 import com.facet.music.data.local.dao.RecentlyShownDao
+import com.facet.music.data.local.dao.ResolvedMatchDao
 import com.facet.music.data.local.dao.SearchCacheDao
 import com.facet.music.data.local.dao.TasteDao
 import dagger.Module
@@ -99,7 +99,7 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideAudioCacheDao(database: AppDatabase): AudioCacheDao {
-        return database.audioCacheDao()
+    fun provideResolvedMatchDao(database: AppDatabase): ResolvedMatchDao {
+        return database.resolvedMatchDao()
     }
 }

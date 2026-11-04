@@ -1,6 +1,8 @@
 package com.facet.music.core.player
 
 import androidx.media3.common.PlaybackException
+import com.facet.music.core.source.ResolveError
+import com.facet.music.core.source.ResolveException
 import java.net.ConnectException
 import java.net.SocketException
 import java.net.SocketTimeoutException
@@ -13,12 +15,25 @@ const val ERROR_TIMEOUT = "Превышено время ожидания. По�
 const val ERROR_SECURE_CONNECTION = "Ошибка защищённого соединения. Попробуйте снова."
 const val ERROR_PLAYBACK = "Не удалось воспроизвести трек. Попробуйте снова."
 const val ERROR_LYRICS = "Не удалось загрузить текст. Попробуйте снова."
+const val ERROR_TRACK_UNAVAILABLE = "Трек недоступен в источнике."
+const val ERROR_SUBSCRIPTION_ONLY = "Трек доступен только по подписке."
+const val ERROR_GEO_BLOCKED = "Трек недоступен в вашем регионе."
+const val ERROR_NO_MATCH = "Не нашли этот трек в SoundCloud и YouTube."
 
 /**
  * Сводит цепочку причин исключения к одному безопасному сообщению.
  * Сырой [Throwable.message] никогда не возвращается как есть.
  */
 fun Throwable.toFriendlyPlaybackMessage(fallback: String = ERROR_PLAYBACK): String {
+    (this as? ResolveException)?.let { error ->
+        return when (error.error) {
+            ResolveError.NotAvailable -> ERROR_TRACK_UNAVAILABLE
+            ResolveError.SubscriptionOnly -> ERROR_SUBSCRIPTION_ONLY
+            ResolveError.GeoBlocked -> ERROR_GEO_BLOCKED
+            ResolveError.NoMatch -> ERROR_NO_MATCH
+            ResolveError.Network, ResolveError.Unknown -> fallback
+        }
+    }
     val chain = generateSequence(this) { it.cause }.take(8).toList()
     val messages = chain.mapNotNull { it.message?.lowercase() }
 

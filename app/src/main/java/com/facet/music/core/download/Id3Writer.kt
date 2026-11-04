@@ -2,21 +2,29 @@ package com.facet.music.core.download
 
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.charset.Charset
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * Минимальный писатель ID3v2.3: название, исполнитель и обложка.
  *
- * Сторонняя библиотека ради трёх фреймов не нужна: формат простой —
- * заголовок «ID3» + синхсайф-размер, затем фреймы с 4-байтовым id,
- * размером и двумя байтами флагов. Текст пишем в UTF-16 с BOM: так
- * кириллица читается любым плеером, а не только понимающим UTF-8 (v2.4).
+ * Аудио не читается в память: заголовок и фреймы пишутся во временный файл,
+ * затем туда же потоково копируется исходный звук. Это важно для больших
+ * MP3, где `readBytes()` раздувал heap на десятки мегабайт.
+ *
+ * Теги пишутся только для MP3. M4A/WebM не трогаем: у них другая структура
+ * контейнера, а MP4-атомы moov/udta/meta/ilst слишком рискованны без библиотеки.
  */
 object Id3Writer {
 
     private const val HEADER_SIZE = 10
     private const val ENCODING_UTF16 = 0x01
     private const val PICTURE_TYPE_COVER_FRONT = 0x03
+    private const val COPY_BUFFER = 64 * 1024
 
     /**
      * Дописывает теги к MP3-файлу. Существующий ID3v2 в начале файла
@@ -32,63 +40,108 @@ object Id3Writer {
         artworkMime: String = "image/jpeg",
     ): Boolean {
         if (!file.exists() || file.length() == 0L) return false
-        return runCatching {
-            val original = file.readBytes()
-            val audio = stripExistingTags(original)
 
-            val frames = ByteArrayOutputStream()
-            writeTextFrame(frames, "TIT2", title)
-            writeTextFrame(frames, "TPE1", artist)
-            if (artwork != null && artwork.isNotEmpty()) {
-                writePictureFrame(frames, artwork, artworkMime)
+        val temp = File(file.parentFile, file.name + ".tags")
+        return try {
+            val frames = ByteArrayOutputStream().apply {
+                writeTextFrame(this, "TIT2", title)
+                writeTextFrame(this, "TPE1", artist)
+                if (artwork != null && artwork.isNotEmpty()) {
+                    writePictureFrame(this, artwork, artworkMime)
+                }
+            }.toByteArray()
+
+            val header = ByteArray(HEADER_SIZE).apply {
+                this[0] = 'I'.code.toByte()
+                this[1] = 'D'.code.toByte()
+                this[2] = '3'.code.toByte()
+                this[3] = 0x03
+                this[4] = 0x00
+                this[5] = 0x00
+                writeSynchsafe(this, 6, frames.size)
             }
-            val framesBytes = frames.toByteArray()
 
-            val header = ByteArray(HEADER_SIZE)
-            header[0] = 'I'.code.toByte()
-            header[1] = 'D'.code.toByte()
-            header[2] = '3'.code.toByte()
-            header[3] = 0x03 // версия 2.3
-            header[4] = 0x00 // ревизия
-            header[5] = 0x00 // флаги
-            writeSynchsafe(header, 6, framesBytes.size)
-
-            val temp = File(file.parentFile, file.name + ".tags")
-            temp.outputStream().use { output ->
-                output.write(header)
-                output.write(framesBytes)
-                output.write(audio)
+            RandomAccessFile(file, "r").use { source ->
+                val audioOffset = existingTagSize(source)
+                source.seek(audioOffset)
+                temp.outputStream().use { output ->
+                    output.write(header)
+                    output.write(frames)
+                    val buffer = ByteArray(COPY_BUFFER)
+                    while (true) {
+                        val read = source.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                    }
+                }
             }
-            if (!temp.renameTo(file)) {
-                temp.copyTo(file, overwrite = true)
-                temp.delete()
+
+            try {
+                Files.move(
+                    temp.toPath(),
+                    file.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (e: AtomicMoveNotSupportedException) {
+                Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            } catch (e: FileAlreadyExistsException) {
+                Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
             true
-        }.getOrDefault(false)
+        } catch (e: Exception) {
+            temp.delete()
+            false
+        }
+    }
+
+    /** MIME обложки по сигнатуре байтов: JPEG, PNG или WebP. */
+    fun artworkMimeType(bytes: ByteArray): String = when {
+        bytes.size >= 3 &&
+            bytes[0] == 0xFF.toByte() &&
+            bytes[1] == 0xD8.toByte() &&
+            bytes[2] == 0xFF.toByte() -> "image/jpeg"
+
+        bytes.size >= 4 &&
+            bytes[0] == 0x89.toByte() &&
+            bytes[1] == 'P'.code.toByte() &&
+            bytes[2] == 'N'.code.toByte() &&
+            bytes[3] == 'G'.code.toByte() -> "image/png"
+
+        bytes.size >= 12 &&
+            bytes.copyOfRange(0, 4).contentEquals("RIFF".toByteArray(Charsets.US_ASCII)) &&
+            bytes.copyOfRange(8, 12).contentEquals("WEBP".toByteArray(Charsets.US_ASCII)) ->
+            "image/webp"
+
+        else -> "image/jpeg"
     }
 
     /** Пропускает уже существующий ID3v2-блок в начале файла. */
-    private fun stripExistingTags(bytes: ByteArray): ByteArray {
-        if (bytes.size < HEADER_SIZE) return bytes
-        if (bytes[0] != 'I'.code.toByte() ||
-            bytes[1] != 'D'.code.toByte() ||
-            bytes[2] != '3'.code.toByte()
+    private fun existingTagSize(source: RandomAccessFile): Long {
+        if (source.length() < HEADER_SIZE) return 0L
+        val header = ByteArray(HEADER_SIZE)
+        source.seek(0)
+        source.readFully(header)
+        if (header[0] != 'I'.code.toByte() ||
+            header[1] != 'D'.code.toByte() ||
+            header[2] != '3'.code.toByte()
         ) {
-            return bytes
+            return 0L
         }
-        val size = ((bytes[6].toInt() and 0x7F) shl 21) or
-            ((bytes[7].toInt() and 0x7F) shl 14) or
-            ((bytes[8].toInt() and 0x7F) shl 7) or
-            (bytes[9].toInt() and 0x7F)
-        val total = HEADER_SIZE + size
-        return if (total in 0 until bytes.size) bytes.copyOfRange(total, bytes.size) else bytes
+        val size = ((header[6].toInt() and 0x7F) shl 21) or
+            ((header[7].toInt() and 0x7F) shl 14) or
+            ((header[8].toInt() and 0x7F) shl 7) or
+            (header[9].toInt() and 0x7F)
+        val total = HEADER_SIZE.toLong() + size
+        return if (total in 0 until source.length()) total else 0L
     }
 
     private fun writeTextFrame(target: ByteArrayOutputStream, id: String, value: String) {
         if (value.isBlank()) return
-        val payload = ByteArrayOutputStream()
-        payload.write(ENCODING_UTF16)
-        payload.write(utf16(value))
+        val payload = ByteArrayOutputStream().apply {
+            write(ENCODING_UTF16)
+            write(utf16(value))
+        }
         writeFrame(target, id, payload.toByteArray())
     }
 
@@ -97,28 +150,31 @@ object Id3Writer {
         artwork: ByteArray,
         mime: String,
     ) {
-        val payload = ByteArrayOutputStream()
-        payload.write(ENCODING_UTF16)
-        payload.write(mime.toByteArray(Charsets.US_ASCII))
-        payload.write(0)
-        payload.write(PICTURE_TYPE_COVER_FRONT)
-        // Пустое описание: BOM и терминатор UTF-16.
-        payload.write(0xFF)
-        payload.write(0xFE)
-        payload.write(0)
-        payload.write(0)
-        payload.write(artwork)
+        val payload = ByteArrayOutputStream().apply {
+            write(ENCODING_UTF16)
+            write(mime.toByteArray(Charsets.US_ASCII))
+            write(0)
+            write(PICTURE_TYPE_COVER_FRONT)
+            // Пустое описание: BOM и терминатор UTF-16.
+            write(0xFF)
+            write(0xFE)
+            write(0)
+            write(0)
+            write(artwork)
+        }
         writeFrame(target, "APIC", payload.toByteArray())
     }
 
     private fun writeFrame(target: ByteArrayOutputStream, id: String, payload: ByteArray) {
         target.write(id.toByteArray(Charsets.US_ASCII))
-        target.write(byteArrayOf(
-            ((payload.size ushr 24) and 0xFF).toByte(),
-            ((payload.size ushr 16) and 0xFF).toByte(),
-            ((payload.size ushr 8) and 0xFF).toByte(),
-            (payload.size and 0xFF).toByte(),
-        ))
+        target.write(
+            byteArrayOf(
+                ((payload.size ushr 24) and 0xFF).toByte(),
+                ((payload.size ushr 16) and 0xFF).toByte(),
+                ((payload.size ushr 8) and 0xFF).toByte(),
+                (payload.size and 0xFF).toByte(),
+            ),
+        )
         target.write(0)
         target.write(0)
         target.write(payload)

@@ -9,7 +9,7 @@ import com.facet.music.core.service.ServiceHealth
 import com.facet.music.core.service.ServiceStatusManager
 import com.facet.music.core.search.TrackMerger
 import com.facet.music.core.service.ServiceType
-import com.facet.music.core.source.MusicSourceRegistry
+import com.facet.music.core.source.PlayableSourceRegistry
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.DownloadRepository
 import com.facet.music.data.repository.SoundCloudRepository
@@ -58,7 +58,7 @@ private data class SearchRequest(
 class SearchViewModel @Inject constructor(
     private val soundCloudRepository: SoundCloudRepository,
     private val youTubeRepository: YouTubeRepository,
-    private val sourceRegistry: MusicSourceRegistry,
+    private val sourceRegistry: PlayableSourceRegistry,
     private val searchHistoryStore: SearchHistoryStore,
     private val serviceStatusManager: ServiceStatusManager,
     private val navigationEvents: NavigationEvents,

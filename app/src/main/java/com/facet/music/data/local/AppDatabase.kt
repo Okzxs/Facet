@@ -3,7 +3,6 @@ package com.facet.music.data.local
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.facet.music.data.local.dao.ChartCacheDao
-import com.facet.music.data.local.dao.AudioCacheDao
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.dao.DownloadedTracksDao
 import com.facet.music.data.local.dao.LikedTracksDao
@@ -11,10 +10,10 @@ import com.facet.music.data.local.dao.PlayHistoryDao
 import com.facet.music.data.local.dao.PlaylistDao
 import com.facet.music.data.local.dao.QueueDao
 import com.facet.music.data.local.dao.RecentlyShownDao
+import com.facet.music.data.local.dao.ResolvedMatchDao
 import com.facet.music.data.local.dao.SearchCacheDao
 import com.facet.music.data.local.dao.TasteDao
 import com.facet.music.data.local.entity.ChartCacheEntity
-import com.facet.music.data.local.entity.AudioCacheEntity
 import com.facet.music.data.local.entity.DislikedTrackEntity
 import com.facet.music.data.local.entity.DownloadedTrackEntity
 import com.facet.music.data.local.entity.LikedTrackEntity
@@ -25,6 +24,7 @@ import com.facet.music.data.local.entity.PlaylistEntity
 import com.facet.music.data.local.entity.PlaylistTrackEntity
 import com.facet.music.data.local.entity.QueueEntity
 import com.facet.music.data.local.entity.RecentlyShownEntity
+import com.facet.music.data.local.entity.ResolvedMatchEntity
 import com.facet.music.data.local.entity.SearchCacheEntity
 import com.facet.music.data.local.entity.UserPreferenceEntity
 
@@ -46,9 +46,9 @@ import com.facet.music.data.local.entity.UserPreferenceEntity
         PlaylistEntity::class,
         PlaylistTrackEntity::class,
         QueueEntity::class,
-        AudioCacheEntity::class,
+        ResolvedMatchEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -62,5 +62,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun searchCacheDao(): SearchCacheDao
     abstract fun playlistDao(): PlaylistDao
     abstract fun queueDao(): QueueDao
-    abstract fun audioCacheDao(): AudioCacheDao
+    abstract fun resolvedMatchDao(): ResolvedMatchDao
 }

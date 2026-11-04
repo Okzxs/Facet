@@ -58,7 +58,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 15 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 16 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -95,7 +95,9 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(15, database.openHelper.writableDatabase.version)
+            assertEquals(16, database.openHelper.writableDatabase.version)
+            assertTrue(hasTable(database.openHelper.writableDatabase, "resolved_matches"))
+            assertTrue(!hasTable(database.openHelper.writableDatabase, "audio_cache"))
 
             // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
@@ -287,6 +289,38 @@ class DatabaseMigrationTest {
         MIGRATION_3_4.migrate(db)
 
         assertTrue("season" in tableColumns(db, "liked_tracks"))
+    }
+
+    @Test
+    fun `migration 15 to 16 drops audio cache and creates resolved matches`() {
+        val db = openLegacyDatabase("m-15-16.db", 15) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(AUDIO_CACHE_V14_DDL)
+            it.execSQL(
+                "INSERT INTO `audio_cache` (`trackId`, `filePath`, `sizeBytes`, `cachedAt`, `lastAccessAt`) " +
+                    "VALUES ('sc:1', '/tmp/1', 100, 1, 1)",
+            )
+        }
+
+        MIGRATION_15_16.migrate(db)
+
+        assertTrue(!hasTable(db, "audio_cache"))
+        assertTrue(hasTable(db, "resolved_matches"))
+        assertEquals(
+            setOf("originalTrackId", "matchedSource", "matchedUrl", "confidence", "createdAt"),
+            tableColumns(db, "resolved_matches"),
+        )
+        db.execSQL(
+            """
+            INSERT INTO `resolved_matches`
+                (`originalTrackId`, `matchedSource`, `matchedUrl`, `confidence`, `createdAt`)
+            VALUES ('spotify:1', 'YOUTUBE', 'https://youtube.com/watch?v=1', 0.82, 1000)
+            """.trimIndent(),
+        )
+        assertEquals(
+            1,
+            countWhere(db, "resolved_matches", "originalTrackId = 'spotify:1'"),
+        )
     }
 
     @Test

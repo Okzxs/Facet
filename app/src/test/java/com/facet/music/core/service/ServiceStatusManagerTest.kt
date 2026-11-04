@@ -1,7 +1,7 @@
 package com.facet.music.core.service
 
 import com.facet.music.data.model.Track
-import com.facet.music.core.source.MusicSourceRegistry
+import com.facet.music.core.source.PlayableSourceRegistry
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
 import io.mockk.coEvery
@@ -31,7 +31,7 @@ class ServiceStatusManagerTest {
         coEvery {
             youTubeRepository.search(any(), any())
         } returns Result.success(emptyList())
-        manager = ServiceStatusManager(soundCloudRepository, youTubeRepository, MusicSourceRegistry(emptySet()))
+        manager = ServiceStatusManager(soundCloudRepository, youTubeRepository, PlayableSourceRegistry(emptySet()))
     }
 
     @Test

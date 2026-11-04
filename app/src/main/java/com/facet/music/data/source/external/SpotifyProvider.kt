@@ -4,7 +4,7 @@ import android.util.Log
 import com.facet.music.core.network.RateLimiter
 import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
-import com.facet.music.core.source.MusicSourceProvider
+import com.facet.music.core.source.PlayableSource
 import com.facet.music.core.source.SourceCapabilities
 import com.facet.music.core.spotify.SpotifyPlaylistSummary
 import com.facet.music.data.model.Source
@@ -54,8 +54,9 @@ data class SpotifyPlaylist(
  *
  * Аудио Spotify защищено DRM и сторонним клиентам недоступно, поэтому
  * `streamUrl` всегда null, а воспроизведение идёт через
- * [com.facet.music.core.source.StreamResolver] → матч на YouTube. `resolve`
- * не переопределяем: базовый интерфейс честно отвечает «поток недоступен».
+ * [com.facet.music.core.source.PlaybackResolver] → матч на SoundCloud/YouTube.
+ * `resolveStream` не переопределяем: базовый интерфейс честно отвечает
+ * «поток недоступен».
  *
  * Успешные ответы поиска кэшируются сырым JSON (Room, TTL 24 ч). Лимитер
  * общий для поиска и запроса токена: квота Spotify считается на все запросы.
@@ -68,7 +69,7 @@ class SpotifyProvider @Inject constructor(
     private val spotifyAuth: SpotifyAuthRepository,
     private val searchCache: SearchCacheRepository,
     @SourceRateLimiter(RateLimiterKeys.SPOTIFY) private val rateLimiter: RateLimiter,
-) : MusicSourceProvider {
+) : PlayableSource {
 
     override val source: Source = Source.SPOTIFY
 
@@ -99,9 +100,11 @@ class SpotifyProvider @Inject constructor(
     override suspend fun search(
         query: String,
         limit: Int,
+        page: Int,
         useCache: Boolean,
     ): Result<List<Track>> =
         withContext(Dispatchers.IO) {
+            if (page > 1) return@withContext Result.success(emptyList())
             runCatching {
                 loadTracks(query = query, limit = limit, useCache = useCache)
             }.onFailure { error -> Log.w(TAG, "Поиск Spotify не удался: ${error.message}") }

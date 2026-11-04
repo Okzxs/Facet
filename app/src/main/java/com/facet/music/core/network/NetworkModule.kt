@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import java.util.concurrent.TimeUnit
+import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -64,6 +65,22 @@ object NetworkModule {
     }
 
     /**
+     * Медиа-клиент для ExoPlayer: общий клиент ограничен callTimeout 15 с,
+     * а аудиопоток и HLS-сегменты качаются дольше. Таймауты чтения остаются,
+     * общий дедлайн на весь запрос снят.
+     */
+    @Provides
+    @Singleton
+    @Named(MEDIA_CLIENT)
+    fun provideMediaOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(0, TimeUnit.MILLISECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
+    /**
      * Retrofit для LRCLIB (тексты песен).
      * SoundCloud теперь обрабатывается через NewPipe — Retrofit для него не нужен.
      */
@@ -97,6 +114,9 @@ object NetworkModule {
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
         .create(com.facet.music.data.source.lastfm.LastFmApi::class.java)
+
+    /** Квалификатор медиа-клиента для ExoPlayer. */
+    const val MEDIA_CLIENT = "media"
 
     /** Резервный User-Agent для запросов, которые его не задали сами. */
     private const val FALLBACK_USER_AGENT =

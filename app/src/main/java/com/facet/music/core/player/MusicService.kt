@@ -8,6 +8,7 @@ import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommands
@@ -28,6 +29,12 @@ class MusicService : MediaSessionService() {
 
     @Inject
     lateinit var playerController: PlayerController
+
+    @Inject
+    lateinit var playbackDataSourceFactory: PlaybackDataSourceFactory
+
+    @Inject
+    lateinit var loadErrorPolicy: PlaybackLoadErrorPolicy
 
     private var exoPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
@@ -58,7 +65,12 @@ class MusicService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
+        val mediaSourceFactory = DefaultMediaSourceFactory(
+            playbackDataSourceFactory.cacheDataSourceFactory,
+        ).setLoadErrorHandlingPolicy(loadErrorPolicy)
+
         val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .setHandleAudioBecomingNoisy(true)
             // PARTIAL_WAKE_LOCK + Wi-Fi lock: музыка не прерывается при блокировке экрана

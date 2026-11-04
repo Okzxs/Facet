@@ -178,22 +178,28 @@ class DownloadTrackWorker(
         }
 
         /**
-         * Имя файла: track.id — это URL, поэтому оставляем только безопасные символы
-         * и добавляем хэш, чтобы разные треки не перекрывали друг друга.
+         * Имя файла — SHA-256 от track.id в hex. Это устраняет коллизии
+         * 32-битного hashCode и не зависит от длины URL.
          */
         fun downloadFileName(trackId: String, extension: String = "mp3"): String {
-            val safe = trackId
-                .replace(Regex("[^A-Za-z0-9]+"), "_")
-                .trim('_')
-                .take(48)
-                .ifBlank { "track" }
-            val hash = Integer.toHexString(trackId.hashCode())
             val safeExtension = extension
                 .lowercase()
                 .takeIf { it.matches(Regex("[a-z0-9]{1,5}")) }
                 ?: "mp3"
-            return "${safe}_$hash.$safeExtension"
+            val digest = java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(trackId.toByteArray(Charsets.UTF_8))
+            val hash = buildString(digest.size * 2) {
+                digest.forEach { byte ->
+                    val value = byte.toInt() and 0xFF
+                    append(HEX[value ushr 4])
+                    append(HEX[value and 0x0F])
+                }
+            }
+            return "$hash.$safeExtension"
         }
+
+        private const val HEX = "0123456789abcdef"
 
         fun progressData(progress: Float) = workDataOf(KEY_PROGRESS to progress.coerceIn(0f, 1f))
 

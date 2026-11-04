@@ -13,21 +13,18 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.facet.music.core.source.StreamResolver
+import com.facet.music.core.source.PlaybackResolver
+import com.facet.music.core.source.ResolvedStream
 import com.facet.music.core.util.rethrowCancellation
-import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
-import com.facet.music.data.model.isMetadataOnly
-import com.facet.music.data.repository.DownloadRepository
 import com.facet.music.data.repository.PlayHistoryRepository
 import com.facet.music.data.repository.QueueRepository
-import com.facet.music.data.repository.SoundCloudRepository
-import com.facet.music.data.repository.YouTubeRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -55,14 +52,11 @@ import javax.inject.Singleton
 @Singleton
 class PlayerController private constructor(
     private val appContext: Context?,
-    private val soundCloudRepository: SoundCloudRepository,
-    /** Репозиторий YouTube; null только в старых JVM-тестах без YouTube-сценариев. */
-    private val youTubeRepository: YouTubeRepository?,
     private val playHistoryRepository: PlayHistoryRepository,
-    /** Репозиторий скачанных треков; null только в JVM-тестах. */
-    private val downloadRepository: DownloadRepository?,
-    /** Резолвер стрима для внешних источников; null в тестах и легаси-конструкторах. */
-    private val streamResolver: StreamResolver?,
+    /** Единственный резолвер потока; null только в JVM-тестах без сети. */
+    private val playbackResolver: PlaybackResolver?,
+    /** Кэш Media3: по нему решается, можно ли играть без сети после ошибки резолва. */
+    private val playbackCache: PlaybackCache?,
     /** Сохранение очереди между запусками; null в JVM-тестах. */
     private val queueRepository: QueueRepository?,
     initialController: MediaController?,
@@ -71,62 +65,41 @@ class PlayerController private constructor(
     @Inject
     constructor(
         @ApplicationContext context: Context,
-        soundCloudRepository: SoundCloudRepository,
-        youTubeRepository: YouTubeRepository,
         playHistoryRepository: PlayHistoryRepository,
-        downloadRepository: DownloadRepository,
-        streamResolver: StreamResolver,
+        playbackResolver: PlaybackResolver,
+        playbackCache: PlaybackCache,
         queueRepository: QueueRepository,
     ) : this(
         context,
-        soundCloudRepository,
-        youTubeRepository,
         playHistoryRepository,
-        downloadRepository,
-        streamResolver,
+        playbackResolver,
+        playbackCache,
         queueRepository,
-        null,
-    )
-
-    internal constructor(
-        @ApplicationContext context: Context,
-        soundCloudRepository: SoundCloudRepository,
-        youTubeRepository: YouTubeRepository,
-        playHistoryRepository: PlayHistoryRepository,
-        downloadRepository: DownloadRepository,
-    ) : this(
-        context,
-        soundCloudRepository,
-        youTubeRepository,
-        playHistoryRepository,
-        downloadRepository,
-        null,
-        null,
         null,
     )
 
     /** Конструктор для JVM-тестов: готовый контроллер без подключения к сервису. */
     internal constructor(
         mediaController: MediaController,
-        soundCloudRepository: SoundCloudRepository,
         playHistoryRepository: PlayHistoryRepository,
-        youTubeRepository: YouTubeRepository? = null,
-        downloadRepository: DownloadRepository? = null,
-        streamResolver: StreamResolver? = null,
+        playbackResolver: PlaybackResolver? = null,
+        playbackCache: PlaybackCache? = null,
+        queueRepository: QueueRepository? = null,
     ) : this(
         null,
-        soundCloudRepository,
-        youTubeRepository,
         playHistoryRepository,
-        downloadRepository,
-        streamResolver,
-        null,
+        playbackResolver,
+        playbackCache,
+        queueRepository,
         mediaController,
     )
 
     private val tag = "PlayerController"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var resolveJob: Job? = null
+
+    @Volatile
+    private var resolvingTrackId: String? = null
     private var mediaController: MediaController? = null
 
     // Контроллер — @Singleton и живёт дольше MusicService, поэтому готовность
@@ -677,152 +650,100 @@ class PlayerController private constructor(
     // ─── Воспроизведение потока ───────────────────────────────────────────────
 
     /**
-     * Разрешить URL трека и передать в MediaController.
+     * Получить поток у единого резолвера и передать элемент в MediaController.
+     * Повторное нажатие Play во время резолва не отменяет первый запрос.
      */
     private fun resolveAndPlay(track: Track, recordHistory: Boolean = true) {
         ensureConnected()
         resolveJob?.cancel()
+        resolvingTrackId = track.id
+        playbackResolver?.remember(track)
         mediaController?.apply {
             pause()
             stop()
             seekTo(0)
         }
-        resolveJob = scope.launch {
-            // Запись в историю воспроизведения Room: сбой БД не должен ломать воспроизведение
-            if (recordHistory) {
-                try {
-                    playHistoryRepository.addToHistory(track)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.e(tag, "Не удалось записать трек в историю", e)
-                }
-            }
-
-            // Офлайн-режим: если трек скачан, играем его из кэша Media3,
-            // не обращаясь к сети (важно при отсутствии интернета).
-            val downloaded = try {
-                downloadRepository?.getDownloadedTrack(track.id)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(tag, "Не удалось проверить скачанный трек", e)
-                null
-            }
-
-            val streamResult: Result<AudioStreamResult> = when {
-                downloaded != null ->
-                    Result.success(
-                        AudioStreamResult(
-                            url = downloaded.mediaUrl,
-                            isHls = downloaded.mimeType == MimeTypes.APPLICATION_M3U8,
-                            // MIME из Room критичен для офлайн-M4A: по file:// его не угадать
-                            mimeType = downloaded.mimeType,
-                        ),
-                    )
-                // Для YouTube у трека хранится URL видео, а не аудио: его резолвит репозиторий
-                track.source == Source.YOUTUBE -> {
-                    val videoUrl = track.transcodingUrl ?: track.streamUrl
-                    val repository = youTubeRepository
-                    if (!videoUrl.isNullOrBlank() && repository != null) {
-                        repository.resolveStreamUrl(videoUrl)
-                    } else {
-                        Result.failure(
-                            IllegalStateException("Нет YouTube-ссылки для трека: ${track.id}"),
-                        )
+        var job: Job? = null
+        job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                if (recordHistory) {
+                    try {
+                        playHistoryRepository.addToHistory(track)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e(tag, "Не удалось записать трек в историю", e)
                     }
                 }
-                // Deezer/Apple/Spotify — только метаданные: их streamUrl
-                // (превью из старых данных) не играем, всегда идём в YouTube.
-                track.source.isMetadataOnly -> {
-                    val resolver = streamResolver
-                    if (resolver != null) {
-                        resolver.resolve(track)
-                    } else {
-                        Result.failure(
-                            IllegalStateException("Нет резолвера потока для трека: ${track.id}"),
-                        )
-                    }
-                }
-                track.streamUrl != null ->
-                    Result.success(
-                        AudioStreamResult(
-                            url = track.streamUrl,
-                            isHls = false,
-                            mimeType = defaultMimeType(track.source),
-                        ),
-                    )
-                track.source == Source.SOUNDCLOUD && track.transcodingUrl != null ->
-                    soundCloudRepository.resolveStreamUrl(track.transcodingUrl)
-                else ->
-                    Result.failure(IllegalStateException("Нет ссылки на поток для трека: ${track.id}"))
-            }.rethrowCancellation()
 
-            if (downloaded != null) {
-                Log.d(tag, "Офлайн-воспроизведение из кэша")
+                val resolver = playbackResolver
+                if (resolver == null) {
+                    showPlaybackError(
+                        IllegalStateException("Нет резолвера потока для трека"),
+                    )
+                    return@launch
+                }
+
+                resolver.resolve(track)
+                    .rethrowCancellation()
+                    .onSuccess { stream ->
+                        Log.d(
+                            tag,
+                            "Поток готов: isHls=${stream.isHls}, mime=${stream.mimeType ?: "auto"}",
+                        )
+                        playStream(track, stream)
+                    }
+                    .onFailure { error ->
+                        val cached = runCatching {
+                            playbackCache?.hasData(track.id) == true
+                        }.getOrDefault(false)
+                        if (cached) {
+                            Log.d(tag, "Резолв не удался, играем сохранённый кэш Media3")
+                            playStream(
+                                track,
+                                ResolvedStream(
+                                    url = "",
+                                    mimeType = defaultMimeType(track.source),
+                                    isHls = false,
+                                    source = track.source,
+                                ),
+                            )
+                        } else {
+                            showPlaybackError(error)
+                        }
+                    }
+            } finally {
+                if (resolveJob === job && resolvingTrackId == track.id) {
+                    resolvingTrackId = null
+                }
             }
-
-            streamResult
-                .onSuccess { result ->
-                    Log.d(
-                        tag,
-                        "Поток готов: isHls=${result.isHls}, mime=${result.mimeType ?: "auto"}",
-                    )
-                    playStream(track, result)
-                }
-                .onFailure { error ->
-                    // В UI уходит только дружелюбное сообщение, сырое исключение — в лог.
-                    // Название трека и ссылку не логируем: id SoundCloud — это URL.
-                    val friendlyMessage = error.toFriendlyPlaybackMessage()
-                    Log.e(tag, "Ошибка resolve (${track.source}): $friendlyMessage", error)
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            isBuffering = false,
-                            isPlaying = false,
-                            error = friendlyMessage,
-                        )
-                    }
-                }
         }
+        resolveJob = job
+        job?.start()
     }
 
-    /**
-     * Прямой запуск потока (для вызова с уже готовым AudioStreamResult).
-     */
-    fun play(track: Track, streamResult: AudioStreamResult) {
-        ensureConnected()
-        resolveJob?.cancel()
-        mediaController?.apply {
-            pause()
-            stop()
-            seekTo(0)
-        }
-        // Если очередь была пуста — создаём одиночную очередь
-        if (_state.value.queue.none { it.id == track.id }) {
-            originalQueue = listOf(track)
-            _state.update {
-                it.copy(
-                    queue = listOf(track),
-                    currentIndex = 0,
-                    currentTrack = track,
-                )
-            }
-        }
-        resolveJob = scope.launch {
-            playStream(track, streamResult)
+    private fun showPlaybackError(error: Throwable) {
+        // В UI уходит только дружелюбное сообщение, сырое исключение — в лог.
+        // Название трека и ссылку не логируем: id SoundCloud — это URL.
+        val friendlyMessage = error.toFriendlyPlaybackMessage()
+        Log.e(tag, "Ошибка resolve: $friendlyMessage", error)
+        _state.update {
+            it.copy(
+                isLoading = false,
+                isBuffering = false,
+                isPlaying = false,
+                error = friendlyMessage,
+            )
         }
     }
 
     /** MIME по умолчанию для прямых URL, если источник его не сообщил. */
     private fun defaultMimeType(source: Source): String = when (source) {
-        Source.YOUTUBE, Source.APPLE -> MimeTypes.AUDIO_MP4
-        // Spotify стрима не отдаёт: ссылка приходит с YouTube, это MP3/AAC-поток.
-        Source.SPOTIFY -> MimeTypes.AUDIO_MPEG
+        Source.YOUTUBE -> MimeTypes.AUDIO_MP4
         else -> MimeTypes.AUDIO_MPEG
     }
 
-    private suspend fun playStream(track: Track, streamResult: AudioStreamResult) {
+    private suspend fun playStream(track: Track, stream: ResolvedStream) {
         val controller = awaitController()
         if (controller == null) {
             _state.update {
@@ -836,10 +757,10 @@ class PlayerController private constructor(
             return
         }
 
-        val mimeType = streamResult.mimeType ?: if (streamResult.isHls) {
+        val mimeType = stream.mimeType ?: if (stream.isHls) {
             MimeTypes.APPLICATION_M3U8
         } else {
-            MimeTypes.AUDIO_MPEG
+            defaultMimeType(track.source)
         }
 
         val metadata = MediaMetadata.Builder()
@@ -854,12 +775,14 @@ class PlayerController private constructor(
 
         val mediaItem = MediaItem.Builder()
             .setMediaId(track.id)
-            .setUri(streamResult.url)
+            .setUri(PlaybackUri.forTrack(track.id))
+            .setCustomCacheKey(track.id)
             .setMimeType(mimeType)
             .setMediaMetadata(metadata)
             .build()
 
         try {
+            playbackResolver?.setActiveTrack(track)
             controller.setMediaItem(mediaItem)
             controller.seekTo(0)
             controller.prepare()
@@ -892,6 +815,8 @@ class PlayerController private constructor(
 
     fun pauseOrResume() {
         ensureConnected()
+        // Пока идёт резолв, повторный Play не должен отменять запрос и начинать заново.
+        if (resolvingTrackId != null) return
         // Восстановленная очередь живёт только в состоянии: в контроллере ещё нет
         // медиаэлемента. Первый Play должен запустить трек, а не «нажать play» в пустоту.
         val restored = _state.value
