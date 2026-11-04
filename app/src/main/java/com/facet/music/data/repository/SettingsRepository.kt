@@ -57,6 +57,8 @@ data class AppSettings(
     val soundcloudClientId: String = "",
     /** Согласие на анонимную статистику; по умолчанию выключено. */
     val analyticsEnabled: Boolean = false,
+    /** Продолжать после потери аудиофокуса (TikTok/звонок), когда пользователь вернулся. */
+    val resumeAfterFocusLoss: Boolean = true,
 ) {
     /** Настроены ли ключи Spotify: нужны оба поля, иначе поиск не работает. */
     val isSpotifyConfigured: Boolean
@@ -135,6 +137,9 @@ interface SettingsRepository {
 
     /** Включить/выключить анонимную статистику. */
     suspend fun setAnalyticsEnabled(enabled: Boolean)
+
+    /** Продолжать воспроизведение после возврата из другого приложения. */
+    suspend fun setResumeAfterFocusLoss(enabled: Boolean)
 
     companion object {
         /** Допустимые варианты качества скачивания. */

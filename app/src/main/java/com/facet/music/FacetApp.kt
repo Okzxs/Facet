@@ -1,9 +1,12 @@
 package com.facet.music
 
 import android.app.Application
+import android.os.StrictMode
 import androidx.work.WorkManager
+import com.facet.music.BuildConfig
 import com.facet.music.core.di.ApplicationScope
 import com.facet.music.core.network.NewPipeDownloader
+import com.facet.music.core.player.PlaybackCache
 import com.facet.music.core.service.ServiceStatusManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -27,15 +30,32 @@ class FacetApp : Application() {
     lateinit var serviceStatusManager: ServiceStatusManager
 
     @Inject
+    lateinit var playbackCache: PlaybackCache
+
+    @Inject
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
     override fun onCreate() {
         super.onCreate() // Hilt инжектит поля здесь
+        enableStrictMode()
         NewPipe.init(newPipeDownloader)
         // Проверяем сервисы в фоне после инициализации NewPipe
         serviceStatusManager.checkAllServices()
+        applicationScope.launch { runCatching { playbackCache.warmUp() } }
         cleanLegacyAudioCache()
+    }
+
+    private fun enableStrictMode() {
+        if (!BuildConfig.DEBUG) return
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads()
+                .detectDiskWrites()
+                .detectNetwork()
+                .penaltyLog()
+                .build(),
+        )
     }
 
     /**

@@ -3,7 +3,15 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 69, фаза 3 (04.11.2026): единый `PlaybackResolver`, кэш Media3, Room 15→16; 46 suite / 282 теста | Живой смоук пройден; фаза 4 — по команде пользователя |
+| Facet | активен  | Сессия 69, фаза 4 (04.11.2026): очередь в ExoPlayer, `PlaybackSessionCoordinator`, Now Bar/лайк и восстановление; 47 suite / 272 теста | Фаза 5 — по команде пользователя |
+
+### Сессия 69, фаза 4: очередь в ExoPlayer, сессия и Now Bar
+- **Очередь:** `PlayerController` зеркалит `List<Track>` в ExoPlayer (`setMediaItems`/`addMediaItems`/`removeMediaItem`), repeat через `Player.REPEAT_MODE_*`, shuffle выключен; `currentIndex`/`currentTrack` из callbacks. `MediaItem` — `facet://track/{id}`, custom cache key, `MediaMetadata` + сериализованный `Track` в extras (`TrackMediaItem`).
+- **Без stop():** переходы через `seekToNext/PreviousMediaItem`, аудио и уведомление не прерываются; HLS MIME выставляется до prepare/предзагрузкой. Ошибки: до 3 авто-переходов, затем пауза; повтор с сохранённой позиции.
+- **`PlayerConnection`** вместо MediaController в `PlayerController`; один `@Inject`-конструктор. `PlaybackSessionCoordinator` в application-scope: история 30 с/50 %, вкусы с `TasteContext`, аналитика, refill волны, предзагрузка и сохранение позиции каждые 10 с.
+- **Восстановление:** `QueueRepository.positionMs`, `onPlaybackResumption`; фокус TikTok/звонка запоминается и авто-продолжается при возврате (15 минут, настройка).
+- **Now Bar:** `ArtworkBitmapLoader` 512 px, лайк через `CommandButton`, prev/play/next; `onTaskRemoved` останавливает только неиграющий сервис. `isPlaying` только из callback, `isBuffering` включает резолв.
+- **Проверка:** 47/272, APK 7 240 235 байт (SHA-256 `19898081…9863`). Live: восстановленная очередь, HLS next, лайк в уведомлении, TikTok → пауза → возврат → продолжение с 1:31.
 
 ### Сессия 69, фаза 3: единый резолвер и кэш Media3
 - **PlayableSource:** `MusicSourceProvider`/`MusicSourceRegistry` заменены на `PlayableSource`/`PlayableSourceRegistry`; YouTube, SoundCloud и Spotify зарегистрированы `@IntoSet`; YouTube/SoundCloud отдают полный поток, Spotify — только метаданные.

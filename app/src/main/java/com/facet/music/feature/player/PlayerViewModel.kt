@@ -1,15 +1,11 @@
 package com.facet.music.feature.player
 
-import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.facet.music.core.analytics.AnalyticsEvents
-import com.facet.music.core.analytics.AnalyticsTracker
 import com.facet.music.core.download.DownloadManager
 import com.facet.music.core.download.DownloadMessages
 import com.facet.music.core.download.DownloadState
-import com.facet.music.core.location.LocationProvider
 import com.facet.music.core.navigation.NavigationEvents
 import com.facet.music.core.player.ERROR_LYRICS
 import com.facet.music.core.player.PlaybackVariation
@@ -17,10 +13,10 @@ import com.facet.music.core.player.PlayerController
 import com.facet.music.core.player.PlayerState
 import com.facet.music.core.player.QueueOrigin
 import com.facet.music.core.player.SleepTimerState
+import com.facet.music.core.player.TrackLikeManager
 import com.facet.music.core.player.sleepTimerEndTime
 import com.facet.music.core.player.toFriendlyPlaybackMessage
 import com.facet.music.core.service.ServiceType
-import com.facet.music.core.util.SeasonProvider
 import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.entity.DislikedTrackEntity
@@ -29,7 +25,6 @@ import com.facet.music.data.model.Track
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.LyricsRepository
-import com.facet.music.data.repository.PlayHistoryRepository
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.TasteRepository
@@ -52,25 +47,16 @@ class PlayerViewModel @Inject constructor(
     private val lyricsRepository: LyricsRepository,
     private val likedTracksRepository: LikedTracksRepository,
     private val dislikedTrackDao: DislikedTrackDao,
-    private val playHistoryRepository: PlayHistoryRepository,
     private val settingsRepository: SettingsRepository,
     private val playerController: PlayerController,
-    private val locationProvider: LocationProvider,
     private val tasteRepository: TasteRepository,
     private val waveRepository: WaveRepository,
     private val downloadManager: DownloadManager,
     private val navigationEvents: NavigationEvents,
-    private val analyticsTracker: AnalyticsTracker,
+    private val trackLikeManager: TrackLikeManager,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
-
-    private var feedbackTrack: Track? = null
-    private var feedbackPlayedMs = 0L
-    private var feedbackLastTickAt = 0L
-    private var feedbackWasPlaying = false
-    private var waveRefillJob: Job? = null
-    private var analyticsTrackId: String? = null
 
     // Доступные скорости воспроизведения (по референсу MD3 плеера)
     val availableSpeeds = listOf(1.0f, 1.25f, 1.5f, 2.0f, 0.5f)
@@ -173,7 +159,6 @@ class PlayerViewModel @Inject constructor(
     init {
         observeCurrentTrack()
 
-        // Сброс флага isResolving и ошибок при готовности плеера
         viewModelScope.launch {
             playerController.state.collect { state ->
                 if (state.currentTrack != null && !state.isLoading) {
@@ -185,25 +170,6 @@ class PlayerViewModel @Inject constructor(
                     _uiState.update { it.copy(isResolving = false, error = state.error) }
                 }
             }
-        }
-
-        observeTasteFeedback()
-        observeWaveRefill()
-        observeAnalytics()
-    }
-
-    /** Один старт воспроизведения на трек; название и артист не отправляются. */
-    private fun observeAnalytics() {
-        viewModelScope.launch {
-            playerController.state
-                .map { it.currentTrack?.id to it.isPlaying }
-                .distinctUntilChanged()
-                .collect { (trackId, isPlaying) ->
-                    if (isPlaying && trackId != null && trackId != analyticsTrackId) {
-                        analyticsTrackId = trackId
-                        analyticsTracker.track(AnalyticsEvents.TRACK_PLAY)
-                    }
-                }
         }
     }
 
@@ -258,41 +224,11 @@ class PlayerViewModel @Inject constructor(
     fun toggleLike() {
         val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
         viewModelScope.launch {
-            val addingLike = !isLiked.value
-            // Сбой БД не должен ронять приложение: показываем ошибку в UI.
-            val result = runCatching {
-                val point = if (addingLike) locationProvider.lastKnownLocation() else null
-                likedTracksRepository.toggleLike(
-                    track = track,
-                    latitude = point?.latitude,
-                    longitude = point?.longitude,
-                    season = if (addingLike) SeasonProvider.currentSeason() else null,
-                )
-            }.rethrowCancellation()
-            result.onFailure { error ->
-                Log.e(tag, "Не удалось переключить лайк", error)
-                _uiState.update { it.copy(error = LIKE_FAILED_MESSAGE) }
-                return@launch
-            }
-            val likedNow = result.getOrThrow()
-            // Лайк и дизлайк взаимоисключающие: поставили лайк — снимаем дизлайк.
-            if (likedNow && isDisliked.value) {
-                runCatching { dislikedTrackDao.delete(track.id) }
-                    .rethrowCancellation()
-                    .onFailure { error ->
-                        Log.w(tag, "Не удалось снять дизлайк после лайка", error)
-                    }
-            }
-            // Feedback для вкусов некритичен: его сбой логируем, лайк уже сохранён.
-            runCatching {
-                if (likedNow) {
-                    tasteRepository.onLike(track)
-                } else {
-                    tasteRepository.onUnlike(track)
+            trackLikeManager.toggle(track)
+                .onFailure { error ->
+                    Log.e(tag, "Не удалось переключить лайк", error)
+                    _uiState.update { it.copy(error = LIKE_FAILED_MESSAGE) }
                 }
-            }.rethrowCancellation().onFailure { error ->
-                Log.w(tag, "Feedback вкусов не записан", error)
-            }
         }
     }
 
@@ -395,9 +331,8 @@ class PlayerViewModel @Inject constructor(
 
         // Ручной запуск из поиска/медиатеки завершает текущую волну.
         // Радио от трека (resetWave = false), наоборот, оставляет сессию живой,
-        // чтобы observeWaveRefill подкачивал следующие пачки.
+        // чтобы PlaybackSessionCoordinator подкачивал следующие пачки.
         if (resetWave) {
-            waveRefillJob?.cancel()
             viewModelScope.launch {
                 waveRepository.reset()
             }
@@ -581,81 +516,7 @@ class PlayerViewModel @Inject constructor(
     fun bufferedPositionMs(): Long = playerController.bufferedPositionMs()
     fun bufferedFraction(): Float = playerController.bufferedFraction()
 
-    /**
-     * Накопительное прослушивание: при смене трека отправляем
-     * дослушивание (>80%) или ранний скип (<30 секунд) в профиль вкусов.
-     */
-    private fun observeTasteFeedback() {
-        viewModelScope.launch {
-            playerController.state.collect { state ->
-                val now = SystemClock.elapsedRealtime()
-                if (feedbackWasPlaying && feedbackLastTickAt > 0L) {
-                    feedbackPlayedMs += (now - feedbackLastTickAt).coerceAtLeast(0L)
-                }
-                feedbackLastTickAt = now
-                feedbackWasPlaying = state.isPlaying
-
-                val track = state.currentTrack
-                if (track?.id != feedbackTrack?.id) {
-                    val previous = feedbackTrack
-                    val playedMs = feedbackPlayedMs
-                    feedbackTrack = track
-                    feedbackPlayedMs = 0L
-                    if (previous != null && playedMs > 0L) {
-                        recordTasteFeedback(previous, playedMs)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun recordTasteFeedback(track: Track, playedMs: Long) {
-        val fraction = if (track.durationMs > 0L) {
-            (playedMs.toFloat() / track.durationMs).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-
-        viewModelScope.launch {
-            when {
-                fraction > FINISHED_THRESHOLD -> tasteRepository.onTrackFinished(track, fraction)
-                playedMs < SKIP_THRESHOLD_MS -> tasteRepository.onSkip(track, playedMs)
-            }
-        }
-    }
-
-    // ─── Волна ────────────────────────────────────────────────────────────
-    private fun observeWaveRefill() {
-        viewModelScope.launch {
-            playerController.state.collect { state ->
-                val session = waveRepository.activeSession.value ?: return@collect
-                if (session.isTerminated) return@collect
-                if (state.currentTrack == null || state.queue.isEmpty()) return@collect
-
-                val remaining = state.queue.lastIndex - state.currentIndex
-                if (remaining > WAVE_REFILL_THRESHOLD) return@collect
-                if (waveRefillJob?.isActive == true) return@collect
-
-                waveRefillJob = viewModelScope.launch {
-                    waveRepository.nextBatch(size = WAVE_REFILL_BATCH).onSuccess { batch ->
-                        val active = waveRepository.activeSession.value
-                        if (batch.tracks.isNotEmpty() &&
-                            active?.sessionId == batch.session.sessionId
-                        ) {
-                            playerController.appendToQueue(batch.tracks)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private companion object {
-        const val FINISHED_THRESHOLD = 0.8f
-        const val SKIP_THRESHOLD_MS = 30_000L
-        const val WAVE_REFILL_THRESHOLD = 3
-        const val WAVE_REFILL_BATCH = 12
-
         /** Размер первой пачки радио от трека. */
         const val RADIO_BATCH = 20
 

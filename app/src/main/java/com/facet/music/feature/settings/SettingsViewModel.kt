@@ -85,6 +85,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Продолжать воспроизведение после возврата из другого приложения. */
+    fun setResumeAfterFocusLoss(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setResumeAfterFocusLoss(enabled)
+        }
+    }
+
     /** Качество скачивания: 128/256/320 кбит/с. */
     fun setDownloadQuality(kbps: Int) {
         viewModelScope.launch {

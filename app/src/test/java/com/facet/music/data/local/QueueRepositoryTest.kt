@@ -57,14 +57,19 @@ class QueueRepositoryTest {
     }
 
     @Test
-    fun `saved queue survives reload with current index`() = runBlocking {
-        repository.save(listOf(track("a", "A"), track("b", "B"), track("c", "C")), currentIndex = 1)
+    fun `saved queue survives reload with current index and position`() = runBlocking {
+        repository.save(
+            listOf(track("a", "A"), track("b", "B"), track("c", "C")),
+            currentIndex = 1,
+            positionMs = 42_500L,
+        )
 
         val snapshot = repository.load()
 
         assertEquals(listOf("a", "b", "c"), snapshot?.tracks?.map { it.id })
         assertEquals("B", snapshot?.tracks?.get(1)?.title)
         assertEquals(1, snapshot?.currentIndex)
+        assertEquals(42_500L, snapshot?.positionMs)
     }
 
     @Test

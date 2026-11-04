@@ -9,6 +9,7 @@ import com.facet.music.data.model.Track
 data class QueueSnapshot(
     val tracks: List<Track>,
     val currentIndex: Int,
+    val positionMs: Long = 0L,
 )
 
 /**
@@ -20,7 +21,7 @@ interface QueueRepository {
     suspend fun load(): QueueSnapshot?
 
     /** Перезаписать сохранённую очередь целиком. */
-    suspend fun save(tracks: List<Track>, currentIndex: Int)
+    suspend fun save(tracks: List<Track>, currentIndex: Int, positionMs: Long = 0L)
 
     /** Очистить сохранённую очередь (например, когда она опустела). */
     suspend fun clear()

@@ -120,6 +120,11 @@
     <string name="settings_location_denied_hint">Without location, like coordinates are not saved and “Memories” are not tied to a place</string>
     <string name="settings_check_permissions">Check permissions</string>
     <string name="settings_location_footer">If access is denied, the button opens app settings</string>
+    <string name="settings_background_section">Background playback</string>
+    <string name="settings_focus_resume_title">Continue after other apps</string>
+    <string name="settings_focus_resume_hint">If TikTok or a call interrupted playback, Facet resumes from the same place after you return (within 15 minutes).</string>
+    <string name="settings_battery_hint">If music stops in the background on Samsung, remove Facet from “Sleeping apps” and turn off battery optimization for it.</string>
+    <string name="settings_battery_open">Open app settings</string>
     <string name="settings_downloads_section">Downloads and cache</string>
     <string name="settings_quality_title">Download quality</string>
     <string name="settings_quality_hint">Bitrate for downloads. YouTube picks the closest available stream.</string>

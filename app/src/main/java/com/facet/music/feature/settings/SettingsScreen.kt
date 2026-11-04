@@ -436,6 +436,36 @@ fun SettingsScreen(
                 }
             }
 
+            // ─── Работа в фоне ─────────────────────────────────────────────
+            SettingsSectionTitle(R.string.settings_background_section)
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_focus_resume_title),
+                hint = stringResource(R.string.settings_focus_resume_hint),
+                checked = settings.resumeAfterFocusLoss,
+                onCheckedChange = viewModel::setResumeAfterFocusLoss,
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_battery_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                FilledTonalButton(
+                    onClick = { LocationPermissions.openAppSettings(context) },
+                    modifier = Modifier.height(48.dp),
+                    shape = CircleShape,
+                ) {
+                    Text(stringResource(R.string.settings_battery_open))
+                }
+            }
+
+            SettingsDivider()
+
             // ─── Загрузки и кэш ────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_downloads_section)
 

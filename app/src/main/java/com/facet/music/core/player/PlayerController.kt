@@ -1,362 +1,197 @@
 package com.facet.music.core.player
 
-import android.content.ComponentName
-import android.content.Context
 import android.util.Log
-import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
 import com.facet.music.core.source.PlaybackResolver
-import com.facet.music.core.source.ResolvedStream
-import com.facet.music.core.util.rethrowCancellation
-import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
-import com.facet.music.data.repository.PlayHistoryRepository
 import com.facet.music.data.repository.QueueRepository
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
+import com.facet.music.data.repository.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Единый фасад управления воспроизведением.
- *
- * Сам плеер живёт в [MusicService]: контроллер только подключается к нему
- * через [MediaController] и хранит очередь/режимы, чтобы UI и уведомление
- * работали с одним состоянием.
+ * Фасад плеера. Список треков живёт здесь для UI, но очередь воспроизведения
+ * зеркалится в ExoPlayer: gapless, предзагрузка и системная шторка работают
+ * без пересоздания медиаэлемента.
  */
 @Singleton
-class PlayerController private constructor(
-    private val appContext: Context?,
-    private val playHistoryRepository: PlayHistoryRepository,
-    /** Единственный резолвер потока; null только в JVM-тестах без сети. */
-    private val playbackResolver: PlaybackResolver?,
-    /** Кэш Media3: по нему решается, можно ли играть без сети после ошибки резолва. */
-    private val playbackCache: PlaybackCache?,
-    /** Сохранение очереди между запусками; null в JVM-тестах. */
-    private val queueRepository: QueueRepository?,
-    initialController: MediaController?,
+class PlayerController @Inject constructor(
+    private val connection: PlayerConnection,
+    private val playbackResolver: PlaybackResolver,
+    private val queueRepository: QueueRepository,
+    private val settingsRepository: SettingsRepository,
 ) {
-
-    @Inject
-    constructor(
-        @ApplicationContext context: Context,
-        playHistoryRepository: PlayHistoryRepository,
-        playbackResolver: PlaybackResolver,
-        playbackCache: PlaybackCache,
-        queueRepository: QueueRepository,
-    ) : this(
-        context,
-        playHistoryRepository,
-        playbackResolver,
-        playbackCache,
-        queueRepository,
-        null,
-    )
-
-    /** Конструктор для JVM-тестов: готовый контроллер без подключения к сервису. */
-    internal constructor(
-        mediaController: MediaController,
-        playHistoryRepository: PlayHistoryRepository,
-        playbackResolver: PlaybackResolver? = null,
-        playbackCache: PlaybackCache? = null,
-        queueRepository: QueueRepository? = null,
-    ) : this(
-        null,
-        playHistoryRepository,
-        playbackResolver,
-        playbackCache,
-        queueRepository,
-        mediaController,
-    )
 
     private val tag = "PlayerController"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var resolveJob: Job? = null
 
-    @Volatile
-    private var resolvingTrackId: String? = null
-    private var mediaController: MediaController? = null
-
-    // Контроллер — @Singleton и живёт дольше MusicService, поэтому готовность
-    // пересоздаётся при каждом переподключении: после смерти сессии прежний
-    // MediaController мёртв, а завершённый однажды Deferred уже не оживить.
-    @Volatile
-    private var controllerReady = CompletableDeferred<MediaController>()
-    private var connectAttempts = 0
-
-    // Подключение к MusicService откладываем до первого кадра: создание
-    // ExoPlayer, MediaSession и уведомления на главном потоке заметно
-    // удлиняло холодный старт. Играть без соединения всё равно нельзя,
-    // поэтому перед воспроизведением ensureConnected() сработает сразу.
-    @Volatile
-    private var connectionRequested = false
-
-    // Исходная очередь до перемешивания (для восстановления исходного порядка)
+    private var attachedPlayer: Player? = null
     private var originalQueue: List<Track> = emptyList()
+    private var resolveJob: Job? = null
+    private var preloadJob: Job? = null
 
-    // ─── Публичное состояние ──────────────────────────────────────────────────
+    @Volatile
+    private var audioFocusPausedAt: Long? = null
+
+    @Volatile
+    private var errorStreak = 0
+
+    @Volatile
+    private var resolving = false
+
+    @Volatile
+    private var errorPositionMs: Long = 0L
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
 
-    // ─── Слушатель событий плеера ────────────────────────────────────────────
-
     private val playerListener = object : Player.Listener {
-
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) errorStreak = 0
             _state.update { it.copy(isPlaying = isPlaying) }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
-            val isBuffering = playbackState == Player.STATE_BUFFERING
+            val buffering = playbackState == Player.STATE_BUFFERING
+            if (playbackState == Player.STATE_READY) resolving = false
             _state.update {
                 it.copy(
-                    isLoading = isBuffering,
-                    isBuffering = isBuffering,
+                    isLoading = buffering || resolving,
+                    isBuffering = buffering || resolving,
                     playbackState = playbackState,
                     error = if (playbackState == Player.STATE_READY) null else it.error,
                 )
             }
+        }
 
-            if (playbackState == Player.STATE_ENDED) {
-                onTrackEnded()
-            }
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            errorPositionMs = 0L
+            syncFromPlayer()
+        }
+
+        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+            syncFromPlayer()
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            Log.e(tag, "Ошибка воспроизведения MediaController", error)
-            _state.update {
-                it.copy(
-                    isLoading = false,
-                    isBuffering = false,
-                    isPlaying = false,
-                    error = error.toFriendlyPlaybackMessage(),
-                )
-            }
+            handlePlayerError(error)
         }
-    }
 
-    /**
-     * Реакция на смерть или пересоздание [MusicService]. Без неё синглтон навсегда
-     * оставался с мёртвым MediaController: кнопки в UI нажимались, звук не шёл.
-     * Объявлен до init — иначе connectToService() получил бы неинициализированный null.
-     */
-    private val sessionListener = object : MediaController.Listener {
-        override fun onDisconnected(controller: MediaController) {
-            Log.w(tag, "Сессия отключена — освобождаем контроллер и подключаемся заново")
-            detachController(controller)
-            connectToService()
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (playWhenReady) {
+                audioFocusPausedAt = null
+            } else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+                audioFocusPausedAt = System.currentTimeMillis()
+            } else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
+                audioFocusPausedAt = null
+            }
         }
     }
 
     init {
-        if (initialController != null) {
-            attachController(initialController)
-        } else {
-            scope.launch {
-                delay(COLD_START_CONNECT_DELAY_MS)
-                ensureConnected()
-            }
+        scope.launch {
+            connection.player.collect { attachPlayer(it) }
         }
-        // Очередь переживает перезапуск: сначала восстанавливаем сохранённую,
-        // затем начинаем писать изменения (restore не должен сам себя перезаписать).
+        scope.launch { connection.connect() }
         restoreQueueFromDb()
-        persistQueue()
     }
 
-    /** Поднимает сохранённую очередь, не начиная воспроизведение. */
-    private fun restoreQueueFromDb() {
-        val repository = queueRepository ?: return
-        scope.launch {
-            val snapshot = runCatching { repository.load() }.getOrNull() ?: return@launch
-            if (snapshot.tracks.isEmpty()) return@launch
-            // Не перетираем очередь, если за время чтения что-то уже играет.
-            if (_state.value.currentTrack != null || _state.value.queue.isNotEmpty()) return@launch
-            val index = snapshot.currentIndex.coerceIn(0, snapshot.tracks.lastIndex)
-            originalQueue = snapshot.tracks
-            _state.update {
+    private fun attachPlayer(player: Player?) {
+        if (attachedPlayer === player) return
+        attachedPlayer?.removeListener(playerListener)
+        attachedPlayer = player
+        if (player == null) {
+            _state.update { it.copy(isPlaying = false, isBuffering = false) }
+            return
+        }
+        player.addListener(playerListener)
+        syncFromPlayer()
+        _state.update {
+            it.copy(
+                isPlaying = player.isPlaying,
+                playbackState = player.playbackState,
+                playbackSpeed = player.playbackParameters.speed,
+                isBuffering = player.playbackState == Player.STATE_BUFFERING || resolving,
+                isLoading = player.playbackState == Player.STATE_BUFFERING || resolving,
+            )
+        }
+        applyPlaybackParameters()
+    }
+
+    private fun syncFromPlayer() {
+        val player = attachedPlayer ?: return
+        val tracks = (0 until player.mediaItemCount)
+            .mapNotNull { TrackMediaItem.trackOf(player.getMediaItemAt(it)) }
+        tracks.forEach(playbackResolver::remember)
+        val index = player.currentMediaItemIndex
+        val current = TrackMediaItem.trackOf(player.currentMediaItem)
+            ?: tracks.getOrNull(index)
+        _state.update {
+            if (tracks.isNotEmpty()) {
                 it.copy(
-                    queue = snapshot.tracks,
+                    queue = tracks,
                     currentIndex = index,
-                    currentTrack = snapshot.tracks[index],
-                    isPlaying = false,
-                    isLoading = false,
+                    currentTrack = current,
+                    playbackState = player.playbackState,
+                    isPlaying = player.isPlaying,
+                    isBuffering = player.playbackState == Player.STATE_BUFFERING || resolving,
+                    isLoading = player.playbackState == Player.STATE_BUFFERING || resolving,
+                )
+            } else {
+                it.copy(
+                    playbackState = player.playbackState,
+                    isPlaying = player.isPlaying,
+                    isBuffering = player.playbackState == Player.STATE_BUFFERING || resolving,
+                    isLoading = player.playbackState == Player.STATE_BUFFERING || resolving,
                 )
             }
         }
     }
 
-    /** Пишет очередь в Room с задержкой: быстрые правки не дают десятки записей. */
-    @OptIn(FlowPreview::class)
-    private fun persistQueue() {
-        val repository = queueRepository ?: return
-        scope.launch {
-            _state
-                .map { it.queue to it.currentIndex }
-                .debounce(QUEUE_PERSIST_DEBOUNCE_MS)
-                .distinctUntilChanged()
-                .collect { (queue, index) ->
-                    runCatching {
-                        if (queue.isEmpty()) repository.clear()
-                        else repository.save(queue, index)
-                    }
-                }
+    private suspend fun awaitPlayer(): Player? = connection.connect()
+
+    private fun defaultMime(track: Track): String = TrackMediaItem.defaultMimeType(track)
+
+    private fun mediaItems(queue: List<Track>): List<MediaItem> =
+        queue.map { track -> TrackMediaItem.create(track, defaultMime(track)) }
+
+    private fun mediaItems(
+        queue: List<Track>,
+        currentIndex: Int,
+        currentMime: String?,
+        nextIndex: Int? = null,
+        nextMime: String? = null,
+    ): List<MediaItem> = queue.mapIndexed { index, track ->
+        val mime = when (index) {
+            currentIndex -> currentMime
+            nextIndex -> nextMime
+            else -> null
         }
-    }
-
-    /**
-     * Подключение по требованию. Повторные вызовы безопасны: соединение
-     * инициируется один раз, дальше работает штатный реконнект.
-     */
-    @Synchronized
-    private fun ensureConnected() {
-        if (mediaController != null || connectionRequested) return
-        connectToService()
-    }
-
-    private fun connectToService() {
-        connectionRequested = true
-        val context = appContext ?: return
-        val token = SessionToken(
-            context,
-            ComponentName(context, MusicService::class.java),
-        )
-        val future = MediaController.Builder(context, token)
-            .setListener(sessionListener)
-            .buildAsync()
-        future.addListener(
-            {
-                try {
-                    attachController(future.get())
-                    connectAttempts = 0
-                } catch (e: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    scheduleReconnect(e)
-                } catch (e: Exception) {
-                    scheduleReconnect(e)
-                }
-            },
-            ContextCompat.getMainExecutor(context),
+        TrackMediaItem.create(
+            track = track,
+            mimeType = mime ?: defaultMime(track),
         )
     }
 
-    /**
-     * Повтор подключения с экспоненциальной задержкой. Провал buildAsync() раньше
-     * завершал Deferred исключением навсегда и молча отключал плеер до перезапуска
-     * процесса; теперь даём сервису несколько шансов подняться.
-     */
-    private fun scheduleReconnect(cause: Exception) {
-        if (connectAttempts >= MAX_CONNECT_ATTEMPTS) {
-            Log.e(tag, "Не удалось подключиться к MusicService после $connectAttempts попыток", cause)
-            _state.update { it.copy(error = PLAYER_UNAVAILABLE_MESSAGE) }
-            return
-        }
-        val delayMs = RECONNECT_BASE_DELAY_MS shl connectAttempts++.coerceAtMost(6)
-        Log.w(tag, "Переподключение к MusicService через $delayMs мс", cause)
-        scope.launch {
-            delay(delayMs)
-            connectToService()
-        }
+    private fun repeatMode() = when (_state.value.repeatMode) {
+        RepeatMode.OFF -> Player.REPEAT_MODE_OFF
+        RepeatMode.ALL -> Player.REPEAT_MODE_ALL
+        RepeatMode.ONE -> Player.REPEAT_MODE_ONE
     }
 
-    private fun attachController(controller: MediaController) {
-        mediaController = controller
-        controller.addListener(playerListener)
-        val isBuffering = controller.playbackState == Player.STATE_BUFFERING
-        _state.update {
-            it.copy(
-                isPlaying = controller.isPlaying,
-                isLoading = isBuffering,
-                isBuffering = isBuffering,
-                playbackState = controller.playbackState,
-                playbackSpeed = controller.playbackParameters.speed,
-                // Подключение восстановлено — убираем сообщение о недоступном плеере.
-                error = if (it.error == PLAYER_UNAVAILABLE_MESSAGE) null else it.error,
-            )
-        }
-        if (!controllerReady.isCompleted) {
-            controllerReady.complete(controller)
-        }
-        // Новый контроллер не знает про детюн и вариацию: возвращаем ему
-        // актуальные параметры, иначе после переподключения строй сбрасывался бы.
-        applyPlaybackParameters()
-    }
-
-    /** Снимает слушатели и освобождает мёртвый контроллер перед переподключением. */
-    private fun detachController(controller: MediaController) {
-        if (mediaController === controller) {
-            mediaController = null
-            controllerReady = CompletableDeferred()
-        }
-        runCatching {
-            controller.removeListener(playerListener)
-            controller.release()
-        }
-    }
-
-    private suspend fun awaitController(): MediaController? {
-        return try {
-            controllerReady.await()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(tag, "MediaController недоступен", e)
-            null
-        }
-    }
-
-    private fun onTrackEnded() {
-        val controller = mediaController ?: return
-        when (_state.value.repeatMode) {
-            RepeatMode.ONE -> {
-                controller.seekTo(0)
-                controller.play()
-            }
-            RepeatMode.ALL -> {
-                playNext(loop = true)
-            }
-            RepeatMode.OFF -> {
-                if (hasNext()) {
-                    playNext(loop = false)
-                } else {
-                    _state.update { it.copy(isPlaying = false) }
-                }
-            }
-        }
-    }
-
-    // ─── Управление очередью ─────────────────────────────────────────────────
-
-    /**
-     * Задать новую очередь треков и начать воспроизведение с [startIndex].
-     * [origin] помечает, откуда очередь пришла: обычный запуск, «Моя волна»
-     * или «Волна по треку» — это показывается в шторке очереди.
-     */
     fun setQueueAndPlay(
         tracks: List<Track>,
         startIndex: Int = 0,
@@ -365,7 +200,6 @@ class PlayerController private constructor(
         if (tracks.isEmpty()) return
         val clampedIndex = startIndex.coerceIn(0, tracks.lastIndex)
         originalQueue = tracks
-
         val effectiveQueue = if (_state.value.isShuffle) {
             val selected = tracks[clampedIndex]
             val rest = tracks.filterIndexed { index, _ -> index != clampedIndex }.shuffled()
@@ -373,48 +207,65 @@ class PlayerController private constructor(
         } else {
             tracks
         }
-
         val effectiveIndex = if (_state.value.isShuffle) 0 else clampedIndex
 
+        resolving = true
         _state.update {
             it.copy(
                 queue = effectiveQueue,
                 currentIndex = effectiveIndex,
+                currentTrack = effectiveQueue[effectiveIndex],
                 queueOrigin = origin,
+                isBuffering = true,
+                isLoading = true,
+                error = null,
             )
         }
 
-        playTrackAt(effectiveIndex)
+        scope.launch {
+            val player = awaitPlayer() ?: run {
+                resolving = false
+                _state.update { it.copy(isBuffering = false, isLoading = false) }
+                return@launch
+            }
+            player.setMediaItems(mediaItems(effectiveQueue), effectiveIndex, 0L)
+            player.repeatMode = repeatMode()
+            player.shuffleModeEnabled = false
+            val stream = playbackResolver.resolve(effectiveQueue[effectiveIndex]).getOrNull()
+            if (stream != null) {
+                player.setMediaItems(
+                    mediaItems(effectiveQueue, effectiveIndex, stream.mimeType),
+                    effectiveIndex,
+                    0L,
+                )
+            }
+            player.prepare()
+            player.play()
+            preloadNext()
+            preloadNext()
+        }
     }
 
-    /**
-     * Дописать треки в конец очереди без прерывания воспроизведения.
-     * Дубликаты по id отбрасываются.
-     */
     fun appendToQueue(tracks: List<Track>) {
         if (tracks.isEmpty()) return
         val knownIds = _state.value.queue.mapTo(mutableSetOf()) { it.id }
         val additions = tracks.filter { it.id.isNotBlank() && knownIds.add(it.id) }
         if (additions.isEmpty()) return
-
         originalQueue = if (originalQueue.isEmpty()) {
             _state.value.queue + additions
         } else {
             originalQueue + additions
         }
         _state.update { it.copy(queue = it.queue + additions) }
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            player.addMediaItems(
+                player.mediaItemCount,
+                additions.map { TrackMediaItem.create(it) },
+            )
+        }
     }
 
-    /**
-     * Поставить трек следующим в очереди, не прерывая воспроизведение.
-     *
-     * Если очередь пуста (или в ней нет текущего трека), «следующим» некуда —
-     * трек просто начинает играть. Дубликат по id не добавляется: прежнее
-     * вхождение переносится на позицию сразу после текущего.
-     *
-     * @return true, если очередь изменилась (трек встал следующим или заиграл);
-     * false — если трек пустой или уже является текущим.
-     */
     fun playNext(track: Track): Boolean {
         if (track.id.isBlank()) return false
         val state = _state.value
@@ -422,32 +273,25 @@ class PlayerController private constructor(
             setQueueAndPlay(listOf(track))
             return true
         }
-
         val insertion = insertNextTrack(state.queue, state.currentIndex, track)
         if (insertion.queue == state.queue) return false
-
         originalQueue = when {
             originalQueue.isEmpty() -> insertion.queue
             originalQueue.any { it.id == track.id } -> originalQueue
-            // При перемешивании исходный порядок хранится отдельно: новый
-            // трек уходит в его конец, чтобы восстановление порядка его не потеряло.
             state.isShuffle -> originalQueue + track
             else -> insertion.queue
         }
         _state.update {
             it.copy(queue = insertion.queue, currentIndex = insertion.currentIndex)
         }
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            val insertAt = (player.currentMediaItemIndex + 1).coerceAtMost(player.mediaItemCount)
+            player.addMediaItems(insertAt, listOf(TrackMediaItem.create(track)))
+        }
         return true
     }
 
-    /**
-     * Дописать трек в конец очереди.
-     *
-     * Если ничего не играет, «конец очереди» недостижим (шторка очереди без
-     * текущего трека не открывается), поэтому трек сразу начинает играть.
-     *
-     * @return true, если трек добавлен; false — если он уже в очереди или без id.
-     */
     fun addToQueue(track: Track): Boolean {
         if (track.id.isBlank()) return false
         val state = _state.value
@@ -460,136 +304,110 @@ class PlayerController private constructor(
         return true
     }
 
-    /**
-     * Воспроизвести трек по индексу в текущей очереди.
-     */
     fun playTrackAt(index: Int) {
-        ensureConnected()
-        val tracks = _state.value.queue
-        if (index !in tracks.indices) return
-
-        val track = tracks[index]
-        mediaController?.apply {
-            pause()
-            stop()
-            seekTo(0)
+        val queue = _state.value.queue
+        if (index !in queue.indices) return
+        resolving = true
+        _state.update { it.copy(isBuffering = true, isLoading = true, error = null) }
+        scope.launch {
+            val player = awaitPlayer() ?: run {
+                resolving = false
+                _state.update { it.copy(isBuffering = false, isLoading = false) }
+                return@launch
+            }
+            ensurePlayerQueue(player, queue, index)
+            val stream = playbackResolver.resolve(queue[index]).getOrNull()
+            val currentMime = player.getMediaItemAt(index).localConfiguration?.mimeType
+            if (stream != null && stream.mimeType != currentMime) {
+                player.setMediaItems(
+                    mediaItems(queue, index, stream.mimeType),
+                    index,
+                    0L,
+                )
+            }
+            player.seekTo(index, 0L)
+            player.prepare()
+            player.play()
+            preloadNext()
         }
-        _state.update {
-            it.copy(
-                currentIndex = index,
-                currentTrack = track,
-                isPlaying = false,
-                isLoading = true,
-                isBuffering = false,
-                error = null,
-            )
-        }
-
-        resolveAndPlay(track)
     }
 
-    /**
-     * Переход к следующему треку.
-     * [loop] — зацикливать ли в начало при достижении конца очереди.
-     * По умолчанию не зацикливаем: ручной Next при Repeat OFF не должен
-     * перескакивать с последнего трека на первый (зацикливание — только при ALL).
-     */
     fun playNext(loop: Boolean = false) {
-        val queue = _state.value.queue
-        if (queue.isEmpty()) return
-
-        val currentIndex = _state.value.currentIndex
-        val nextIndex = currentIndex + 1
-
-        if (nextIndex in queue.indices) {
-            playTrackAt(nextIndex)
-        } else if (loop || _state.value.repeatMode == RepeatMode.ALL) {
-            playTrackAt(0)
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            when {
+                player.hasNextMediaItem() -> player.seekToNextMediaItem()
+                loop || _state.value.repeatMode == RepeatMode.ALL -> player.seekTo(0, 0L)
+                else -> return@launch
+            }
+            player.prepare()
+            player.play()
         }
     }
 
-    /**
-     * Переход к предыдущему треку.
-     * Если прошло больше 3 секунд от начала — перезапускает текущий трек.
-     */
-    /** [force] — свайп по обложке всегда переключает трек, а не перематывает в 0. */
     fun playPrevious(force: Boolean = false) {
-        val controller = mediaController
-        if (!force && controller != null && controller.currentPosition > 3000L) {
-            controller.seekTo(0)
-            return
-        }
-
-        val queue = _state.value.queue
-        if (queue.isEmpty()) return
-
-        val currentIndex = _state.value.currentIndex
-        val prevIndex = currentIndex - 1
-
-        if (prevIndex >= 0) {
-            playTrackAt(prevIndex)
-        } else if (_state.value.repeatMode == RepeatMode.ALL) {
-            playTrackAt(queue.lastIndex)
-        } else {
-            controller?.seekTo(0)
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            if (!force && player.currentPosition > 3000L) {
+                player.seekTo(0L)
+                return@launch
+            }
+            when {
+                player.hasPreviousMediaItem() -> player.seekToPreviousMediaItem()
+                _state.value.repeatMode == RepeatMode.ALL ->
+                    player.seekTo((player.mediaItemCount - 1).coerceAtLeast(0), 0L)
+                else -> player.seekTo(0L)
+            }
+            player.prepare()
+            player.play()
         }
     }
 
     fun hasNext(): Boolean {
-        val queue = _state.value.queue
-        if (queue.isEmpty()) return false
-        val nextIndex = _state.value.currentIndex + 1
-        return nextIndex in queue.indices || _state.value.repeatMode == RepeatMode.ALL
+        val state = _state.value
+        return state.currentIndex + 1 in state.queue.indices ||
+            state.repeatMode == RepeatMode.ALL
     }
 
     fun hasPrevious(): Boolean {
-        val queue = _state.value.queue
-        if (queue.isEmpty()) return false
-        val prevIndex = _state.value.currentIndex - 1
-        return prevIndex >= 0 || _state.value.repeatMode == RepeatMode.ALL
+        val state = _state.value
+        return state.currentIndex - 1 in state.queue.indices ||
+            state.repeatMode == RepeatMode.ALL
     }
 
-    /**
-     * Переключение режима перемешивания (shuffle) с сохранением исходного списка.
-     */
     fun toggleShuffle() {
         val currentQueue = _state.value.queue
         val currentTrack = _state.value.currentTrack
         val newShuffle = !_state.value.isShuffle
-
+        val newQueue: List<Track>
+        val newIndex: Int
         if (newShuffle) {
-            // Включаем shuffle: сохраняем originalQueue, текущий трек остаётся во главе
             if (originalQueue.isEmpty() || originalQueue.size != currentQueue.size) {
                 originalQueue = currentQueue
             }
             val others = currentQueue.filter { it.id != currentTrack?.id }.shuffled()
-            val shuffled = if (currentTrack != null) listOf(currentTrack) + others else others
-
-            _state.update {
-                it.copy(
-                    isShuffle = true,
-                    queue = shuffled,
-                    currentIndex = 0,
-                )
-            }
+            newQueue = if (currentTrack != null) listOf(currentTrack) + others else others
+            newIndex = 0
         } else {
-            // Выключаем shuffle: восстанавливаем originalQueue
-            val restoredQueue = if (originalQueue.isNotEmpty()) originalQueue else currentQueue
-            val newIndex = restoredQueue.indexOfFirst { it.id == currentTrack?.id }.coerceAtLeast(0)
-
-            _state.update {
-                it.copy(
-                    isShuffle = false,
-                    queue = restoredQueue,
-                    currentIndex = newIndex,
-                )
-            }
+            newQueue = if (originalQueue.isNotEmpty()) originalQueue else currentQueue
+            newIndex = newQueue.indexOfFirst { it.id == currentTrack?.id }.coerceAtLeast(0)
+        }
+        _state.update {
+            it.copy(isShuffle = newShuffle, queue = newQueue, currentIndex = newIndex)
+        }
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            val position = player.currentPosition
+            val wasPlaying = player.playWhenReady
+            player.setMediaItems(mediaItems(newQueue), newIndex, position)
+            player.shuffleModeEnabled = false
+            val stream = playbackResolver.resolve(newQueue[newIndex]).getOrNull()
+            if (stream != null) applyMime(player, newIndex, stream.mimeType)
+            player.prepare()
+            if (wasPlaying) player.play()
         }
     }
 
-    /**
-     * Переключение режима повтора: OFF -> ALL -> ONE -> OFF.
-     */
     fun toggleRepeat() {
         val nextMode = when (_state.value.repeatMode) {
             RepeatMode.OFF -> RepeatMode.ALL
@@ -597,261 +415,160 @@ class PlayerController private constructor(
             RepeatMode.ONE -> RepeatMode.OFF
         }
         _state.update { it.copy(repeatMode = nextMode) }
+        scope.launch {
+            awaitPlayer()?.repeatMode = repeatMode()
+        }
     }
 
-    /**
-     * Удаление трека из очереди по индексу.
-     */
     fun removeTrackAt(index: Int) {
-        val currentQueue = _state.value.queue.toMutableList()
+        val currentQueue = _state.value.queue
         if (index !in currentQueue.indices) return
-
-        val removedTrack = currentQueue.removeAt(index)
-        originalQueue = originalQueue.filter { it.id != removedTrack.id }
-
-        val currentIndex = _state.value.currentIndex
-        when {
-            currentQueue.isEmpty() -> {
-                mediaController?.stop()
-                _state.update {
-                    it.copy(
-                        queue = emptyList(),
-                        currentIndex = -1,
-                        currentTrack = null,
-                        isPlaying = false,
-                    )
-                }
-            }
-            index < currentIndex -> {
-                _state.update {
-                    it.copy(
-                        queue = currentQueue,
-                        currentIndex = currentIndex - 1,
-                    )
-                }
-            }
-            index == currentIndex -> {
-                // Если удалили играющий трек: переходим к следующему
-                val newIndex = if (index < currentQueue.size) index else 0
-                _state.update {
-                    it.copy(
-                        queue = currentQueue,
-                        currentIndex = newIndex,
-                    )
-                }
-                playTrackAt(newIndex)
-            }
-            else -> {
-                _state.update { it.copy(queue = currentQueue) }
+        val removed = currentQueue[index]
+        originalQueue = originalQueue.filter { it.id != removed.id }
+        val newQueue = currentQueue.filterIndexed { i, _ -> i != index }
+        _state.update {
+            if (newQueue.isEmpty()) {
+                it.copy(queue = emptyList(), currentIndex = -1, currentTrack = null)
+            } else {
+                it.copy(queue = newQueue)
             }
         }
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            if (index < player.mediaItemCount) player.removeMediaItem(index)
+            if (player.mediaItemCount == 0) player.clearMediaItems()
+        }
     }
-
-    // ─── Воспроизведение потока ───────────────────────────────────────────────
 
     /**
-     * Получить поток у единого резолвера и передать элемент в MediaController.
-     * Повторное нажатие Play во время резолва не отменяет первый запрос.
+     * Повтор после ошибки: не начинает трек с нуля, а возвращается к позиции,
+     * на которой плеер остановился.
      */
-    private fun resolveAndPlay(track: Track, recordHistory: Boolean = true) {
-        ensureConnected()
-        resolveJob?.cancel()
-        resolvingTrackId = track.id
-        playbackResolver?.remember(track)
-        mediaController?.apply {
-            pause()
-            stop()
-            seekTo(0)
+    fun retryAfterError() {
+        val position = errorPositionMs.coerceAtLeast(0L)
+        errorStreak = 0
+        resolving = true
+        _state.update { it.copy(error = null, isBuffering = true, isLoading = true) }
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            player.seekTo(position)
+            player.prepare()
+            player.play()
         }
-        var job: Job? = null
-        job = scope.launch(start = CoroutineStart.LAZY) {
-            try {
-                if (recordHistory) {
-                    try {
-                        playHistoryRepository.addToHistory(track)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.e(tag, "Не удалось записать трек в историю", e)
-                    }
-                }
-
-                val resolver = playbackResolver
-                if (resolver == null) {
-                    showPlaybackError(
-                        IllegalStateException("Нет резолвера потока для трека"),
-                    )
-                    return@launch
-                }
-
-                resolver.resolve(track)
-                    .rethrowCancellation()
-                    .onSuccess { stream ->
-                        Log.d(
-                            tag,
-                            "Поток готов: isHls=${stream.isHls}, mime=${stream.mimeType ?: "auto"}",
-                        )
-                        playStream(track, stream)
-                    }
-                    .onFailure { error ->
-                        val cached = runCatching {
-                            playbackCache?.hasData(track.id) == true
-                        }.getOrDefault(false)
-                        if (cached) {
-                            Log.d(tag, "Резолв не удался, играем сохранённый кэш Media3")
-                            playStream(
-                                track,
-                                ResolvedStream(
-                                    url = "",
-                                    mimeType = defaultMimeType(track.source),
-                                    isHls = false,
-                                    source = track.source,
-                                ),
-                            )
-                        } else {
-                            showPlaybackError(error)
-                        }
-                    }
-            } finally {
-                if (resolveJob === job && resolvingTrackId == track.id) {
-                    resolvingTrackId = null
-                }
-            }
-        }
-        resolveJob = job
-        job?.start()
     }
 
-    private fun showPlaybackError(error: Throwable) {
-        // В UI уходит только дружелюбное сообщение, сырое исключение — в лог.
-        // Название трека и ссылку не логируем: id SoundCloud — это URL.
-        val friendlyMessage = error.toFriendlyPlaybackMessage()
-        Log.e(tag, "Ошибка resolve: $friendlyMessage", error)
+    private fun handlePlayerError(error: PlaybackException) {
+        val player = attachedPlayer
+        errorPositionMs = player?.currentPosition?.coerceAtLeast(0L) ?: 0L
+        errorStreak++
+        val canAdvance = player != null &&
+            (player.hasNextMediaItem() || player.repeatMode == Player.REPEAT_MODE_ALL)
+        if (player != null && errorStreak < MAX_CONSECUTIVE_ERRORS && canAdvance) {
+            _state.update { it.copy(error = null, isBuffering = true, isLoading = true) }
+            if (player.hasNextMediaItem()) player.seekToNextMediaItem() else player.seekTo(0, 0L)
+            player.prepare()
+            player.play()
+            return
+        }
+        player?.pause()
+        resolving = false
         _state.update {
             it.copy(
                 isLoading = false,
                 isBuffering = false,
-                isPlaying = false,
-                error = friendlyMessage,
+                error = error.toFriendlyPlaybackMessage(),
             )
         }
-    }
-
-    /** MIME по умолчанию для прямых URL, если источник его не сообщил. */
-    private fun defaultMimeType(source: Source): String = when (source) {
-        Source.YOUTUBE -> MimeTypes.AUDIO_MP4
-        else -> MimeTypes.AUDIO_MPEG
-    }
-
-    private suspend fun playStream(track: Track, stream: ResolvedStream) {
-        val controller = awaitController()
-        if (controller == null) {
-            _state.update {
-                it.copy(
-                    isLoading = false,
-                    isBuffering = false,
-                    isPlaying = false,
-                    error = ERROR_PLAYBACK,
-                )
-            }
-            return
-        }
-
-        val mimeType = stream.mimeType ?: if (stream.isHls) {
-            MimeTypes.APPLICATION_M3U8
-        } else {
-            defaultMimeType(track.source)
-        }
-
-        val metadata = MediaMetadata.Builder()
-            .setTitle(track.title)
-            .setArtist(track.artist)
-            .apply {
-                track.artworkUrl
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { setArtworkUri(it.toUri()) }
-            }
-            .build()
-
-        val mediaItem = MediaItem.Builder()
-            .setMediaId(track.id)
-            .setUri(PlaybackUri.forTrack(track.id))
-            .setCustomCacheKey(track.id)
-            .setMimeType(mimeType)
-            .setMediaMetadata(metadata)
-            .build()
-
-        try {
-            playbackResolver?.setActiveTrack(track)
-            controller.setMediaItem(mediaItem)
-            controller.seekTo(0)
-            controller.prepare()
-            controller.play()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(tag, "Не удалось запустить поток (${track.source})", e)
-            _state.update {
-                it.copy(
-                    isLoading = false,
-                    isBuffering = false,
-                    isPlaying = false,
-                    error = e.toFriendlyPlaybackMessage(),
-                )
-            }
-            return
-        }
-
-        _state.update {
-            it.copy(
-                currentTrack = track,
-                isPlaying = true,
-                isLoading = false,
-                isBuffering = false,
-                error = null,
-            )
-        }
+        Log.e(tag, "Плеер остановлен после $errorStreak ошибок: ${error.errorCodeName}")
     }
 
     fun pauseOrResume() {
-        ensureConnected()
-        // Пока идёт резолв, повторный Play не должен отменять запрос и начинать заново.
-        if (resolvingTrackId != null) return
-        // Восстановленная очередь живёт только в состоянии: в контроллере ещё нет
-        // медиаэлемента. Первый Play должен запустить трек, а не «нажать play» в пустоту.
-        val restored = _state.value
-        if (restored.currentTrack != null &&
-            restored.queue.isNotEmpty() &&
-            mediaController?.mediaItemCount == 0
-        ) {
-            playTrackAt(restored.currentIndex.coerceIn(0, restored.queue.lastIndex))
-            return
-        }
-        // После ошибки нажатие Play/Pause сразу снимает сообщение и повторяет запуск трека
         if (_state.value.error != null) {
-            _state.update { it.copy(error = null) }
-            val track = _state.value.currentTrack
-            if (track != null) {
-                resolveAndPlay(track, recordHistory = false)
-            }
+            retryAfterError()
             return
         }
+        if (_state.value.isBuffering) return
         scope.launch {
-            val controller = awaitController() ?: return@launch
-            if (controller.isPlaying) controller.pause() else controller.play()
+            val player = awaitPlayer()
+            if (player == null) {
+                _state.update { it.copy(error = PLAYER_UNAVAILABLE_MESSAGE) }
+                return@launch
+            }
+            if (player.mediaItemCount == 0) {
+                val snapshot = runCatching { queueRepository.load() }.getOrNull()
+                if (snapshot != null && snapshot.tracks.isNotEmpty()) {
+                    val index = snapshot.currentIndex.coerceIn(0, snapshot.tracks.lastIndex)
+                    originalQueue = snapshot.tracks
+                    _state.update {
+                        it.copy(
+                            queue = snapshot.tracks,
+                            currentIndex = index,
+                            currentTrack = snapshot.tracks[index],
+                            error = null,
+                            isBuffering = true,
+                            isLoading = true,
+                        )
+                    }
+                    val currentMime = playbackResolver
+                        .resolve(snapshot.tracks[index])
+                        .getOrNull()
+                        ?.mimeType
+                    player.setMediaItems(
+                        mediaItems(snapshot.tracks, index, currentMime),
+                        index,
+                        snapshot.positionMs,
+                    )
+                    player.repeatMode = repeatMode()
+                    player.prepare()
+                    player.play()
+                    return@launch
+                }
+                if (_state.value.queue.isNotEmpty()) {
+                    val index = _state.value.currentIndex.coerceIn(0, _state.value.queue.lastIndex)
+                    player.setMediaItems(
+                        mediaItems(_state.value.queue),
+                        index,
+                        0L,
+                    )
+                    player.prepare()
+                    player.play()
+                    return@launch
+                }
+            }
+            if (player.playbackState == Player.STATE_IDLE) {
+                resolving = true
+                _state.update { it.copy(isBuffering = true, isLoading = true) }
+                if (player.mediaItemCount > 0) {
+                    val queue = _state.value.queue
+                    val index = player.currentMediaItemIndex
+                    queue.getOrNull(index)?.let { track ->
+                        val position = player.currentPosition
+                        val stream = playbackResolver.resolve(track).getOrNull()
+                        val currentMime = player.getMediaItemAt(index).localConfiguration?.mimeType
+                        if (stream != null && stream.mimeType != currentMime) {
+                            player.setMediaItems(
+                                mediaItems(queue, index, stream.mimeType),
+                                index,
+                                position,
+                            )
+                        } else if (position > 0L) {
+                            player.seekTo(index, position)
+                        }
+                    }
+                }
+                player.prepare()
+            }
+            if (player.isPlaying) player.pause() else player.play()
         }
     }
 
-    /**
-     * Полностью закрыть плеер: остановить звук, очистить очередь и сохранённое
-     * состояние. Мини-плеер и экран плеера исчезают, следующий запуск — с нуля.
-     */
     fun clearQueue() {
-        mediaController?.let { controller ->
-            runCatching {
-                controller.stop()
-                controller.clearMediaItems()
-            }
+        resolving = false
+        scope.launch {
+            val player = awaitPlayer()
+            player?.clearMediaItems()
+            player?.stop()
+            runCatching { queueRepository.clear() }
         }
         originalQueue = emptyList()
         _state.update {
@@ -867,23 +584,14 @@ class PlayerController private constructor(
                 queueOrigin = QueueOrigin.MAIN,
             )
         }
-        scope.launch {
-            runCatching { queueRepository?.clear() }
-        }
     }
 
     fun seekTo(positionMs: Long) {
-        mediaController?.seekTo(positionMs)
+        scope.launch { awaitPlayer()?.seekTo(positionMs) }
     }
 
-    /**
-     * Пауза без переключения (таймер сна). В отличие от [pauseOrResume],
-     * повторный вызов ничего не запускает.
-     */
     fun pause() {
-        scope.launch {
-            awaitController()?.pause()
-        }
+        scope.launch { awaitPlayer()?.pause() }
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -891,85 +599,159 @@ class PlayerController private constructor(
         applyPlaybackParameters()
     }
 
-    /** Сменить строй (детюн): 428…453 Гц, 440 — стандарт. */
     fun setTuning(frequencyHz: Int) {
         if (frequencyHz !in PlaybackTuning.FREQUENCIES) return
         _state.update { it.copy(tuningHz = frequencyHz) }
         applyPlaybackParameters()
     }
 
-    /** Включить вариацию трека (Speed Up, Slowed, Nightcore). */
     fun setVariation(variation: PlaybackVariation) {
         _state.update { it.copy(variation = variation) }
         applyPlaybackParameters()
     }
 
-    /**
-     * Отправляет в ExoPlayer итоговые параметры:
-     * скорость — базовая × скорость вариации, питч — питч вариации × детюн.
-     */
     private fun applyPlaybackParameters() {
         val state = _state.value
         val speed = (state.playbackSpeed * state.variation.speed).coerceIn(0.25f, 4f)
         val pitch = (state.variation.pitch * PlaybackTuning.pitchFactor(state.tuningHz.toFloat()))
             .coerceIn(0.25f, 4f)
-        mediaController?.setPlaybackParameters(PlaybackParameters(speed, pitch))
+        attachedPlayer?.setPlaybackParameters(PlaybackParameters(speed, pitch))
     }
 
-    fun currentPositionMs(): Long = mediaController?.currentPosition ?: 0L
+    fun currentPositionMs(): Long = attachedPlayer?.currentPosition ?: 0L
 
-    fun durationMs(): Long = mediaController?.duration?.coerceAtLeast(0L) ?: 0L
+    fun durationMs(): Long = attachedPlayer?.duration?.coerceAtLeast(0L) ?: 0L
 
-    fun bufferedPositionMs(): Long = mediaController?.bufferedPosition?.coerceAtLeast(0L) ?: 0L
+    fun bufferedPositionMs(): Long = attachedPlayer?.bufferedPosition?.coerceAtLeast(0L) ?: 0L
 
     fun bufferedFraction(): Float {
         val duration = durationMs()
         return if (duration > 0) (bufferedPositionMs().toFloat() / duration).coerceIn(0f, 1f) else 0f
     }
 
-    /** Освобождает контроллер, снимает слушателей и гасит фоновые задачи синглтона. */
-    fun release() {
-        resolveJob?.cancel()
-        mediaController?.let(::detachController)
-        controllerReady.cancel()
-        scope.cancel()
+    /** Разрешить следующий трек заранее, чтобы переход не ждал сеть. */
+    fun preloadNext() {
+        val state = _state.value
+        if (state.queue.isEmpty()) return
+        preloadJob?.cancel()
+        preloadJob = scope.launch {
+            val player = attachedPlayer ?: return@launch
+            val currentIndex = player.currentMediaItemIndex
+                .takeIf { it in state.queue.indices } ?: return@launch
+            val nextIndex = (currentIndex + 1).takeIf { it in state.queue.indices }
+                ?: return@launch
+            val stream = playbackResolver.resolve(state.queue[nextIndex]).getOrNull()
+                ?: return@launch
+            val currentItem = player.getMediaItemAt(currentIndex)
+            val currentMime = currentItem.localConfiguration?.mimeType
+            val nextItem = player.getMediaItemAt(nextIndex)
+            val nextMime = nextItem.localConfiguration?.mimeType
+            if (stream.isHls && nextMime != stream.mimeType) {
+                val position = player.currentPosition
+                val wasPlaying = player.playWhenReady
+                player.setMediaItems(
+                    mediaItems(
+                        queue = state.queue,
+                        currentIndex = currentIndex,
+                        currentMime = currentMime,
+                        nextIndex = nextIndex,
+                        nextMime = stream.mimeType,
+                    ),
+                    currentIndex,
+                    position,
+                )
+                player.prepare()
+                if (wasPlaying) player.play()
+            } else {
+                applyMime(player, nextIndex, stream.mimeType)
+            }
+        }
+    }
+
+    private fun applyMime(player: Player, index: Int, mimeType: String?) {
+        if (index !in 0 until player.mediaItemCount) return
+        val item = player.getMediaItemAt(index)
+        val desired = mimeType ?: TrackMediaItem.trackOf(item)?.let(::defaultMime) ?: return
+        val current = item.localConfiguration?.mimeType
+        if (current != desired) {
+            player.replaceMediaItem(index, TrackMediaItem.withMimeType(item, desired))
+        }
+    }
+
+    private fun ensurePlayerQueue(player: Player, queue: List<Track>, index: Int) {
+        if (player.mediaItemCount == queue.size) return
+        player.setMediaItems(mediaItems(queue), index, 0L)
+        player.repeatMode = repeatMode()
+    }
+
+    /** Сохранённая очередь: после подключения кладём её в плеер без автоплея. */
+    private fun restoreQueueFromDb() {
+        scope.launch {
+            val snapshot = runCatching { queueRepository.load() }.getOrNull() ?: return@launch
+            if (snapshot.tracks.isEmpty()) return@launch
+            if (_state.value.queue.isNotEmpty() || _state.value.currentTrack != null) return@launch
+            val index = snapshot.currentIndex.coerceIn(0, snapshot.tracks.lastIndex)
+            originalQueue = snapshot.tracks
+            snapshot.tracks.forEach(playbackResolver::remember)
+            _state.update {
+                it.copy(
+                    queue = snapshot.tracks,
+                    currentIndex = index,
+                    currentTrack = snapshot.tracks[index],
+                    isPlaying = false,
+                    isBuffering = false,
+                    isLoading = false,
+                )
+            }
+            val player = awaitPlayer() ?: return@launch
+            if (player.mediaItemCount == 0) {
+                val currentMime = playbackResolver
+                    .resolve(snapshot.tracks[index])
+                    .getOrNull()
+                    ?.mimeType
+                player.setMediaItems(
+                    mediaItems(snapshot.tracks, index, currentMime),
+                    index,
+                    snapshot.positionMs,
+                )
+                player.repeatMode = repeatMode()
+                preloadNext()
+            }
+        }
+    }
+
+    /**
+     * После потери аудиофокуса (TikTok, звонок) возвращаемся к игре, если
+     * пользователь вернулся в Facet в течение 15 минут и настройка включена.
+     */
+    suspend fun resumeAfterFocusLoss() {
+        val pausedAt = audioFocusPausedAt ?: return
+        if (System.currentTimeMillis() - pausedAt > FOCUS_RESUME_WINDOW_MS) {
+            audioFocusPausedAt = null
+            return
+        }
+        val enabled = runCatching {
+            settingsRepository.settings.first().resumeAfterFocusLoss
+        }.getOrDefault(true)
+        if (!enabled) return
+        val player = awaitPlayer() ?: return
+        if (!player.isPlaying) player.play()
+        audioFocusPausedAt = null
     }
 
     private companion object {
-        /** Сколько раз пробуем подключиться к MusicService до сообщения об ошибке. */
-        const val MAX_CONNECT_ATTEMPTS = 5
-
-        /** Базовая задержка переподключения; удваивается с каждой попыткой. */
-        const val RECONNECT_BASE_DELAY_MS = 500L
-
-        /** Пауза перед первым подключением: даём UI отрисовать первый кадр. */
-        const val COLD_START_CONNECT_DELAY_MS = 600L
-
-        /** Текст ошибки, который снимается при успешном переподключении. */
+        const val MAX_CONSECUTIVE_ERRORS = 3
+        const val FOCUS_RESUME_WINDOW_MS = 15 * 60 * 1000L
         const val PLAYER_UNAVAILABLE_MESSAGE = "Не удалось подключиться к плееру"
-
-        /** Задержка записи очереди в Room: серия быстрых правок даёт одну запись. */
-        const val QUEUE_PERSIST_DEBOUNCE_MS = 500L
     }
 }
 
-/**
- * Откуда пришла текущая очередь — для подписи в шторке очереди.
- */
 enum class QueueOrigin {
-    /** Обычный запуск из поиска, медиатеки, плейлиста. */
     MAIN,
-
-    /** Бесконечная «Моя волна» со вкладки. */
     WAVE,
-
-    /** Радио от конкретного трека («Волна по треку»). */
     WAVE_FROM_TRACK,
 }
 
-/**
- * Снимок состояния плеера и очереди для UI.
- */
 data class PlayerState(
     val currentTrack: Track? = null,
     val isPlaying: Boolean = false,
@@ -977,9 +759,7 @@ data class PlayerState(
     val isBuffering: Boolean = false,
     val playbackState: Int = Player.STATE_IDLE,
     val playbackSpeed: Float = 1.0f,
-    /** Строй в герцах: 440 — стандарт, остальные значения — детюн. */
     val tuningHz: Int = 440,
-    /** Вариация трека: скорость и питч поверх базовой скорости. */
     val variation: PlaybackVariation = PlaybackVariation.NORMAL,
     val queue: List<Track> = emptyList(),
     val currentIndex: Int = -1,

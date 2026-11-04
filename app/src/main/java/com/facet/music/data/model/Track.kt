@@ -1,8 +1,11 @@
 package com.facet.music.data.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * Доменная модель трека — единая для всех источников.
  */
+@Serializable
 data class Track(
     val id: String,
     val source: Source,
@@ -34,6 +37,7 @@ data class Track(
     val sourceCount: Int = 1,
 )
 
+@Serializable
 enum class Source { SOUNDCLOUD, YOUTUBE, SPOTIFY, YANDEX, VK, DEEZER, APPLE, LOCAL }
 
 /**

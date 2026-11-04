@@ -285,6 +285,7 @@ private fun PlayMorphButton(
     FilledIconButton(
         onClick = onClick,
         interactionSource = interaction,
+        enabled = !isBuffering,
         modifier = Modifier
             .size(64.dp)
             .graphicsLayer {

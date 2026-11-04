@@ -12,23 +12,30 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommands
+import androidx.media3.session.SessionResult
 import com.facet.music.MainActivity
+import com.facet.music.core.di.ApplicationScope
+import com.facet.music.core.source.PlaybackResolver
+import com.facet.music.data.repository.LikedTracksRepository
+import com.facet.music.data.repository.QueueRepository
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
- * Foreground-сервис фонового воспроизведения.
- *
- * ExoPlayer создаётся и живёт только здесь. Media3 сам показывает
- * MediaStyle-уведомление и удерживает сервис в foreground, пока играет музыка.
- * Кнопки Prev/Next перенаправляются в очередь [PlayerController].
+ * Foreground-сервис воспроизведения. ExoPlayer владеет очередью, поэтому
+ * переходы между треками и повтор идут без stop()/пересоздания уведомления.
  */
 @UnstableApi
 @AndroidEntryPoint
 class MusicService : MediaSessionService() {
-
-    @Inject
-    lateinit var playerController: PlayerController
 
     @Inject
     lateinit var playbackDataSourceFactory: PlaybackDataSourceFactory
@@ -36,27 +43,42 @@ class MusicService : MediaSessionService() {
     @Inject
     lateinit var loadErrorPolicy: PlaybackLoadErrorPolicy
 
+    @Inject
+    lateinit var queueRepository: QueueRepository
+
+    @Inject
+    lateinit var playbackResolver: PlaybackResolver
+
+    @Inject
+    lateinit var likedTracksRepository: LikedTracksRepository
+
+    @Inject
+    lateinit var trackLikeManager: TrackLikeManager
+
+    @Inject
+    lateinit var coordinator: PlaybackSessionCoordinator
+
+    @Inject
+    @ApplicationScope
+    lateinit var scope: CoroutineScope
+
     private var exoPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     private lateinit var sessionActivity: PendingIntent
 
-    @UnstableApi
     override fun onCreate() {
         super.onCreate()
-
-        // PendingIntent для открытия MainActivity при нажатии на уведомление
-        val activityIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
         sessionActivity = PendingIntent.getActivity(
             this,
             0,
-            activityIntent,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        coordinator.start()
     }
 
-    @UnstableApi
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         mediaSession?.let { return it }
 
@@ -73,9 +95,17 @@ class MusicService : MediaSessionService() {
             .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .setHandleAudioBecomingNoisy(true)
-            // PARTIAL_WAKE_LOCK + Wi-Fi lock: музыка не прерывается при блокировке экрана
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(
+                mediaItem: androidx.media3.common.MediaItem?,
+                reason: Int,
+            ) {
+                mediaSession?.let(::updateLikeButton)
+            }
+        })
 
         val forwardingPlayer = object : ForwardingPlayer(player) {
             override fun isCommandAvailable(command: Int): Boolean {
@@ -95,36 +125,45 @@ class MusicService : MediaSessionService() {
                     .build()
             }
 
-            override fun seekToNext() {
-                playerController.playNext()
-            }
-
-            override fun seekToNextMediaItem() {
-                playerController.playNext()
-            }
-
             override fun seekToPrevious() {
-                playerController.playPrevious()
-            }
-
-            override fun seekToPreviousMediaItem() {
-                playerController.playPrevious()
+                if (player.currentPosition > 3000L || !player.hasPreviousMediaItem()) {
+                    player.seekTo(0L)
+                } else {
+                    player.seekToPreviousMediaItem()
+                }
             }
         }
 
         exoPlayer = player
-        return MediaSession.Builder(this, forwardingPlayer)
+        val session = MediaSession.Builder(this, forwardingPlayer)
             .setSessionActivity(sessionActivity)
             .setCallback(sessionCallback)
+            .setBitmapLoader(ArtworkBitmapLoader(this))
+            .setMediaButtonPreferences(listOf(PlaybackSessionCommands.likeButton(false)))
             .build()
-            .also { mediaSession = it }
+        mediaSession = session
+        updateLikeButton(session)
+        return session
     }
 
-    /**
-     * Свои экраны, уведомление, Bluetooth, Android Auto и SystemUI (Now Bar)
-     * получают полный набор команд. Посторонним контроллерам остаётся только
-     * транспорт: play/pause, переключение и seek.
-     */
+    private fun updateLikeButton(session: MediaSession) {
+        scope.launch {
+            val track = withContext(Dispatchers.Main.immediate) {
+                TrackMediaItem.trackOf(session.player.currentMediaItem)
+            } ?: return@launch
+            val liked = runCatching {
+                likedTracksRepository.isLiked(track.id).first()
+            }.getOrDefault(false)
+            withContext(Dispatchers.Main.immediate) {
+                runCatching {
+                    session.setMediaButtonPreferences(
+                        listOf(PlaybackSessionCommands.likeButton(liked)),
+                    )
+                }
+            }
+        }
+    }
+
     private val sessionCallback = object : MediaSession.Callback {
         override fun onConnect(
             session: MediaSession,
@@ -136,8 +175,12 @@ class MusicService : MediaSessionService() {
                 session.isAutomotiveController(controller) ||
                 session.isAutoCompanionController(controller)
             return if (trusted) {
+                val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
+                    .buildUpon()
+                    .add(PlaybackSessionCommands.LIKE)
+                    .build()
                 MediaSession.ConnectionResult.accept(
-                    MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS,
+                    commands,
                     MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS,
                 )
             } else {
@@ -147,24 +190,77 @@ class MusicService : MediaSessionService() {
                 )
             }
         }
+
+        override fun onPlaybackResumption(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+            scope.launch {
+                val snapshot = runCatching { queueRepository.load() }.getOrNull()
+                if (snapshot == null || snapshot.tracks.isEmpty()) {
+                    future.set(
+                        MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L),
+                    )
+                    return@launch
+                }
+                val index = snapshot.currentIndex.coerceIn(0, snapshot.tracks.lastIndex)
+                snapshot.tracks.forEach(playbackResolver::remember)
+                val current = snapshot.tracks[index]
+                val currentMime = runCatching {
+                    playbackResolver.resolve(current).getOrNull()?.mimeType
+                }.getOrNull()
+                val items = snapshot.tracks.mapIndexed { itemIndex, track ->
+                    TrackMediaItem.create(
+                        track = track,
+                        mimeType = if (itemIndex == index && currentMime != null) {
+                            currentMime
+                        } else {
+                            TrackMediaItem.defaultMimeType(track)
+                        },
+                    )
+                }
+                future.set(
+                    MediaSession.MediaItemsWithStartPosition(
+                        items,
+                        index,
+                        snapshot.positionMs,
+                    ),
+                )
+            }
+            return future
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: androidx.media3.session.SessionCommand,
+            args: android.os.Bundle,
+        ): ListenableFuture<SessionResult> {
+            if (customCommand != PlaybackSessionCommands.LIKE) {
+                return super.onCustomCommand(session, controller, customCommand, args)
+            }
+            scope.launch {
+                val track = withContext(Dispatchers.Main.immediate) {
+                    TrackMediaItem.trackOf(session.player.currentMediaItem)
+                }
+                if (track != null) {
+                    trackLikeManager.toggle(track)
+                    updateLikeButton(session)
+                }
+            }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
     }
 
-    /**
-     * Смахивание задачи из «недавних»: останавливаем сервис, только если ничего
-     * не играет. Иначе фоновое воспроизведение обрывалось вместе с карточкой задачи.
-     */
-    @UnstableApi
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = mediaSession?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
-            stopSelf()
+        if (mediaSession?.player?.isPlaying != true) {
+            pauseAllPlayersAndStopSelf()
         }
         super.onTaskRemoved(rootIntent)
     }
 
-    @UnstableApi
     override fun onDestroy() {
-        // Сначала плеер: сессия не должна обращаться к освобождённому ExoPlayer.
         exoPlayer?.release()
         exoPlayer = null
         mediaSession?.release()

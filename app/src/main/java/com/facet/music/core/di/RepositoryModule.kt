@@ -2,6 +2,8 @@ package com.facet.music.core.di
 
 import com.facet.music.core.location.FusedLocationProvider
 import com.facet.music.core.location.LocationProvider
+import com.facet.music.core.player.MediaSessionPlayerConnection
+import com.facet.music.core.player.PlayerConnection
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
 import com.facet.music.data.source.soundcloud.SoundCloudRepositoryImpl
@@ -27,6 +29,12 @@ abstract class RepositoryModule {
     abstract fun bindYouTubeRepository(
         impl: YouTubeRepositoryImpl,
     ): YouTubeRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPlayerConnection(
+        impl: MediaSessionPlayerConnection,
+    ): PlayerConnection
 
     @Binds
     @Singleton

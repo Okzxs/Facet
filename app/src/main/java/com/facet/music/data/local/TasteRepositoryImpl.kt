@@ -2,6 +2,7 @@ package com.facet.music.data.local
 
 import com.facet.music.data.local.dao.TasteDao
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.TasteContext
 import com.facet.music.data.repository.TasteRepository
 import com.facet.music.data.repository.TasteWeight
 import kotlinx.coroutines.Dispatchers
@@ -18,12 +19,20 @@ class TasteRepositoryImpl @Inject constructor(
     private val tasteDao: TasteDao,
 ) : TasteRepository {
 
-    override suspend fun onTrackFinished(track: Track, playedFraction: Float) {
+    override suspend fun onTrackFinished(
+        track: Track,
+        playedFraction: Float,
+        context: TasteContext,
+    ) {
         if (playedFraction <= FINISHED_THRESHOLD) return
         changeWeight(track, TRACK_FINISHED_DELTA)
     }
 
-    override suspend fun onSkip(track: Track, playedMs: Long) {
+    override suspend fun onSkip(
+        track: Track,
+        playedMs: Long,
+        context: TasteContext,
+    ) {
         if (playedMs >= SKIP_THRESHOLD_MS) return
         changeWeight(track, SKIP_DELTA)
     }

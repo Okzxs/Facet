@@ -33,6 +33,11 @@ class PlaybackCache @Inject constructor(
 
     fun sizeBytes(): Long = cache.cacheSpace
 
+    /** Открыть SimpleCache заранее, чтобы первый кадр не читал базу на main. */
+    fun warmUp() {
+        cache
+    }
+
     fun keyCount(): Int = cache.keys.size
 
     /** Есть ли в кэше хоть один байт трека — нужен для офлайн-фолбэка. */

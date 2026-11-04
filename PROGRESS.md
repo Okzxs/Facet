@@ -1,6 +1,60 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 04.11.2026 (сессия 69, фаза 3)
+## Последнее обновление: 04.11.2026 (сессия 69, фаза 4)
+
+## Сессия 69: глобальный рефакторинг, фаза 4 — очередь в ExoPlayer, сессия и Now Bar
+
+**Статус:** фаза 4 из 11 закрыта; следующие фазы не начаты.
+
+### Что сделано
+- **Очередь в ExoPlayer.** `PlayerController` остался фасадом с `List<Track>`, но `setQueueAndPlay`/`appendToQueue`/`playNext(track)`/`removeTrackAt`/`toggleShuffle` зеркалят очередь в `Player` через `setMediaItems`/`addMediaItems`/`removeMediaItem`/`setMediaItems` с сохранением позиции. Repeat маппится на `Player.REPEAT_MODE_*`, `shuffleModeEnabled=false`, `currentIndex`/`currentTrack` обновляются из `onMediaItemTransition`/`onTimelineChanged`.
+- **MediaItem.** `TrackMediaItem` кладёт `mediaId`, `facet://track/{encoded id}`, `customCacheKey`, `MediaMetadata` (title/artist/albumTitle/artwork/duration) и сериализованный `Track` в `MediaMetadata.extras`; `Track` и `Source` стали `@Serializable`.
+- **Без stop().** Убраны `pause()+stop()` при переходах и ошибках; `MusicService.ForwardingPlayer` больше не вызывает `PlayerController.seekToNext/Previous` — осталась только логика «назад: >3 с → в начало». HLS-очередь получает MIME до `prepare`/через предзагрузку; проверено live на нескольких HLS-треках.
+- **Ошибки.** `onPlayerError` автоматически переходит к следующему треку (до 3 подряд), затем пауза и ошибка; `retryAfterError()` возвращает на сохранённую позицию.
+- **`PlayerConnection`.** MediaController скрыт за интерфейсом `PlayerConnection`/`MediaSessionPlayerConnection`; у `PlayerController` один `@Inject`-конструктор, nullable-зависимостей нет. Подключение сразу, `connect()` ждёт до 3 с.
+- **`PlaybackSessionCoordinator`.** Стартует из `MusicService.onCreate`, живёт в application-scope: история после 30 с или 50 %, вкусы с `TasteContext`, аналитика `TRACK_PLAY`, refill волны, предзагрузка следующего трека, сохранение очереди/индекса/позиции каждые 10 с, на паузе и смене трека. `PlayerViewModel` больше не пишет историю/вкусы/аналитику и не крутит refill.
+- **Восстановление.** `QueueRepository` хранит `positionMs`; `MediaSession.Callback.onPlaybackResumption` отдаёт сохранённую очередь, индекс и позицию. Подключение/Play до готовности контроллера не теряются.
+- **Фокус.** `onPlayWhenReadyChanged` запоминает паузу из-за `AUDIO_FOCUS_LOSS`; при возврате в Facet в течение 15 минут и включённой настройке «Продолжать после других приложений» координатор продолжает с той же позиции. Live: TikTok забрал фокус → пауза, возврат → авто-продолжение.
+- **Now Bar/уведомление.** `ArtworkBitmapLoader` (`CacheBitmapLoader` + масштаб 512 px), кнопка лайка `SessionCommand`/`CommandButton` через `setMediaButtonPreferences`, `onTaskRemoved` → `pauseAllPlayersAndStopSelf()` если не играет. `isPlaying` только из `onIsPlayingChanged`; `isBuffering` включает резолв, кнопка Play блокируется на время загрузки.
+- **Настройки.** Добавлены «Продолжать после других приложений» и «Работа в фоне» с пояснением для Samsung и кнопкой открытия системных настроек приложения. В debug включены disk/network StrictMode; очередь Room и `PlaybackCache` прогреваются вне main.
+
+### Проверка
+- `assembleDebug` — BUILD SUCCESSFUL; `assembleRelease` — BUILD SUCCESSFUL, APK 7 240 235 байт, SHA-256 `19898081e7207747f1cd69136d95fd612e776813eb72550de19926ffb2ff9863`.
+- `testDebugUnitTest` — 47 suite / 272 теста, 0 failures.
+- **Live на SM-A266B (`192.168.1.105:40191`):** release установлен поверх 1.0.0. Восстановленная очередь сразу видна в Now Bar, Play из сессии запускает трек с сохранённой позиции; next по media-кнопке несколько раз переключает HLS-треки без ошибок и без исчезновения уведомления. Кнопка «Нравится» в уведомлении переключает лайк и меняет иконку (`Нравится` ↔ `Убрать лайк`) без краша. TikTok (`com.zhiliaoapp.musically`) забирает фокус — Facet ставится на паузу; возврат в Facet автоматически продолжает с позиции 1:31. Fatal-ошибок в logcat нет.
+
+### Файлы
+```
+AGENTS.md
+app/build.gradle.kts
+app/src/main/java/com/facet/music/FacetApp.kt
+app/src/main/java/com/facet/music/core/analytics/AnalyticsTracker.kt
+app/src/main/java/com/facet/music/core/di/RepositoryModule.kt
+app/src/main/java/com/facet/music/core/player/ArtworkBitmapLoader.kt
+app/src/main/java/com/facet/music/core/player/MediaSessionPlayerConnection.kt
+app/src/main/java/com/facet/music/core/player/MusicService.kt
+app/src/main/java/com/facet/music/core/player/PlaybackSessionCoordinator.kt
+app/src/main/java/com/facet/music/core/player/PlayerConnection.kt
+app/src/main/java/com/facet/music/core/player/PlayerController.kt
+app/src/main/java/com/facet/music/core/player/TrackLikeManager.kt
+app/src/main/java/com/facet/music/core/player/TrackMediaItem.kt
+app/src/main/java/com/facet/music/core/ui/components/ExpressivePlayerComponents.kt
+app/src/main/java/com/facet/music/data/local/QueueRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/model/Track.kt
+app/src/main/java/com/facet/music/data/repository/QueueRepository.kt
+app/src/main/java/com/facet/music/data/repository/SettingsRepository.kt
+app/src/main/java/com/facet/music/data/local/SettingsRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/repository/TasteRepository.kt
+app/src/main/java/com/facet/music/data/local/TasteRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/player/PlayerViewModel.kt
+app/src/main/java/com/facet/music/feature/settings/SettingsScreen.kt
+app/src/main/java/com/facet/music/feature/settings/SettingsViewModel.kt
+app/src/main/res/values/strings.xml
+app/src/main/res/values-ru/strings.xml
+app/src/test/java/com/facet/music/core/player/PlayerControllerQueueTest.kt
+app/src/test/java/com/facet/music/core/player/TrackMediaItemTest.kt
+app/src/test/java/com/facet/music/data/local/QueueRepositoryTest.kt
+```
 
 ## Сессия 69: глобальный рефакторинг, фаза 3 — единый резолвер и кэш Media3
 

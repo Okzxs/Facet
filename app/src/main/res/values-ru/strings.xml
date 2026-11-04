@@ -119,6 +119,11 @@
     <string name="settings_location_denied_hint">Без доступа координаты лайков не сохраняются, а «Воспоминания» не привязываются к месту</string>
     <string name="settings_check_permissions">Проверить разрешения</string>
     <string name="settings_location_footer">Если доступ запрещён, кнопка откроет настройки приложения</string>
+    <string name="settings_background_section">Работа в фоне</string>
+    <string name="settings_focus_resume_title">Продолжать после других приложений</string>
+    <string name="settings_focus_resume_hint">Если воспроизведение прервал TikTok или звонок, Facet продолжит с того же места после возврата (в течение 15 минут).</string>
+    <string name="settings_battery_hint">Если на Samsung музыка останавливается в фоне, уберите Facet из «Спящих приложений» и отключите для него оптимизацию батареи.</string>
+    <string name="settings_battery_open">Открыть настройки приложения</string>
     <string name="settings_downloads_section">Загрузки и кэш</string>
     <string name="settings_quality_title">Качество загрузки</string>
     <string name="settings_quality_hint">Битрейт для скачивания. YouTube выбирает ближайший доступный поток.</string>

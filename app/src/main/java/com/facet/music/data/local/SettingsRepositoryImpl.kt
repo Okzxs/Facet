@@ -92,6 +92,7 @@ class SettingsRepositoryImpl @Inject constructor(
         soundcloudClientId = prefs.getString(KEY_SOUNDCLOUD_CLIENT_ID, null).orEmpty(),
         // Статистика — только по явному согласию.
         analyticsEnabled = prefs.getBoolean(KEY_ANALYTICS_ENABLED, false),
+        resumeAfterFocusLoss = prefs.getBoolean(KEY_RESUME_AFTER_FOCUS_LOSS, true),
     )
 
     /**
@@ -252,6 +253,14 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(analyticsEnabled = enabled) }
     }
 
+    override suspend fun setResumeAfterFocusLoss(enabled: Boolean) {
+        awaitLoaded()
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_RESUME_AFTER_FOCUS_LOSS, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(resumeAfterFocusLoss = enabled) }
+    }
+
     override suspend fun setDownloadQuality(kbps: Int) {
         awaitLoaded()
         val normalized = kbps.takeIf { it in SettingsRepository.DOWNLOAD_QUALITIES } ?: 320
@@ -279,5 +288,6 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_DOWNLOAD_QUALITY = "download_quality"
         const val KEY_SOUNDCLOUD_CLIENT_ID = "soundcloud_client_id"
         const val KEY_ANALYTICS_ENABLED = "analytics_enabled"
+        const val KEY_RESUME_AFTER_FOCUS_LOSS = "resume_after_focus_loss"
     }
 }

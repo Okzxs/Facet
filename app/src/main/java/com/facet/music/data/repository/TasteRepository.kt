@@ -11,6 +11,14 @@ data class TasteWeight(
 )
 
 /**
+ * Контекст прослушивания для вкусового профиля.
+ */
+enum class TasteContext {
+    NORMAL,
+    WAVE,
+}
+
+/**
  * Локальный профиль вкусов «Моей волны».
  *
  * События:
@@ -20,9 +28,17 @@ data class TasteWeight(
  */
 interface TasteRepository {
 
-    suspend fun onTrackFinished(track: Track, playedFraction: Float)
+    suspend fun onTrackFinished(
+        track: Track,
+        playedFraction: Float,
+        context: TasteContext = TasteContext.NORMAL,
+    )
 
-    suspend fun onSkip(track: Track, playedMs: Long)
+    suspend fun onSkip(
+        track: Track,
+        playedMs: Long,
+        context: TasteContext = TasteContext.NORMAL,
+    )
 
     suspend fun onLike(track: Track)
 
