@@ -475,6 +475,7 @@
     <string name="artist_release_tracks">Треки релиза</string>
     <string name="artist_no_tracks">У артиста пока нет треков</string>
     <string name="artist_close">Закрыть</string>
+    <string name="artist_show_more">Показать ещё 5 треков</string>
     <string name="common_close">Закрыть</string>
     <string name="spotify_signed_in_toast">Spotify подключён</string>
     <string name="spotify_import_empty">В вашей библиотеке Spotify пока нет плейлистов</string>

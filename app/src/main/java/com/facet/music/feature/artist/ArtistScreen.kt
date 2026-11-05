@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.rounded.Add
@@ -35,6 +36,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
@@ -246,7 +248,10 @@ fun ArtistScreen(
                         item(key = "artist_tracks_header") {
                             SectionHeader(title = stringResource(R.string.artist_all_tracks))
                         }
-                        items(state.allTracks, key = { it.id }) { track ->
+                        items(
+                            state.allTracks.take(state.visibleTrackCount),
+                            key = { it.id },
+                        ) { track ->
                             TrackCard(
                                 track = track,
                                 isPlaying = track.id == currentTrackId,
@@ -258,18 +263,31 @@ fun ArtistScreen(
                                 onAddToQueue = { handleAddToQueue(track) },
                             )
                         }
-                        if (state.hasMore) {
+                        if (state.visibleTrackCount < state.allTracks.size || state.hasMore) {
                             item(key = "artist_tracks_more") {
-                                LaunchedEffect(state.allTracks.size, state.hasMore) {
-                                    viewModel.loadMore()
-                                }
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 16.dp),
+                                        .padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                    if (state.isLoadingMore) {
+                                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                    } else {
+                                        FilledTonalIconButton(
+                                            onClick = viewModel::showMoreTracks,
+                                            modifier = Modifier.size(40.dp),
+                                            shape = CircleShape,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.ExpandMore,
+                                                contentDescription = stringResource(
+                                                    R.string.artist_show_more,
+                                                ),
+                                                modifier = Modifier.size(24.dp),
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -470,6 +470,7 @@
     <string name="artist_release_tracks">Release tracks</string>
     <string name="artist_no_tracks">No tracks yet</string>
     <string name="artist_close">Close</string>
+    <string name="artist_show_more">Show 5 more tracks</string>
     <string name="common_close">Close</string>
     <string name="spotify_signed_in_toast">Spotify connected</string>
     <string name="spotify_import_empty">No playlists in your Spotify library yet</string>

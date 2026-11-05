@@ -34,6 +34,8 @@ data class ArtistUiState(
     val profile: ArtistProfile? = null,
     val popular: List<Track> = emptyList(),
     val allTracks: List<Track> = emptyList(),
+    /** Сколько треков из «Всех треков» раскрыто стрелкой; шаг — 5. */
+    val visibleTrackCount: Int = 5,
     val releases: List<ArtistRelease> = emptyList(),
     val playlists: List<ArtistPlaylist> = emptyList(),
     val related: List<Artist> = emptyList(),
@@ -121,6 +123,18 @@ class ArtistViewModel @Inject constructor(
 
     fun retry() {
         load()
+    }
+
+    /** Стрелка «Всех треков»: показать ещё пять и при необходимости догрузить страницу. */
+    fun showMoreTracks() {
+        val state = _uiState.value
+        if (state.isLoadingMore) return
+        val next = state.visibleTrackCount + TRACKS_STEP
+        if (next > state.allTracks.size && !state.hasMore) return
+        _uiState.update { it.copy(visibleTrackCount = next) }
+        if (next > state.allTracks.size) {
+            loadMore()
+        }
     }
 
     fun loadMore() {
@@ -253,6 +267,13 @@ class ArtistViewModel @Inject constructor(
                 profile = page.profile,
                 popular = page.popular,
                 allTracks = page.allTracks,
+                visibleTrackCount = if (current.profile?.key == page.profile.key) {
+                    current.visibleTrackCount
+                        .coerceAtMost(page.allTracks.size)
+                        .coerceAtLeast(TRACKS_STEP)
+                } else {
+                    TRACKS_STEP
+                },
                 releases = page.releases.ifEmpty { current.releases },
                 playlists = page.playlists.ifEmpty { current.playlists },
                 related = page.related.ifEmpty { current.related },
@@ -294,6 +315,10 @@ class ArtistViewModel @Inject constructor(
                 persist()
             }
         }
+    }
+
+    private companion object {
+        const val TRACKS_STEP = 5
     }
 
     private suspend fun persist() {
