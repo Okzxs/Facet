@@ -51,7 +51,7 @@ com.facet.music
 │   ├── model/           # Доменные модели (Track, Source, LyricLine…)
 │   ├── repository/      # Интерфейсы репозиториев
 │   └── source/
-│       └── soundcloud/  # SoundCloudRepositoryImpl (через NewPipe)
+│       └── soundcloud/  # SoundCloudApi (api-v2) + SoundCloudRepositoryImpl
 ├── feature/
 │   ├── home/            # HomeScreen + HomeViewModel
 │   ├── search/          # SearchScreen + SearchViewModel
@@ -71,7 +71,7 @@ com.facet.music
 
 | Источник | Метод | Версия |
 |----------|-------|--------|
-| **SoundCloud** | NewPipe Extractor (полный стрим) | ✅ v1 |
+| **SoundCloud** | api-v2 (лёгкий резолв) + NewPipe (фолбэк) | ✅ v1 |
 | **YouTube** | NewPipe Extractor (полный стрим) | ✅ v1 |
 | **Spotify** | Web API OAuth 2.0 PKCE (поиск; стрим через YouTube) | v2 |
 | **Deezer** | Метаданные: новинки, альбомы, артисты, импорт (без потока) | v1 |
@@ -79,6 +79,22 @@ com.facet.music
 | Last.fm (похожие артисты) | Web API | ✅ v1 |
 | Яндекс Музыка | Неофициальный API | v2 |
 | ВК Музыка | VK API | v2 |
+
+---
+
+## Сессия 69, фаза 5: сеть, NewPipe и SoundCloud (05.11.2026)
+
+- **Два клиента.** `@ApiClient` (connect 10 / read 15 / callTimeout 20 с, `Accept: application/json`, `RetryInterceptor`) и `@MediaClient` (connect 15 / read 30, `callTimeout = 0`, `retryOnConnectionFailure`) строятся от общего базового `OkHttpClient` через `newBuilder()` — пул соединений и диспетчер общие. `DownloadTrackWorker` больше не создаёт свой `DOWNLOAD_CLIENT`, а берёт `@MediaClient` через `DownloadWorkerEntryPoint`. `NewPipeDownloader` тоже на медиа-клиенте.
+- **Повторы.** `RetryInterceptor` только для GET: 429/503 — до двух повторов, остальные 5xx — один; `Retry-After` в секундах или HTTP-дате, не больше 10 с; иначе экспоненциальный backoff 500 мс с jitter.
+- **Отмена NewPipe.** `withCancellation` оборачивает блок в `runInterruptible(Dispatchers.IO)`, ThreadLocal активных `Call` ставится внутри этого блока, а `Job.invokeOnCompletion(onCancelling = true, invokeImmediately = true)` отменяет `Call` в момент отмены. Тест `NewPipeDownloaderCancellationTest` подтверждает отмену зависшего запроса быстрее 500 мс.
+- **SoundCloud без StreamInfo.** Основной путь — `SoundCloudApi` на api-v2: `/tracks/{id}` (если числовой id уже известен из поиска) или `/resolve?url=`, `media.transcodings`, затем подписанный URL с `client_id` и `track_authorization`. Приоритет: progressive `audio/mpeg` → HLS `audio/mpeg`/`audio/mpegurl` → HLS Opus/AAC; `snipped` и `ctr/cbc-encrypted-hls` пропускаются. Если первый endpoint отвечает 404 (частый `abr_sq`), пробуется следующий транскодинг. `StreamInfo` — только запасной путь при ошибке разбора JSON, не при сетевой ошибке.
+- **client_id.** `SoundCloudClientIdProvider` кэширует значение в DataStore (`soundcloud_client`) с TTL 24 ч, память + single-flight `Mutex`; при 401/403/404 кэш сбрасывается и запрос повторяется один раз. Прогрев — в `applicationScope` после первого кадра (`ProcessLifecycleOwner`). `SoundcloudParsingHelper.clientId()` остаётся последним фолбэком, его статический кэш сбросить нельзя.
+- **Ошибки.** `SoundCloudFailure` (GEO_BLOCKED, SUBSCRIPTION_ONLY, PROGRESSIVE_UNAVAILABLE, UNAVAILABLE, PARSE, HTTP) превращается в `ResolveException`; `catch (Throwable)` убран, `CancellationException` пробрасывается. Трек с `policy = SNIP`/`SUB_HIGH_TIER` получает `isSubscriptionOnly`, бейдж «Go+» в поиске и не попадает в волну; попытка играть даёт `SubscriptionOnly`, а не 30-секундный сниппет. `Track.externalId` хранит числовой id, `Track.isSubscriptionOnly` — флаг Go+ (новых колонок Room нет).
+- **Сроки ссылок.** `StreamExpiry` разбирает `expire`/`expires`; `AudioStreamResult.expiresAtMs` доходит до `ResolvedStream`, YouTube и SoundCloud отдают реальный TTL. В логах нет URL.
+- **Сводный поиск.** `SearchViewModel` отдаёт источники через `channelFlow` по мере ответа: первый непустой результат сразу на экране, новые вливаются `TrackMerger.mergeKeepingOrder` без перестановки уже показанных строк. На источник — `withTimeoutOrNull(6_000)`; «ничего не найдено» (успешные пустые ответы) отличается от «все источники с ошибкой».
+- **Статусы и офлайн.** `ServiceStatusManager` больше не вызывается из `FacetApp.onCreate` и из ошибок поиска: проверка ленивая (поиск/панель статусов) и не чаще раза в 10 минут, через лёгкий HEAD (`ServiceProbe`), а не полноценный поиск. `ConnectivityObserver` (`ConnectivityManager.NetworkCallback`) даёт `StateFlow<Boolean>`; при отсутствии сети в поиске показывается офлайн-баннер, поиск не уходит в шторм запросов и повторяется при возврате сети.
+- **Кэш Media3.** Каталог переименован в `media3_cache_v2`: старый кэш фазы 3 мог содержать progressive-поток под ключом трека и ломал HLS (`Input does not start with the #EXTM3U header`). Старый `media3_cache` удаляется в `FacetApp` в фоне; `PlaybackCache.remove(trackId)` вызывается и при 401/403/404/410.
+- **Проверка.** `assembleDebug`/`assembleRelease` — BUILD SUCCESSFUL, 52 suite / 294 теста, 0 failures; release APK 7 389 634 байт, SHA-256 `6078b666a8ce5c85e50bd2aa0e557963ec010351648eba4e8669c9f906735703`. Live на SM-A266B: поиск SoundCloud через api-v2, HLS `type london` и ODESZA играют с первого нажатия, `abr_sq` 404 автоматически уходит на AAC, Go+ помечается бейджем и не играет 30 секунд, сводный поиск отдаёт 38 результатов с «+1», статусы — SoundCloud/YouTube онлайн, Spotify без ключей ожидаемо недоступен. Fresh install + старый кэш: восстановленная очередь ODESZA играет.
 
 ---
 
@@ -134,7 +150,7 @@ com.facet.music
 - Внешние источники: `core/source/PlayableSource` (+ `PlayableSourceRegistry`, регистрация `@IntoSet` в `core/di/MusicSourceModule`); YouTube, SoundCloud и Spotify (последний — только метаданные). Deezer — `DeezerMetadataClient`: новинки, альбомы, артисты и импорт плейлистов, `streamUrl = null`; Apple-провайдер удалён. `Source.DEEZER`/`APPLE` остались в enum только для чтения старых строк БД; `Source.isMetadataOnly` (Deezer/Apple/Spotify) заставляет `PlaybackResolver` не играть `streamUrl`, а искать полную версию через `TrackMatcher` (порог 5.0, допуск ±7 с, штрафы cover/remix/live/nightcore/sped up/slowed/karaoke, бонус official/topic, ISRC). `PlayerController` больше не содержит `when` по источникам: он всегда зовёт `PlaybackResolver`, а MediaItem получает URI `facet://track/{id}`. `ServiceType` = SOUNDCLOUD/YOUTUBE/SPOTIFY и несёт `source`.
 - Сеть внешних источников: `RateLimiter` (`awaitSlot()` / `acquire { }`, 1000 мс, `Mutex` + `delay` — главный поток не блокируется) по одному на источник через `@SourceRateLimiter` и `RateLimiterModule`; у Spotify лимитер общий для поиска и запроса токена. Успешный ответ поиска кэшируется сырым JSON в Room (`search_cache`, TTL 24 ч), ошибки сети не кэшируются, health-проверка идёт мимо кэша (`useCache = false`) — сессия 56.
 - Кнопки источников в поиске — 3 иконки 42×42dp (SoundCloud, YouTube, Spotify; радиус `MaterialTheme.shapes.medium`) в брендовых цветах с шагом 6dp; кнопка статусов 40dp. При выбранном «Все источники» ряд скрыт. Spotify без ключей неактивен (`ServiceHealth.isConfigured`). Иконки — VectorDrawable `ic_brand_*` из Simple Icons (CC0), у недоступного сервиса alpha 0.4, у активного фон 0.25 + рамка 2dp (сессии 55, 67, 69).
-- Локализация: весь UI-текст — только `stringResource`/`pluralStringResource`; EN — `values/strings.xml`, RU — `values-ru/strings.xml` (398 ключей, наборы обязаны совпадать). Не переводятся названия брендов, URL, логи и константы ошибок ViewModel/движка (`DownloadMessages`, `PlaybackErrorMessages`, `*_FAILED_MESSAGE`) — они приходят в UI готовыми строками (сессия 55).
+- Локализация: весь UI-текст — только `stringResource`/`pluralStringResource`; EN — `values/strings.xml`, RU — `values-ru/strings.xml` (401 ключ, наборы обязаны совпадать). Не переводятся названия брендов, URL, логи и константы ошибок ViewModel/движка (`DownloadMessages`, `PlaybackErrorMessages`, `*_FAILED_MESSAGE`) — они приходят в UI готовыми строками (сессия 55).
 - Поиск: `SearchHistoryStore` (SharedPreferences `search_history`, 8 записей) — чипсы «Недавние»; пустая выдача предлагает другие источники; карточка показывает длительность и жанр. Рекомендации: исключаются лайки/история/скачанное, дедуп по `(artist, title)`, волна фильтрует дизлайки, холодный старт — чарт SoundCloud, YouTube-поиск — последний фолбэк (сессия 53).
 
 ---
@@ -195,6 +211,8 @@ data class Track(
     val genre: String?,
     val liked: Boolean = false,
     val transcodingUrl: String? = null, // SC: URL страницы трека для resolve
+    val externalId: String? = null,     // SC: числовой id для /tracks/{id}
+    val isSubscriptionOnly: Boolean = false, // SoundCloud Go+
 )
 ```
 

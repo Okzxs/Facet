@@ -4,11 +4,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import com.facet.music.core.network.NetworkModule
+import com.facet.music.core.network.MediaClient
 import com.facet.music.core.source.PlaybackResolver
 import okhttp3.OkHttpClient
 import javax.inject.Inject
-import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -20,7 +19,7 @@ import javax.inject.Singleton
 class PlaybackDataSourceFactory @Inject constructor(
     cache: PlaybackCache,
     resolver: PlaybackResolver,
-    @Named(NetworkModule.MEDIA_CLIENT) client: OkHttpClient,
+    @MediaClient client: OkHttpClient,
 ) {
 
     val cacheDataSourceFactory: CacheDataSource.Factory = CacheDataSource.Factory()

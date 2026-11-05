@@ -9,6 +9,7 @@ import com.facet.music.core.import.PlaylistLinkParser
 import com.facet.music.core.import.PlaylistPayloadParser
 import com.facet.music.core.import.ProfileLinkParser
 import com.facet.music.core.import.ProfilePlaylist
+import com.facet.music.core.network.ApiClient
 import com.facet.music.core.network.RateLimiter
 import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
@@ -80,7 +81,7 @@ interface PlaylistImportService {
  */
 @Singleton
 class PlaylistImportServiceImpl @Inject constructor(
-    private val client: OkHttpClient,
+    @ApiClient private val client: OkHttpClient,
     private val json: Json,
     private val spotifyProvider: SpotifyProvider,
     @SourceRateLimiter(RateLimiterKeys.DEEZER) private val deezerRateLimiter: RateLimiter,

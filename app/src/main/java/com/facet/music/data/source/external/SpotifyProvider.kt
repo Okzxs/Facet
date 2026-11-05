@@ -1,12 +1,14 @@
 package com.facet.music.data.source.external
 
 import android.util.Log
+import com.facet.music.core.network.ApiClient
 import com.facet.music.core.network.RateLimiter
 import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
 import com.facet.music.core.source.PlayableSource
 import com.facet.music.core.source.SourceCapabilities
 import com.facet.music.core.spotify.SpotifyPlaylistSummary
+import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.SearchCacheRepository
@@ -63,7 +65,7 @@ data class SpotifyPlaylist(
  */
 @Singleton
 class SpotifyProvider @Inject constructor(
-    private val client: OkHttpClient,
+    @ApiClient private val client: OkHttpClient,
     private val json: Json,
     private val settingsRepository: SettingsRepository,
     private val spotifyAuth: SpotifyAuthRepository,
@@ -107,7 +109,10 @@ class SpotifyProvider @Inject constructor(
             if (page > 1) return@withContext Result.success(emptyList())
             runCatching {
                 loadTracks(query = query, limit = limit, useCache = useCache)
-            }.onFailure { error -> Log.w(TAG, "Поиск Spotify не удался: ${error.message}") }
+            }.onFailure { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                Log.w(TAG, "Поиск Spotify не удался: ${error.message}")
+            }.rethrowCancellation()
         }
 
     /**

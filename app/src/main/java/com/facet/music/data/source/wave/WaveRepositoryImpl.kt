@@ -382,6 +382,7 @@ class WaveRepositoryImpl @Inject constructor(
                 .search(query = artist, limit = SIMILAR_SEARCH_LIMIT)
                 .getOrNull()
                 .orEmpty()
+                .filter { !it.isSubscriptionOnly }
                 .filter { it.id.isNotBlank() && it.id !in excludedIds }
 
             // Сначала берём треки самого искомого артиста, и только если их нет —
@@ -418,6 +419,7 @@ class WaveRepositoryImpl @Inject constructor(
                 .search(query = genre, limit = GENRE_SEARCH_LIMIT)
                 .getOrNull()
                 .orEmpty()
+                .filter { !it.isSubscriptionOnly }
                 .filter { it.id.isNotBlank() && it.id !in excludedIds }
 
             // Точное попадание в жанр приоритетнее: SoundCloud по слову «rap»

@@ -1,9 +1,19 @@
-# Активный контекст — Обновлено 04.11.2026
+# Активный контекст — Обновлено 05.11.2026
 
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 69, фаза 4 (04.11.2026): очередь в ExoPlayer, `PlaybackSessionCoordinator`, Now Bar/лайк и восстановление; 47 suite / 272 теста | Фаза 5 — по команде пользователя |
+| Facet | активен  | Сессия 69, фаза 5 (05.11.2026): сеть, NewPipe и SoundCloud; 52 suite / 294 теста | Фаза 6 — по команде пользователя |
+
+### Сессия 69, фаза 5: сеть, NewPipe и SoundCloud
+- **Клиенты:** `@ApiClient` (10/15/20 с, `Accept: application/json`, retry) и `@MediaClient` (15/30/0 с, retryOnConnectionFailure) от общего base через `newBuilder()`. NewPipe и загрузки — на медиа-клиенте; `DOWNLOAD_CLIENT` удалён, воркер получает клиент через EntryPoint.
+- **Retry:** `RetryInterceptor` только GET, 429/503 до 2 раз, прочие 5xx один, Retry-After ≤10 с, backoff+jitter.
+- **Отмена NewPipe:** `runInterruptible(Dispatchers.IO)` + `invokeOnCompletion(onCancelling=true)` отменяет активные Call; тест <500 мс.
+- **SoundCloud:** основной путь api-v2 `/tracks/{id}` или `/resolve` → transcodings (progressive MP3 → HLS MP3 → HLS Opus/AAC; snipped/encrypted skip) → URL с `client_id` + `track_authorization`; 404 транскодинга пробует следующий, 404 `/tracks` уходит в `/resolve`. `StreamInfo` — только при ошибке разбора JSON. client_id в DataStore TTL 24 ч, сброс на 401/403/404, прогрев после первого кадра. Go+-треки (`policy=SNIP`) получают `isSubscriptionOnly`, бейдж «Go+», не попадают в волну и не играют 30 секунд. `Track.externalId` — числовой id, `AudioStreamResult.expiresAtMs` — реальный TTL.
+- **Поиск:** сводный поиск через `channelFlow`, первый источник сразу на экране, `mergeKeepingOrder` не прыгает скроллом, таймаут 6 с на источник; различаются «пусто» и «все упали».
+- **Статусы/офлайн:** `ServiceProbe` HEAD-запрос, `ensureFresh` не чаще 10 минут, без вызова из `FacetApp` и ошибок поиска; `ConnectivityObserver` и офлайн-баннер.
+- **Кэш:** каталог `media3_cache_v2`, старый `media3_cache` удаляется; `PlaybackCache.remove` на 401/403/404/410.
+- **Проверка:** 52 suite / 294 теста, 0 failures; release APK 7 389 634 байт (SHA-256 `6078b666…5703`). Live: ODESZA и `type london` с первого нажатия, abr_sq→AAC fallback, Go+ без 30 секунд, all-sources 38 результатов, статусы, восстановленная очередь после старого кэша.
 
 ### Сессия 69, фаза 4: очередь в ExoPlayer, сессия и Now Bar
 - **Очередь:** `PlayerController` зеркалит `List<Track>` в ExoPlayer (`setMediaItems`/`addMediaItems`/`removeMediaItem`), repeat через `Player.REPEAT_MODE_*`, shuffle выключен; `currentIndex`/`currentTrack` из callbacks. `MediaItem` — `facet://track/{id}`, custom cache key, `MediaMetadata` + сериализованный `Track` в extras (`TrackMediaItem`).

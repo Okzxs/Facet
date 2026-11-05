@@ -13,10 +13,8 @@ import com.facet.music.data.model.Track
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
  * Фоновое скачивание трека в приватное хранилище приложения.
@@ -61,7 +59,7 @@ class DownloadTrackWorker(
                 setProgress(progressData(0f))
                 val engine = DownloadEngine(
                     downloadsDir = File(applicationContext.filesDir, DOWNLOADS_DIR),
-                    client = DOWNLOAD_CLIENT,
+                    client = entryPoint.mediaClient(),
                     resolve = entryPoint.downloadSourceResolver()::resolve,
                     save = { downloaded, mediaUrl, mimeType ->
                         entryPoint.downloadRepository().save(downloaded, mediaUrl, mimeType)
@@ -202,15 +200,5 @@ class DownloadTrackWorker(
         private const val HEX = "0123456789abcdef"
 
         fun progressData(progress: Float) = workDataOf(KEY_PROGRESS to progress.coerceIn(0f, 1f))
-
-        private val DOWNLOAD_CLIENT: OkHttpClient by lazy {
-            OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                // Общий лимит на весь запрос не ставим: трек может качаться минутами
-                .callTimeout(0, TimeUnit.MILLISECONDS)
-                .retryOnConnectionFailure(true)
-                .build()
-        }
     }
 }

@@ -30,6 +30,15 @@ class SoundCloudPlayableSource @Inject constructor(
     }
 
     override suspend fun resolveStream(track: Track): Result<ResolvedStream> {
+        if (track.isSubscriptionOnly) {
+            return Result.failure(
+                ResolveException(
+                    ResolveError.SubscriptionOnly,
+                    "Трек доступен только по подписке SoundCloud Go",
+                ),
+            )
+        }
+
         val pageUrl = listOf(track.transcodingUrl, track.streamUrl, track.id)
             .filterNotNull()
             .firstOrNull { it.isHttpUrl() }
@@ -37,12 +46,16 @@ class SoundCloudPlayableSource @Inject constructor(
                 ResolveException(ResolveError.NotAvailable, "Нет ссылки SoundCloud для трека"),
             )
 
-        return repository.resolveStreamUrl(pageUrl).map { stream ->
+        return repository.resolveStreamUrl(
+            transcodingUrl = pageUrl,
+            numericId = track.externalId,
+        ).map { stream ->
             ResolvedStream(
                 url = stream.url,
                 mimeType = stream.mimeType,
                 isHls = stream.isHls,
-                expiresAtMs = System.currentTimeMillis() + SOUNDCLOUD_TTL_MS,
+                expiresAtMs = stream.expiresAtMs
+                    ?: System.currentTimeMillis() + SOUNDCLOUD_TTL_MS,
                 source = Source.SOUNDCLOUD,
             )
         }

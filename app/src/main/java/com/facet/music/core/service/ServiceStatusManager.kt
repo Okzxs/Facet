@@ -2,8 +2,6 @@ package com.facet.music.core.service
 
 import android.util.Log
 import com.facet.music.core.source.PlayableSourceRegistry
-import com.facet.music.data.repository.SoundCloudRepository
-import com.facet.music.data.repository.YouTubeRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,15 +21,14 @@ import javax.inject.Singleton
 /**
  * Глобальный монитор доступности музыкальных сервисов.
  *
- * Проверка намеренно лёгкая: поиск `"test"` с лимитом 1. Этого достаточно,
- * чтобы понять, отвечает ли API, и не тратить трафик на полную страницу.
- * Состояние живёт в Singleton и переживает пересоздание ViewModel/экранов.
+ * Проверка ленивая: при открытии поиска/панели статусов и не чаще раза
+ * в 10 минут. Это лёгкий HEAD, а не полноценный поиск. Состояние живёт
+ * в Singleton и переживает пересоздание ViewModel/экранов.
  */
 @Singleton
 class ServiceStatusManager @Inject constructor(
-    private val soundCloudRepository: SoundCloudRepository,
-    private val youTubeRepository: YouTubeRepository,
     private val sourceRegistry: PlayableSourceRegistry,
+    private val probe: ServiceProbe,
 ) {
 
     private val tag = "ServiceStatus"
@@ -44,6 +41,9 @@ class ServiceStatusManager @Inject constructor(
     @Volatile
     private var checkJob: Job? = null
 
+    @Volatile
+    private var lastCheckAtMs: Long = 0L
+
     // Пока первая проверка не завершилась, показываем спиннер, а не ложную ошибку.
     private val _statuses = MutableStateFlow(
         ServiceType.entries.associateWith { ServiceHealth(isChecking = true) },
@@ -51,19 +51,17 @@ class ServiceStatusManager @Inject constructor(
     val statuses: StateFlow<Map<ServiceType, ServiceHealth>> = _statuses.asStateFlow()
 
     /**
-     * Запускает проверку всех сервисов, если она ещё не идёт.
-     * Вызывается при старте приложения и после ошибок поиска.
+     * Вызывается при открытии поиска или панели статусов. Повторный запуск
+     * в течение 10 минут ничего не делает.
      */
     @Synchronized
-    fun checkAllServices() {
+    fun ensureFresh() {
         if (checkJob?.isActive == true) return
+        if (System.currentTimeMillis() - lastCheckAtMs < FRESHNESS_MS) return
         checkJob = scope.launch { runChecks() }
     }
 
-    /**
-     * Принудительное обновление из UI: отменяет текущую проверку
-     * и запускает новую.
-     */
+    /** Принудительное обновление из UI: отменяет текущую проверку. */
     @Synchronized
     fun refreshStatus() {
         checkJob?.cancel()
@@ -85,19 +83,16 @@ class ServiceStatusManager @Inject constructor(
         }
     }
 
-    /**
-     * Сама проверка. Видна тестам; в приложении вызывается только через
-     * [checkAllServices] или [refreshStatus].
-     */
+    /** Видна тестам; в приложении вызывается через ensureFresh/refreshStatus. */
     internal suspend fun runChecks() {
         checkMutex.withLock {
+            lastCheckAtMs = System.currentTimeMillis()
             _statuses.update { current ->
                 ServiceType.entries.associateWith { type ->
                     (current[type] ?: ServiceHealth()).copy(isChecking = true)
                 }
             }
 
-            // Сервисы проверяются параллельно, чтобы меню не ждало два таймаута.
             coroutineScope {
                 ServiceType.entries.forEach { type ->
                     launch {
@@ -116,28 +111,12 @@ class ServiceStatusManager @Inject constructor(
 
     private suspend fun checkService(type: ServiceType): ServiceHealth =
         try {
-            // Источники с собственным провайдером проверяются через реестр,
-            // остальные — через свои репозитории.
             val provider = sourceRegistry.provider(type.source)
-            if (provider != null) {
-                // Ненастроенный источник (Spotify без ключей) недоступен по
-                // определению — сеть не дёргаем, чтобы не ждать таймаут.
-                if (!provider.isConfigured()) {
-                    Log.d(tag, "${type.displayName}: источник не настроен")
-                    ServiceHealth(isAvailable = false, isConfigured = false)
-                } else {
-                    val result = provider.search(HEALTH_QUERY, HEALTH_LIMIT, useCache = false)
-                    ServiceHealth(isAvailable = result.isSuccess)
-                }
+            if (provider != null && !provider.isConfigured()) {
+                Log.d(tag, "${type.displayName}: источник не настроен")
+                ServiceHealth(isAvailable = false, isConfigured = false)
             } else {
-                val result = when (type) {
-                    ServiceType.SOUNDCLOUD -> soundCloudRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
-                    ServiceType.YOUTUBE -> youTubeRepository.search(HEALTH_QUERY, HEALTH_LIMIT)
-                    ServiceType.SPOTIFY -> Result.failure(
-                        IllegalStateException("Нет провайдера для ${type.displayName}"),
-                    )
-                }
-                ServiceHealth(isAvailable = result.isSuccess)
+                ServiceHealth(isAvailable = probe.isReachable(type))
             }
         } catch (e: CancellationException) {
             throw e
@@ -147,7 +126,6 @@ class ServiceStatusManager @Inject constructor(
         }
 
     private companion object {
-        const val HEALTH_QUERY = "test"
-        const val HEALTH_LIMIT = 1
+        const val FRESHNESS_MS = 10 * 60 * 1000L
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.facet.music.core.navigation.NavigationEvents
 import com.facet.music.core.navigation.SearchIntent
+import com.facet.music.core.network.ConnectivityObserver
 import com.facet.music.core.search.SearchHistoryStore
 import com.facet.music.core.service.ServiceHealth
 import com.facet.music.core.service.ServiceStatusManager
@@ -22,16 +23,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
 import javax.inject.Inject
 
 data class SearchUiState(
@@ -44,6 +45,8 @@ data class SearchUiState(
     val allSources: Boolean = false,
     /** Последние запросы — показываются чипсами, пока поле пустое. */
     val recentQueries: List<String> = emptyList(),
+    /** Нет сети: вместо шторма ошибок показываем баннер. */
+    val isOffline: Boolean = false,
 )
 
 /** Запрос поиска: источник входит в ключ, чтобы смена сервиса перезапускала поиск. */
@@ -61,6 +64,7 @@ class SearchViewModel @Inject constructor(
     private val sourceRegistry: PlayableSourceRegistry,
     private val searchHistoryStore: SearchHistoryStore,
     private val serviceStatusManager: ServiceStatusManager,
+    private val connectivityObserver: ConnectivityObserver,
     private val navigationEvents: NavigationEvents,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
@@ -94,6 +98,19 @@ class SearchViewModel @Inject constructor(
     private var directRequest: SearchRequest? = null
 
     init {
+        serviceStatusManager.ensureFresh()
+
+        viewModelScope.launch {
+            var wasOffline = !connectivityObserver.isOnline.value
+            connectivityObserver.isOnline.collect { online ->
+                _uiState.update { it.copy(isOffline = !online) }
+                if (online && wasOffline && _uiState.value.error == OFFLINE_MESSAGE) {
+                    retry()
+                }
+                wasOffline = !online
+            }
+        }
+
         // Без distinctUntilChanged: при быстром переключении источник может
         // вернуться к прежнему значению, и поиск всё равно должен перезапуститься.
         requestFlow
@@ -259,6 +276,16 @@ class SearchViewModel @Inject constructor(
 
     private fun startSearch(request: SearchRequest) {
         searchJob?.cancel()
+        if (!connectivityObserver.isOnline.value) {
+            _uiState.update { state ->
+                if (state.matches(request)) {
+                    state.copy(isLoading = false, error = OFFLINE_MESSAGE, results = emptyList())
+                } else {
+                    state
+                }
+            }
+            return
+        }
         searchJob = viewModelScope.launch {
             performSearch(request)
         }
@@ -267,15 +294,14 @@ class SearchViewModel @Inject constructor(
     private suspend fun performSearch(request: SearchRequest) {
         _uiState.update { it.copy(isLoading = true, error = null) }
 
-        val result = if (request.allSources) {
-            searchAllSources(request.query)
-        } else {
-            searchInSource(request.service, request.query)
+        if (request.allSources) {
+            performAllSourcesSearch(request)
+            return
         }
 
-        result
+        searchInSource(request.service, request.query)
             .onSuccess { tracks ->
-                if (!request.allSources) serviceStatusManager.markAvailable(request.service)
+                serviceStatusManager.markAvailable(request.service)
                 searchHistoryStore.add(request.query)
                 _uiState.update { state ->
                     if (state.matches(request)) {
@@ -296,46 +322,99 @@ class SearchViewModel @Inject constructor(
                     if (state.matches(request)) {
                         state.copy(
                             isLoading = false,
-                            error = if (request.allSources) {
-                                error.message ?: "неизвестная ошибка"
-                            } else {
-                                "${request.service.displayName}: " +
-                                    (error.message ?: "неизвестная ошибка")
-                            },
+                            error = "${request.service.displayName}: " +
+                                (error.message ?: "неизвестная ошибка"),
                         )
                     } else {
                         state
                     }
                 }
-                // Ошибка поиска — повод перепроверить доступность сервисов
-                serviceStatusManager.checkAllServices()
             }
     }
 
     /**
-     * Параллельный поиск по всем источникам. Ошибка одного сервиса не рушит
-     * выдачу: остальные результаты всё равно показываем, а «пусто» считаем
-     * ошибкой только если не ответил никто.
+     * Сводный поиск отдаёт источники по мере ответа: первый непустой
+     * результат сразу на экране, следующие вливаются через TrackMerger без
+     * перестановки уже показанных строк (иначе прыгает скролл). Каждый
+     * источник ограничен 6 секундами, ошибка одного не рушит выдачу.
      */
-    private suspend fun searchAllSources(query: String): Result<List<Track>> = coroutineScope {
-        val outcomes = ServiceType.entries
-            .map { service -> async { service to searchInSource(service, query) } }
-            .awaitAll()
+    private suspend fun performAllSourcesSearch(request: SearchRequest) {
+        val groups = LinkedHashMap<ServiceType, List<Track>>()
+        var displayed = emptyList<Track>()
+        var completed = 0
+        var successes = 0
+        val total = ServiceType.entries.size
 
-        outcomes.forEach { (service, result) ->
-            if (result.isSuccess) serviceStatusManager.markAvailable(service)
-        }
+        channelFlow {
+            ServiceType.entries.forEach { service ->
+                launch {
+                    val result = withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                        try {
+                            searchInSource(service, request.query)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Result.failure(e)
+                        }
+                    } ?: Result.failure(IOException("timeout"))
+                    send(service to result)
+                }
+            }
+        }.collect { (service, result) ->
+            completed++
+            val tracks = result.getOrNull()
+            if (tracks != null) {
+                successes++
+                groups[service] = tracks
+                serviceStatusManager.markAvailable(service)
+                displayed = TrackMerger.mergeKeepingOrder(displayed, groups.values.toList())
+                if (displayed.isNotEmpty()) {
+                    _uiState.update { state ->
+                        if (state.matches(request)) {
+                            state.copy(results = displayed, isLoading = false, error = null)
+                        } else {
+                            state
+                        }
+                    }
+                }
+            }
 
-        val merged = TrackMerger.merge(outcomes.map { it.second.getOrNull().orEmpty() })
-        if (merged.isEmpty()) {
-            Result.failure(IllegalStateException("Ничего не найдено ни в одном источнике"))
-        } else {
-            Result.success(merged)
+            if (completed == total) {
+                searchHistoryStore.add(request.query)
+                val error = if (displayed.isEmpty() && successes == 0) {
+                    ALL_SOURCES_FAILED_MESSAGE
+                } else {
+                    null
+                }
+                _uiState.update { state ->
+                    if (state.matches(request)) {
+                        state.copy(
+                            results = displayed,
+                            isLoading = false,
+                            error = error,
+                            recentQueries = searchHistoryStore.recent(),
+                        )
+                    } else {
+                        state
+                    }
+                }
+            }
         }
+    }
+
+    /** Открытие панели статусов: проверка не чаще раза в 10 минут. */
+    fun onStatusPanelOpened() {
+        serviceStatusManager.ensureFresh()
     }
 
     private fun SearchUiState.matches(request: SearchRequest): Boolean =
         query == request.query &&
             selectedService == request.service &&
             allSources == request.allSources
+
+    private companion object {
+        const val SOURCE_TIMEOUT_MS = 6_000L
+        const val OFFLINE_MESSAGE = "Нет подключения к интернету"
+        const val ALL_SOURCES_FAILED_MESSAGE = "Все источники недоступны. Проверьте подключение."
+    }
 }

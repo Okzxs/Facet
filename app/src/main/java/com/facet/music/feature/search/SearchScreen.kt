@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.TextButton
@@ -236,8 +237,17 @@ fun SearchScreen(
                 onSelect = viewModel::onServiceSelected,
                 onAllSourcesSelect = viewModel::onAllSourcesSelected,
                 onRefreshStatuses = viewModel::refreshStatuses,
+                onStatusOpened = viewModel::onStatusPanelOpened,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp),
             )
+
+            AnimatedVisibility(
+                visible = state.isOffline,
+                enter = fadeIn(tween(180)) + expandVertically(),
+                exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
+            ) {
+                OfflineBanner(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            }
 
             AnimatedVisibility(
                 visible = state.query.isBlank() && state.recentQueries.isNotEmpty(),
@@ -346,6 +356,38 @@ private fun SearchHeader() {
 }
 
 @Composable
+private fun OfflineBanner(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.WifiOff,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = stringResource(R.string.search_offline_title),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = stringResource(R.string.search_offline_message),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SourceSwitcher(
     selected: ServiceType,
     allSources: Boolean,
@@ -353,6 +395,7 @@ private fun SourceSwitcher(
     onSelect: (ServiceType) -> Unit,
     onAllSourcesSelect: () -> Unit,
     onRefreshStatuses: () -> Unit,
+    onStatusOpened: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val selectedHealth = statuses[selected] ?: ServiceHealth(isChecking = true)
@@ -407,6 +450,7 @@ private fun SourceSwitcher(
             ServiceStatusButton(
                 statuses = statuses,
                 onRefresh = onRefreshStatuses,
+                onOpen = onStatusOpened,
             )
         }
 
@@ -503,6 +547,7 @@ private fun SourceButton(
 private fun ServiceStatusButton(
     statuses: Map<ServiceType, ServiceHealth>,
     onRefresh: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val anyChecking = statuses.values.any { it.isChecking }
@@ -533,7 +578,10 @@ private fun ServiceStatusButton(
 
     Box {
         Surface(
-            onClick = { expanded = true },
+            onClick = {
+                expanded = true
+                onOpen()
+            },
             modifier = Modifier.size(40.dp),
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,

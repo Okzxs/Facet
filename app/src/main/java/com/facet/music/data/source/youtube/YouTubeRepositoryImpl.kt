@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.media3.common.MimeTypes
 import com.facet.music.core.download.DownloadCapability
 import com.facet.music.core.network.NewPipeDownloader
+import com.facet.music.core.network.StreamExpiry
 import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
@@ -146,6 +147,7 @@ class YouTubeRepositoryImpl @Inject constructor(
                         MediaFormat.WEBMA_OPUS -> MimeTypes.AUDIO_WEBM
                         else -> MimeTypes.AUDIO_MP4
                     },
+                    expiresAtMs = StreamExpiry.fromUrl(selected.content),
                 )
             }.rethrowCancellation()
         }

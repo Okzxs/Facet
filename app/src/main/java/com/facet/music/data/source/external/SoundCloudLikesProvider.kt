@@ -1,6 +1,7 @@
 package com.facet.music.data.source.external
 
 import com.facet.music.core.import.SoundCloudLikesParser
+import com.facet.music.core.network.ApiClient
 import com.facet.music.data.model.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,7 +55,7 @@ class SoundCloudLikesPrivateException :
  */
 @Singleton
 class SoundCloudLikesProvider @Inject constructor(
-    private val client: OkHttpClient,
+    @ApiClient private val client: OkHttpClient,
     private val json: Json,
 ) {
 

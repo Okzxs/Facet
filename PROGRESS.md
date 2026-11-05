@@ -1,6 +1,71 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 04.11.2026 (сессия 69, фаза 4)
+## Последнее обновление: 05.11.2026 (сессия 69, фаза 5)
+
+## Сессия 69: глобальный рефакторинг, фаза 5 — сеть, NewPipe и SoundCloud
+
+**Статус:** фаза 5 из 11 закрыта; следующие фазы не начаты.
+
+### Что сделано
+- **Два клиента.** `@ApiClient` (connect 10 / read 15 / write 15 / callTimeout 20 с, `Accept: application/json`, `RetryInterceptor`) и `@MediaClient` (connect 15 / read 30 / write 30, `callTimeout=0`, `retryOnConnectionFailure`) строятся от общего базового `OkHttpClient` через `newBuilder()`: пул соединений и диспетчер общие. `NewPipeDownloader` и `DownloadTrackWorker` используют `@MediaClient`; `DOWNLOAD_CLIENT` удалён, воркер берёт клиент через `DownloadWorkerEntryPoint`. `Accept` добавляется только API-клиенту.
+- **Повторы.** `RetryInterceptor` только для GET: 429/503 — до двух повторов, другие 5xx — один; `Retry-After` в секундах или HTTP-дате, не больше 10 секунд; иначе 500 мс × 2^attempt + jitter. Правила вынесены в `RetryPolicy` и покрыты тестами.
+- **Отмена NewPipe.** `withCancellation` выполняет блок через `runInterruptible(Dispatchers.IO)`, ставит ThreadLocal активных `Call` внутри этого блока и отменяет их через `Job.invokeOnCompletion(onCancelling = true, invokeImmediately = true)`. `NewPipeDownloaderCancellationTest` на локальном зависшем HTTP-сервере подтверждает завершение отмены быстрее 500 мс.
+- **SoundCloud api-v2.** `SoundCloudApi` — основной путь: `/tracks/{id}` (числовой id из поиска/волны) или `/resolve?url=`, `media.transcodings`, затем подписанный URL с `client_id` и `track_authorization`. Приоритет: progressive `audio/mpeg` → HLS `audio/mpeg`/`audio/mpegurl` → HLS Opus/AAC; `snipped` и encrypted-протоколы пропускаются. Если endpoint транскодинга отвечает 404 (частый `abr_sq`), пробуется следующий; если `/tracks/{id}` 404 — `/resolve`. `StreamInfo` — только фолбэк при ошибке разбора JSON, не при сетевой ошибке.
+- **client_id.** `SoundCloudClientIdProvider` кэширует значение в DataStore (`soundcloud_client`) с TTL 24 ч, memory + `Mutex`; при 401/403/404 сбрасывает кэш и повторяет запрос один раз. Прогрев — в `applicationScope` после первого кадра через `ProcessLifecycleOwner`. `SoundcloudParsingHelper.clientId()` остался последним фолбэком: его статический кэш сбросить нельзя.
+- **Ошибки и Go+.** `SoundCloudFailure` (GEO_BLOCKED, SUBSCRIPTION_ONLY, PROGRESSIVE_UNAVAILABLE, UNAVAILABLE, PARSE, HTTP) превращается в `ResolveException`; `catch (Throwable)` убран, `CancellationException` пробрасывается. `Track.externalId` хранит числовой id, `Track.isSubscriptionOnly` — флаг Go+ (без новых колонок Room). В поиске бейдж «Go+», в волну такие треки не попадают; попытка играть даёт `SubscriptionOnly` с текстом «Трек доступен только по подписке SoundCloud Go», а не 30-секундный сниппет. Для сниппетов длительность берётся из `full_duration`.
+- **Сроки ссылок.** `StreamExpiry` разбирает `expire`/`expires`; `AudioStreamResult.expiresAtMs` доходит до `ResolvedStream`; YouTube и SoundCloud отдают реальный TTL. В логах нет URL.
+- **Сводный поиск.** `SearchViewModel` отдаёт источники через `channelFlow` по мере ответа: первый непустой результат сразу на экране, новые вливаются `TrackMerger.mergeKeepingOrder` без перестановки уже показанных строк. На каждый источник — `withTimeoutOrNull(6_000)`; «ничего не найдено» (успешные пустые ответы) отличается от «все источники с ошибкой».
+- **Статусы и офлайн.** `ServiceStatusManager` больше не вызывается из `FacetApp.onCreate` и из ошибок поиска; проверка ленивая (открытие поиска/панели статусов), не чаще раза в 10 минут, через лёгкий HEAD `ServiceProbe`, без полноценного поиска. `ConnectivityObserver` (`ConnectivityManager.NetworkCallback`) даёт `StateFlow<Boolean>`; при отсутствии сети показывается офлайн-баннер, поиск не уходит в шторм запросов и повторяется при возврате сети.
+- **Кэш Media3.** Каталог переименован в `media3_cache_v2`: старый кэш фазы 3 мог держать progressive-поток под ключом трека и ломал HLS (`Input does not start with the #EXTM3U header`). Старый `media3_cache` удаляется в `FacetApp` в фоне; `PlaybackCache.remove(trackId)` вызывается и при 401/403/404/410.
+
+### Проверка
+- `assembleDebug`/`assembleRelease` — BUILD SUCCESSFUL; `testDebugUnitTest` — 52 suite / 294 теста, 0 failures.
+- Release APK — 7 389 634 байт, SHA-256 `6078b666a8ce5c85e50bd2aa0e557963ec010351648eba4e8669c9f906735703`.
+- **Live на SM-A266B:** поиск SoundCloud идёт через api-v2 (жанр, полная длительность, числовой id); ODESZA и HLS-only `type london` играют с первого нажатия; `abr_sq` 404 автоматически уходит на AAC; Go+ треки помечаются «Go+», не играют 30 секунд и автоматически пропускаются; сводный поиск отдаёт 38 результатов с «+1»; статусы — SoundCloud/YouTube онлайн, Spotify без ключей ожидаемо недоступен; после установки поверх старого кэша восстановленная очередь ODESZA играет без `#EXTM3U`-ошибки.
+
+### Файлы
+```
+AGENTS.md
+app/build.gradle.kts
+app/src/main/java/com/facet/music/FacetApp.kt
+app/src/main/java/com/facet/music/core/analytics/AnalyticsTracker.kt
+app/src/main/java/com/facet/music/core/download/DownloadTrackWorker.kt
+app/src/main/java/com/facet/music/core/download/DownloadWorkerEntryPoint.kt
+app/src/main/java/com/facet/music/core/network/CancellableCall.kt
+app/src/main/java/com/facet/music/core/network/ConnectivityObserver.kt
+app/src/main/java/com/facet/music/core/network/NetworkModule.kt
+app/src/main/java/com/facet/music/core/network/NetworkQualifiers.kt
+app/src/main/java/com/facet/music/core/network/NewPipeDownloader.kt
+app/src/main/java/com/facet/music/core/network/RetryInterceptor.kt
+app/src/main/java/com/facet/music/core/network/RetryPolicy.kt
+app/src/main/java/com/facet/music/core/network/StreamExpiry.kt
+app/src/main/java/com/facet/music/core/player/PlaybackCache.kt
+app/src/main/java/com/facet/music/core/player/PlaybackDataSourceFactory.kt
+app/src/main/java/com/facet/music/core/player/PlaybackLoadErrorPolicy.kt
+app/src/main/java/com/facet/music/core/search/TrackMerger.kt
+app/src/main/java/com/facet/music/core/service/ServiceProbe.kt
+app/src/main/java/com/facet/music/core/service/ServiceStatusManager.kt
+app/src/main/java/com/facet/music/core/source/PlaybackResolver.kt
+app/src/main/java/com/facet/music/core/source/SoundCloudPlayableSource.kt
+app/src/main/java/com/facet/music/core/source/YouTubePlayableSource.kt
+app/src/main/java/com/facet/music/data/model/AudioStreamResult.kt
+app/src/main/java/com/facet/music/data/model/Track.kt
+app/src/main/java/com/facet/music/data/repository/SoundCloudRepository.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudApi.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudClientIdProvider.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudJson.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/wave/WaveRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/search/SearchScreen.kt
+app/src/main/java/com/facet/music/feature/search/SearchViewModel.kt
+app/src/main/res/values/strings.xml
+app/src/main/res/values-ru/strings.xml
+app/src/test/java/com/facet/music/core/network/NewPipeDownloaderCancellationTest.kt
+app/src/test/java/com/facet/music/core/network/RetryPolicyTest.kt
+app/src/test/java/com/facet/music/core/network/StreamExpiryTest.kt
+app/src/test/java/com/facet/music/core/network/TrackMergerOrderTest.kt
+app/src/test/java/com/facet/music/data/source/soundcloud/SoundCloudJsonTest.kt
+```
 
 ## Сессия 69: глобальный рефакторинг, фаза 4 — очередь в ExoPlayer, сессия и Now Bar
 

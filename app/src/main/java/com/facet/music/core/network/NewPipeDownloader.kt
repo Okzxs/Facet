@@ -1,9 +1,12 @@
 package com.facet.music.core.network
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runInterruptible
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -25,7 +28,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class NewPipeDownloader @Inject constructor(
-    private val okHttpClient: OkHttpClient,
+    @MediaClient private val okHttpClient: OkHttpClient,
 ) : Downloader() {
 
     private class CancellationScope {
@@ -108,22 +111,31 @@ class NewPipeDownloader @Inject constructor(
      * сеть не продолжает качаться впустую. Отменённый вызов бросает
      * IOException — здесь он превращается обратно в CancellationException.
      */
+    @OptIn(InternalCoroutinesApi::class)
     suspend fun <T> withCancellation(block: () -> T): T {
-        val previous = currentScope.get()
         val scope = CancellationScope()
-        currentScope.set(scope)
-
         val job = currentCoroutineContext()[Job]
-        val cancelHandle = job?.invokeOnCompletion { cause ->
-            if (cause is CancellationException) {
-                scope.cancelled = true
-                scope.calls.forEach { it.cancel() }
-            }
+        // onCancelling срабатывает в момент отмены, а не после завершения Job:
+        // иначе блокирующий block() не даст Job завершиться и Call не отменится.
+        val cancelHandle = job?.invokeOnCompletion(
+            onCancelling = true,
+            invokeImmediately = true,
+        ) {
+            scope.cancelled = true
+            scope.calls.forEach { it.cancel() }
         }
 
         try {
             currentCoroutineContext().ensureActive()
-            return block()
+            return runInterruptible(Dispatchers.IO) {
+                val previous = currentScope.get()
+                currentScope.set(scope)
+                try {
+                    block()
+                } finally {
+                    if (previous == null) currentScope.remove() else currentScope.set(previous)
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -131,7 +143,6 @@ class NewPipeDownloader @Inject constructor(
             throw e
         } finally {
             cancelHandle?.dispose()
-            if (previous == null) currentScope.remove() else currentScope.set(previous)
         }
     }
 

@@ -3,6 +3,7 @@ package com.facet.music.core.analytics
 import android.content.Context
 import android.util.Log
 import com.facet.music.BuildConfig
+import com.facet.music.core.network.ApiClient
 import com.facet.music.data.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -43,7 +44,7 @@ object AnalyticsEvents {
 @Singleton
 class AnalyticsTracker @Inject constructor(
     @ApplicationContext context: Context,
-    private val client: OkHttpClient,
+    @ApiClient private val client: OkHttpClient,
     private val settingsRepository: SettingsRepository,
     private val json: Json,
 ) {

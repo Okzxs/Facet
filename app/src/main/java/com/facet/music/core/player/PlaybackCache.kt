@@ -48,8 +48,13 @@ class PlaybackCache @Inject constructor(
         cache.keys.toList().forEach(cache::removeResource)
     }
 
+    /** Удалить закэшированный поток трека: MIME мог смениться (HLS ↔ progressive). */
+    fun remove(trackId: String) {
+        runCatching { cache.removeResource(trackId) }
+    }
+
     private companion object {
-        const val DIRECTORY = "media3_cache"
+        const val DIRECTORY = "media3_cache_v2"
         const val MAX_BYTES = 1024L * 1024 * 1024
     }
 }

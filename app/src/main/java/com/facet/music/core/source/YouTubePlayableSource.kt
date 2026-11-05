@@ -43,7 +43,7 @@ class YouTubePlayableSource @Inject constructor(
                 url = stream.url,
                 mimeType = stream.mimeType,
                 isHls = stream.isHls,
-                expiresAtMs = expireAtMs(stream.url),
+                expiresAtMs = stream.expiresAtMs ?: expireAtMs(stream.url),
                 source = Source.YOUTUBE,
             )
         }

@@ -124,6 +124,9 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
+    // Кэш client_id SoundCloud с TTL
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
     // Media3 (ExoPlayer + офлайн-скачивание и кэш HLS-потоков)
     implementation("androidx.media3:media3-exoplayer:1.5.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.5.0")

@@ -46,6 +46,8 @@
     <string name="search_status_title">Статусы сервисов</string>
     <string name="search_status_subtitle">Проверка доступности в реальном времени</string>
     <string name="search_status_refresh">Обновить статусы</string>
+    <string name="search_offline_title">Нет интернета</string>
+    <string name="search_offline_message">Проверь подключение — поиск продолжится, когда сеть вернётся.</string>
     <string name="search_status_checking">Проверка</string>
     <string name="search_status_online">Онлайн</string>
     <string name="search_status_error">Ошибка</string>
@@ -231,6 +233,7 @@
     <string name="track_download_cd">Скачать трек</string>
     <string name="track_download_failed_cd">Не удалось скачать</string>
     <string name="track_artwork_cd">%1$s обложка</string>
+    <string name="track_go_plus">Go+</string>
 
     <!-- Плеер -->
     <string name="player_now_playing">Сейчас играет</string>

@@ -216,6 +216,24 @@ fun TrackCard(
                                     )
                                 }
                             }
+                            // SoundCloud Go+: поток без подписки не отдаётся.
+                            if (track.isSubscriptionOnly) {
+                                Spacer(Modifier.width(6.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.track_go_plus),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(
+                                            horizontal = 6.dp,
+                                            vertical = 1.dp,
+                                        ),
+                                    )
+                                }
+                            }
                         }
                         Spacer(Modifier.height(4.dp))
                         Text(

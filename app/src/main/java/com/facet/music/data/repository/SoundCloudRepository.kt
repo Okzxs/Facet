@@ -39,5 +39,6 @@ interface SoundCloudRepository {
     suspend fun resolveStreamUrl(
         transcodingUrl: String,
         requireProgressive: Boolean = false,
+        numericId: String? = null,
     ): Result<AudioStreamResult>
 }

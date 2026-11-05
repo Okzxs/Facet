@@ -221,6 +221,8 @@ class PlaybackResolver @Inject constructor(
             source = source,
             streamUrl = null,
             transcodingUrl = saved.matchedUrl,
+            externalId = null,
+            isSubscriptionOnly = false,
         )
         val result = retrying(original) { provider.resolveStream(candidate) }
         val stream = result.getOrNull() ?: return null

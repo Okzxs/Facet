@@ -47,6 +47,8 @@
     <string name="search_status_title">Service statuses</string>
     <string name="search_status_subtitle">Real-time availability check</string>
     <string name="search_status_refresh">Refresh statuses</string>
+    <string name="search_offline_title">No internet</string>
+    <string name="search_offline_message">Check your connection — search resumes when the network returns.</string>
     <string name="search_status_checking">Checking</string>
     <string name="search_status_online">Online</string>
     <string name="search_status_error">Error</string>
@@ -230,6 +232,7 @@
     <string name="track_download_cd">Download track</string>
     <string name="track_download_failed_cd">Download failed</string>
     <string name="track_artwork_cd">%1$s cover</string>
+    <string name="track_go_plus">Go+</string>
 
     <!-- Плеер -->
     <string name="player_now_playing">Now playing</string>

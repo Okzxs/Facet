@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
 import com.facet.music.core.di.ApplicationScope
+import com.facet.music.core.network.ApiClient
 import com.facet.music.core.network.RateLimiter
 import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
@@ -61,7 +62,7 @@ import javax.inject.Singleton
 @Singleton
 class SpotifyAuthRepositoryImpl @Inject constructor(
     @ApplicationContext context: Context,
-    private val client: OkHttpClient,
+    @ApiClient private val client: OkHttpClient,
     private val json: Json,
     @SourceRateLimiter(RateLimiterKeys.SPOTIFY) private val rateLimiter: RateLimiter,
     @ApplicationScope private val applicationScope: CoroutineScope,

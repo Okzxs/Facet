@@ -23,6 +23,13 @@ data class Track(
     val liked: Boolean = false,
     /** URL страницы трека/видео для последующего resolve потока. */
     val transcodingUrl: String? = null,
+    /**
+     * Числовой id внутри источника (SoundCloud), чтобы резолв шёл по
+     * `/tracks/{id}`, а не через лишний `/resolve`. В БД не хранится.
+     */
+    val externalId: String? = null,
+    /** SoundCloud Go+: полный поток доступен только по подписке. */
+    val isSubscriptionOnly: Boolean = false,
     /** ISRC из метаданных Deezer — ключ для точного сопоставления между источниками. */
     val isrc: String? = null,
     /**

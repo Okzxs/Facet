@@ -1,6 +1,7 @@
 package com.facet.music.feature.search
 
 import com.facet.music.core.navigation.NavigationEvents
+import com.facet.music.core.network.ConnectivityObserver
 import com.facet.music.core.service.ServiceHealth
 import com.facet.music.core.search.SearchHistoryStore
 import com.facet.music.core.service.ServiceStatusManager
@@ -29,6 +30,7 @@ class SearchViewModelExternalRequestTest {
     private val soundCloudRepository = mockk<SoundCloudRepository>()
     private val youTubeRepository = mockk<YouTubeRepository>()
     private val statusManager = mockk<ServiceStatusManager>(relaxed = true)
+    private val connectivity = mockk<ConnectivityObserver>()
     private val downloadRepository = mockk<DownloadRepository>()
 
     @Test
@@ -69,6 +71,7 @@ class SearchViewModelExternalRequestTest {
         every { statusManager.statuses } returns MutableStateFlow(
             ServiceType.entries.associateWith { ServiceHealth(isAvailable = true) },
         )
+        every { connectivity.isOnline } returns MutableStateFlow(true)
         every { downloadRepository.observeDownloadedIds() } returns flowOf(emptySet())
     }
 
@@ -78,6 +81,7 @@ class SearchViewModelExternalRequestTest {
         sourceRegistry = PlayableSourceRegistry(emptySet()),
         searchHistoryStore = mockk(relaxed = true),
         serviceStatusManager = statusManager,
+        connectivityObserver = connectivity,
         navigationEvents = events,
         downloadRepository = downloadRepository,
     )

@@ -10,9 +10,11 @@ package com.facet.music.data.model
  *                 false → Progressive (одиночный файл)
  * @param mimeType MIME, определённый источником; null — старый вызов без формата,
  *                 тогда плеер подставит безопасный фолбэк
+ * @param expiresAtMs момент истечения подписанной ссылки; null — неизвестен
  */
 data class AudioStreamResult(
     val url: String,
     val isHls: Boolean,
     val mimeType: String? = null,
+    val expiresAtMs: Long? = null,
 )

@@ -31,7 +31,12 @@ object TrackMerger {
         }
         return buckets.values
             .map { candidates ->
-                val best = candidates.firstOrNull { it.streamUrl != null && it.previewSeconds == null }
+                val best = candidates.firstOrNull {
+                    it.streamUrl != null && it.previewSeconds == null && !it.isSubscriptionOnly
+                }
+                    ?: candidates.firstOrNull {
+                        it.previewSeconds == null && !it.isSubscriptionOnly
+                    }
                     ?: candidates.firstOrNull { it.previewSeconds == null }
                     ?: candidates.first()
                 best.copy(sourceCount = candidates.map { it.source }.distinct().size)
@@ -42,6 +47,21 @@ object TrackMerger {
     /** Ключ дедупа: артист + название без регистра и скобочных пометок. */
     fun key(track: Track): String =
         normalize(track.artist) + "|" + normalize(BRACKETS.replace(track.title, " "))
+
+    /**
+     * Слияние без перестановки уже показанных строк: сводный поиск получает
+     * источники по одному, и новые треки должны добавляться в конец, а не
+     * поднимать всю выдачу и сбрасывать позицию скролла.
+     */
+    fun mergeKeepingOrder(existing: List<Track>, groups: List<List<Track>>): List<Track> {
+        val merged = merge(groups)
+        if (existing.isEmpty()) return merged
+
+        val byKey = merged.associateBy { key(it) }
+        val kept = existing.mapNotNull { byKey[key(it)] }
+        val keptKeys = kept.mapTo(HashSet()) { key(it) }
+        return kept + merged.filter { key(it) !in keptKeys }
+    }
 
     private fun normalize(value: String): String =
         NON_WORD.replace(value.lowercase(Locale.ROOT), " ").trim()

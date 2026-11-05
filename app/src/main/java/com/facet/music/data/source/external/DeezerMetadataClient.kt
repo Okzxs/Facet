@@ -1,6 +1,7 @@
 package com.facet.music.data.source.external
 
 import android.util.Log
+import com.facet.music.core.network.ApiClient
 import com.facet.music.core.network.RateLimiter
 import com.facet.music.core.network.RateLimiterKeys
 import com.facet.music.core.network.SourceRateLimiter
@@ -72,7 +73,7 @@ data class DeezerRelease(
  */
 @Singleton
 class DeezerMetadataClient @Inject constructor(
-    private val client: OkHttpClient,
+    @ApiClient private val client: OkHttpClient,
     private val json: Json,
     @SourceRateLimiter(RateLimiterKeys.DEEZER) private val rateLimiter: RateLimiter,
 ) {
