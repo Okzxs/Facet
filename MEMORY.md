@@ -3,7 +3,16 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 69, фаза 6 (06.11.2026): артисты, мультивыбор источников, ранжирование и подсказки; 54 suite / 303 теста | Фаза 7 — по команде пользователя |
+| Facet | активен  | Сессия 69, фаза 7 (06.11.2026): экран артиста на YouTube/SoundCloud, кэш, подписки, `artistUrl`; 54 suite / 304 теста | Фаза 8 — по команде пользователя |
+
+### Сессия 69, фаза 7: экран артиста на YouTube и SoundCloud
+- **Маршруты:** `Screen.ArtistDetail` `artist/{source}/{url}?name=…` + старый `artist/{name}` (поиск лучшего артиста); один `ArtistScreen`.
+- **ArtistRepository:** шапка/популярное/релизы/все треки/плейлисты/похожие, `resolveByName`, кэш. YouTube — вкладки канала; Topic-канал без вкладок → YouTube Music `MUSIC_ALBUMS`/`MUSIC_PLAYLISTS` и `searchPage`. SoundCloud — `tracks`/`albums`/`playlists`. Популярное сливается `TrackMerger` по `playCount`.
+- **Room v17:** `artist_cache` (TTL 6 ч), `followed_artists`, `artistUrl` во всех таблицах треков; `MIGRATION_16_17` + тест.
+- **UI:** `LargeTopAppBar`/`exitUntilCollapsedScrollBehavior`, аватар 120dp, `displaySmall`, «Слушать»/«Перемешать»/«Волна»/«Подписаться», топ-10 с номерами, релизы 160dp со шторкой, пагинация всех треков, плейлисты, похожие.
+- **artistUrl:** из `uploaderUrl` YouTube/SoundCloud; клик в плеере/списках/волне открывает точный профиль.
+- **Deezer:** из `ArtistViewModel` и артистовых методов `DeezerMetadataClient` удалён.
+- **Проверка:** 54 suite / 304 теста, 0 failures; APK 7 429 398 байт, SHA-256 `115d28c8…e26ef1c`; live Daft Punk/KAASI, полный трек 6:09, подписка и пагинация.
 
 ### Сессия 69, фаза 6: поиск, артисты и мультивыбор
 - **Artist/ArtistMerger:** нормализация (lowercase, ё→е, диакритика, « - Topic», official/VEVO), слияние по имени, аватар YouTube → SoundCloud, сортировка exact/verified/subscribers; `bestMatch` — exact, prefix ≥3, JW ≥0.92.

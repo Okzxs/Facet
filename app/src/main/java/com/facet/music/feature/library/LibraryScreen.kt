@@ -110,7 +110,7 @@ fun LibraryScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
     onOpenSearch: () -> Unit,
     onPlaylistClick: (Long) -> Unit,
-    onArtistClick: (String) -> Unit,
+    onArtistClick: (Track) -> Unit,
     onLikedTracksClick: () -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
@@ -477,7 +477,7 @@ fun LibraryScreen(
                             onTrackClick(track, downloadedTracks.map { it.toTrack() })
                         },
                         onAddToPlaylist = { playlistTrack = track },
-                        onArtistClick = { onArtistClick(track.artist) },
+                        onArtistClick = { onArtistClick(track) },
                         onPlayNext = { handlePlayNext(track) },
                         onAddToQueue = { handleAddToQueue(track) },
                         trailingContent = {

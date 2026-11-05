@@ -19,39 +19,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
-
-/**
- * Артист Deezer: имя, аватар и публичная статистика для шапки экрана.
- *
- * @param fans число слушателей (`nb_fan`), 0 — Deezer не отдал поле;
- * @param albums число альбомов (`nb_album`).
- */
-data class DeezerArtist(
-    val id: Long,
-    val name: String,
-    val pictureUrl: String?,
-    val fans: Int,
-    val albums: Int,
-)
-
-/** Альбом Deezer в карусели экрана артиста. */
-data class DeezerAlbum(
-    val id: Long,
-    val title: String,
-    val coverUrl: String?,
-    /** Год релиза (`release_date`), null — Deezer не отдал дату. */
-    val year: String?,
-)
-
-/** Похожий артист: id нужен для запросов, имя — для перехода по маршруту. */
-data class DeezerArtistRef(
-    val id: Long,
-    val name: String,
-    val pictureUrl: String?,
-)
 
 /** Свежий релиз Deezer для блока «Недавние релизы» на главной. */
 data class DeezerRelease(
@@ -62,12 +31,14 @@ data class DeezerRelease(
 )
 
 /**
- * Deezer как справочник метаданных: новые релизы, альбомы, артисты и треки.
+ * Deezer как справочник метаданных: новые релизы и треки альбома.
  *
  * Собственного аудиопотока у Deezer нет: публичный API отдаёт только
  * 30-секундные превью, а полный трек требует ARL-cookie. Поэтому клиент
- * никогда не возвращает `streamUrl` и не участвует в поиске — плеер находит
- * полную версию на YouTube через [com.facet.music.core.source.StreamResolver].
+ * никогда не возвращает `streamUrl`; плеер находит полную версию через
+ * [com.facet.music.core.source.PlaybackResolver].
+ *
+ * Экран артиста больше не использует Deezer: он живёт на YouTube/SoundCloud.
  *
  * Сеть вызывается не чаще раза в секунду ([RateLimiter]).
  */
@@ -78,134 +49,6 @@ class DeezerMetadataClient @Inject constructor(
     @SourceRateLimiter(RateLimiterKeys.DEEZER) private val rateLimiter: RateLimiter,
 ) {
 
-    /**
-     * Популярные треки артиста для экрана артиста: сначала поиск артиста
-     * (`/search/artist`), затем его топ (`/artist/{id}/top`).
-     *
-     * Оба запроса проходят через лимитер источника. Пустой список — артист
-     * не найден (или у него нет топа), это не ошибка: экран уйдёт в фолбэк.
-     */
-    suspend fun fetchArtistTopTracks(
-        artistName: String,
-        limit: Int = ARTIST_TOP_LIMIT,
-    ): Result<List<Track>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val artistId = findArtistId(artistName) ?: return@runCatching emptyList()
-                topTracks(artistId, limit)
-            }.onFailure { error ->
-                Log.w(TAG, "Загрузка артиста Deezer не удалась: ${error.message}")
-            }
-        }
-
-    /** Топ треков по уже известному id — без повторного поиска артиста. */
-    suspend fun fetchArtistTopTracks(
-        artistId: Long,
-        limit: Int = ARTIST_TOP_LIMIT,
-    ): Result<List<Track>> =
-        withContext(Dispatchers.IO) {
-            runCatching { topTracks(artistId, limit) }
-                .onFailure { error ->
-                    Log.w(TAG, "Топ треков Deezer не удался: ${error.message}")
-                }
-        }
-
-    /**
-     * Треки артиста через обычный поиск с фильтром по имени исполнителя.
-     *
-     * Нужен как дополнение к топу: у части артистов Deezer отдаёт в `/top`
-     * всего один трек, и без этого экран выглядел бы полупустым. Расширенный
-     * синтаксис `artist:"…"` публичный API не поддерживает — фильтруем сами.
-     */
-    suspend fun searchArtistTracks(
-        artistName: String,
-        limit: Int = ARTIST_FILL_LIMIT,
-    ): Result<List<Track>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val url = "$BASE_URL/search?q=${encode(artistName)}" +
-                    "&limit=${limit.coerceIn(1, MAX_LIMIT)}"
-                val root = rateLimiter.acquire { requestJson(url) }
-                root["data"]?.jsonArray
-                    ?.mapNotNull { element -> parseTrack(element.jsonObject) }
-                    ?.filter { track ->
-                        track.artist.contains(artistName, ignoreCase = true)
-                    }
-                    .orEmpty()
-            }.onFailure { error ->
-                Log.w(TAG, "Поиск треков артиста Deezer не удался: ${error.message}")
-            }
-        }
-
-    /** Шапка артиста: аватар и публичная статистика. null — артист не найден. */
-    suspend fun fetchArtist(artistName: String): Result<DeezerArtist?> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val url = "$BASE_URL/search/artist?q=${encode(artistName)}" +
-                    "&limit=$ARTIST_SEARCH_LIMIT"
-                val root = rateLimiter.acquire { requestJson(url) }
-                root["data"]?.jsonArray
-                    ?.firstOrNull()
-                    ?.jsonObject
-                    ?.let(::parseArtist)
-            }.onFailure { error ->
-                Log.w(TAG, "Артист Deezer не найден: ${error.message}")
-            }
-        }
-
-    /** Альбомы артиста для карусели: свежие сверху, как в стримингах. */
-    suspend fun fetchArtistAlbums(
-        artistId: Long,
-        limit: Int = ARTIST_ALBUMS_LIMIT,
-    ): Result<List<DeezerAlbum>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val url = "$BASE_URL/artist/$artistId/albums" +
-                    "?limit=${limit.coerceIn(1, MAX_ARTIST_ALBUMS)}"
-                val root = rateLimiter.acquire { requestJson(url) }
-                root["data"]?.jsonArray
-                    ?.mapNotNull { element -> parseAlbum(element.jsonObject) }
-                    .orEmpty()
-            }.onFailure { error ->
-                Log.w(TAG, "Альбомы Deezer не загрузились: ${error.message}")
-            }
-        }
-
-    /** Похожие артисты Deezer — без ключей Last.fm и с готовыми аватарами. */
-    suspend fun fetchRelatedArtists(
-        artistId: Long,
-        limit: Int = ARTIST_RELATED_LIMIT,
-    ): Result<List<DeezerArtistRef>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val url = "$BASE_URL/artist/$artistId/related" +
-                    "?limit=${limit.coerceIn(1, MAX_ARTIST_RELATED)}"
-                val root = rateLimiter.acquire { requestJson(url) }
-                root["data"]?.jsonArray
-                    ?.mapNotNull { element -> parseArtistRef(element.jsonObject) }
-                    .orEmpty()
-            }.onFailure { error ->
-                Log.w(TAG, "Похожие артисты Deezer не загрузились: ${error.message}")
-            }
-        }
-
-    /**
-     * Треки альбома одним запросом: `/album/{id}` уже содержит `tracks.data`.
-     * Нужно для «Слушать альбом» в карусели экрана артиста.
-     */
-    suspend fun fetchAlbumTracks(albumId: Long): Result<List<Track>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val root = rateLimiter.acquire { requestJson("$BASE_URL/album/$albumId") }
-                root["tracks"]?.jsonObject?.get("data")?.jsonArray
-                    ?.mapNotNull { element -> parseTrack(element.jsonObject) }
-                    .orEmpty()
-            }.onFailure { error ->
-                Log.w(TAG, "Альбом Deezer не загрузился: ${error.message}")
-            }
-        }
-
-    /** Поиск артиста по имени: id нужен для топа, альбомов и похожих. */
     /**
      * Новинки лейблов: `/editorial/0/releases` отдаёт альбомы, поэтому карточка
      * хранит id альбома, а треки подгружаются при нажатии.
@@ -228,70 +71,21 @@ class DeezerMetadataClient @Inject constructor(
             .orEmpty()
     }
 
-    private suspend fun findArtistId(artistName: String): Long? {
-        val searchUrl = "$BASE_URL/search/artist?q=${encode(artistName)}" +
-            "&limit=$ARTIST_SEARCH_LIMIT"
-        val searchRoot = rateLimiter.acquire { requestJson(searchUrl) }
-        return searchRoot["data"]?.jsonArray
-            ?.firstOrNull()
-            ?.jsonObject
-            ?.get("id")?.jsonPrimitive?.longOrNull
-    }
-
-    private suspend fun topTracks(artistId: Long, limit: Int): List<Track> {
-        val topUrl = "$BASE_URL/artist/$artistId/top" +
-            "?limit=${limit.coerceIn(1, MAX_ARTIST_TOP)}"
-        val topRoot = rateLimiter.acquire { requestJson(topUrl) }
-        return topRoot["data"]?.jsonArray
-            ?.mapNotNull { element -> parseTrack(element.jsonObject) }
-            .orEmpty()
-    }
-
-    private fun parseArtist(item: JsonObject): DeezerArtist? {
-        val id = item["id"]?.jsonPrimitive?.longOrNull ?: return null
-        val name = item["name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-        if (name.isBlank()) return null
-        return DeezerArtist(
-            id = id,
-            name = name,
-            pictureUrl = item["picture_xl"]?.jsonPrimitive?.contentOrNull
-                ?.takeIf { it.isNotBlank() }
-                ?: item["picture_big"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
-            fans = item["nb_fan"]?.jsonPrimitive?.intOrNull ?: 0,
-            albums = item["nb_album"]?.jsonPrimitive?.intOrNull ?: 0,
-        )
-    }
-
-    private fun parseAlbum(item: JsonObject): DeezerAlbum? {
-        val id = item["id"]?.jsonPrimitive?.longOrNull ?: return null
-        val title = item["title"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-        if (title.isBlank()) return null
-        val cover = item["cover_big"]?.jsonPrimitive?.contentOrNull
-            ?: item["cover_medium"]?.jsonPrimitive?.contentOrNull
-        return DeezerAlbum(
-            id = id,
-            title = title,
-            coverUrl = cover?.takeIf { it.isNotBlank() },
-            // В ответе /artist/{id}/albums нет nb_tracks, зато есть дата релиза:
-            // показываем год, а не «0 треков».
-            year = item["release_date"]?.jsonPrimitive?.contentOrNull
-                ?.take(4)
-                ?.takeIf { it.length == 4 },
-        )
-    }
-
-    private fun parseArtistRef(item: JsonObject): DeezerArtistRef? {
-        val id = item["id"]?.jsonPrimitive?.longOrNull ?: return null
-        val name = item["name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-        if (name.isBlank()) return null
-        val picture = item["picture_medium"]?.jsonPrimitive?.contentOrNull
-            ?: item["picture_big"]?.jsonPrimitive?.contentOrNull
-        return DeezerArtistRef(
-            id = id,
-            name = name,
-            pictureUrl = picture?.takeIf { it.isNotBlank() },
-        )
-    }
+    /**
+     * Треки альбома одним запросом: `/album/{id}` уже содержит `tracks.data`.
+     * Нужно для блока новинок на главной.
+     */
+    suspend fun fetchAlbumTracks(albumId: Long): Result<List<Track>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val root = rateLimiter.acquire { requestJson("$BASE_URL/album/$albumId") }
+                root["tracks"]?.jsonObject?.get("data")?.jsonArray
+                    ?.mapNotNull { element -> parseTrack(element.jsonObject) }
+                    .orEmpty()
+            }.onFailure { error ->
+                Log.w(TAG, "Альбом Deezer не загрузился: ${error.message}")
+            }
+        }
 
     private fun parseTrack(item: JsonObject): Track? {
         val id = item["id"]?.jsonPrimitive?.longOrNull ?: return null
@@ -335,21 +129,11 @@ class DeezerMetadataClient @Inject constructor(
         }
     }
 
-    private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
-
     private companion object {
         const val TAG = "DeezerMetadata"
         const val BASE_URL = "https://api.deezer.com"
         const val ID_PREFIX = "deezer:"
         const val MAX_LIMIT = 50
-        const val ARTIST_SEARCH_LIMIT = 1
-        const val ARTIST_TOP_LIMIT = 20
-        const val MAX_ARTIST_TOP = 50
-        const val ARTIST_ALBUMS_LIMIT = 12
-        const val MAX_ARTIST_ALBUMS = 50
-        const val ARTIST_RELATED_LIMIT = 10
-        const val MAX_ARTIST_RELATED = 20
-        const val ARTIST_FILL_LIMIT = 50
         const val UNKNOWN_ARTIST = "Неизвестный исполнитель"
     }
 }

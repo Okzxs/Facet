@@ -155,6 +155,7 @@ class PlaylistImportServiceImpl @Inject constructor(
             source = if (service == ImportService.YOUTUBE) Source.YOUTUBE else Source.SOUNDCLOUD,
             title = name,
             artist = uploaderName.orEmpty().ifBlank { UNKNOWN_ARTIST },
+            artistUrl = uploaderUrl?.takeIf { it.isNotBlank() },
             artworkUrl = thumbnails.lastOrNull()?.url,
             streamUrl = null,
             durationMs = duration.coerceAtLeast(0L) * 1_000L,

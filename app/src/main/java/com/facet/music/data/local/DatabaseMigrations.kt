@@ -21,6 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v13 → v14: кэш прослушанного в cacheDir.
  * v14 → v15: превью Deezer/Apple обнулены, их кэш поиска и аудио удалён.
  * v15 → v16: старый audio_cache удалён, появились сохранённые внешние матчи.
+ * v16 → v17: кэш артиста, подписки и ссылка на канал артиста у треков.
  */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
@@ -354,6 +355,50 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/**
+ * 16 → 17: экран артиста на YouTube/SoundCloud, кэш страницы и подписки.
+ *
+ * `artistUrl` денормализуется во все таблицы с треками: из плеера и списков
+ * можно открыть точный канал, а не искать артиста по имени.
+ */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `artist_cache` (
+                `key` TEXT NOT NULL,
+                `json` TEXT NOT NULL,
+                `fetchedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`key`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `followed_artists` (
+                `artistKey` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `url` TEXT NOT NULL,
+                `name` TEXT NOT NULL,
+                `avatarUrl` TEXT,
+                `followedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`artistKey`)
+            )
+            """.trimIndent(),
+        )
+        listOf(
+            "liked_tracks",
+            "play_history",
+            "chart_cache",
+            "downloaded_tracks",
+            "playlist_tracks",
+            "queue",
+        ).forEach { table ->
+            database.execSQL("ALTER TABLE `$table` ADD COLUMN `artistUrl` TEXT")
+        }
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -370,4 +415,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_13_14,
     MIGRATION_14_15,
     MIGRATION_15_16,
+    MIGRATION_16_17,
 )

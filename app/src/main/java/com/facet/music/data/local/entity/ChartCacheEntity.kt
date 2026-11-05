@@ -22,6 +22,7 @@ data class ChartCacheEntity(
     val genre: String?,
     val transcodingUrl: String?,
     val cachedAt: Long = System.currentTimeMillis(),
+    val artistUrl: String? = null,
 )
 
 fun ChartCacheEntity.toTrack(): Track = Track(
@@ -29,6 +30,7 @@ fun ChartCacheEntity.toTrack(): Track = Track(
     source = Source.SOUNDCLOUD,
     title = title,
     artist = artist,
+    artistUrl = artistUrl,
     artworkUrl = artworkUrl,
     streamUrl = null,
     durationMs = durationMs,
@@ -52,4 +54,5 @@ fun Track.toChartEntity(
     genre = genre,
     transcodingUrl = transcodingUrl,
     cachedAt = cachedAt,
+    artistUrl = artistUrl,
 )

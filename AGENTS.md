@@ -63,7 +63,7 @@ com.facet.music
 └── FacetApp.kt        # @HiltAndroidApp, NewPipe.init()
 ```
 
-**БД:** Room v16, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). `MIGRATION_14_15` обнуляет `streamUrl`/`previewSeconds` у старых строк Deezer/Apple и удаляет их кэш поиска и аудио; `MIGRATION_15_16` удаляет `audio_cache` и создаёт `resolved_matches` (PK `originalTrackId`: `matchedSource`, `matchedUrl`, `confidence`, `createdAt`). Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
+**БД:** Room v17, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). `MIGRATION_14_15` обнуляет `streamUrl`/`previewSeconds` у старых строк Deezer/Apple и удаляет их кэш поиска и аудио; `MIGRATION_15_16` удаляет `audio_cache` и создаёт `resolved_matches` (PK `originalTrackId`: `matchedSource`, `matchedUrl`, `confidence`, `createdAt`); `MIGRATION_16_17` создаёт `artist_cache` (PK `key`: `json`, `fetchedAt`), `followed_artists` (PK `artistKey`: `source`, `url`, `name`, `avatarUrl`, `followedAt`) и колонку `artistUrl` во всех таблицах с треками. Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
 
 ---
 
@@ -74,11 +74,25 @@ com.facet.music
 | **SoundCloud** | api-v2 (лёгкий резолв) + NewPipe (фолбэк) | ✅ v1 |
 | **YouTube** | NewPipe Extractor (полный стрим) | ✅ v1 |
 | **Spotify** | Web API OAuth 2.0 PKCE (поиск; стрим через YouTube) | v2 |
-| **Deezer** | Метаданные: новинки, альбомы, артисты, импорт (без потока) | v1 |
+| **Deezer** | Метаданные: новинки, треки альбома, импорт (без потока) | v1 |
 | LRCLIB (тексты) | REST API (открытый) | ✅ v1 |
 | Last.fm (похожие артисты) | Web API | ✅ v1 |
 | Яндекс Музыка | Неофициальный API | v2 |
 | ВК Музыка | VK API | v2 |
+
+---
+
+## Сессия 69, фаза 7: экран артиста на YouTube и SoundCloud (06.11.2026)
+
+- **Маршруты.** `Screen.ArtistDetail` — `artist/{source}/{encodedUrl}?name=…` (source/url/name в `SavedStateHandle`); старый `Screen.Artist` (`artist/{name}`) остался и через `ArtistRepository.resolveByName` ищет лучшего артиста (`ArtistMerger.bestMatch`) и открывает его. Оба маршрута ведут в один `ArtistScreen`/`ArtistViewModel`; док скрыт.
+- **ArtistRepository.** `data/repository/ArtistRepository` + `data/source/artist/ArtistRepositoryImpl`: `artist`, `cached`, `store`, `popularTracks`, `releases`, `allTracks`, `releaseTracks`, `playlists`, `related`, `resolveByName`, `observeFollowed`, `setFollowed`. YouTube: `ChannelInfo` → вкладки `videos`/`albums`/`playlists`; у Topic-канала вкладок нет, поэтому треки и релизы добираются поиском YouTube Music (`searchPage` и новые `searchMusicAlbums`/`searchMusicPlaylists`, фильтры `MUSIC_ALBUMS`/`MUSIC_PLAYLISTS`). SoundCloud: `tracks`/`albums`/`playlists`, популярное — по `viewCount`.
+- **Популярное.** Основной список сортируется по прослушиваниям; если у артиста есть профиль во втором источнике (`ArtistMerger.bestMatch`), списки сливаются через `TrackMerger.merge` и сортируются по `Track.playCount`. `Track.playCount` — transient-поле (в Room не хранится).
+- **Кэш.** Комната `artist_cache` (TTL 6 ч): `cached()` отдаёт страницу мгновенно и обнуляет `nextPage` (токен живёт только в памяти), затем ViewModel обновляет её. Релизы/плейлисты/похожие догружаются после шапки; `store()` сохраняет обновлённую страницу.
+- **Подписки.** `followed_artists` + `FollowedArtistDao`; `ArtistRepository.observeFollowed` отдаёт `Set<String>` ключей `SOURCE:url`, кнопка «Подписаться»/«Вы подписаны» в шапке и в `LargeTopAppBar`.
+- **UI.** `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior` + `nestedScroll`, прозрачная шапка с баннером/размытой обложкой, аватар 120dp, `displaySmall`, подписчики, «Слушать» (FilledButton), «Перемешать» (FilledTonalButton), «Волна по артисту» (OutlinedButton → существующий radio от трека), «Подписаться». Секции: «Популярное» (топ-10 с номерами), «Релизы» (`LazyRow` 160dp, клик — шторка треков альбома), «Все треки» с пагинацией, «Плейлисты» (шторка), «Похожие артисты». Ошибка/пусто — `EmptyState` с «Повторить».
+- **Ссылка на артиста.** `Track.artistUrl` заполняется из `uploaderUrl` YouTube/SoundCloud (включая чарты и импорт), денормализуется в `liked_tracks`, `play_history`, `chart_cache`, `downloaded_tracks`, `playlist_tracks`, `queue`. Клик по артисту в плеере, поиске, медиатеке, плейлисте и волне открывает точный маршрут; без ссылки — поиск по имени.
+- **Deezer.** `ArtistViewModel` больше не знает Deezer; из `DeezerMetadataClient` удалены `fetchArtist*`, `searchArtistTracks`, `fetchAlbumTracks` остался только для новинок главной.
+- **Проверка.** `rg -i deezer feature/artist` пуст; live на SM-A266B: Daft Punk (YouTube) — популярное, релизы, шторка `Random Access Memories`, полный трек 6:09; KAASI (SoundCloud) — релизы/плейлисты/похожие, «Слушать» играет полный трек, подписка переживает перезапуск, подгрузка «Всех треков» работает.
 
 ---
 
@@ -140,7 +154,7 @@ com.facet.music
 
 ## Сессия 69, фаза 2: Deezer и Apple без превью (03.11.2026)
 
-- **Источники воспроизведения:** только полный SoundCloud/YouTube. Deezer — `DeezerMetadataClient` (новинки, альбомы, артисты, импорт), `streamUrl` всегда `null`; Apple-провайдер и iTunes lookup удалены.
+- **Источники воспроизведения:** только полный SoundCloud/YouTube. Deezer — `DeezerMetadataClient` (новинки, треки альбома, импорт), `streamUrl` всегда `null`; Apple-провайдер и iTunes lookup удалены.
 - **Поиск:** `ServiceType` = SOUNDCLOUD/YOUTUBE/SPOTIFY, три кнопки брендов; `Source.DEEZER/APPLE` в enum только для старых строк. `Source.isMetadataOnly` — единый признак для Deezer/Apple/Spotify: `StreamResolver` и `PlayerController` игнорируют `streamUrl` и идут в YouTube-матч.
 - **БД:** v15, `MIGRATION_14_15` обнуляет `queue.streamUrl`/`previewSeconds` для Deezer/Apple и удаляет их `search_cache`/`audio_cache`; тест 14→15 и сквозной 1→15.
 - **Импорт:** Apple Music-ссылки → `UNSUPPORTED_LINK`; Deezer-плейлисты импортируются как метаданные без превью.
@@ -220,6 +234,7 @@ data class Track(
     val source: Source,        // SOUNDCLOUD, SPOTIFY, YANDEX, VK, LOCAL
     val title: String,
     val artist: String,
+    val artistUrl: String? = null,   // канал исполнителя для экрана артиста
     val artworkUrl: String?,
     val streamUrl: String?,    // null до вызова resolveStreamUrl()
     val durationMs: Long,      // миллисекунды
@@ -247,7 +262,7 @@ data class Track(
 - **Deezer**: `api.deezer.com/playlist/{id}`, разбор `PlaylistPayloadParser.deezerPlaylist` (`title`, `tracks.data` → `Track(source=DEEZER, streamUrl=null, previewSeconds=null)`, `cover_big`, isrc). Ответ с `error` → ошибка сети с сообщением. Лимитер `@SourceRateLimiter(RateLimiterKeys.DEEZER)`.
 - **Apple/iTunes**: удалён в фазе 2 вместе с `AppleMusicProvider` и `appleLookupTracks`; ссылки Apple Music теперь дают `UNSUPPORTED_LINK`. Яндекс — `YANDEX_UNSUPPORTED` (закрытый API).
 - **UI**: вкладка «Плейлисты» в `LibraryScreen` — кнопка «Импортировать по ссылке» (`Icons.Rounded.AddLink`), `AlertDialog` со ссылкой, превью (название, счётчик, первые 10 треков «название — артист»), прогресс `LinearProgressIndicator`, ошибки и успех — Snackbar. Сохранение — `PlaylistRepository.createPlaylist/addTrack`; состояние — `PlaylistImportState` в `LibraryViewModel`, тексты ошибок выбираются по `ImportError` (`import_error_*`).
-- **Экран артиста**: `feature/artist/ArtistScreen.kt` + `ArtistViewModel`, маршрут `Screen.Artist(name)` (`ARTIST_NAME_ARG`, `Uri.encode`) в `AppNavGraph` (док скрыт). Популярные треки — `DeezerMetadataClient.fetchArtistTopTracks(name)` (`search/artist` → `artist/{id}/top?limit=20`), при пустом ответе `YouTubeRepository.search("<artist> official audio")`; «Слушать всё» играет весь список. Входы: тап по имени артиста в `PlayerScreen` (закрывает оверлей плеера, воспроизведение не прерывается) и долгий тап по `TrackCard` (`onArtistClick`, `combinedClickable` только если колбэк передан) в поиске, медиатеке и плейлисте. С сессии 59 долгий тап открывает меню действий, а переход к артисту — его пункт «К артисту». В фазе 7 экран переедет на YouTube/SoundCloud.
+- **Экран артиста (историческая запись сессии 58):** `feature/artist/ArtistScreen.kt` + `ArtistViewModel` до фазы 7 работали на Deezer (`fetchArtistTopTracks`, `fetchArtistAlbums`, `fetchRelatedArtists`, `fetchAlbumTracks`). В фазе 7 экран переехал на YouTube/SoundCloud и `ArtistRepository`; старый маршрут `Screen.Artist(name)` остался только для поиска по имени. Входы: имя артиста в плеере и пункт «К артисту» в меню трека; после 7.6 клик открывает точный маршрут по `artistUrl`.
 - **Строки**: `import_*`, `artist_*` в `values/strings.xml` и `values-ru/strings.xml` (395 ключей, наборы совпадают).
 - **Тесты**: `PlaylistLinkParserTest` (15), `PlaylistPayloadParserTest` (6), `PlaylistImportServiceTest` (5); всего на 1.0.0 — 43 suite / 283 теста, 0 failures.
 

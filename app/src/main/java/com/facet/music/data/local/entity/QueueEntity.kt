@@ -23,4 +23,5 @@ data class QueueEntity(
     val transcodingUrl: String?,
     val isrc: String?,
     val previewSeconds: Int?,
+    val artistUrl: String? = null,
 )

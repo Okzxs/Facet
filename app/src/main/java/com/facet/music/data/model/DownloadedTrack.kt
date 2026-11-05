@@ -17,6 +17,7 @@ data class DownloadedTrack(
     val mediaUrl: String,
     val mimeType: String,
     val downloadedAt: Long,
+    val artistUrl: String? = null,
 )
 
 /**
@@ -28,6 +29,7 @@ fun DownloadedTrack.toTrack(): Track = Track(
     source = Source.LOCAL,
     title = title,
     artist = artist,
+    artistUrl = artistUrl,
     artworkUrl = artworkUrl,
     streamUrl = mediaUrl,
     durationMs = durationMs,

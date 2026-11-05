@@ -179,7 +179,7 @@ private fun heroStyle(variant: Int): HeroStyle = when (variant) {
 fun PlayerScreen(
     onBack: () -> Unit,
     onFindOnYouTube: (Track) -> Unit,
-    onArtistClick: (String) -> Unit,
+    onArtistClick: (Track) -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
     coverModifier: Modifier = Modifier,
     foregroundModifier: Modifier = Modifier,
@@ -762,7 +762,7 @@ fun PlayerScreen(
                         onDownloadClick = { viewModel.toggleDownload() },
                         // Подпись артиста под названием ведёт на его экран.
                         // Без трека (плейсхолдер «—») она некликабельна.
-                        onArtistClick = if (track != null) onArtistClick else null,
+                        onArtistClick = track?.let { current -> { onArtistClick(current) } },
                         // Общий shared-element модификатор для морфа обложки
                         // в мини-плеер при закрытии экрана. На время drag его
                         // отключаем: SharedTransitionLayout тяжёлый для 120 Гц,
@@ -1052,7 +1052,7 @@ private fun ExpressiveHeroZone(
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
     /** Тап по имени артиста; null — подпись не кликабельна. */
-    onArtistClick: ((String) -> Unit)? = null,
+    onArtistClick: (() -> Unit)? = null,
     coverModifier: Modifier = Modifier,
     coverSwipeModifier: Modifier = Modifier,
     panelModifier: Modifier = Modifier,
@@ -1260,7 +1260,7 @@ private fun ExpressiveHeroZone(
                             val artistModifier = if (artistClick != null) {
                                 Modifier
                                     .fillMaxWidth()
-                                    .clickable { artistClick(state.artist) }
+                                    .clickable { artistClick() }
                             } else {
                                 Modifier.fillMaxWidth()
                             }

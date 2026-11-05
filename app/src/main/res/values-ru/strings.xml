@@ -464,6 +464,17 @@
     <string name="spotify_import_loading">Загружаем плейлисты Spotify…</string>
     <string name="spotify_import_failed">Не удалось загрузить плейлисты Spotify</string>
     <string name="artist_load_failed_hint">Проверьте подключение к интернету и попробуйте ещё раз</string>
+    <string name="artist_listen">Слушать</string>
+    <string name="artist_wave">Волна по артисту</string>
+    <string name="artist_follow">Подписаться</string>
+    <string name="artist_following">Вы подписаны</string>
+    <string name="artist_popular">Популярное</string>
+    <string name="artist_releases">Релизы</string>
+    <string name="artist_all_tracks">Все треки</string>
+    <string name="artist_playlists">Плейлисты</string>
+    <string name="artist_release_tracks">Треки релиза</string>
+    <string name="artist_no_tracks">У артиста пока нет треков</string>
+    <string name="artist_close">Закрыть</string>
     <string name="common_close">Закрыть</string>
     <string name="spotify_signed_in_toast">Spotify подключён</string>
     <string name="spotify_import_empty">В вашей библиотеке Spotify пока нет плейлистов</string>

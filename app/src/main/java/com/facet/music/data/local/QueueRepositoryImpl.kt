@@ -72,6 +72,7 @@ class QueueRepositoryImpl @Inject constructor(
         transcodingUrl = transcodingUrl,
         isrc = isrc,
         previewSeconds = previewSeconds,
+        artistUrl = artistUrl,
     )
 
     private fun QueueEntity.toTrack(): Track? {
@@ -82,6 +83,7 @@ class QueueRepositoryImpl @Inject constructor(
             source = parsedSource,
             title = title,
             artist = artist,
+            artistUrl = artistUrl,
             artworkUrl = artworkUrl,
             streamUrl = streamUrl,
             durationMs = durationMs,

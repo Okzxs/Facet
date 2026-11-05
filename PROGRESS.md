@@ -1,6 +1,52 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 06.11.2026 (сессия 69, фаза 6)
+## Последнее обновление: 06.11.2026 (сессия 69, фаза 7)
+
+## Сессия 69: глобальный рефакторинг, фаза 7 — экран артиста на YouTube и SoundCloud
+
+**Статус:** фаза 7 из 11 закрыта; следующие фазы не начаты.
+
+### Что сделано
+- **Маршруты.** `Screen.ArtistDetail` — `artist/{source}/{encodedUrl}?name=…`; старый `artist/{name}` ищет лучшего артиста через `ArtistRepository.resolveByName` и открывает его. Оба маршрута используют `ArtistScreen`/`ArtistViewModel`, док скрыт.
+- **ArtistRepository.** `ArtistRepository` + `ArtistRepositoryImpl`: шапка, популярное, релизы, все треки, плейлисты, похожие; YouTube — вкладки канала, для Topic-канала без вкладок — YouTube Music поиск (`MUSIC_ALBUMS`/`MUSIC_PLAYLISTS` и `searchPage`); SoundCloud — `tracks`/`albums`/`playlists`.
+- **Популярное.** Сортировка по прослушиваниям; при наличии второго источника списки сливаются `TrackMerger.merge`, дубли убираются, порядок — по `Track.playCount`.
+- **Кэш.** `artist_cache` (Room v17, TTL 6 ч); экран сначала показывает кэш, затем обновляет. Релизы/плейлисты/похожие догружаются после шапки и сохраняются обратно.
+- **Подписки.** `followed_artists` с миграцией; кнопка «Подписаться»/«Вы подписаны» в шапке и `LargeTopAppBar`; состояние переживает перезапуск.
+- **UI.** `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior`, баннер/размытая обложка, аватар 120dp, `displaySmall`, подписчики, «Слушать», «Перемешать», «Волна по артисту», «Подписаться»; популярное топ-10 с номерами, релизы `LazyRow` 160dp со шторкой треков, «Все треки» с пагинацией, плейлисты, похожие артисты, empty/error с «Повторить».
+- **artistUrl.** `Track.artistUrl` из `uploaderUrl` YouTube/SoundCloud; колонка добавлена в `liked_tracks`, `play_history`, `chart_cache`, `downloaded_tracks`, `playlist_tracks`, `queue`. Клик по артисту в плеере/списках/волне открывает точный маршрут, без ссылки — поиск по имени.
+- **Deezer.** Из `ArtistViewModel` удалены все вызовы, из `DeezerMetadataClient` — артистовые методы; Deezer остался только для новинок главной.
+
+### Проверка
+- `assembleDebug`/`assembleRelease` — BUILD SUCCESSFUL; `testDebugUnitTest` — **54 suite / 304 теста, 0 failures**.
+- Release APK — **7 429 398 байт**, SHA-256 `115d28c8c01497421bb338865db7d565981d89eaf222f73a12196a421e26ef1c`.
+- **Live на SM-A266B (release):** Daft Punk (YouTube) — шапка, популярное, «Релизы», шторка `Random Access Memories`, полный трек 6:09; KAASI (SoundCloud) — популярное, релизы, плейлисты, похожие; «Слушать» играет полный трек; подписка сохраняется после перезапуска; «Все треки» подгружаются при прокрутке.
+- `rg -i deezer app/src/main/java/com/facet/music/feature/artist` — пусто.
+
+### Файлы
+```
+app/src/main/java/com/facet/music/data/model/ArtistPage.kt
+app/src/main/java/com/facet/music/data/model/Track.kt
+app/src/main/java/com/facet/music/data/repository/ArtistRepository.kt
+app/src/main/java/com/facet/music/data/source/artist/ArtistRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/local/entity/ArtistEntities.kt
+app/src/main/java/com/facet/music/data/local/dao/ArtistDao.kt
+app/src/main/java/com/facet/music/data/local/AppDatabase.kt
+app/src/main/java/com/facet/music/data/local/DatabaseMigrations.kt
+app/src/main/java/com/facet/music/data/local/DatabaseModule.kt
+app/src/main/java/com/facet/music/feature/artist/ArtistScreen.kt
+app/src/main/java/com/facet/music/feature/artist/ArtistViewModel.kt
+app/src/main/java/com/facet/music/navigation/Screen.kt
+app/src/main/java/com/facet/music/navigation/AppNavGraph.kt
+app/src/main/java/com/facet/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudJson.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudChartsRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/imports/PlaylistImportService.kt
+app/src/main/java/com/facet/music/data/source/external/DeezerMetadataClient.kt
+app/src/main/res/values/strings.xml
+app/src/main/res/values-ru/strings.xml
+app/src/test/java/com/facet/music/data/local/DatabaseMigrationTest.kt
+```
 
 ## Сессия 69: глобальный рефакторинг, фаза 6 — поиск, артисты и мультивыбор
 

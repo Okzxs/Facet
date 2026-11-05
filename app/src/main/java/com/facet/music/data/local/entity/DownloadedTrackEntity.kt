@@ -24,6 +24,7 @@ data class DownloadedTrackEntity(
     /** MIME файла: AUDIO_MPEG, AUDIO_MP4 или AUDIO_WEBM. */
     val mimeType: String,
     val downloadedAt: Long = System.currentTimeMillis(),
+    val artistUrl: String? = null,
 )
 
 fun DownloadedTrackEntity.toDomain(): DownloadedTrack = DownloadedTrack(
@@ -35,6 +36,7 @@ fun DownloadedTrackEntity.toDomain(): DownloadedTrack = DownloadedTrack(
     mediaUrl = mediaUrl,
     mimeType = mimeType,
     downloadedAt = downloadedAt,
+    artistUrl = artistUrl,
 )
 
 fun Track.toDownloadEntity(
@@ -50,4 +52,5 @@ fun Track.toDownloadEntity(
     mediaUrl = mediaUrl,
     mimeType = mimeType,
     downloadedAt = downloadedAt,
+    artistUrl = artistUrl,
 )

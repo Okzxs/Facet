@@ -459,6 +459,17 @@
     <string name="spotify_import_loading">Loading Spotify playlists…</string>
     <string name="spotify_import_failed">Couldn’t load Spotify playlists</string>
     <string name="artist_load_failed_hint">Check your internet connection and try again</string>
+    <string name="artist_listen">Listen</string>
+    <string name="artist_wave">Artist wave</string>
+    <string name="artist_follow">Follow</string>
+    <string name="artist_following">Following</string>
+    <string name="artist_popular">Popular</string>
+    <string name="artist_releases">Releases</string>
+    <string name="artist_all_tracks">All tracks</string>
+    <string name="artist_playlists">Playlists</string>
+    <string name="artist_release_tracks">Release tracks</string>
+    <string name="artist_no_tracks">No tracks yet</string>
+    <string name="artist_close">Close</string>
     <string name="common_close">Close</string>
     <string name="spotify_signed_in_toast">Spotify connected</string>
     <string name="spotify_import_empty">No playlists in your Spotify library yet</string>

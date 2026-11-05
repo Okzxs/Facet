@@ -2,7 +2,9 @@ package com.facet.music.data.local
 
 import android.content.Context
 import androidx.room.Room
+import com.facet.music.data.local.dao.ArtistCacheDao
 import com.facet.music.data.local.dao.DislikedTrackDao
+import com.facet.music.data.local.dao.FollowedArtistDao
 import com.facet.music.data.local.dao.DownloadedTracksDao
 import com.facet.music.data.local.dao.LikedTracksDao
 import com.facet.music.data.local.dao.PlayHistoryDao
@@ -101,5 +103,17 @@ object DatabaseModule {
     @Singleton
     fun provideResolvedMatchDao(database: AppDatabase): ResolvedMatchDao {
         return database.resolvedMatchDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideArtistCacheDao(database: AppDatabase): ArtistCacheDao {
+        return database.artistCacheDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideFollowedArtistDao(database: AppDatabase): FollowedArtistDao {
+        return database.followedArtistDao()
     }
 }

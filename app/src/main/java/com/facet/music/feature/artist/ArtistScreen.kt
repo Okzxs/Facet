@@ -3,59 +3,66 @@ package com.facet.music.feature.artist
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,30 +77,34 @@ import com.facet.music.core.ui.components.PlaylistCover
 import com.facet.music.core.ui.components.SectionHeader
 import com.facet.music.core.ui.components.TrackArtwork
 import com.facet.music.core.ui.components.TrackCard
+import com.facet.music.data.model.Artist
+import com.facet.music.data.model.ArtistPlaylist
+import com.facet.music.data.model.ArtistProfile
+import com.facet.music.data.model.ArtistRelease
+import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
-import com.facet.music.data.source.external.DeezerAlbum
-import com.facet.music.data.source.external.DeezerArtistRef
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/** Сколько популярных треков показываем на одной странице карусели. */
-private const val TOP_TRACKS_PER_PAGE = 5
-
-/** Высота hero-зоны артиста: хватает на аватар, имя, статистику и кнопки. */
-private val ArtistHeroHeight = 372.dp
+private const val POPULAR_LIMIT = 10
+private const val RELEASE_CARD_SIZE = 160
+private const val ARTIST_BUBBLE_SIZE = 96
 
 /**
- * Экран артиста: иммерсивная шапка с размытым аватаром-задником, статистика
- * Deezer, популярные треки, карусель альбомов и похожие артисты.
+ * Экран артиста YouTube/SoundCloud: сворачивающаяся шапка, популярное,
+ * релизы, все треки с пагинацией, плейлисты и похожие исполнители.
  *
- * Экран полноэкранный (нижний док скрыт навграфом), поэтому шапка уходит под
- * статус-бар, а кнопка «назад» живёт прямо в ней.
+ * Экран полноэкранный (док скрыт навграфом), поэтому шапка уходит под
+ * статус-бар, а LargeTopAppBar прозрачен и сворачивается по прокрутке.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArtistScreen(
     onBack: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
-    onArtistClick: (String) -> Unit,
+    onArtistClick: (Artist) -> Unit,
+    onTrackArtistClick: (Track) -> Unit,
+    onWaveClick: (List<Track>) -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
     viewModel: ArtistViewModel = hiltViewModel(),
@@ -101,47 +112,20 @@ fun ArtistScreen(
     val state by viewModel.uiState.collectAsState()
     val currentTrackId by viewModel.currentTrackId.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
-    val albumError by viewModel.albumError.collectAsState()
+    val followedKeys by viewModel.followedKeys.collectAsState()
     val listState = rememberLazyListState()
-    // Популярные треки листаются горизонтально страницами по пять: длинный
-    // вертикальный список отодвигал альбомы и похожих артистов далеко вниз.
-    val trackPages = state.tracks.chunked(TOP_TRACKS_PER_PAGE)
-    val pagerState = rememberPagerState(pageCount = { trackPages.size })
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    // Прокручиваем к текущему треку один раз при открытии: иначе каждый
-    // следующий трек выдёргивал бы список из-под пальца.
-    var scrolledToCurrent by remember { mutableStateOf(false) }
-
-    // Экран открыли с играющим треком — сразу показываем его строку.
-    LaunchedEffect(currentTrackId, state.tracks) {
-        if (scrolledToCurrent) return@LaunchedEffect
-        val index = state.tracks.indexOfFirst { it.id == currentTrackId }
-        if (index >= 0) {
-            listState.animateScrollToItem(1)
-            pagerState.animateScrollToPage(index / TOP_TRACKS_PER_PAGE)
-            scrolledToCurrent = true
-        }
+    val isFollowed = state.profile?.key?.let { it in followedKeys } == true
+    val collapsed by remember {
+        derivedStateOf { scrollBehavior.state.collapsedFraction > 0.55f }
     }
 
-    // «Слушать альбом»: треки загружает ViewModel, экран запускает очередь.
-    LaunchedEffect(viewModel) {
-        viewModel.playQueue.collect { tracks ->
-            tracks.firstOrNull()?.let { first -> onTrackClick(first, tracks) }
-        }
-    }
+    val queue = (state.popular + state.allTracks).distinctBy { it.id }
+    val canPlay = queue.isNotEmpty()
 
-    LaunchedEffect(albumError) {
-        if (!albumError) return@LaunchedEffect
-        snackbarHostState.showSnackbar(
-            message = context.getString(R.string.artist_album_tracks_failed),
-            duration = SnackbarDuration.Short,
-        )
-        viewModel.consumeAlbumError()
-    }
-
-    // Очередь живёт в плеере: подтверждение действий — Snackbar.
     val handlePlayNext: (Track) -> Unit = { track ->
         if (onPlayNext(track)) {
             scope.launch {
@@ -174,39 +158,41 @@ fun ArtistScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .navigationBarsPadding(),
-            contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             item(key = "artist_header") {
                 ArtistHero(
                     state = state,
-                    onBack = onBack,
+                    isFollowed = isFollowed,
+                    canPlay = canPlay,
                     onPlayAll = {
-                        state.tracks.firstOrNull()?.let { first ->
-                            onTrackClick(first, state.tracks)
-                        }
+                        queue.firstOrNull()?.let { first -> onTrackClick(first, queue) }
                     },
                     onShuffle = {
-                        val shuffled = state.tracks.shuffled()
+                        val shuffled = queue.shuffled()
                         shuffled.firstOrNull()?.let { first -> onTrackClick(first, shuffled) }
                     },
+                    onWave = { onWaveClick(queue) },
+                    onToggleFollow = viewModel::toggleFollow,
                 )
             }
 
-            if (state.isLoading) {
-                item(key = "artist_loading") {
+            when {
+                state.isLoading && state.profile == null -> item(key = "artist_loading") {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 32.dp),
+                            .padding(vertical = 48.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator()
                     }
                 }
-            } else if (state.failed) {
-                item(key = "artist_failed") {
+
+                state.failed && state.profile == null -> item(key = "artist_failed") {
                     EmptyState(
                         icon = Icons.Rounded.MusicNote,
                         title = stringResource(R.string.artist_load_failed),
@@ -216,118 +202,188 @@ fun ArtistScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-            } else {
-                item(key = "artist_section") {
-                    SectionHeader(title = stringResource(R.string.artist_top_tracks))
-                }
-                item(key = "artist_top_pager") {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        HorizontalPager(
-                            state = pagerState,
-                            pageSpacing = 12.dp,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { page ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                trackPages[page].forEach { track ->
-                                    TrackCard(
-                                        track = track,
-                                        isPlaying = track.id == currentTrackId,
-                                        isPaused = track.id == currentTrackId && !isPlaying,
-                                        artworkSize = 60,
-                                        artworkCornerDp = 16,
-                                        onClick = { onTrackClick(track, state.tracks) },
-                                        onPlayNext = { handlePlayNext(track) },
-                                        onAddToQueue = { handleAddToQueue(track) },
-                                    )
-                                }
-                                // Последняя страница короче: держим высоту, чтобы
-                                // при листании не прыгала вся нижняя часть экрана.
-                                repeat(TOP_TRACKS_PER_PAGE - trackPages[page].size) {
-                                    Spacer(Modifier.height(64.dp))
-                                }
-                            }
+
+                else -> {
+                    if (state.popular.isNotEmpty()) {
+                        item(key = "artist_popular_header") {
+                            SectionHeader(title = stringResource(R.string.artist_popular))
                         }
-                        if (trackPages.size > 1) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
+                        itemsIndexed(
+                            items = state.popular.take(POPULAR_LIMIT),
+                            key = { _, track -> "popular_${track.id}" },
+                        ) { index, track ->
+                            PopularTrackRow(
+                                position = index + 1,
+                                track = track,
+                                isPlaying = track.id == currentTrackId,
+                                isPaused = track.id == currentTrackId && !isPlaying,
+                                onClick = { onTrackClick(track, queue) },
+                                onArtistClick = { onTrackArtistClick(track) },
+                            )
+                        }
+                    }
+
+                    if (state.releases.isNotEmpty()) {
+                        item(key = "artist_releases_header") {
+                            SectionHeader(title = stringResource(R.string.artist_releases))
+                        }
+                        item(key = "artist_releases_row") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                repeat(trackPages.size) { index ->
-                                    val selected = pagerState.currentPage == index
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(horizontal = 3.dp)
-                                            .size(if (selected) 8.dp else 6.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (selected) {
-                                                    MaterialTheme.colorScheme.primary
-                                                } else {
-                                                    MaterialTheme.colorScheme.outlineVariant
-                                                },
-                                            ),
+                                items(state.releases, key = { it.url }) { release ->
+                                    ReleaseCard(
+                                        release = release,
+                                        onClick = { viewModel.openRelease(release) },
                                     )
                                 }
                             }
                         }
                     }
-                }
 
-                if (state.albums.isNotEmpty()) {
-                    item(key = "artist_albums_header") {
-                        SectionHeader(title = stringResource(R.string.artist_albums_title))
-                    }
-                    item(key = "artist_albums_row") {
-                        // Обычный Row с горизонтальным скроллом, а не LazyRow:
-                        // в LazyColumn ленивый ряд обрезал подпись под обложкой.
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            state.albums.forEach { album ->
-                                AlbumCard(
-                                    album = album,
-                                    onClick = { viewModel.playAlbum(album.id) },
-                                )
+                    if (state.allTracks.isNotEmpty()) {
+                        item(key = "artist_tracks_header") {
+                            SectionHeader(title = stringResource(R.string.artist_all_tracks))
+                        }
+                        items(state.allTracks, key = { it.id }) { track ->
+                            TrackCard(
+                                track = track,
+                                isPlaying = track.id == currentTrackId,
+                                isPaused = track.id == currentTrackId && !isPlaying,
+                                artworkSize = 56,
+                                onClick = { onTrackClick(track, state.allTracks) },
+                                onArtistClick = { onTrackArtistClick(track) },
+                                onPlayNext = { handlePlayNext(track) },
+                                onAddToQueue = { handleAddToQueue(track) },
+                            )
+                        }
+                        if (state.hasMore) {
+                            item(key = "artist_tracks_more") {
+                                LaunchedEffect(state.allTracks.size, state.hasMore) {
+                                    viewModel.loadMore()
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 16.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                }
                             }
                         }
                     }
-                }
 
-                if (state.related.isNotEmpty()) {
-                    item(key = "artist_related_header") {
-                        SectionHeader(title = stringResource(R.string.artist_similar_title))
-                    }
-                    item(key = "artist_related_row") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            state.related.forEach { related ->
-                                ArtistBubble(
-                                    artist = related,
-                                    onClick = { onArtistClick(related.name) },
-                                )
+                    if (state.playlists.isNotEmpty()) {
+                        item(key = "artist_playlists_header") {
+                            SectionHeader(title = stringResource(R.string.artist_playlists))
+                        }
+                        item(key = "artist_playlists_row") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                items(state.playlists, key = { it.url }) { playlist ->
+                                    PlaylistCard(
+                                        playlist = playlist,
+                                        onClick = {
+                                            viewModel.openRelease(
+                                                ArtistRelease(
+                                                    id = playlist.id,
+                                                    title = playlist.title,
+                                                    coverUrl = playlist.coverUrl,
+                                                    url = playlist.url,
+                                                    trackCount = playlist.trackCount,
+                                                    isAlbum = false,
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
                             }
+                        }
+                    }
+
+                    if (state.related.isNotEmpty()) {
+                        item(key = "artist_related_header") {
+                            SectionHeader(title = stringResource(R.string.artist_similar_title))
+                        }
+                        item(key = "artist_related_row") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(state.related, key = { "${it.source}:${it.url}" }) { artist ->
+                                    ArtistBubble(
+                                        artist = artist,
+                                        onClick = { onArtistClick(artist) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (state.popular.isEmpty() && state.allTracks.isEmpty()) {
+                        item(key = "artist_empty") {
+                            EmptyState(
+                                icon = Icons.Rounded.MusicNote,
+                                title = stringResource(R.string.artist_no_tracks),
+                                message = stringResource(R.string.artist_load_failed_hint),
+                                actionLabel = stringResource(R.string.artist_retry),
+                                onAction = viewModel::retry,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
                     }
                 }
             }
         }
+
+        LargeTopAppBar(
+            title = {
+                if (collapsed) {
+                    Text(
+                        text = state.displayName.ifBlank { stringResource(R.string.artist_title) },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            navigationIcon = {
+                Surface(
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .size(42.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
+                ) {
+                    androidx.compose.material3.IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_back),
+                        )
+                    }
+                }
+            },
+            actions = {
+                if (state.profile != null) {
+                    androidx.compose.material3.IconButton(onClick = viewModel::toggleFollow) {
+                        Icon(
+                            imageVector = if (isFollowed) Icons.Filled.Check else Icons.Rounded.Add,
+                            contentDescription = stringResource(
+                                if (isFollowed) R.string.artist_following else R.string.artist_follow,
+                            ),
+                        )
+                    }
+                }
+            },
+            scrollBehavior = scrollBehavior,
+            colors = TopAppBarDefaults.largeTopAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+            ),
+        )
 
         SnackbarHost(
             hostState = snackbarHostState,
@@ -337,60 +393,56 @@ fun ArtistScreen(
                 .padding(16.dp),
         )
     }
+
+    if (state.selectedReleaseTitle != null) {
+        ReleaseTracksSheet(
+            title = state.selectedReleaseTitle.orEmpty(),
+            tracks = state.releaseTracks,
+            isLoading = state.isReleaseLoading,
+            currentTrackId = currentTrackId,
+            isPlaying = isPlaying,
+            onDismiss = viewModel::closeRelease,
+            onTrackClick = { track ->
+                onTrackClick(track, state.releaseTracks)
+                viewModel.closeRelease()
+            },
+        )
+    }
 }
 
-/**
- * Иммерсивная шапка: размытый аватар на фоне, круглая аватарка, имя,
- * статистика Deezer и кнопки «Слушать всё»/«Перемешать».
- *
- * Фон затемняется к низу до цвета темы — поэтому текст читается на любом
- * фото, а имя из Deezer может быть светлым или тёмным.
- */
 @Composable
 private fun ArtistHero(
     state: ArtistUiState,
-    onBack: () -> Unit,
+    isFollowed: Boolean,
+    canPlay: Boolean,
     onPlayAll: () -> Unit,
     onShuffle: () -> Unit,
+    onWave: () -> Unit,
+    onToggleFollow: () -> Unit,
 ) {
     val context = LocalContext.current
     val background = MaterialTheme.colorScheme.background
-    val canPlay = state.tracks.isNotEmpty()
-    val displayName = state.name.ifBlank { stringResource(R.string.artist_title) }
-
-    val stats = listOfNotNull(
-        if (state.fans > 0) {
-            stringResource(R.string.artist_followers, formatCompactCount(state.fans))
-        } else {
-            null
-        },
-        if (state.albumCount > 0) {
-            stringResource(R.string.artist_albums, formatCompactCount(state.albumCount))
-        } else {
-            null
-        },
-    )
+    val profile = state.profile
+    val displayName = state.displayName.ifBlank { stringResource(R.string.artist_title) }
+    val backdrop = profile?.bannerUrl ?: profile?.avatarUrl
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(ArtistHeroHeight),
+            .height(540.dp),
     ) {
-        if (!state.pictureUrl.isNullOrBlank()) {
-            val request = ImageRequest.Builder(context)
-                .data(state.pictureUrl)
-                .crossfade(300)
-                .build()
+        if (!backdrop.isNullOrBlank()) {
             AsyncImage(
-                model = request,
+                model = ImageRequest.Builder(context)
+                    .data(backdrop)
+                    .crossfade(300)
+                    .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                alpha = 0.65f,
+                alpha = 0.6f,
                 modifier = Modifier
                     .fillMaxSize()
-                    // На Android ниже 12 blur игнорируется — остаётся полупрозрачное
-                    // фото, которое всё равно закрыто градиентом.
-                    .blur(56.dp),
+                    .blur(48.dp),
             )
         } else {
             Box(
@@ -408,35 +460,18 @@ private fun ArtistHero(
             )
         }
 
-        // Затемнение к низу: имя и кнопки всегда лежат на цвете фона.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         0f to Color.Transparent,
-                        0.35f to background.copy(alpha = 0.35f),
-                        0.75f to background.copy(alpha = 0.92f),
+                        0.32f to background.copy(alpha = 0.32f),
+                        0.72f to background.copy(alpha = 0.9f),
                         1f to background,
                     ),
                 ),
         )
-
-        Surface(
-            modifier = Modifier
-                .statusBarsPadding()
-                .padding(start = 8.dp, top = 8.dp)
-                .size(44.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.common_back),
-                )
-            }
-        }
 
         Column(
             modifier = Modifier
@@ -445,69 +480,92 @@ private fun ArtistHero(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Surface(
-                modifier = Modifier.size(124.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                border = BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)),
-            ) {
-                TrackArtwork(
-                    url = state.pictureUrl,
-                    contentDescription = stringResource(R.string.artist_avatar_cd, displayName),
-                    size = 124,
-                    cornerDp = 62,
-                )
-            }
-            Spacer(Modifier.height(14.dp))
+            ArtistAvatar(profile = profile, name = displayName)
+            Spacer(Modifier.height(12.dp))
             Text(
                 text = displayName,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )
-            if (stats.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stats.joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            Spacer(Modifier.height(4.dp))
+            ArtistMeta(profile = profile)
             Spacer(Modifier.height(14.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Button(
                     onClick = onPlayAll,
                     enabled = canPlay,
                     modifier = Modifier
                         .weight(1f)
-                        .height(52.dp),
+                        .height(48.dp),
                     shape = CircleShape,
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.artist_play_all))
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.artist_listen), maxLines = 1)
                 }
-                FilledTonalIconButton(
+                FilledTonalButton(
                     onClick = onShuffle,
                     enabled = canPlay,
-                    modifier = Modifier.size(52.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
                     shape = CircleShape,
                 ) {
+                    Icon(Icons.Filled.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.artist_shuffle), maxLines = 1)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onWave,
+                    enabled = canPlay,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp),
+                    shape = CircleShape,
+                ) {
+                    Icon(Icons.Rounded.Waves, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.artist_wave), maxLines = 1)
+                }
+                OutlinedButton(
+                    onClick = onToggleFollow,
+                    enabled = profile != null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp),
+                    shape = CircleShape,
+                    border = BorderStroke(
+                        1.dp,
+                        if (isFollowed) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        },
+                    ),
+                ) {
                     Icon(
-                        imageVector = Icons.Filled.Shuffle,
-                        contentDescription = stringResource(R.string.artist_shuffle),
-                        modifier = Modifier.size(22.dp),
+                        imageVector = if (isFollowed) Icons.Filled.Check else Icons.Rounded.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(
+                            if (isFollowed) R.string.artist_following else R.string.artist_follow,
+                        ),
+                        maxLines = 1,
                     )
                 }
             }
@@ -515,60 +573,196 @@ private fun ArtistHero(
     }
 }
 
-/** Карточка альбома в карусели: обложка, название и год релиза. */
 @Composable
-private fun AlbumCard(
-    album: DeezerAlbum,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .width(148.dp)
-            // Без clip: скругление обрезало первую цифру года в нижнем углу.
-            .clickable(onClick = onClick),
+private fun ArtistAvatar(profile: ArtistProfile?, name: String) {
+    Surface(
+        modifier = Modifier.size(120.dp),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)),
     ) {
-        // Явный размер вместо aspectRatio: внутри горизонтального скролла
-        // коэффициент сторон иногда съедал высоту подписи.
-        PlaylistCover(
-            name = album.title,
-            coverUrl = album.coverUrl,
-            modifier = Modifier.size(148.dp),
-            corner = 16.dp,
+        TrackArtwork(
+            url = profile?.avatarUrl,
+            contentDescription = stringResource(R.string.artist_avatar_cd, name),
+            size = 120,
+            cornerDp = 60,
         )
-        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun ArtistMeta(profile: ArtistProfile?) {
+    if (profile == null) return
+    val listeners = profile.subscriberCount?.takeIf { it > 0 }?.let {
+        stringResource(R.string.artist_followers, formatCompactCount(it))
+    }
+    val stats = listOfNotNull(
+        if (profile.source == Source.YOUTUBE) "YouTube" else "SoundCloud",
+        listeners,
+    )
+    Text(
+        text = stats.joinToString(" · "),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 2,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun PopularTrackRow(
+    position: Int,
+    track: Track,
+    isPlaying: Boolean,
+    isPaused: Boolean,
+    onClick: () -> Unit,
+    onArtistClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
-            text = album.title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            text = position.toString(),
+            modifier = Modifier.width(28.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (isPlaying) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            },
         )
-        if (!album.year.isNullOrBlank()) {
+        TrackArtwork(
+            url = track.artworkUrl,
+            contentDescription = stringResource(R.string.track_artwork_cd, track.title),
+            size = 52,
+            cornerDp = 12,
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = album.year,
+                text = track.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = track.artist,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable(onClick = onArtistClick),
+            )
+        }
+        if (isPlaying) {
+            com.facet.music.core.ui.components.PlayingEqualizerIcon()
+        } else if (isPaused) {
+            com.facet.music.core.ui.components.PausedEqualizerDots()
+        } else {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = stringResource(R.string.common_play_cd),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                modifier = Modifier.size(24.dp),
             )
         }
     }
 }
 
-/** Круглый аватар похожего артиста: тап открывает его экран. */
 @Composable
-private fun ArtistBubble(
-    artist: DeezerArtistRef,
+private fun ReleaseCard(
+    release: ArtistRelease,
     onClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
-            .width(96.dp)
+            .width(RELEASE_CARD_SIZE.dp)
+            .clickable(onClick = onClick),
+    ) {
+        PlaylistCover(
+            name = release.title,
+            coverUrl = release.coverUrl,
+            modifier = Modifier.size(RELEASE_CARD_SIZE.dp),
+            corner = 16.dp,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = release.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val countLabel = release.trackCount.takeIf { it > 0 }?.let {
+            pluralStringResource(R.plurals.track_count, it, it)
+        }
+        Text(
+            text = listOfNotNull(release.year, countLabel).joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun PlaylistCard(
+    playlist: ArtistPlaylist,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(RELEASE_CARD_SIZE.dp)
+            .clickable(onClick = onClick),
+    ) {
+        PlaylistCover(
+            name = playlist.title,
+            coverUrl = playlist.coverUrl,
+            modifier = Modifier.size(RELEASE_CARD_SIZE.dp),
+            corner = 16.dp,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = playlist.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (playlist.trackCount > 0) {
+            Text(
+                text = pluralStringResource(
+                    R.plurals.track_count,
+                    playlist.trackCount,
+                    playlist.trackCount,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ArtistBubble(
+    artist: Artist,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(ARTIST_BUBBLE_SIZE.dp)
             .clickable(onClick = onClick)
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         TrackArtwork(
-            url = artist.pictureUrl,
+            url = artist.avatarUrl,
             contentDescription = null,
             size = 84,
             cornerDp = 42,
@@ -585,8 +779,61 @@ private fun ArtistBubble(
     }
 }
 
-/** Компактная запись больших чисел: 1.2M, 850K, 1234. */
-private fun formatCompactCount(value: Int): String = when {
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReleaseTracksSheet(
+    title: String,
+    tracks: List<Track>,
+    isLoading: Boolean,
+    currentTrackId: String?,
+    isPlaying: Boolean,
+    onDismiss: () -> Unit,
+    onTrackClick: (Track) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.82f)
+                .navigationBarsPadding(),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+                    items(tracks, key = { it.id }) { track ->
+                        TrackCard(
+                            track = track,
+                            isPlaying = track.id == currentTrackId,
+                            isPaused = track.id == currentTrackId && !isPlaying,
+                            artworkSize = 52,
+                            onClick = { onTrackClick(track) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatCompactCount(value: Long): String = when {
     value >= 1_000_000 -> String.format(Locale.US, "%.1fM", value / 1_000_000f)
     value >= 1_000 -> String.format(Locale.US, "%.0fK", value / 1_000f)
     else -> value.toString()

@@ -7,6 +7,8 @@ import com.facet.music.core.network.NewPipeDownloader
 import com.facet.music.core.network.StreamExpiry
 import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.model.Artist
+import com.facet.music.data.model.ArtistPlaylist
+import com.facet.music.data.model.ArtistRelease
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
@@ -16,11 +18,13 @@ import com.facet.music.data.repository.YouTubeRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
@@ -110,6 +114,42 @@ class YouTubeRepositoryImpl @Inject constructor(
             }.rethrowCancellation()
         }
 
+    override suspend fun searchMusicAlbums(
+        query: String,
+        limit: Int,
+    ): Result<List<ArtistRelease>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val service = NewPipe.getService(ServiceList.YouTube.serviceId)
+            searchCollections(
+                service,
+                query,
+                YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS,
+                limit,
+            )
+                .filterIsInstance<PlaylistInfoItem>()
+                .map { it.toRelease() }
+                .distinctBy { it.url }
+        }.rethrowCancellation()
+    }
+
+    override suspend fun searchMusicPlaylists(
+        query: String,
+        limit: Int,
+    ): Result<List<ArtistPlaylist>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val service = NewPipe.getService(ServiceList.YouTube.serviceId)
+            searchCollections(
+                service,
+                query,
+                YoutubeSearchQueryHandlerFactory.MUSIC_PLAYLISTS,
+                limit,
+            )
+                .filterIsInstance<PlaylistInfoItem>()
+                .map { it.toPlaylist() }
+                .distinctBy { it.url }
+        }.rethrowCancellation()
+    }
+
     override suspend fun searchArtists(query: String, limit: Int): Result<List<Artist>> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -152,6 +192,36 @@ class YouTubeRepositoryImpl @Inject constructor(
             SearchInfo.getInfo(service, queryHandler)
         }
     }
+
+    private suspend fun searchCollections(
+        service: org.schabi.newpipe.extractor.StreamingService,
+        query: String,
+        filter: String,
+        limit: Int,
+    ): List<InfoItem> {
+        val queryHandler = service.searchQHFactory.fromQuery(query, listOf(filter), "")
+        val info = newPipeDownloader.withCancellation {
+            SearchInfo.getInfo(service, queryHandler)
+        }
+        return info.relatedItems.take(limit)
+    }
+
+    private fun PlaylistInfoItem.toRelease(): ArtistRelease = ArtistRelease(
+        id = url,
+        title = name,
+        coverUrl = thumbnails.maxByOrNull { it.height }?.url,
+        year = null,
+        url = url,
+        trackCount = streamCount.coerceAtLeast(0L).toInt(),
+    )
+
+    private fun PlaylistInfoItem.toPlaylist(): ArtistPlaylist = ArtistPlaylist(
+        id = url,
+        title = name,
+        coverUrl = thumbnails.maxByOrNull { it.height }?.url,
+        url = url,
+        trackCount = streamCount.coerceAtLeast(0L).toInt(),
+    )
 
     private suspend fun searchChannels(
         service: org.schabi.newpipe.extractor.StreamingService,
@@ -282,11 +352,13 @@ class YouTubeRepositoryImpl @Inject constructor(
             source = Source.YOUTUBE,
             title = name,
             artist = artist,
+            artistUrl = uploaderUrl?.takeIf { it.isNotBlank() },
             artworkUrl = artworkUrl,
             streamUrl = null,
             durationMs = duration * 1000L,
             genre = null,
             transcodingUrl = url,
+            playCount = viewCount.coerceAtLeast(0L),
         )
     }
 

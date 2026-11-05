@@ -2,8 +2,10 @@ package com.facet.music.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import com.facet.music.data.local.dao.ArtistCacheDao
 import com.facet.music.data.local.dao.ChartCacheDao
 import com.facet.music.data.local.dao.DislikedTrackDao
+import com.facet.music.data.local.dao.FollowedArtistDao
 import com.facet.music.data.local.dao.DownloadedTracksDao
 import com.facet.music.data.local.dao.LikedTracksDao
 import com.facet.music.data.local.dao.PlayHistoryDao
@@ -13,8 +15,10 @@ import com.facet.music.data.local.dao.RecentlyShownDao
 import com.facet.music.data.local.dao.ResolvedMatchDao
 import com.facet.music.data.local.dao.SearchCacheDao
 import com.facet.music.data.local.dao.TasteDao
+import com.facet.music.data.local.entity.ArtistCacheEntity
 import com.facet.music.data.local.entity.ChartCacheEntity
 import com.facet.music.data.local.entity.DislikedTrackEntity
+import com.facet.music.data.local.entity.FollowedArtistEntity
 import com.facet.music.data.local.entity.DownloadedTrackEntity
 import com.facet.music.data.local.entity.LikedTrackEntity
 import com.facet.music.data.local.entity.PlayHistoryEntity
@@ -47,8 +51,10 @@ import com.facet.music.data.local.entity.UserPreferenceEntity
         PlaylistTrackEntity::class,
         QueueEntity::class,
         ResolvedMatchEntity::class,
+        ArtistCacheEntity::class,
+        FollowedArtistEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -63,4 +69,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
     abstract fun queueDao(): QueueDao
     abstract fun resolvedMatchDao(): ResolvedMatchDao
+    abstract fun artistCacheDao(): ArtistCacheDao
+    abstract fun followedArtistDao(): FollowedArtistDao
 }

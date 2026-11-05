@@ -99,7 +99,10 @@ private data class WaveSpec(
 )
 
 @Composable
-fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
+fun WaveScreen(
+    onArtistClick: (Track) -> Unit,
+    viewModel: WaveViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsState()
     // Инсеты ставим сами: корневого Scaffold больше нет. Низ — запас под плавающий док.
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -221,6 +224,7 @@ fun WaveScreen(viewModel: WaveViewModel = hiltViewModel()) {
                         index = index,
                         track = track,
                         onClick = { viewModel.playTrack(track) },
+                        onArtistClick = { onArtistClick(track) },
                     )
                 }
             } else if (!uiState.isGenerating && uiState.error == null) {
@@ -673,6 +677,7 @@ private fun WaveTrackRow(
     index: Int,
     track: Track,
     onClick: () -> Unit,
+    onArtistClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -743,6 +748,7 @@ private fun WaveTrackRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable(onClick = onArtistClick),
                 )
             }
             Icon(

@@ -173,7 +173,8 @@ private val OnlineGreenDark = Color(0xFF81C995)
 @Composable
 fun SearchScreen(
     onTrackClick: (track: Track, queue: List<Track>) -> Unit,
-    onArtistClick: (String) -> Unit,
+    onArtistClick: (Artist) -> Unit,
+    onTrackArtistClick: (Track) -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
     viewModel: SearchViewModel = hiltViewModel(),
@@ -349,6 +350,7 @@ fun SearchScreen(
                         onTrackClick = onTrackClick,
                         onAddToPlaylist = { track -> playlistTrack = track },
                         onArtistClick = onArtistClick,
+                        onTrackArtistClick = onTrackArtistClick,
                         onArtistListen = { tracks ->
                             tracks.firstOrNull()?.let { onTrackClick(it, tracks) }
                         },
@@ -1252,7 +1254,8 @@ private fun ResultsList(
     onLoadMore: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
-    onArtistClick: (String) -> Unit,
+    onArtistClick: (Artist) -> Unit,
+    onTrackArtistClick: (Track) -> Unit,
     onArtistListen: (List<Track>) -> Unit,
     onPlayNext: (Track) -> Unit,
     onAddToQueue: (Track) -> Unit,
@@ -1302,7 +1305,7 @@ private fun ResultsList(
                 item(key = "artist_section") {
                     ArtistSection(
                         artists = artists.filter { it.id != featuredArtist?.id }.take(10),
-                        onArtistClick = { onArtistClick(it.name) },
+                        onArtistClick = onArtistClick,
                     )
                 }
             }
@@ -1311,7 +1314,7 @@ private fun ResultsList(
                     FeaturedArtistCard(
                         artist = featuredArtist,
                         canListen = artistTracks.isNotEmpty(),
-                        onOpen = { onArtistClick(featuredArtist.name) },
+                        onOpen = { onArtistClick(featuredArtist) },
                         onListen = { onArtistListen(artistTracks) },
                     )
                 }
@@ -1323,7 +1326,7 @@ private fun ResultsList(
                             isLoading = artistTracksLoading,
                             downloadedIds = downloadedIds,
                             onTrackClick = onTrackClick,
-                            onArtistClick = { onArtistClick(featuredArtist.name) },
+                            onArtistClick = { onArtistClick(featuredArtist) },
                             onAddToPlaylist = onAddToPlaylist,
                             onPlayNext = onPlayNext,
                             onAddToQueue = onAddToQueue,
@@ -1341,7 +1344,7 @@ private fun ResultsList(
                     isDownloaded = track.id in downloadedIds,
                     onClick = { onTrackClick(track, tracks) },
                     onAddToPlaylist = { onAddToPlaylist(track) },
-                    onArtistClick = { onArtistClick(track.artist) },
+                    onArtistClick = { onTrackArtistClick(track) },
                     onPlayNext = { onPlayNext(track) },
                     onAddToQueue = { onAddToQueue(track) },
                 )

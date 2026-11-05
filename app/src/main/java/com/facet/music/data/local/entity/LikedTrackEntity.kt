@@ -33,6 +33,8 @@ data class LikedTrackEntity(
     val longitude: Double? = null,
     /** Сезон лайка: Winter / Spring / Summer / Autumn. */
     val season: String? = null,
+    /** URL канала исполнителя для перехода на экран артиста. */
+    val artistUrl: String? = null,
 )
 
 fun LikedTrackEntity.toTrack(): Track = Track(
@@ -40,6 +42,7 @@ fun LikedTrackEntity.toTrack(): Track = Track(
     source = runCatching { Source.valueOf(source) }.getOrDefault(Source.SOUNDCLOUD),
     title = title,
     artist = artist,
+    artistUrl = artistUrl,
     artworkUrl = artworkUrl,
     streamUrl = null,
     durationMs = durationMs,
@@ -66,6 +69,7 @@ fun Track.toLikedEntity(
     source = source.name,
     title = title,
     artist = artist,
+    artistUrl = artistUrl,
     artworkUrl = artworkUrl,
     durationMs = durationMs,
     genre = genre,

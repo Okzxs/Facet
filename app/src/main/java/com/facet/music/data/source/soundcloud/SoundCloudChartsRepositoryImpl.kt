@@ -149,11 +149,13 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
             source = Source.SOUNDCLOUD,
             title = name,
             artist = uploaderName ?: "Unknown",
+            artistUrl = uploaderUrl?.takeIf { it.isNotBlank() },
             artworkUrl = artworkUrl,
             streamUrl = null,
             durationMs = duration * 1000L,
             genre = null,
             transcodingUrl = url,
+            playCount = viewCount.coerceAtLeast(0L),
         )
     }
 }

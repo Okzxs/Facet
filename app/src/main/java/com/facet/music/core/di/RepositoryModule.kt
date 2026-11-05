@@ -32,6 +32,12 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
+    abstract fun bindArtistRepository(
+        impl: com.facet.music.data.source.artist.ArtistRepositoryImpl,
+    ): com.facet.music.data.repository.ArtistRepository
+
+    @Binds
+    @Singleton
     abstract fun bindPlayerConnection(
         impl: MediaSessionPlayerConnection,
     ): PlayerConnection

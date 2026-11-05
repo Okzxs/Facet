@@ -2,6 +2,8 @@ package com.facet.music.data.repository
 
 import com.facet.music.core.download.DownloadCapability
 import com.facet.music.data.model.Artist
+import com.facet.music.data.model.ArtistPlaylist
+import com.facet.music.data.model.ArtistRelease
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Track
 import com.facet.music.data.model.TrackPage
@@ -37,6 +39,12 @@ interface YouTubeRepository {
 
     /** Только музыкальная выдача YouTube Music — для треков артиста. */
     suspend fun searchMusicSongs(query: String, limit: Int = 10): Result<List<Track>>
+
+    /** Альбомы YouTube Music — запасной путь, если у канала нет вкладки релизов. */
+    suspend fun searchMusicAlbums(query: String, limit: Int = 20): Result<List<ArtistRelease>>
+
+    /** Плейлисты YouTube Music — запасной путь для секции «Плейлисты». */
+    suspend fun searchMusicPlaylists(query: String, limit: Int = 20): Result<List<ArtistPlaylist>>
 
     /**
      * Получить треки, похожие на видео [trackUrl].

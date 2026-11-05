@@ -25,6 +25,7 @@ data class PlayHistoryEntity(
     val genre: String?,
     val transcodingUrl: String?,
     val playedAt: Long = System.currentTimeMillis(),
+    val artistUrl: String? = null,
 )
 
 fun PlayHistoryEntity.toTrack(isLiked: Boolean = false): Track = Track(
@@ -32,6 +33,7 @@ fun PlayHistoryEntity.toTrack(isLiked: Boolean = false): Track = Track(
     source = runCatching { Source.valueOf(source) }.getOrDefault(Source.SOUNDCLOUD),
     title = title,
     artist = artist,
+    artistUrl = artistUrl,
     artworkUrl = artworkUrl,
     streamUrl = null,
     durationMs = durationMs,
@@ -45,6 +47,7 @@ fun Track.toHistoryEntity(playedAt: Long = System.currentTimeMillis()): PlayHist
     source = source.name,
     title = title,
     artist = artist,
+    artistUrl = artistUrl,
     artworkUrl = artworkUrl,
     durationMs = durationMs,
     genre = genre,

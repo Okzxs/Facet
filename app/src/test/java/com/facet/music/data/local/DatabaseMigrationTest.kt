@@ -7,9 +7,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
+import com.facet.music.data.local.entity.ArtistCacheEntity
 import com.facet.music.data.local.entity.ChartCacheEntity
 import com.facet.music.data.local.entity.DislikedTrackEntity
 import com.facet.music.data.local.entity.DownloadedTrackEntity
+import com.facet.music.data.local.entity.FollowedArtistEntity
 import com.facet.music.data.local.entity.GenreWeightEntity
 import com.facet.music.data.local.entity.PlaylistEntity
 import com.facet.music.data.local.entity.PlaylistTrackEntity
@@ -58,7 +60,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 16 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 17 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -95,9 +97,12 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(16, database.openHelper.writableDatabase.version)
+            assertEquals(17, database.openHelper.writableDatabase.version)
             assertTrue(hasTable(database.openHelper.writableDatabase, "resolved_matches"))
             assertTrue(!hasTable(database.openHelper.writableDatabase, "audio_cache"))
+            assertTrue(hasTable(database.openHelper.writableDatabase, "artist_cache"))
+            assertTrue(hasTable(database.openHelper.writableDatabase, "followed_artists"))
+            assertTrue("artistUrl" in tableColumns(database.openHelper.writableDatabase, "liked_tracks"))
 
             // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
@@ -196,6 +201,23 @@ class DatabaseMigrationTest {
                 "playlist-track-1",
                 database.playlistDao().observeTracks(playlistId).first().single().trackId,
             )
+
+            // Кэш артиста и подписки появились в 16 → 17.
+            database.artistCacheDao().upsert(
+                ArtistCacheEntity(key = "YOUTUBE:test", json = "{}", fetchedAt = 12_000L),
+            )
+            assertEquals("{}", database.artistCacheDao().get("YOUTUBE:test")?.json)
+            database.followedArtistDao().insert(
+                FollowedArtistEntity(
+                    artistKey = "YOUTUBE:test",
+                    source = "YOUTUBE",
+                    url = "https://www.youtube.com/channel/test",
+                    name = "Test artist",
+                    avatarUrl = null,
+                    followedAt = 13_000L,
+                ),
+            )
+            assertEquals(listOf("YOUTUBE:test"), database.followedArtistDao().observeKeys().first())
         } finally {
             database.close()
         }
@@ -289,6 +311,53 @@ class DatabaseMigrationTest {
         MIGRATION_3_4.migrate(db)
 
         assertTrue("season" in tableColumns(db, "liked_tracks"))
+    }
+
+    @Test
+    fun `migration 16 to 17 creates artist cache follows and artist url columns`() {
+        val db = openLegacyDatabase("m-16-17.db", 16) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(PLAY_HISTORY_DDL)
+            it.execSQL(CHART_CACHE_V1_DDL)
+            it.execSQL(DOWNLOADED_TRACKS_V7_DDL)
+            it.execSQL(PLAYLIST_TRACKS_V12_DDL)
+            it.execSQL(QUEUE_V13_DDL)
+        }
+
+        MIGRATION_16_17.migrate(db)
+
+        assertTrue(hasTable(db, "artist_cache"))
+        assertEquals(
+            setOf("key", "json", "fetchedAt"),
+            tableColumns(db, "artist_cache"),
+        )
+        assertTrue(hasTable(db, "followed_artists"))
+        assertEquals(
+            setOf("artistKey", "source", "url", "name", "avatarUrl", "followedAt"),
+            tableColumns(db, "followed_artists"),
+        )
+        listOf(
+            "liked_tracks",
+            "play_history",
+            "chart_cache",
+            "downloaded_tracks",
+            "playlist_tracks",
+            "queue",
+        ).forEach { table ->
+            assertTrue("artistUrl отсутствует в $table", "artistUrl" in tableColumns(db, table))
+        }
+        db.execSQL(
+            "INSERT INTO `artist_cache` (`key`, `json`, `fetchedAt`) " +
+                "VALUES ('YOUTUBE:test', '{}', 1000)",
+        )
+        assertEquals(1, countRows(db, "artist_cache"))
+        db.execSQL(
+            "INSERT INTO `followed_artists` " +
+                "(`artistKey`, `source`, `url`, `name`, `avatarUrl`, `followedAt`) " +
+                "VALUES ('YOUTUBE:test', 'YOUTUBE', 'https://youtube.com/channel/test', " +
+                "'Artist', NULL, 1000)",
+        )
+        assertEquals(1, countRows(db, "followed_artists"))
     }
 
     @Test
@@ -865,6 +934,37 @@ class DatabaseMigrationTest {
                 `jsonResponse` TEXT NOT NULL,
                 `timestamp` INTEGER NOT NULL,
                 PRIMARY KEY(`query`)
+            )
+        """.trimIndent()
+
+        val CHART_CACHE_V1_DDL = """
+            CREATE TABLE IF NOT EXISTS `chart_cache` (
+                `chartType` TEXT NOT NULL,
+                `id` TEXT NOT NULL,
+                `position` INTEGER NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `genre` TEXT,
+                `transcodingUrl` TEXT,
+                `cachedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`chartType`, `id`)
+            )
+        """.trimIndent()
+
+        val PLAYLIST_TRACKS_V12_DDL = """
+            CREATE TABLE IF NOT EXISTS `playlist_tracks` (
+                `playlistId` INTEGER NOT NULL,
+                `trackId` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `artworkUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `source` TEXT NOT NULL,
+                `transcodingUrl` TEXT,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`playlistId`, `trackId`)
             )
         """.trimIndent()
 

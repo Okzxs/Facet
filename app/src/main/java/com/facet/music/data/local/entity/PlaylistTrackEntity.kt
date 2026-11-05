@@ -36,4 +36,5 @@ data class PlaylistTrackEntity(
     val source: String,
     val transcodingUrl: String?,
     val addedAt: Long = System.currentTimeMillis(),
+    val artistUrl: String? = null,
 )

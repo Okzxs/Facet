@@ -76,6 +76,7 @@ internal data class SoundCloudTrackDto(
     val permalinkUrl: String,
     val title: String,
     val artist: String,
+    val artistUrl: String?,
     val artworkUrl: String?,
     val durationMs: Long,
     val genre: String?,
@@ -99,6 +100,7 @@ internal data class SoundCloudTrackDto(
         source = Source.SOUNDCLOUD,
         title = title,
         artist = artist,
+        artistUrl = artistUrl,
         artworkUrl = artworkUrl,
         streamUrl = null,
         durationMs = durationMs,
@@ -106,6 +108,7 @@ internal data class SoundCloudTrackDto(
         transcodingUrl = permalinkUrl,
         externalId = id,
         isSubscriptionOnly = isSubscriptionOnly,
+        playCount = playbackCount,
     )
 }
 
@@ -286,6 +289,7 @@ internal object SoundCloudJson {
             permalinkUrl = permalink,
             title = root.string("title") ?: "Unknown",
             artist = user?.string("username") ?: root.string("username") ?: "Unknown",
+            artistUrl = user?.string("permalink_url"),
             artworkUrl = root.string("artwork_url"),
             durationMs = root.long("full_duration") ?: root.long("duration") ?: 0L,
             genre = root.string("genre"),

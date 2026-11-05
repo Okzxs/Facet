@@ -81,7 +81,7 @@ import kotlinx.coroutines.launch
 fun PlaylistScreen(
     onBack: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
-    onArtistClick: (String) -> Unit,
+    onArtistClick: (Track) -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
     viewModel: PlaylistViewModel = hiltViewModel(),
@@ -249,7 +249,7 @@ fun PlaylistScreen(
                         artworkSize = 60,
                         artworkCornerDp = 16,
                         onClick = { onTrackClick(track, tracks) },
-                        onArtistClick = { onArtistClick(track.artist) },
+                        onArtistClick = { onArtistClick(track) },
                         onPlayNext = { handlePlayNext(track) },
                         onAddToQueue = { handleAddToQueue(track) },
                         trailingContent = {

@@ -11,6 +11,8 @@ data class Track(
     val source: Source,
     val title: String,
     val artist: String,
+    /** URL канала/профиля исполнителя; null — открываем артиста поиском по имени. */
+    val artistUrl: String? = null,
     /** URL обложки. Может быть null если SC не вернул artwork. */
     val artworkUrl: String?,
     /**
@@ -42,6 +44,8 @@ data class Track(
      * В обычной выдаче всегда 1, бейдж «+N» показывается при N > 1.
      */
     val sourceCount: Int = 1,
+    /** Прослушивания/просмотры в источнике; в БД не хранится. */
+    val playCount: Long = 0L,
 )
 
 @Serializable

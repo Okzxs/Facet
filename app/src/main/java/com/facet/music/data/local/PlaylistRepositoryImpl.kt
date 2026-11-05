@@ -49,6 +49,7 @@ class PlaylistRepositoryImpl @Inject constructor(
                 durationMs = track.durationMs,
                 source = track.source.name,
                 transcodingUrl = track.transcodingUrl,
+                artistUrl = track.artistUrl,
             ),
         )
     }
@@ -85,6 +86,7 @@ private fun PlaylistTrackEntity.toTrack(): Track = Track(
     source = runCatching { Source.valueOf(source) }.getOrDefault(Source.LOCAL),
     title = title,
     artist = artist,
+    artistUrl = artistUrl,
     artworkUrl = artworkUrl,
     streamUrl = null,
     durationMs = durationMs,

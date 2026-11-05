@@ -81,7 +81,7 @@ fun LikedTracksScreen(
     onBack: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
     onOpenSearch: () -> Unit,
-    onArtistClick: (String) -> Unit,
+    onArtistClick: (Track) -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
     /** Запас под островок мини-плеера: док здесь скрыт, но островок виден. */
@@ -226,7 +226,7 @@ fun LikedTracksScreen(
                         artworkCornerDp = 16,
                         onClick = { onTrackClick(track, likedTracks) },
                         onAddToPlaylist = { playlistTrack = track },
-                        onArtistClick = { onArtistClick(track.artist) },
+                        onArtistClick = { onArtistClick(track) },
                         onPlayNext = { handlePlayNext(track) },
                         onAddToQueue = { handleAddToQueue(track) },
                         trailingContent = {

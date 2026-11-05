@@ -63,6 +63,8 @@ import com.facet.music.core.ui.components.MiniPlayerGap
 import com.facet.music.core.ui.components.MiniPlayerHorizontalMargin
 import com.facet.music.core.ui.components.MiniPlayerIslandHeight
 import com.facet.music.core.ui.theme.prewarmPlayerPalette
+import com.facet.music.data.model.Artist
+import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.feature.artist.ArtistScreen
 import com.facet.music.feature.home.HomeScreen
@@ -106,7 +108,8 @@ fun AppNavGraph() {
                 route != Screen.Settings.route &&
                 route != Screen.LikedTracks.route &&
                 route != Screen.Playlist.route &&
-                route != Screen.Artist.route
+                route != Screen.Artist.route &&
+                route != Screen.ArtistDetail.route
         }
     }
 
@@ -186,6 +189,24 @@ fun AppNavGraph() {
     // enter/exit-переходом снаружи AnimatedVisibility (в общем оверлее).
     val playerVisibleState = remember { MutableTransitionState(false) }
     SideEffect { playerVisibleState.targetState = isPlayerOpen }
+
+    fun openArtist(artist: Artist) {
+        navController.navigate(
+            Screen.ArtistDetail.createRoute(artist.source, artist.url, artist.name),
+        )
+    }
+
+    // Трек знает точный канал; старые строки без ссылки открывают поиск по имени.
+    fun openArtist(track: Track) {
+        val url = track.artistUrl
+        if (url != null && (track.source == Source.YOUTUBE || track.source == Source.SOUNDCLOUD)) {
+            navController.navigate(
+                Screen.ArtistDetail.createRoute(track.source, url, track.artist),
+            )
+        } else {
+            navController.navigate(Screen.Artist.createRoute(track.artist))
+        }
+    }
 
     // Открыть плеер и загрузить трек с очередью
     fun openPlayer(track: Track, queue: List<Track> = listOf(track)) {
@@ -272,9 +293,8 @@ fun AppNavGraph() {
                 composable(Screen.Search.route) {
                     SearchScreen(
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
-                        onArtistClick = { artist ->
-                            navController.navigate(Screen.Artist.createRoute(artist))
-                        },
+                        onArtistClick = { artist -> openArtist(artist) },
+                        onTrackArtistClick = { track -> openArtist(track) },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
@@ -299,9 +319,7 @@ fun AppNavGraph() {
                         onLikedTracksClick = {
                             navController.navigate(Screen.LikedTracks.route)
                         },
-                        onArtistClick = { artist ->
-                            navController.navigate(Screen.Artist.createRoute(artist))
-                        },
+                        onArtistClick = { track -> openArtist(track) },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
@@ -327,9 +345,7 @@ fun AppNavGraph() {
                                 restoreState = true
                             }
                         },
-                        onArtistClick = { artist ->
-                            navController.navigate(Screen.Artist.createRoute(artist))
-                        },
+                        onArtistClick = { track -> openArtist(track) },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                         // Док на экране скрыт, но островок мини-плеера занимает
@@ -348,9 +364,7 @@ fun AppNavGraph() {
                     PlaylistScreen(
                         onBack = { navController.popBackStack() },
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
-                        onArtistClick = { artist ->
-                            navController.navigate(Screen.Artist.createRoute(artist))
-                        },
+                        onArtistClick = { track -> openArtist(track) },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
@@ -365,15 +379,46 @@ fun AppNavGraph() {
                     ArtistScreen(
                         onBack = { navController.popBackStack() },
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
-                        onArtistClick = { artist ->
-                            navController.navigate(Screen.Artist.createRoute(artist))
+                        onArtistClick = { artist -> openArtist(artist) },
+                        onTrackArtistClick = { track -> openArtist(track) },
+                        onWaveClick = { tracks ->
+                            tracks.firstOrNull()?.let { seed ->
+                                playerViewModel.startWaveFromTrack(seed)
+                                isPlayerOpen = true
+                            }
+                        },
+                        onPlayNext = { track -> playerViewModel.playNext(track) },
+                        onAddToQueue = { track -> playerViewModel.addToQueue(track) },
+                    )
+                }
+                composable(
+                    route = Screen.ArtistDetail.route,
+                    arguments = listOf(
+                        navArgument(Screen.ArtistDetail.ARG_SOURCE) { type = NavType.StringType },
+                        navArgument(Screen.ArtistDetail.ARG_URL) { type = NavType.StringType },
+                        navArgument(Screen.ArtistDetail.ARG_NAME) {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                    ),
+                ) {
+                    ArtistScreen(
+                        onBack = { navController.popBackStack() },
+                        onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        onArtistClick = { artist -> openArtist(artist) },
+                        onTrackArtistClick = { track -> openArtist(track) },
+                        onWaveClick = { tracks ->
+                            tracks.firstOrNull()?.let { seed ->
+                                playerViewModel.startWaveFromTrack(seed)
+                                isPlayerOpen = true
+                            }
                         },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
                 }
                 composable(Screen.Wave.route) {
-                    WaveScreen()
+                    WaveScreen(onArtistClick = { track -> openArtist(track) })
                 }
                 composable(Screen.Settings.route) {
                     SettingsScreen(onBack = { navController.popBackStack() })
@@ -523,11 +568,11 @@ fun AppNavGraph() {
                                 restoreState = true
                             }
                         },
-                        onArtistClick = { artist ->
+                        onArtistClick = { track ->
                             // Плеер — оверлей: закрываем его и открываем экран артиста.
                             // Воспроизведение не прерывается, PlayerController общий.
                             isPlayerOpen = false
-                            navController.navigate(Screen.Artist.createRoute(artist))
+                            openArtist(track)
                         },
                         viewModel = playerViewModel,
                         coverModifier = coverModifier,
