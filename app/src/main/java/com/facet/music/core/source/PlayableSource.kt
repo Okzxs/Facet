@@ -1,7 +1,9 @@
 package com.facet.music.core.source
 
+import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.TrackPage
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -63,11 +65,22 @@ interface PlayableSource {
         useCache: Boolean = true,
     ): Result<List<Track>>
 
-    /** Поиск артистов; по умолчанию источник его не поддерживает. */
-    suspend fun searchArtists(
+    /**
+     * Страница выдачи с непрозрачным токеном следующей страницы.
+     * Источники без пагинации возвращают одну страницу.
+     */
+    suspend fun searchPage(
         query: String,
         limit: Int = DEFAULT_LIMIT,
-    ): Result<List<PlayableArtist>> = Result.success(emptyList())
+        nextToken: String? = null,
+        useCache: Boolean = true,
+    ): Result<TrackPage> = search(query, limit, 1, useCache).map { TrackPage(it) }
+
+    /** Поиск артистов/каналов; по умолчанию источник его не поддерживает. */
+    suspend fun searchArtists(
+        query: String,
+        limit: Int = ARTIST_LIMIT,
+    ): Result<List<Artist>> = Result.success(emptyList())
 
     /** Готов ли источник к работе: есть ключи/токен пользователя. */
     suspend fun isConfigured(): Boolean = true
@@ -78,6 +91,7 @@ interface PlayableSource {
 
     companion object {
         const val DEFAULT_LIMIT = 20
+        const val ARTIST_LIMIT = 10
     }
 }
 

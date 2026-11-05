@@ -1,8 +1,10 @@
 package com.facet.music.data.repository
 
 import com.facet.music.core.download.DownloadCapability
+import com.facet.music.data.model.Artist
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.TrackPage
 
 interface SoundCloudRepository {
 
@@ -15,6 +17,19 @@ interface SoundCloudRepository {
      * @param limit максимальное кол-во результатов
      */
     suspend fun search(query: String, limit: Int = 20): Result<List<Track>>
+
+    /** Страница поиска api-v2; токен — смещение. */
+    suspend fun searchPage(
+        query: String,
+        limit: Int = 20,
+        nextToken: String? = null,
+    ): Result<TrackPage>
+
+    /** Пользователи SoundCloud (фильтр users). */
+    suspend fun searchArtists(query: String, limit: Int = 10): Result<List<Artist>>
+
+    /** Треки пользователя для карточки артиста, по прослушиваниям. */
+    suspend fun searchUserTracks(userUrl: String, limit: Int = 10): Result<List<Track>>
 
     /**
      * Получить треки, похожие на трек [trackUrl].

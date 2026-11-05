@@ -1,7 +1,9 @@
 package com.facet.music.core.source
 
+import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.TrackPage
 import com.facet.music.data.repository.SoundCloudRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,6 +30,16 @@ class SoundCloudPlayableSource @Inject constructor(
     ): Result<List<Track>> = pagedSearch(limit, page) { fetchLimit ->
         repository.search(query, fetchLimit)
     }
+
+    override suspend fun searchPage(
+        query: String,
+        limit: Int,
+        nextToken: String?,
+        useCache: Boolean,
+    ): Result<TrackPage> = repository.searchPage(query, limit, nextToken)
+
+    override suspend fun searchArtists(query: String, limit: Int): Result<List<Artist>> =
+        repository.searchArtists(query, limit)
 
     override suspend fun resolveStream(track: Track): Result<ResolvedStream> {
         if (track.isSubscriptionOnly) {

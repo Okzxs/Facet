@@ -6,9 +6,11 @@ import com.facet.music.core.download.DownloadCapability
 import com.facet.music.core.network.NewPipeDownloader
 import com.facet.music.core.network.StreamExpiry
 import com.facet.music.core.util.rethrowCancellation
+import com.facet.music.data.model.Artist
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.TrackPage
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.YouTubeRepository
 import kotlinx.coroutines.Dispatchers
@@ -16,12 +18,17 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.search.SearchInfo
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,24 +49,131 @@ class YouTubeRepositoryImpl @Inject constructor(
 
     private val tag = "YouTubeRepo"
 
+    private val pageTokens = ConcurrentHashMap<String, Page>()
+    private val pageSeq = AtomicLong()
+
     override suspend fun search(query: String, limit: Int): Result<List<Track>> =
+        searchPage(query, limit).map { it.tracks }
+
+    override suspend fun searchPage(
+        query: String,
+        limit: Int,
+        nextToken: String?,
+    ): Result<TrackPage> = withContext(Dispatchers.IO) {
+        runCatching {
+            val service = NewPipe.getService(ServiceList.YouTube.serviceId)
+            if (nextToken != null) {
+                val page = pageTokens.remove(nextToken)
+                    ?: error("Страница поиска YouTube устарела")
+                val queryHandler = service.searchQHFactory
+                    .fromQuery(query, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS), "")
+                val more = newPipeDownloader.withCancellation {
+                    SearchInfo.getMoreItems(service, queryHandler, page)
+                }
+                val tracks = more.items
+                    .filterIsInstance<StreamInfoItem>()
+                    .take(limit)
+                    .map { it.toDomain() }
+                return@runCatching TrackPage(tracks, rememberPage(more.nextPage))
+            }
+
+            val primary = searchStreams(service, query, YoutubeSearchQueryHandlerFactory.MUSIC_SONGS)
+            val primaryTracks = primary.relatedItems
+                .filterIsInstance<StreamInfoItem>()
+                .take(limit)
+                .map { it.toDomain() }
+
+            val tracks = if (primaryTracks.size < VIDEO_FALLBACK_THRESHOLD) {
+                val videos = searchStreams(service, query, YoutubeSearchQueryHandlerFactory.VIDEOS)
+                val extra = videos.relatedItems
+                    .filterIsInstance<StreamInfoItem>()
+                    .map { it.toDomain() }
+                (primaryTracks + extra).distinctBy { it.id }.take(limit)
+            } else {
+                primaryTracks
+            }
+
+            Log.d(tag, "Поиск '$query': ${tracks.size} треков")
+            TrackPage(tracks, rememberPage(primary.nextPage))
+        }.rethrowCancellation()
+    }
+
+    override suspend fun searchMusicSongs(query: String, limit: Int): Result<List<Track>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val service = NewPipe.getService(ServiceList.YouTube.serviceId)
-                val queryHandler = service.searchQHFactory
-                    .fromQuery(query, listOf("videos"), "")
-
-                val searchInfo = newPipeDownloader.withCancellation {
-                    SearchInfo.getInfo(service, queryHandler)
-                }
-                Log.d(tag, "Поиск '$query': ${searchInfo.relatedItems.size} результатов")
-
-                searchInfo.relatedItems
+                searchStreams(service, query, YoutubeSearchQueryHandlerFactory.MUSIC_SONGS)
+                    .relatedItems
                     .filterIsInstance<StreamInfoItem>()
                     .take(limit)
                     .map { it.toDomain() }
             }.rethrowCancellation()
         }
+
+    override suspend fun searchArtists(query: String, limit: Int): Result<List<Artist>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val service = NewPipe.getService(ServiceList.YouTube.serviceId)
+                val music = searchChannels(
+                    service,
+                    query,
+                    YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS,
+                    limit,
+                )
+                val hasExact = music.any {
+                    com.facet.music.core.search.ArtistMerger.normalize(it.name) ==
+                        com.facet.music.core.search.ArtistMerger.normalize(query)
+                }
+                val channels = if (!hasExact) {
+                    searchChannels(
+                        service,
+                        query,
+                        YoutubeSearchQueryHandlerFactory.CHANNELS,
+                        limit,
+                    )
+                } else {
+                    emptyList()
+                }
+                val artists = (music + channels).distinctBy {
+                    com.facet.music.core.search.ArtistMerger.normalize(it.name)
+                }.take(limit)
+                Log.d(tag, "Артисты '$query': ${artists.size}")
+                artists.map { it.toDomain() }
+            }.rethrowCancellation()
+        }
+
+    private suspend fun searchStreams(
+        service: org.schabi.newpipe.extractor.StreamingService,
+        query: String,
+        filter: String,
+    ): SearchInfo {
+        val queryHandler = service.searchQHFactory.fromQuery(query, listOf(filter), "")
+        return newPipeDownloader.withCancellation {
+            SearchInfo.getInfo(service, queryHandler)
+        }
+    }
+
+    private suspend fun searchChannels(
+        service: org.schabi.newpipe.extractor.StreamingService,
+        query: String,
+        filter: String,
+        limit: Int,
+    ): List<ChannelInfoItem> {
+        val queryHandler = service.searchQHFactory.fromQuery(query, listOf(filter), "")
+        val info = newPipeDownloader.withCancellation {
+            SearchInfo.getInfo(service, queryHandler)
+        }
+        return info.relatedItems
+            .filterIsInstance<ChannelInfoItem>()
+            .take(limit)
+    }
+
+    private fun rememberPage(page: Page?): String? {
+        if (page == null) return null
+        val token = "yt-${pageSeq.incrementAndGet()}"
+        pageTokens[token] = page
+        return token
+    }
 
     @Suppress("DEPRECATION")
     override suspend fun getRelated(trackUrl: String, limit: Int): Result<List<Track>> =
@@ -176,7 +290,23 @@ class YouTubeRepositoryImpl @Inject constructor(
         )
     }
 
+    private fun ChannelInfoItem.toDomain(): Artist {
+        val avatarUrl = thumbnails.maxByOrNull { it.height }?.url
+        return Artist(
+            id = url,
+            source = Source.YOUTUBE,
+            name = name,
+            avatarUrl = avatarUrl,
+            subscriberCount = subscriberCount.takeIf { it > 0L },
+            isVerified = isVerified,
+            url = url,
+        )
+    }
+
     companion object {
+        /** Сколько музыкальных треков достаточно, чтобы не добирать videos. */
+        private const val VIDEO_FALLBACK_THRESHOLD = 10
+
         /** Текст ошибки, когда YouTube не отдал одиночный progressive-поток. */
         const val ERROR_PROGRESSIVE_UNAVAILABLE =
             "YouTube не отдал progressive-аудио для этого трека"

@@ -1,6 +1,7 @@
 package com.facet.music.data.repository
 
 import com.facet.music.core.i18n.AppLocale
+import com.facet.music.core.service.ServiceType
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -59,6 +60,8 @@ data class AppSettings(
     val analyticsEnabled: Boolean = false,
     /** Продолжать после потери аудиофокуса (TikTok/звонок), когда пользователь вернулся. */
     val resumeAfterFocusLoss: Boolean = true,
+    /** Выбранные источники поиска: по умолчанию все. */
+    val searchSources: Set<ServiceType> = ServiceType.entries.toSet(),
 ) {
     /** Настроены ли ключи Spotify: нужны оба поля, иначе поиск не работает. */
     val isSpotifyConfigured: Boolean
@@ -140,6 +143,9 @@ interface SettingsRepository {
 
     /** Продолжать воспроизведение после возврата из другого приложения. */
     suspend fun setResumeAfterFocusLoss(enabled: Boolean)
+
+    /** Сохранить набор источников поиска; пустой набор трактуется как «все». */
+    suspend fun setSearchSources(sources: Set<ServiceType>)
 
     companion object {
         /** Допустимые варианты качества скачивания. */

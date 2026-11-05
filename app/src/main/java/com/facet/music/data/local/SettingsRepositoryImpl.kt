@@ -3,6 +3,7 @@ package com.facet.music.data.local
 import android.content.Context
 import com.facet.music.core.i18n.AppLocale
 import com.facet.music.core.security.SecureStore
+import com.facet.music.core.service.ServiceType
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.ThemeMode
@@ -93,7 +94,22 @@ class SettingsRepositoryImpl @Inject constructor(
         // Статистика — только по явному согласию.
         analyticsEnabled = prefs.getBoolean(KEY_ANALYTICS_ENABLED, false),
         resumeAfterFocusLoss = prefs.getBoolean(KEY_RESUME_AFTER_FOCUS_LOSS, true),
+        searchSources = loadSearchSources(),
     )
+
+    private fun loadSearchSources(): Set<ServiceType> {
+        val stored = prefs.getString(KEY_SEARCH_SOURCES, null)
+        if (stored != null) {
+            val parsed = stored.split(',')
+                .mapNotNull { name -> ServiceType.entries.firstOrNull { it.name == name.trim() } }
+                .toSet()
+            return parsed.ifEmpty { ServiceType.entries.toSet() }
+        }
+        val legacyService = prefs.getString(KEY_LEGACY_SEARCH_SERVICE, null)
+            ?.let { name -> ServiceType.entries.firstOrNull { it.name == name } }
+        val legacyAll = prefs.getBoolean(KEY_LEGACY_ALL_SOURCES, true)
+        return if (legacyService != null && !legacyAll) setOf(legacyService) else ServiceType.entries.toSet()
+    }
 
     /**
      * Дожидаемся фонового чтения: до него запись в [_settings] стёрла бы
@@ -270,6 +286,18 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(downloadQualityKbps = normalized) }
     }
 
+    override suspend fun setSearchSources(sources: Set<ServiceType>) {
+        awaitLoaded()
+        val normalized = sources.ifEmpty { ServiceType.entries.toSet() }
+        val serialized = ServiceType.entries
+            .filter { it in normalized }
+            .joinToString(",") { it.name }
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_SEARCH_SOURCES, serialized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(searchSources = normalized) }
+    }
+
     private companion object {
         // Имя файла совпадает с AppLocale: язык читает attachBaseContext напрямую.
         const val PREFS_NAME = AppLocale.PREFS_NAME
@@ -289,5 +317,8 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_SOUNDCLOUD_CLIENT_ID = "soundcloud_client_id"
         const val KEY_ANALYTICS_ENABLED = "analytics_enabled"
         const val KEY_RESUME_AFTER_FOCUS_LOSS = "resume_after_focus_loss"
+        const val KEY_SEARCH_SOURCES = "search_sources"
+        const val KEY_LEGACY_SEARCH_SERVICE = "search_service"
+        const val KEY_LEGACY_ALL_SOURCES = "search_all_sources"
     }
 }

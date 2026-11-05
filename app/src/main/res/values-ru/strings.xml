@@ -42,6 +42,11 @@
     <string name="search_error_title">Не удалось выполнить поиск</string>
     <string name="search_retry">Повторить</string>
     <string name="search_results">Результаты · %1$s</string>
+    <string name="search_artists_section">Исполнители</string>
+    <string name="search_artist_tracks">Треки %1$s</string>
+    <string name="search_artist_open">Открыть</string>
+    <string name="search_artist_listen">Слушать</string>
+    <string name="search_all_artist_tracks">Все треки</string>
     <string name="search_source_cd">Источник: %1$s</string>
     <string name="search_status_title">Статусы сервисов</string>
     <string name="search_status_subtitle">Проверка доступности в реальном времени</string>

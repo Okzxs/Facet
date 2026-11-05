@@ -31,6 +31,8 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -51,7 +53,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -60,18 +65,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material.icons.rounded.SmartDisplay
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -80,25 +89,27 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -109,12 +120,15 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
 import com.facet.music.R
 import com.facet.music.core.service.ServiceHealth
 import com.facet.music.core.service.ServiceType
 import com.facet.music.core.ui.components.AddToPlaylistSheet
 import com.facet.music.core.ui.components.TrackCard
 import com.facet.music.navigation.LocalBottomDockHeight
+import com.facet.music.data.model.Artist
+import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import kotlinx.coroutines.launch
 
@@ -201,9 +215,15 @@ fun SearchScreen(
     val contentState = when {
         state.isLoading -> SearchContentState.Loading
         state.error != null -> SearchContentState.Error
-        state.results.isEmpty() && state.query.length >= 2 -> SearchContentState.Empty
-        state.results.isNotEmpty() -> SearchContentState.Results
+        state.results.isEmpty() && state.artists.isEmpty() && state.query.length >= 2 ->
+            SearchContentState.Empty
+        state.results.isNotEmpty() || state.artists.isNotEmpty() -> SearchContentState.Results
         else -> SearchContentState.Idle
+    }
+    val sourceName = if (state.selectedSources.size == ServiceType.entries.size) {
+        stringResource(R.string.search_all_sources)
+    } else {
+        state.selectedSources.joinToString(", ") { it.displayName }
     }
 
     Scaffold(
@@ -230,14 +250,29 @@ fun SearchScreen(
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
 
+            AnimatedVisibility(
+                visible = state.suggestions.isNotEmpty() &&
+                    state.query.isNotBlank() &&
+                    state.results.isEmpty() &&
+                    state.artists.isEmpty(),
+                enter = fadeIn(tween(140)) + expandVertically(),
+                exit = fadeOut(tween(100)) + shrinkVertically(tween(140)),
+            ) {
+                SearchSuggestionList(
+                    suggestions = state.suggestions,
+                    onSelect = viewModel::onSuggestionSelected,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+            }
+
             SourceSwitcher(
-                selected = state.selectedService,
-                allSources = state.allSources,
+                selectedSources = state.selectedSources,
                 statuses = serviceStatuses,
-                onSelect = viewModel::onServiceSelected,
-                onAllSourcesSelect = viewModel::onAllSourcesSelected,
+                onToggle = viewModel::onSourceToggle,
+                onSelectAll = viewModel::onAllSourcesSelected,
                 onRefreshStatuses = viewModel::refreshStatuses,
                 onStatusOpened = viewModel::onStatusPanelOpened,
+                sourceHint = state.sourceHint,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp),
             )
 
@@ -290,7 +325,7 @@ fun SearchScreen(
                 when (target) {
                     SearchContentState.Idle -> IdleState(
                         query = state.query,
-                        serviceName = state.selectedService.displayName,
+                        serviceName = sourceName,
                     )
                     SearchContentState.Loading -> SearchSkeletonList()
                     SearchContentState.Error -> ErrorState(
@@ -299,17 +334,24 @@ fun SearchScreen(
                     )
                     SearchContentState.Empty -> EmptyResultsState(
                         query = state.query,
-                        serviceName = state.selectedService.displayName,
-                        selectedService = state.selectedService,
-                        onSelectService = viewModel::onServiceSelected,
+                        serviceName = sourceName,
                     )
                     SearchContentState.Results -> ResultsList(
                         tracks = state.results,
+                        artists = state.artists,
+                        featuredArtist = state.featuredArtist,
+                        artistTracks = state.artistTracks,
+                        artistTracksLoading = state.artistTracksLoading,
                         downloadedIds = downloadedIds,
-                        serviceName = state.selectedService.displayName,
+                        sourceName = sourceName,
+                        isLoadingMore = state.isLoadingMore,
+                        onLoadMore = viewModel::loadMore,
                         onTrackClick = onTrackClick,
                         onAddToPlaylist = { track -> playlistTrack = track },
                         onArtistClick = onArtistClick,
+                        onArtistListen = { tracks ->
+                            tracks.firstOrNull()?.let { onTrackClick(it, tracks) }
+                        },
                         onPlayNext = handlePlayNext,
                         onAddToQueue = handleAddToQueue,
                     )
@@ -389,64 +431,72 @@ private fun OfflineBanner(modifier: Modifier = Modifier) {
 
 @Composable
 private fun SourceSwitcher(
-    selected: ServiceType,
-    allSources: Boolean,
+    selectedSources: Set<ServiceType>,
     statuses: Map<ServiceType, ServiceHealth>,
-    onSelect: (ServiceType) -> Unit,
-    onAllSourcesSelect: () -> Unit,
+    onToggle: (ServiceType) -> Unit,
+    onSelectAll: () -> Unit,
     onRefreshStatuses: () -> Unit,
     onStatusOpened: () -> Unit,
+    sourceHint: String?,
     modifier: Modifier = Modifier,
 ) {
-    val selectedHealth = statuses[selected] ?: ServiceHealth(isChecking = true)
-
+    val allSelected = selectedSources.size == ServiceType.entries.size
     Column(modifier = modifier) {
-        // Верхняя строка компактная: чипс сводного поиска и статус сервисов.
-        // Ряд отдельных источников ниже прячется, когда выбран «Все источники».
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AssistChip(
-                onClick = onAllSourcesSelect,
-                label = {
-                    Text(
-                        text = stringResource(R.string.search_all_sources),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Rounded.AutoAwesome,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = if (allSources) {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.primary
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clipToBounds()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(end = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = allSelected,
+                    onClick = onSelectAll,
+                    label = {
+                        Text(
+                            text = stringResource(R.string.search_all_sources),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.AutoAwesome,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                )
+                sourceButtonOrder.forEach { service ->
+                    val health = statuses[service] ?: ServiceHealth()
+                    FilterChip(
+                        selected = service in selectedSources,
+                        enabled = health.isConfigured || service in selectedSources,
+                        onClick = { onToggle(service) },
+                        label = {
+                            Text(
+                                text = service.displayName,
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(service.brandIconRes()),
+                                contentDescription = stringResource(
+                                    R.string.search_source_cd,
+                                    service.displayName,
+                                ),
+                                modifier = Modifier.size(16.dp),
+                            )
                         },
                     )
-                },
-                colors = AssistChipDefaults.assistChipColors(
-                    containerColor = if (allSources) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        Color.Transparent
-                    },
-                    labelColor = if (allSources) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                ),
-                border = if (allSources) {
-                    null
-                } else {
-                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                },
-                modifier = Modifier.height(34.dp),
-            )
-            Spacer(Modifier.weight(1f))
+                }
+            }
             ServiceStatusButton(
                 statuses = statuses,
                 onRefresh = onRefreshStatuses,
@@ -455,35 +505,16 @@ private fun SourceSwitcher(
         }
 
         AnimatedVisibility(
-            visible = !allSources,
-            enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(120)),
+            visible = sourceHint != null,
+            enter = fadeIn(tween(140)),
+            exit = fadeOut(tween(100)),
         ) {
-            Column {
-                Spacer(Modifier.height(8.dp))
-                // Три кнопки по 42dp и промежутки 6dp: панель компактная
-                // и не спорит с полем поиска.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    sourceButtonOrder.forEach { service ->
-                        SourceButton(
-                            service = service,
-                            selected = service == selected,
-                            health = statuses[service] ?: ServiceHealth(),
-                            onClick = { onSelect(service) },
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                }
-
-                UnavailableServiceWarning(
-                    service = selected,
-                    health = selectedHealth,
-                )
-            }
+            Text(
+                text = sourceHint.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 6.dp),
+            )
         }
     }
 }
@@ -1109,15 +1140,11 @@ private fun IdleState(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EmptyResultsState(
     query: String,
     serviceName: String,
-    selectedService: ServiceType,
-    onSelectService: (ServiceType) -> Unit,
 ) {
-    val alternatives = ServiceType.entries.filter { it != selectedService }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1153,44 +1180,6 @@ private fun EmptyResultsState(
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
-        if (query.length >= 2) {
-            Spacer(Modifier.height(18.dp))
-            Text(
-                text = stringResource(R.string.search_other_source),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(10.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                alternatives.forEach { service ->
-                    AssistChip(
-                        onClick = { onSelectService(service) },
-                        label = {
-                            Text(
-                                text = service.displayName,
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = serviceIcon(service),
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        },
-                        shape = MaterialTheme.shapes.large,
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            labelColor = MaterialTheme.colorScheme.onSurface,
-                            leadingIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1253,14 +1242,30 @@ private fun ErrorState(
 @Composable
 private fun ResultsList(
     tracks: List<Track>,
+    artists: List<Artist>,
+    featuredArtist: Artist?,
+    artistTracks: List<Track>,
+    artistTracksLoading: Boolean,
     downloadedIds: Set<String>,
-    serviceName: String,
+    sourceName: String,
+    isLoadingMore: Boolean,
+    onLoadMore: () -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
     onAddToPlaylist: (Track) -> Unit,
     onArtistClick: (String) -> Unit,
+    onArtistListen: (List<Track>) -> Unit,
     onPlayNext: (Track) -> Unit,
     onAddToQueue: (Track) -> Unit,
 ) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, tracks.size) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+        }.collect { lastVisible ->
+            if (tracks.isNotEmpty() && lastVisible >= tracks.size - 3) onLoadMore()
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -1269,7 +1274,7 @@ private fun ResultsList(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = stringResource(R.string.search_results, serviceName),
+                text = stringResource(R.string.search_results, sourceName),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1288,10 +1293,44 @@ private fun ResultsList(
         }
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            if (artists.isNotEmpty()) {
+                item(key = "artist_section") {
+                    ArtistSection(
+                        artists = artists.filter { it.id != featuredArtist?.id }.take(10),
+                        onArtistClick = { onArtistClick(it.name) },
+                    )
+                }
+            }
+            if (featuredArtist != null) {
+                item(key = "featured_artist") {
+                    FeaturedArtistCard(
+                        artist = featuredArtist,
+                        canListen = artistTracks.isNotEmpty(),
+                        onOpen = { onArtistClick(featuredArtist.name) },
+                        onListen = { onArtistListen(artistTracks) },
+                    )
+                }
+                if (artistTracksLoading || artistTracks.isNotEmpty()) {
+                    item(key = "artist_tracks") {
+                        ArtistTracksSection(
+                            artist = featuredArtist,
+                            tracks = artistTracks,
+                            isLoading = artistTracksLoading,
+                            downloadedIds = downloadedIds,
+                            onTrackClick = onTrackClick,
+                            onArtistClick = { onArtistClick(featuredArtist.name) },
+                            onAddToPlaylist = onAddToPlaylist,
+                            onPlayNext = onPlayNext,
+                            onAddToQueue = onAddToQueue,
+                        )
+                    }
+                }
+            }
             items(
                 items = tracks,
                 key = { it.id },
@@ -1307,58 +1346,278 @@ private fun ResultsList(
                     onAddToQueue = { onAddToQueue(track) },
                 )
             }
+            if (isLoadingMore) {
+                item(key = "load_more") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 18.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
-/**
- * Скелетон списка карточек при поиске: повторяет геометрию TrackCard.
- *
- * Блоки залиты бегущим градиентом (shimmer): пока источник отвечает, видно,
- * что экран живой, а не завис.
- */
 @Composable
-private fun SearchSkeletonList() {
-    val shimmer = rememberShimmerBrush()
+private fun ArtistSection(
+    artists: List<Artist>,
+    onArtistClick: (Artist) -> Unit,
+) {
+    if (artists.isEmpty()) return
+    Column(modifier = Modifier.padding(top = 10.dp, bottom = 8.dp)) {
+        Text(
+            text = stringResource(R.string.search_artists_section),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        LazyRow(
+            modifier = Modifier.height(116.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(artists, key = { it.id }) { artist ->
+                ArtistBubble(artist = artist, onClick = { onArtistClick(artist) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArtistBubble(
+    artist: Artist,
+    onClick: () -> Unit,
+) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .width(88.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        repeat(6) {
-            Row(
+        Box {
+            ArtistAvatar(artist = artist, size = 72.dp)
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.large)
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .align(Alignment.BottomEnd)
+                    .size(22.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                ),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(MaterialTheme.shapes.medium)
-                        .background(shimmer),
-                )
-
-                Spacer(Modifier.width(16.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.68f)
-                            .height(15.dp)
-                            .clip(MaterialTheme.shapes.extraSmall)
-                            .background(shimmer),
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(artist.source.brandIconRes()),
+                        contentDescription = artist.source.shortName(),
+                        modifier = Modifier.size(13.dp),
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.42f)
-                            .height(11.dp)
-                            .clip(MaterialTheme.shapes.extraSmall)
-                            .background(shimmer),
+                }
+            }
+        }
+        Spacer(Modifier.height(7.dp))
+        Text(
+            text = artist.name,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun FeaturedArtistCard(
+    artist: Artist,
+    canListen: Boolean,
+    onOpen: () -> Unit,
+    onListen: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ArtistAvatar(artist = artist, size = 96.dp)
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = artist.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = artist.source.shortName(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onOpen) {
+                        Text(stringResource(R.string.search_artist_open))
+                    }
+                    OutlinedButton(onClick = onListen, enabled = canListen) {
+                        Text(stringResource(R.string.search_artist_listen))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArtistTracksSection(
+    artist: Artist,
+    tracks: List<Track>,
+    isLoading: Boolean,
+    downloadedIds: Set<String>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    onArtistClick: () -> Unit,
+    onAddToPlaylist: (Track) -> Unit,
+    onPlayNext: (Track) -> Unit,
+    onAddToQueue: (Track) -> Unit,
+) {
+    Column(modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.search_artist_tracks, artist.name),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            TextButton(onClick = onArtistClick) {
+                Text(stringResource(R.string.search_all_artist_tracks))
+            }
+        }
+        if (isLoading && tracks.isEmpty()) {
+            repeat(3) {
+                ShimmerTrackRow()
+            }
+        } else {
+            tracks.forEach { track ->
+                TrackCard(
+                    track = track,
+                    isDownloaded = track.id in downloadedIds,
+                    onClick = { onTrackClick(track, tracks) },
+                    onAddToPlaylist = { onAddToPlaylist(track) },
+                    onArtistClick = {},
+                    onPlayNext = { onPlayNext(track) },
+                    onAddToQueue = { onAddToQueue(track) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArtistAvatar(
+    artist: Artist,
+    size: androidx.compose.ui.unit.Dp,
+) {
+    val shape = CircleShape
+    if (artist.avatarUrl != null) {
+        AsyncImage(
+            model = artist.avatarUrl,
+            contentDescription = stringResource(R.string.artist_avatar_cd, artist.name),
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(size)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Person,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(size * 0.42f),
+            )
+        }
+    }
+}
+
+private fun Source.shortName(): String = when (this) {
+    Source.SOUNDCLOUD -> "SoundCloud"
+    Source.YOUTUBE -> "YouTube"
+    Source.SPOTIFY -> "Spotify"
+    else -> name
+}
+
+private fun Source.brandIconRes(): Int = when (this) {
+    Source.SOUNDCLOUD -> R.drawable.ic_brand_soundcloud
+    Source.YOUTUBE -> R.drawable.ic_brand_youtube
+    Source.SPOTIFY -> R.drawable.ic_brand_spotify
+    else -> R.drawable.ic_brand_soundcloud
+}
+
+@Composable
+private fun SearchSuggestionList(
+    suggestions: List<String>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 2.dp,
+    ) {
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            suggestions.take(5).forEach { suggestion ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(suggestion) }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = suggestion,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -1366,15 +1625,82 @@ private fun SearchSkeletonList() {
     }
 }
 
+@Composable
+private fun SearchSkeletonList() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            repeat(4) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    ShimmerBlock(
+                        modifier = Modifier.size(72.dp),
+                        shape = CircleShape,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ShimmerBlock(
+                        modifier = Modifier
+                            .width(64.dp)
+                            .height(10.dp),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        repeat(4) {
+            ShimmerTrackRow()
+        }
+    }
+}
+
+@Composable
+private fun ShimmerTrackRow() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ShimmerBlock(
+            modifier = Modifier.size(56.dp),
+            shape = MaterialTheme.shapes.medium,
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            ShimmerBlock(
+                modifier = Modifier
+                    .fillMaxWidth(0.68f)
+                    .height(15.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            ShimmerBlock(
+                modifier = Modifier
+                    .fillMaxWidth(0.42f)
+                    .height(11.dp),
+            )
+        }
+    }
+}
+
 /**
- * Бегущий градиент для скелетонов: полоса подсветки проходит по ширине экрана
- * за 1.2 с. Ширина берётся из конфигурации, чтобы на разных экранах скорость
- * выглядела одинаково.
+ * Блок с бегущим бликом. Анимация живёт в graphicsLayer, поэтому кадры
+ * не вызывают рекомпозицию — только обновление transform-слоя.
  */
 @Composable
-private fun rememberShimmerBrush(): Brush {
+private fun ShimmerBlock(
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = MaterialTheme.shapes.extraSmall,
+) {
     val transition = rememberInfiniteTransition(label = "skeletonShimmer")
-    val progress by transition.animateFloat(
+    val progress = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -1385,13 +1711,26 @@ private fun rememberShimmerBrush(): Brush {
     )
     val base = MaterialTheme.colorScheme.surfaceContainerHighest
     val highlight = MaterialTheme.colorScheme.surfaceContainerLow
-    val widthPx = with(LocalDensity.current) {
-        LocalConfiguration.current.screenWidthDp.dp.toPx()
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(base),
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    translationX = progress.value * size.width * 2f - size.width
+                }
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            highlight.copy(alpha = 0.9f),
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
+        )
     }
-    val start = -widthPx + progress * widthPx * 2f
-    return Brush.linearGradient(
-        colors = listOf(base, highlight, base),
-        start = Offset(start, 0f),
-        end = Offset(start + widthPx, 0f),
-    )
 }

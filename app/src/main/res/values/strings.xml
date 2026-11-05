@@ -43,6 +43,11 @@
     <string name="search_error_title">Search failed</string>
     <string name="search_retry">Retry</string>
     <string name="search_results">Results · %1$s</string>
+    <string name="search_artists_section">Artists</string>
+    <string name="search_artist_tracks">Tracks by %1$s</string>
+    <string name="search_artist_open">Open</string>
+    <string name="search_artist_listen">Listen</string>
+    <string name="search_all_artist_tracks">All tracks</string>
     <string name="search_source_cd">Source: %1$s</string>
     <string name="search_status_title">Service statuses</string>
     <string name="search_status_subtitle">Real-time availability check</string>

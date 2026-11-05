@@ -3,9 +3,11 @@ package com.facet.music.data.source.soundcloud
 import android.util.Log
 import com.facet.music.core.network.ApiClient
 import com.facet.music.core.network.executeCancellable
+import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Track
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -20,6 +22,12 @@ internal data class SoundCloudStream(
     val isHls: Boolean,
     val mimeType: String,
     val externalId: String,
+)
+
+/** Одна страница поиска SoundCloud: токен — следующее смещение. */
+internal data class SoundCloudSearchPage(
+    val tracks: List<Track>,
+    val nextToken: String?,
 )
 
 /**
@@ -42,20 +50,61 @@ class SoundCloudApi @Inject constructor(
 
     private val resolveMutex = Mutex()
 
-    suspend fun search(query: String, limit: Int): List<Track> {
+    suspend fun search(query: String, limit: Int): List<Track> =
+        searchPage(query, limit, offset = 0).tracks
+
+    internal suspend fun searchPage(
+        query: String,
+        limit: Int,
+        offset: Int,
+    ): SoundCloudSearchPage {
+        val safeLimit = limit.coerceIn(1, MAX_LIMIT)
         val url = buildString {
             append(API)
             append("/search/tracks?q=")
             append(encode(query))
             append("&limit=")
-            append(limit.coerceIn(1, MAX_LIMIT))
+            append(safeLimit)
+            append("&offset=")
+            append(offset.coerceAtLeast(0))
         }
-        return SoundCloudJson.parseCollection(apiGet(url))
+        val tracks = SoundCloudJson.parseCollection(apiGet(url))
             .filterNot { it.isGeoBlocked }
             .map { dto ->
                 rememberId(dto.permalinkUrl, dto.id)
                 dto.toTrack()
             }
+        val nextOffset = if (tracks.size >= safeLimit) offset + tracks.size else null
+        return SoundCloudSearchPage(tracks, nextOffset?.toString())
+    }
+
+    suspend fun searchUsers(query: String, limit: Int): List<Artist> {
+        val url = "$API/search/users?q=${encode(query)}&limit=${limit.coerceIn(1, MAX_LIMIT)}"
+        return SoundCloudJson.parseUsers(apiGet(url)).take(limit)
+    }
+
+    suspend fun userTracks(userUrl: String, limit: Int): List<Track> {        val userId = resolveUserId(userUrl)
+        val url = "$API/users/$userId/tracks?limit=${limit.coerceIn(1, MAX_LIMIT)}"
+        return SoundCloudJson.parseCollection(apiGet(url))
+            .filterNot { it.isGeoBlocked }
+            .sortedByDescending { it.playbackCount }
+            .map { dto ->
+                rememberId(dto.permalinkUrl, dto.id)
+                dto.toTrack()
+            }
+            .take(limit)
+    }
+
+    private suspend fun resolveUserId(userUrl: String): String {
+        val body = apiGet("$API/resolve?url=${encode(userUrl)}")
+        val root = SoundCloudJson.parseObject(body)
+        return (root["id"] as? kotlinx.serialization.json.JsonPrimitive)
+            ?.contentOrNull
+            ?.takeIf { it.isNotBlank() }
+            ?: throw SoundCloudException(
+                SoundCloudFailure.PARSE,
+                "SoundCloud не вернул id пользователя",
+            )
     }
 
     suspend fun related(pageUrl: String, limit: Int): List<Track> {

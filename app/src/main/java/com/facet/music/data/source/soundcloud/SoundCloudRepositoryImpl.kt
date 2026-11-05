@@ -8,14 +8,17 @@ import com.facet.music.core.network.StreamExpiry
 import com.facet.music.core.source.ResolveError
 import com.facet.music.core.source.ResolveException
 import com.facet.music.core.util.rethrowCancellation
+import com.facet.music.data.model.Artist
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.TrackPage
 import com.facet.music.data.repository.SoundCloudRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
@@ -49,6 +52,55 @@ class SoundCloudRepositoryImpl @Inject constructor(
                     }
                 }
                 .rethrowCancellation()
+        }
+
+    override suspend fun searchPage(
+        query: String,
+        limit: Int,
+        nextToken: String?,
+    ): Result<TrackPage> = withContext(Dispatchers.IO) {
+        runCatching {
+            val offset = nextToken?.toIntOrNull() ?: 0
+            val page = api.searchPage(query, limit, offset)
+            TrackPage(page.tracks, page.nextToken)
+        }.recoverCatching { error ->
+            if (error is SoundCloudException && error.failure == SoundCloudFailure.PARSE) {
+                TrackPage(legacySearch(query, limit), null)
+            } else {
+                throw error
+            }
+        }.rethrowCancellation()
+    }
+
+    override suspend fun searchArtists(query: String, limit: Int): Result<List<Artist>> =
+        withContext(Dispatchers.IO) {
+            runCatching { api.searchUsers(query, limit) }
+                .recoverCatching { error ->
+                    if (error is SoundCloudException) {
+                        legacyArtists(query, limit)
+                    } else {
+                        throw error
+                    }
+                }
+                .rethrowCancellation()
+        }
+
+    private suspend fun legacyArtists(query: String, limit: Int): List<Artist> {
+        val service = NewPipe.getService(ServiceList.SoundCloud.serviceId)
+        val queryHandler = service.searchQHFactory
+            .fromQuery(query, listOf("users"), "")
+        val info = newPipeDownloader.withCancellation {
+            SearchInfo.getInfo(service, queryHandler)
+        }
+        return info.relatedItems
+            .filterIsInstance<ChannelInfoItem>()
+            .take(limit)
+            .map { it.toArtist() }
+    }
+
+    override suspend fun searchUserTracks(userUrl: String, limit: Int): Result<List<Track>> =
+        withContext(Dispatchers.IO) {
+            runCatching { api.userTracks(userUrl, limit) }.rethrowCancellation()
         }
 
     @Suppress("DEPRECATION")
@@ -220,6 +272,19 @@ class SoundCloudRepositoryImpl @Inject constructor(
             durationMs = duration * 1000L,
             genre = null,
             transcodingUrl = url,
+        )
+    }
+
+    private fun ChannelInfoItem.toArtist(): Artist {
+        val avatar = thumbnails.maxByOrNull { it.height }?.url
+        return Artist(
+            id = url,
+            source = Source.SOUNDCLOUD,
+            name = name,
+            avatarUrl = avatar,
+            subscriberCount = subscriberCount.takeIf { it > 0L },
+            isVerified = isVerified,
+            url = url,
         )
     }
 

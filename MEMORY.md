@@ -1,9 +1,21 @@
-# Активный контекст — Обновлено 05.11.2026
+# Активный контекст — Обновлено 06.11.2026
 
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 69, фаза 5 (05.11.2026): сеть, NewPipe и SoundCloud; 52 suite / 294 теста | Фаза 6 — по команде пользователя |
+| Facet | активен  | Сессия 69, фаза 6 (06.11.2026): артисты, мультивыбор источников, ранжирование и подсказки; 54 suite / 303 теста | Фаза 7 — по команде пользователя |
+
+### Сессия 69, фаза 6: поиск, артисты и мультивыбор
+- **Artist/ArtistMerger:** нормализация (lowercase, ё→е, диакритика, « - Topic», official/VEVO), слияние по имени, аватар YouTube → SoundCloud, сортировка exact/verified/subscribers; `bestMatch` — exact, prefix ≥3, JW ≥0.92.
+- **Поиск артистов:** YouTube `music_artists` + `channels` при отсутствии exact; SoundCloud `api-v2/search/users` + NewPipe fallback.
+- **selectedSources:** `Set<ServiceType>` вместо selectedService/allSources; FilterChip + «Все», последний нельзя снять; `AppSettings.searchSources` (`search_sources`), миграция старых ключей.
+- **UI:** «Исполнители» (72dp), крупная карточка 96dp с «Открыть»/«Слушать», секция «Треки {артист}» (YouTube music_songs / SoundCloud user tracks по plays), «Слушать» ставит очередь и открывает плеер.
+- **Ранжирование:** `SearchConfig` + score (exact +3, tokens +2, rank, +0.3/source, −1.5 за версии), стабильная сортировка; `mergeKeepingOrder`.
+- **Пагинация:** YouTube `Page`/`getMoreItems`, SoundCloud `offset`; nextToken, индикатор, дедуп; live 30→50.
+- **YouTube:** music_songs основной, videos при <10; Topic-суффикс срезан.
+- **Подсказки:** YouTube/SoundCloud suggestions + история/лайки, debounce 250 мс, 5 строк, клик — поиск; `Translit` второй проход при <5.
+- **Скелетоны:** shimmer через graphicsLayer, без рекомпозиции на кадр.
+- **Проверка:** 54 suite / 303 теста, 0 failures; APK 7 424 634 байт (SHA-256 `bb3d870e…f56a`). Live: подсказки, ODESZA/Daft Punk карточки, «Слушать», мультивыбор сохраняется, пагинация.
 
 ### Сессия 69, фаза 5: сеть, NewPipe и SoundCloud
 - **Клиенты:** `@ApiClient` (10/15/20 с, `Accept: application/json`, retry) и `@MediaClient` (15/30/0 с, retryOnConnectionFailure) от общего base через `newBuilder()`. NewPipe и загрузки — на медиа-клиенте; `DOWNLOAD_CLIENT` удалён, воркер получает клиент через EntryPoint.

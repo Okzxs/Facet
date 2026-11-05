@@ -82,6 +82,21 @@ com.facet.music
 
 ---
 
+## Сессия 69, фаза 6: поиск, артисты и мультивыбор (06.11.2026)
+
+- **Artist.** `data/model/Artist` (`id`, `source`, `name`, `avatarUrl`, `subscriberCount`, `isVerified`, `url`); `ArtistMerger` нормализует имя (lowercase, ё→е, диакритика, « - Topic», official, VEVO), сливает источники, выбирает аватар YouTube → SoundCloud, сортирует по точному имени, verified и подписчикам. `bestMatch` использует точное имя, префикс от 3 символов и Jaro-Winkler ≥ 0.92.
+- **Поиск артистов.** YouTube — `music_artists`, при отсутствии точного имени дополнительно `channels`; SoundCloud — `api-v2/search/users` (быстро) с NewPipe `users` как фолбэком. `PlayableSource.searchArtists` и `YouTubeRepository/SoundCloudRepository` отдают `Artist`.
+- **Мультивыбор.** `SearchUiState.selectedSources: Set<ServiceType>` вместо `selectedService/allSources`; `FilterChip` для каждого источника + «Все»; последний источник снять нельзя (подсказка «Нужен хотя бы один источник»). Набор сохраняется в `AppSettings.searchSources` (`search_sources`, имена через запятую), неизвестные имена отбрасываются, пустой набор = все; старые `search_service`/`search_all_sources` мигрируют.
+- **Выдача.** Артисты и треки ищутся параллельно в одном `channelFlow` (таймаут 6 с на источник). Над треками — «Исполнители» (LazyRow, круглые аватары 72dp, бейдж источника), при точном/префиксном совпадении — крупная карточка 96dp с «Открыть»/«Слушать» и секцией «Треки {артист}» из music_songs YouTube или треков пользователя SoundCloud по прослушиваниям. «Слушать» ставит эти треки в очередь и открывает плеер; «Все треки» ведёт на экран артиста.
+- **Ранжирование.** `TrackMerger.merge(groups, query)` считает score по `SearchConfig`: точный артист +3, все токены запроса +2, позиция в источнике 1/(1+rank), дополнительный источник +0.3, штраф −1.5 за cover/remix/nightcore/sped up/slowed/karaoke/8d без такого слова в запросе. Сортировка стабильная; `mergeKeepingOrder` не двигает уже показанные строки.
+- **Пагинация.** YouTube хранит `Page` и грузит `SearchInfo.getMoreItems`; SoundCloud — `offset` api-v2. У каждого источника свой `nextToken`; внизу списка индикатор, дедуп по ключу, `loadMore()` с защитой от повторов.
+- **YouTube треки.** Основной фильтр `music_songs`; `videos` — второй запрос, только если меньше 10 результатов. Артист — `uploaderName` без « - Topic».
+- **Подсказки.** `SearchSuggestions` объединяет `suggestionExtractor` YouTube/SoundCloud и локальные совпадения истории/лайков; дебаунс 250 мс, отмена предыдущего запроса, список до 5 строк под полем, клик сразу запускает поиск. `Translit` даёт второй проход (кириллица ↔ латиница), если треков меньше 5.
+- **Скелетоны.** Артисты и треки залиты shimmer через `graphicsLayer` (анимация в layer, без рекомпозиции на кадр).
+- **Проверка.** `assembleDebug`/`assembleRelease` — BUILD SUCCESSFUL, 54 suite / 303 теста, 0 failures; release APK 7 424 634 байт, SHA-256 `bb3d870e4c8daaa438c249f6f0a56f97b5e67c97d208e829cbb8e6e8d588f56a`. Live на SM-A266B: подсказки, «Исполнители» и крупная карточка ODESZA/Daft Punk, «Слушать» запускает треки артиста, мультивыбор (SoundCloud+Spotify) сохраняется после перезапуска, пагинация 30→50 без дублей.
+
+---
+
 ## Сессия 69, фаза 5: сеть, NewPipe и SoundCloud (05.11.2026)
 
 - **Два клиента.** `@ApiClient` (connect 10 / read 15 / callTimeout 20 с, `Accept: application/json`, `RetryInterceptor`) и `@MediaClient` (connect 15 / read 30, `callTimeout = 0`, `retryOnConnectionFailure`) строятся от общего базового `OkHttpClient` через `newBuilder()` — пул соединений и диспетчер общие. `DownloadTrackWorker` больше не создаёт свой `DOWNLOAD_CLIENT`, а берёт `@MediaClient` через `DownloadWorkerEntryPoint`. `NewPipeDownloader` тоже на медиа-клиенте.

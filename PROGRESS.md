@@ -1,6 +1,58 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 05.11.2026 (сессия 69, фаза 5)
+## Последнее обновление: 06.11.2026 (сессия 69, фаза 6)
+
+## Сессия 69: глобальный рефакторинг, фаза 6 — поиск, артисты и мультивыбор
+
+**Статус:** фаза 6 из 11 закрыта; следующие фазы не начаты.
+
+### Что сделано
+- **Artist.** `data/model/Artist`; `ArtistMerger` с нормализацией (lowercase, ё→е, диакритика, « - Topic», official, VEVO), слиянием по имени, аватаром YouTube → SoundCloud, сортировкой по точному имени/verified/подписчикам. `bestMatch` — точное имя, префикс от 3 символов, Jaro-Winkler ≥ 0.92.
+- **Артисты в источниках.** YouTube: `music_artists`, при отсутствии точного имени дополнительно `channels`; SoundCloud: `api-v2/search/users` с NewPipe `users` как фолбэком. `searchArtists` добавлен в `PlayableSource`, `YouTubeRepository`, `SoundCloudRepository`.
+- **Мультивыбор.** `selectedSources: Set<ServiceType>` вместо `selectedService/allSources`; `FilterChip` по источникам + «Все», последний снять нельзя (подсказка). Набор пишется в `AppSettings.searchSources` (`search_sources`), неизвестные имена отбрасываются, пустой = все; миграция `search_service`/`search_all_sources`.
+- **Выдача.** Треки и артисты идут параллельно через `channelFlow` (6 с на источник). Над треками — «Исполнители» (LazyRow, круглые аватары 72dp, бейдж источника). При совпадении запроса с артистом — крупная карточка 96dp, «Открыть»/«Слушать» и «Треки {артист}» (YouTube music_songs с фильтром, SoundCloud user tracks по прослушиваниям); «Слушать» ставит очередь и открывает плеер, «Все треки» — экран артиста.
+- **Ранжирование.** `TrackMerger.merge(groups, query)` + `SearchConfig`: точный артист +3, все токены +2, позиция 1/(1+rank), доп. источник +0.3, версии −1.5; стабильная сортировка, `mergeKeepingOrder` не двигает строки.
+- **Пагинация.** YouTube — `Page` + `SearchInfo.getMoreItems`, SoundCloud — `offset`; `nextToken` на источник, индикатор внизу, дедуп, `loadMore()` с защитой.
+- **YouTube треки.** `music_songs` основной, `videos` — только если меньше 10; артист без « - Topic».
+- **Подсказки.** `SearchSuggestions` (suggestionExtractor YouTube/SoundCloud + история/лайки), дебаунс 250 мс, отмена прошлого запроса, 5 строк под полем, клик — сразу поиск. `Translit` — второй проход при <5 результатах.
+- **Скелетоны.** Shimmer артистов и треков через `graphicsLayer`, без рекомпозиции на кадр.
+- **Кэш поиска.** Набор источников входит в ключ запроса (`SearchRequest`), а aggregate-кэш не вводился: каждый источник кэширует свою выдачу как раньше.
+
+### Проверка
+- `assembleDebug`/`assembleRelease` — BUILD SUCCESSFUL; `testDebugUnitTest` — 54 suite / 303 теста, 0 failures.
+- Release APK — 7 424 634 байт, SHA-256 `bb3d870e4c8daaa438c249f6f0a56f97b5e67c97d208e829cbb8e6e8d588f56a`.
+- **Live на SM-A266B:** подсказки; «Исполнители» и крупная карточка ODESZA/Daft Punk; «Слушать» ставит треки артиста и открывает плеер; «Открыть» ведёт на экран артиста; мультивыбор SoundCloud+Spotify сохраняется после перезапуска; пагинация 30→50 без дублей; YouTube/Spotify чипы снимаются, последний источник защищён.
+
+### Файлы
+```
+AGENTS.md
+app/src/main/java/com/facet/music/core/search/ArtistMerger.kt
+app/src/main/java/com/facet/music/core/search/SearchConfig.kt
+app/src/main/java/com/facet/music/core/search/SearchSuggestions.kt
+app/src/main/java/com/facet/music/core/search/TrackMerger.kt
+app/src/main/java/com/facet/music/core/search/Translit.kt
+app/src/main/java/com/facet/music/core/source/PlayableSource.kt
+app/src/main/java/com/facet/music/core/source/SoundCloudPlayableSource.kt
+app/src/main/java/com/facet/music/core/source/YouTubePlayableSource.kt
+app/src/main/java/com/facet/music/data/model/Artist.kt
+app/src/main/java/com/facet/music/data/model/TrackPage.kt
+app/src/main/java/com/facet/music/data/repository/SettingsRepository.kt
+app/src/main/java/com/facet/music/data/local/SettingsRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/repository/SoundCloudRepository.kt
+app/src/main/java/com/facet/music/data/repository/YouTubeRepository.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudApi.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudJson.kt
+app/src/main/java/com/facet/music/data/source/soundcloud/SoundCloudRepositoryImpl.kt
+app/src/main/java/com/facet/music/data/source/youtube/YouTubeRepositoryImpl.kt
+app/src/main/java/com/facet/music/feature/search/SearchScreen.kt
+app/src/main/java/com/facet/music/feature/search/SearchViewModel.kt
+app/src/main/res/values/strings.xml
+app/src/main/res/values-ru/strings.xml
+app/src/test/java/com/facet/music/core/search/ArtistMergerTest.kt
+app/src/test/java/com/facet/music/core/search/TrackMergerRankingTest.kt
+app/src/test/java/com/facet/music/data/local/SettingsRepositoryImplTest.kt
+app/src/test/java/com/facet/music/feature/search/SearchViewModelExternalRequestTest.kt
+```
 
 ## Сессия 69: глобальный рефакторинг, фаза 5 — сеть, NewPipe и SoundCloud
 

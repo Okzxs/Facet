@@ -1,8 +1,10 @@
 package com.facet.music.data.repository
 
 import com.facet.music.core.download.DownloadCapability
+import com.facet.music.data.model.Artist
 import com.facet.music.data.model.AudioStreamResult
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.TrackPage
 
 /**
  * Источник контента YouTube через NewPipe Extractor.
@@ -22,6 +24,19 @@ interface YouTubeRepository {
      * @param limit максимальное количество результатов
      */
     suspend fun search(query: String, limit: Int = 20): Result<List<Track>>
+
+    /** Страница поиска: music_songs, при малом результате добирается videos. */
+    suspend fun searchPage(
+        query: String,
+        limit: Int = 20,
+        nextToken: String? = null,
+    ): Result<TrackPage>
+
+    /** Каналы: music_artists, если пусто — channels. */
+    suspend fun searchArtists(query: String, limit: Int = 10): Result<List<Artist>>
+
+    /** Только музыкальная выдача YouTube Music — для треков артиста. */
+    suspend fun searchMusicSongs(query: String, limit: Int = 10): Result<List<Track>>
 
     /**
      * Получить треки, похожие на видео [trackUrl].

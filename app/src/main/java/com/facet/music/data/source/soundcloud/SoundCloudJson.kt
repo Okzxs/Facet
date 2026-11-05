@@ -1,5 +1,6 @@
 package com.facet.music.data.source.soundcloud
 
+import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import kotlinx.serialization.json.Json
@@ -82,6 +83,7 @@ internal data class SoundCloudTrackDto(
     val monetizationModel: String,
     val trackAuthorization: String?,
     val transcodings: List<SoundCloudTranscoding>,
+    val playbackCount: Long = 0L,
 ) {
 
     val isGeoBlocked: Boolean
@@ -134,6 +136,27 @@ internal object SoundCloudJson {
             ?: return emptyList()
         return items.mapNotNull { element ->
             runCatching { parseTrackObject(element.jsonObject) }.getOrNull()
+        }
+    }
+
+    /** Пользователи SoundCloud для секции «Исполнители». */
+    fun parseUsers(body: String): List<Artist> {
+        val root = parseObject(body)
+        val items = (root["collection"] as? kotlinx.serialization.json.JsonArray) ?: return emptyList()
+        return items.mapNotNull { element ->
+            val user = element as? JsonObject ?: return@mapNotNull null
+            val name = user.string("username") ?: return@mapNotNull null
+            val permalink = user.string("permalink_url") ?: return@mapNotNull null
+            val id = user.string("id") ?: permalink
+            Artist(
+                id = id,
+                source = Source.SOUNDCLOUD,
+                name = name,
+                avatarUrl = user.string("avatar_url"),
+                subscriberCount = user.long("followers_count")?.takeIf { it > 0 },
+                isVerified = (user["verified"] as? JsonPrimitive)?.booleanOrNull ?: false,
+                url = permalink,
+            )
         }
     }
 
@@ -270,6 +293,7 @@ internal object SoundCloudJson {
             monetizationModel = root.string("monetization_model").orEmpty(),
             trackAuthorization = root.string("track_authorization"),
             transcodings = transcodings,
+            playbackCount = root.long("playback_count") ?: 0L,
         )
     }
 

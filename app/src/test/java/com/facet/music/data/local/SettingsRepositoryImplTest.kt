@@ -1,8 +1,11 @@
 package com.facet.music.data.local
 
 import android.app.Application
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.facet.music.core.service.ServiceType
 import kotlinx.coroutines.flow.first
+import org.junit.Before
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -19,6 +22,14 @@ import org.robolectric.annotation.Config
 class SettingsRepositoryImplTest {
 
     private val context = ApplicationProvider.getApplicationContext<Application>()
+
+    @Before
+    fun clearSettings() {
+        context.getSharedPreferences("facet_settings", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+    }
 
     @Test
     fun `recents are empty by default`() = runTest {
@@ -74,5 +85,23 @@ class SettingsRepositoryImplTest {
         SettingsRepositoryImpl(context).setOnboardingCompleted(true)
         val reloaded = SettingsRepositoryImpl(context)
         assertEquals(true, reloaded.settings.first().onboardingCompleted)
+    }
+
+    @Test
+    fun `search sources default to all`() = runTest {
+        val repository = SettingsRepositoryImpl(context)
+        assertEquals(ServiceType.entries.toSet(), repository.settings.first().searchSources)
+    }
+
+    @Test
+    fun `search sources persist selected subset`() = runTest {
+        SettingsRepositoryImpl(context).setSearchSources(
+            setOf(ServiceType.SOUNDCLOUD, ServiceType.YOUTUBE),
+        )
+        val reloaded = SettingsRepositoryImpl(context)
+        assertEquals(
+            setOf(ServiceType.SOUNDCLOUD, ServiceType.YOUTUBE),
+            reloaded.settings.first().searchSources,
+        )
     }
 }
