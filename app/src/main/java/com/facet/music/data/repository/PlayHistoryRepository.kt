@@ -15,8 +15,12 @@ interface PlayHistoryRepository {
 
     /**
      * Записать трек в историю (или обновить timestamp, если уже был).
+     * [playedFraction] — доля проигранного на момент записи.
      */
-    suspend fun addToHistory(track: Track)
+    suspend fun addToHistory(track: Track, playedFraction: Float? = null)
+
+    /** Уточнить долю прослушивания после завершения трека. */
+    suspend fun updatePlayedFraction(trackId: String, fraction: Float)
 
     /**
      * Очистить историю прослушиваний.

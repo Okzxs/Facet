@@ -1,5 +1,6 @@
 package com.facet.music.feature.home
 
+import com.facet.music.core.text.MusicNormalizer
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import java.util.Locale
@@ -296,16 +297,7 @@ class RecommendationPlanner @Inject constructor() {
     }
 
     /** Ключ сравнения: артист без feat./prod. + название без скобочных пометок. */
-    internal fun Track.matchKey(): String {
-        val artistKeys = normalizeArtist(artist)
-        val titleKey = title
-            .lowercase(Locale.ROOT)
-            .replace(TITLE_NOISE, " ")
-            .replace(NON_WORD, " ")
-            .replace(WHITESPACE_PATTERN, " ")
-            .trim()
-        return if (titleKey.isBlank()) "" else "$artistKeys|$titleKey"
-    }
+    internal fun Track.matchKey(): String = MusicNormalizer.trackKey(artist, title)
 
     /**
      * Перемешивает кандидатов и набирает не больше [limit] треков.
@@ -408,7 +400,7 @@ class RecommendationPlanner @Inject constructor() {
         val normalized = normalizeArtist(track.artist)
         if (normalized.isBlank() || normalized == UNKNOWN_ARTIST) return
 
-        val displayName = stripArtistCredits(track.artist)
+        val displayName = MusicNormalizer.stripArtistCredits(track.artist).trim()
         if (displayName.isBlank()) return
 
         val accumulator = weights.getOrPut(normalized) {
@@ -473,29 +465,9 @@ class RecommendationPlanner @Inject constructor() {
 
 internal const val POPULAR_QUERY = "popular songs official audio"
 
-private val WHITESPACE_PATTERN = Regex("\\s+")
-
-private val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
-
-/** Скобочные пометки версии: «(Official Video)», «[Remastered]», «— Live». */
-private val TITLE_NOISE = Regex("[(\\[][^)\\]]*[)\\]]")
-
 /**
  * Убирает feat./prod. и всё, что идёт после них, схлопывает пробелы
- * и приводит имя к нижнему регистру.
+ * и приводит имя к нижнему регистру. Оставлено для совместимости тестов:
+ * единая реализация живёт в [MusicNormalizer].
  */
-internal fun normalizeArtist(raw: String): String {
-    if (raw.isBlank()) return ""
-    return stripArtistCredits(raw)
-        .replace(WHITESPACE_PATTERN, " ")
-        .trim()
-        .lowercase(Locale.ROOT)
-}
-
-private fun stripArtistCredits(raw: String): String =
-    raw.replace(ARTIST_CREDITS_PATTERN, "")
-
-private val ARTIST_CREDITS_PATTERN = Regex(
-    pattern = """(?:^|[\s(\[]+)(?:feat|ft|featuring|prod|produced)\b\.?\s*(?:by\s+)?.*$""",
-    option = RegexOption.IGNORE_CASE,
-)
+internal fun normalizeArtist(raw: String): String = MusicNormalizer.normalizeArtist(raw)

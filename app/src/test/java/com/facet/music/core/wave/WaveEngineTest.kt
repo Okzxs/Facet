@@ -1,0 +1,351 @@
+package com.facet.music.core.wave
+
+import com.facet.music.core.text.MusicNormalizer
+import com.facet.music.data.model.Source
+import com.facet.music.data.model.Track
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import kotlin.random.Random
+
+class WaveEngineTest {
+
+    private val now = 1_800_000_000_000L
+
+    private val profile = WaveTasteProfile(
+        artists = mapOf(
+            "seed artist" to 1.0,
+            "second seed" to 0.6,
+        ),
+        genres = mapOf("rock" to 1.0),
+    )
+
+    private val seedTrack = track("seed", "Seed Artist", "Seed Song")
+
+    private val plan = WaveSessionPlan(
+        sessionId = "session-1",
+        createdAt = now,
+        randomSeed = 42L,
+        profile = profile,
+        history = WaveHistory(),
+        seedArtists = listOf(
+            SeedArtist("seed artist", "Seed Artist", 1.0),
+            SeedArtist("second seed", "Second Seed", 0.6),
+        ),
+        seedGenres = listOf("rock"),
+        seedTracks = listOf(
+            TrackSeed(
+                track = seedTrack,
+                weight = 1.0,
+                trackKey = MusicNormalizer.trackKey(seedTrack.artist, seedTrack.title),
+                artistKey = "seed artist",
+            ),
+        ),
+        previousSeedKeys = emptySet(),
+    )
+
+    @Test
+    fun `hard filters remove disliked blocked recent queued long and marked tracks`() = runBlocking {
+        val good = (1..30).map { track("good-$it", "Artist $it") }
+        val badDisliked = track("bad-disliked", "Artist D1")
+        val badBlocked = track("bad-blocked", "Blocked Artist")
+        val badShown = track("bad-shown", "Artist S1")
+        val badPlayed = track("bad-played", "Artist P1")
+        val badQueue = track("bad-queue", "Artist Q1")
+        val badLong = track("bad-long", "Artist L1", durationMs = 900_000L)
+        val badShort = track("bad-short", "Artist L2", durationMs = 30_000L)
+        val badMarker = track("bad-marker", "Artist M1", title = "Song (8D Audio)")
+        val badSubscription = track("bad-sub", "Artist G1", subscription = true)
+
+        val history = WaveHistory(
+            impressions = listOf(
+                impression(badShown, now - 2 * DAY_MS),
+            ),
+            plays = listOf(
+                PlayedTrack(badPlayed, now - 2 * DAY_MS, 1f, false),
+            ),
+            dislikedTrackIds = setOf(badDisliked.id),
+            blockedArtistKeys = setOf("blocked artist"),
+            queueTrackIds = setOf(badQueue.id),
+        )
+        val store = FakeHistoryStore(history)
+        val engine = engine(
+            store = store,
+            candidates = listOf(
+                badDisliked, badBlocked, badShown, badPlayed, badQueue,
+                badLong, badShort, badMarker, badSubscription,
+            ).map { Candidate(it, CandidateOrigin.RELATED, it.id) } +
+                good.map { Candidate(it, CandidateOrigin.RELATED, it.id) },
+        )
+
+        val result = engine.nextBatch(plan.copy(history = history), WaveSessionState(), 20)
+
+        val ids = result.tracks.map { it.id }.toSet()
+        listOf(
+            badDisliked, badBlocked, badShown, badPlayed, badQueue,
+            badLong, badShort, badMarker, badSubscription,
+        ).forEach { assertFalse(it.id, it.id in ids) }
+        assertTrue(result.tracks.size >= 10)
+    }
+
+    @Test
+    fun `first track is a confident related track and never familiar`() = runBlocking {
+        val related = (1..15).map { track("rel-$it", "Related $it") }
+        val familiar = (1..4).map { track("old-$it", "Old $it") }
+        val history = WaveHistory(
+            plays = familiar.map { PlayedTrack(it, now - 40 * DAY_MS, 1f, false) },
+            familiarTracks = familiar.map { PlayedTrack(it, now - 40 * DAY_MS, 1f, true) },
+        )
+        val store = FakeHistoryStore(history)
+        val engine = engine(
+            store = store,
+            candidates = related.map { Candidate(it, CandidateOrigin.RELATED, it.id) } +
+                familiar.map { Candidate(it, CandidateOrigin.FAMILIAR, it.id) },
+        )
+
+        val result = engine.nextBatch(plan.copy(history = history), WaveSessionState(), 10)
+
+        assertTrue(result.tracks.first().id.startsWith("rel-"))
+        assertEquals(1, result.origins[CandidateOrigin.FAMILIAR] ?: 0)
+    }
+
+    @Test
+    fun `familiar quota is ten percent and never two in a row`() = runBlocking {
+        val core = (1..20).map { track("core-$it", "Artist $it") }
+        val familiar = (1..5).map { track("old-$it", "Old $it") }
+        val history = WaveHistory(
+            plays = familiar.map { PlayedTrack(it, now - 40 * DAY_MS, 1f, false) },
+        )
+        val store = FakeHistoryStore(history)
+        val engine = engine(
+            store = store,
+            candidates = core.map { Candidate(it, CandidateOrigin.RELATED, it.id) } +
+                familiar.map { Candidate(it, CandidateOrigin.FAMILIAR, it.id) },
+        )
+
+        val result = engine.nextBatch(plan.copy(history = history), WaveSessionState(), 20)
+
+        val familiarCount = result.tracks.count { it.id.startsWith("old-") }
+        assertTrue("familiar=$familiarCount", familiarCount <= 2)
+        val types = result.tracks.map { it.id.startsWith("old-") }
+        types.zipWithNext().forEach { (left, right) ->
+            assertFalse("Два знакомых подряд", left && right)
+        }
+    }
+
+    @Test
+    fun `exploration share stays between fifteen and twenty five percent`() = runBlocking {
+        val core = (1..20).map { track("core-$it", "Artist $it") }
+        val tags = (1..6).map { track("tag-$it", "Tag Artist $it") }
+        val store = FakeHistoryStore(WaveHistory())
+        val engine = engine(
+            store = store,
+            candidates = core.map { Candidate(it, CandidateOrigin.RELATED, it.id) } +
+                tags.map { Candidate(it, CandidateOrigin.TAG, it.id) },
+        )
+
+        val result = engine.nextBatch(plan, WaveSessionState(), 20)
+
+        val exploration = result.tracks.count { it.id.startsWith("tag-") }
+        assertTrue("exploration=$exploration", exploration in 3..5)
+        assertEquals(20, result.tracks.size)
+    }
+
+    @Test
+    fun `one artist does not appear more than twice and not twice in five`() = runBlocking {
+        val sameArtist = (1..10).map { track("same-$it", "One Artist") }
+        val store = FakeHistoryStore(WaveHistory())
+        val engine = engine(
+            store = store,
+            candidates = sameArtist.map { Candidate(it, CandidateOrigin.RELATED, "seed") },
+        )
+
+        val result = engine.nextBatch(plan, WaveSessionState(), 20)
+
+        assertTrue(result.isShort)
+        assertTrue(result.tracks.size <= 2)
+    }
+
+    @Test
+    fun `no likes or history fallback when there are only familiar candidates`() = runBlocking {
+        val familiar = (1..8).map { track("old-$it", "Old $it") }
+        val history = WaveHistory(
+            plays = familiar.map { PlayedTrack(it, now - 40 * DAY_MS, 1f, false) },
+        )
+        val store = FakeHistoryStore(history)
+        val engine = engine(
+            store = store,
+            candidates = familiar.map { Candidate(it, CandidateOrigin.FAMILIAR, "seed") },
+        )
+
+        val result = engine.nextBatch(plan.copy(history = history), WaveSessionState(), 20)
+
+        assertTrue(result.isShort)
+        assertTrue(result.tracks.size <= 2)
+    }
+
+    @Test
+    fun `duplicate track key prefers a full stream source`() = runBlocking {
+        val youtube = track(
+            "yt-1",
+            "Artist",
+            "Song",
+            source = Source.YOUTUBE,
+        )
+        val spotify = track(
+            "sp-1",
+            "Artist",
+            "Song",
+            source = Source.SPOTIFY,
+        )
+        val core = (1..10).map { track("core-$it", "Artist $it") }
+        val store = FakeHistoryStore(WaveHistory())
+        val engine = engine(
+            store = store,
+            candidates = listOf(
+                Candidate(spotify, CandidateOrigin.SIMILAR_ARTIST, "sp"),
+                Candidate(youtube, CandidateOrigin.SIMILAR_ARTIST, "yt"),
+            ) + core.map { Candidate(it, CandidateOrigin.RELATED, it.id) },
+        )
+
+        val result = engine.nextBatch(plan, WaveSessionState(), 20)
+
+        assertTrue(result.tracks.any { it.id == "yt-1" })
+        assertFalse(result.tracks.any { it.id == "sp-1" })
+    }
+
+    @Test
+    fun `shown impressions are stored for every selected track`() = runBlocking {
+        val core = (1..10).map { track("core-$it", "Artist $it") }
+        val store = FakeHistoryStore(WaveHistory())
+        val engine = engine(
+            store = store,
+            candidates = core.map { Candidate(it, CandidateOrigin.RELATED, it.id) },
+        )
+
+        val result = engine.nextBatch(plan, WaveSessionState(), 10)
+
+        assertEquals(result.tracks.size, store.shown.size)
+        assertTrue(store.shown.all { it.origin == CandidateOrigin.RELATED })
+    }
+
+    @Test
+    fun `liked marker allows tracks that would otherwise be filtered`() = runBlocking {
+        val slowed = track("slow-1", "Artist", "Song (Slowed)")
+        val core = (1..10).map { track("core-$it", "Artist $it") }
+        val likedProfile = profile.copy(likedMarkers = setOf("slowed"))
+        val store = FakeHistoryStore(WaveHistory())
+        val engine = engine(
+            store = store,
+            profile = likedProfile,
+            candidates = listOf(Candidate(slowed, CandidateOrigin.RELATED, "slow")) +
+                core.map { Candidate(it, CandidateOrigin.RELATED, it.id) },
+        )
+
+        val result = engine.nextBatch(
+            plan.copy(profile = likedProfile),
+            WaveSessionState(),
+            20,
+        )
+
+        assertTrue(result.tracks.any { it.id == "slow-1" })
+    }
+
+    private fun engine(
+        store: FakeHistoryStore,
+        candidates: List<Candidate>,
+        profile: WaveTasteProfile = this.profile,
+    ): WaveEngine {
+        val source = object : CandidateSource {
+            override suspend fun candidates(
+                plan: WaveSessionPlan,
+                randomSeed: Long,
+            ): List<Candidate> = candidates
+        }
+        return WaveEngine(
+            sources = setOf(source),
+            tasteProfileProvider = object : TasteProfileProvider {
+                override suspend fun profile(): WaveTasteProfile = profile
+            },
+            historyStore = store,
+            clock = object : Clock {
+                override fun nowMs(): Long = now
+            },
+            randomProvider = object : RandomProvider {
+                override fun newSeed(): Long = 7L
+                override fun create(seed: Long): Random = Random(seed)
+            },
+            config = WaveConfig(candidateTimeoutMs = 1_000L),
+        )
+    }
+
+    private fun track(
+        id: String,
+        artist: String,
+        title: String = "Title $id",
+        durationMs: Long = 180_000L,
+        source: Source = Source.SOUNDCLOUD,
+        subscription: Boolean = false,
+    ) = Track(
+        id = id,
+        source = source,
+        title = title,
+        artist = artist,
+        artworkUrl = null,
+        streamUrl = null,
+        durationMs = durationMs,
+        genre = "rock",
+        transcodingUrl = "https://soundcloud.com/test/$id",
+        isSubscriptionOnly = subscription,
+    )
+
+    private fun impression(track: Track, at: Long) = WaveImpression(
+        trackKey = MusicNormalizer.trackKey(track.artist, track.title),
+        trackId = track.id,
+        artistKey = MusicNormalizer.normalizeArtist(track.artist),
+        sessionId = "old-session",
+        origin = CandidateOrigin.RELATED,
+        seedKey = null,
+        shownAt = at,
+        outcome = WaveOutcome.SHOWN,
+        playedMs = 0L,
+    )
+
+    private class FakeHistoryStore(var history: WaveHistory) : WaveHistoryStore {
+        val shown = mutableListOf<Candidate>()
+        val outcomes = mutableListOf<WaveOutcome>()
+
+        override suspend fun loadHistory(nowMs: Long): WaveHistory = history
+
+        override suspend fun seedTracks(sinceMs: Long): List<PlayedTrack> = history.plays
+
+        override suspend fun previousSessionSeedKeys(limit: Int): Set<String> = emptySet()
+
+        override suspend fun previousSessionSeedArtistKeys(limit: Int): Set<String> = emptySet()
+
+        override suspend fun recordShown(sessionId: String, candidates: List<Candidate>) {
+            shown += candidates
+        }
+
+        override suspend fun recordOutcome(
+            sessionId: String?,
+            track: Track,
+            outcome: WaveOutcome,
+            playedMs: Long,
+        ) {
+            outcomes += outcome
+        }
+
+        override suspend fun saveSession(record: WaveSessionRecord) = Unit
+
+        override suspend fun cleanupIfNeeded(nowMs: Long) = Unit
+
+        override suspend fun blockArtist(artistKey: String, nowMs: Long) = Unit
+    }
+
+    private companion object {
+        const val DAY_MS = 86_400_000L
+    }
+}

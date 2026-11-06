@@ -60,7 +60,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 17 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 18 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -97,12 +97,18 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(17, database.openHelper.writableDatabase.version)
+            assertEquals(18, database.openHelper.writableDatabase.version)
             assertTrue(hasTable(database.openHelper.writableDatabase, "resolved_matches"))
             assertTrue(!hasTable(database.openHelper.writableDatabase, "audio_cache"))
             assertTrue(hasTable(database.openHelper.writableDatabase, "artist_cache"))
             assertTrue(hasTable(database.openHelper.writableDatabase, "followed_artists"))
+            assertTrue(hasTable(database.openHelper.writableDatabase, "wave_impressions"))
+            assertTrue(hasTable(database.openHelper.writableDatabase, "wave_sessions"))
+            assertTrue(hasTable(database.openHelper.writableDatabase, "artist_blocklist"))
             assertTrue("artistUrl" in tableColumns(database.openHelper.writableDatabase, "liked_tracks"))
+            assertTrue(
+                "playedFraction" in tableColumns(database.openHelper.writableDatabase, "play_history"),
+            )
 
             // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
@@ -358,6 +364,84 @@ class DatabaseMigrationTest {
                 "'Artist', NULL, 1000)",
         )
         assertEquals(1, countRows(db, "followed_artists"))
+    }
+
+    @Test
+    fun `migration 17 to 18 creates wave tables and played fraction`() {
+        val db = openLegacyDatabase("m-17-18.db", 17) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(PLAY_HISTORY_DDL)
+        }
+
+        MIGRATION_17_18.migrate(db)
+
+        assertTrue(hasTable(db, "wave_impressions"))
+        assertEquals(
+            setOf(
+                "id",
+                "trackKey",
+                "trackId",
+                "artistKey",
+                "sessionId",
+                "origin",
+                "seedKey",
+                "shownAt",
+                "outcome",
+                "playedMs",
+            ),
+            tableColumns(db, "wave_impressions"),
+        )
+        assertTrue(hasIndex(db, "index_wave_impressions_trackKey"))
+        assertTrue(hasIndex(db, "index_wave_impressions_artistKey"))
+        assertTrue(hasIndex(db, "index_wave_impressions_shownAt"))
+        assertTrue(hasTable(db, "wave_sessions"))
+        assertEquals(
+            setOf(
+                "sessionId",
+                "createdAt",
+                "randomSeed",
+                "mode",
+                "seedArtistKeys",
+                "seedTrackKeys",
+                "isRadio",
+                "radioSeed",
+                "cursor",
+            ),
+            tableColumns(db, "wave_sessions"),
+        )
+        assertTrue(hasTable(db, "artist_blocklist"))
+        assertEquals(
+            setOf("artistKey", "createdAt", "until", "reason"),
+            tableColumns(db, "artist_blocklist"),
+        )
+        assertTrue("playedFraction" in tableColumns(db, "play_history"))
+
+        db.execSQL(
+            """
+            INSERT INTO `wave_impressions`
+                (`trackKey`, `trackId`, `artistKey`, `sessionId`, `origin`, `seedKey`,
+                 `shownAt`, `outcome`, `playedMs`)
+            VALUES ('artist|song', 'id-1', 'artist', 's-1', 'RELATED', 'seed',
+                    1000, 'SHOWN', 0)
+            """.trimIndent(),
+        )
+        assertEquals(1, countRows(db, "wave_impressions"))
+        db.execSQL(
+            """
+            INSERT INTO `wave_sessions`
+                (`sessionId`, `createdAt`, `randomSeed`, `mode`, `seedArtistKeys`,
+                 `seedTrackKeys`, `isRadio`, `radioSeed`, `cursor`)
+            VALUES ('s-1', 1000, 42, 'NORMAL', '[]', '[]', 0, NULL, 1)
+            """.trimIndent(),
+        )
+        assertEquals(1, countRows(db, "wave_sessions"))
+        db.execSQL(
+            """
+            INSERT INTO `artist_blocklist` (`artistKey`, `createdAt`, `until`, `reason`)
+            VALUES ('artist', 1000, NULL, 'USER')
+            """.trimIndent(),
+        )
+        assertEquals(1, countRows(db, "artist_blocklist"))
     }
 
     @Test

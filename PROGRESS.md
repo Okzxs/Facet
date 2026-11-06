@@ -1,6 +1,28 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 06.11.2026 (сессия 69, фаза-фикс 7.1)
+## Последнее обновление: 06.11.2026 (сессия 69, фаза 8, часть 1)
+
+## Сессия 69: фаза 8, часть 1 — ядро «Моей волны» (8.1–8.7, тесты 8.14)
+
+**Статус:** часть 1 из 2 (ядро без UI); 8.8–8.13 не начаты.
+
+### Что сделано
+- **Ядро `core/wave`.** Чистый Kotlin без Android: `WaveEngine`, `CandidateSource` (Hilt `@IntoSet`), `TasteProfileProvider`, `WaveHistoryStore`, `Clock`, `RandomProvider`, `WaveConfig`. Движок делает генерацию кандидатов → жёсткие фильтры → скоринг → MMR → пачку; `WaveRepositoryImpl` стал тонкой обёрткой.
+- **Нормализация.** `core/text/MusicNormalizer` — единые `normalizeArtist`, `trackKey`, жанровые токены и маркеры версий; `RecommendationPlanner` переведён на него без дублей. `trackKey` = «артист|название», один трек из разных источников — один ключ.
+- **Room v18.** `wave_impressions` (индексы по `trackKey`, `artistKey`, `shownAt`), `wave_sessions` (последние 10), `artist_blocklist` (`until` = null — навсегда), `play_history.playedFraction`. `MIGRATION_17_18` + изолированный тест и сквозная 1→18. Показы старше 90 дней чистятся раз в сутки при старте координатора.
+- **Источники 8.3.** `RelatedTracksSource` (SoundCloud/YouTube related, случайный сдвиг), `SimilarArtistsSource` (Last.fm softmax 0.7, топ-треки, резолв в YouTube через `TrackMatcher`, fallback «Популярное»), `SecondHopSource` (похожие на похожих, вне вкуса и истории), `TagSource` (`tag.getTopTracks`, теги артистов), `FollowedArtistsSource` (свежие релизы подписок), `FamiliarSource` (21/30 дней). Все источники: `withTimeout(6 с)`, ошибки не валят волну, общий `WaveNetworkGate` на 4 запроса.
+- **Фильтры 8.4.** Дизлайки, blocklist, показы 14 дней, проигрывания 7 дней, текущая очередь, 60 с–12 мин, Go+/snipped, маркеры версий (кроме любимых пользователем), FamiliarSource со своими 21/30 днями. Три быстрых скипа артиста за 30 дней → `artist_blocklist` на 30 дней (`AUTO_SKIPS`).
+- **Скоринг 8.6.** 0.30 artist + 0.15 genre + 0.20 origin + 0.20 novelty + 0.10 seed + 0.05 popularity − штрафы + Gumbel(0, 0.15). Первый трек — уверенный RELATED; знакомое ≤10%, не первым и не подряд; разведка 15–25%; MMR λ=0.7; окно артиста 5, не больше 2 на 20, не больше 3 треков одного семени подряд. При нехватке — повторная генерация, затем короткая пачка (без добора лайками/историей).
+- **Вкус 8.5.** Затухание 0.5^(дни/30) при чтении и записи, дельты: лайк +3, дослушал +1, скип в волне −1, скип в своих плейлистах −0.3, дизлайк −4. `getTopArtists`/`getTopGenres` берут 200 сырых и сортируют по эффективному весу в Kotlin. Контекст скипа передаёт `PlaybackSessionCoordinator`; лайк/дизлайк и завершение пишут исход показа.
+- **Обратная связь.** `PlaybackSessionCoordinator` фиксирует PLAYED/SKIPPED/FINISHED, `PlayerViewModel` вызывает `tasteRepository.onDislike` (раньше метод был мёртв), refill волны уменьшен до 10 треков.
+
+### Проверка
+- `assembleDebug`/`assembleRelease` — BUILD SUCCESSFUL; `testDebugUnitTest` — **56 suite / 319 тестов, 0 failures**.
+- Новые тесты: `WaveEngineTest` (фильтры, квоты, первый трек, MMR-ограничения, дедуп источников, показы), `RoomWaveHistoryStoreTest` (показы/исходы, авто-блокировка, 10 сессий, seed-треки, чистка), `TasteRepositoryTest` (затухание и дельты), миграция 17→18.
+- Release APK — **7 942 342 байта**, SHA-256 `f989a29b0e976a569e3c4318edb9cbeff1e58f555e428a824713eab104339989`; подпись проверена (`CN=Facet Music`).
+- Live-проверка на устройстве не выполнена: на момент сборки устройство было недоступно. Код миграции 17→18 и поведение ядра покрыты JVM-тестами; установку и прогон волны нужно повторить, когда телефон снова будет на связи.
+
+---
 
 ## Сессия 69: глобальный рефакторинг, фаза-фикс 7.1 — «Все треки» по пять
 

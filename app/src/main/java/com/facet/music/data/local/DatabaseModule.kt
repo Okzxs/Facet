@@ -14,6 +14,7 @@ import com.facet.music.data.local.dao.RecentlyShownDao
 import com.facet.music.data.local.dao.ResolvedMatchDao
 import com.facet.music.data.local.dao.SearchCacheDao
 import com.facet.music.data.local.dao.TasteDao
+import com.facet.music.data.local.dao.WaveDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -115,5 +116,11 @@ object DatabaseModule {
     @Singleton
     fun provideFollowedArtistDao(database: AppDatabase): FollowedArtistDao {
         return database.followedArtistDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideWaveDao(database: AppDatabase): WaveDao {
+        return database.waveDao()
     }
 }

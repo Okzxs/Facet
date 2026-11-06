@@ -63,7 +63,7 @@ com.facet.music
 └── FacetApp.kt        # @HiltAndroidApp, NewPipe.init()
 ```
 
-**БД:** Room v17, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). `MIGRATION_14_15` обнуляет `streamUrl`/`previewSeconds` у старых строк Deezer/Apple и удаляет их кэш поиска и аудио; `MIGRATION_15_16` удаляет `audio_cache` и создаёт `resolved_matches` (PK `originalTrackId`: `matchedSource`, `matchedUrl`, `confidence`, `createdAt`); `MIGRATION_16_17` создаёт `artist_cache` (PK `key`: `json`, `fetchedAt`), `followed_artists` (PK `artistKey`: `source`, `url`, `name`, `avatarUrl`, `followedAt`) и колонку `artistUrl` во всех таблицах с треками. Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
+**БД:** Room v18, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). `MIGRATION_14_15` обнуляет `streamUrl`/`previewSeconds` у старых строк Deezer/Apple и удаляет их кэш поиска и аудио; `MIGRATION_15_16` удаляет `audio_cache` и создаёт `resolved_matches` (PK `originalTrackId`: `matchedSource`, `matchedUrl`, `confidence`, `createdAt`); `MIGRATION_16_17` создаёт `artist_cache` (PK `key`: `json`, `fetchedAt`), `followed_artists` (PK `artistKey`: `source`, `url`, `name`, `avatarUrl`, `followedAt`) и колонку `artistUrl` во всех таблицах с треками; `MIGRATION_17_18` создаёт `wave_impressions`, `wave_sessions`, `artist_blocklist` и колонку `play_history.playedFraction`. Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
 
 ---
 
@@ -79,6 +79,19 @@ com.facet.music
 | Last.fm (похожие артисты) | Web API | ✅ v1 |
 | Яндекс Музыка | Неофициальный API | v2 |
 | ВК Музыка | VK API | v2 |
+
+---
+
+## Сессия 69, фаза 8, часть 1: ядро «Моей волны» (06.11.2026)
+
+- **Пакет `core/wave`.** Чистый Kotlin: `WaveEngine` (кандидаты → жёсткие фильтры → скоринг → MMR → пачка), `CandidateSource` (Hilt `@IntoSet`), `TasteProfileProvider`, `WaveHistoryStore`, `Clock`, `RandomProvider`, `WaveConfig`. `WaveRepositoryImpl` — тонкая обёртка, старая логика квот удалена.
+- **Нормализация.** `core/text/MusicNormalizer`: `normalizeArtist`, `trackKey` («артист|название»), жанровые токены, маркеры версий. `RecommendationPlanner` использует его; один трек из разных источников даёт один ключ.
+- **Room v18.** `wave_impressions` (индексы `trackKey`/`artistKey`/`shownAt`), `wave_sessions` (10 последних), `artist_blocklist`, `play_history.playedFraction`; `MIGRATION_17_18`. Показы старше 90 дней чистятся раз в сутки при старте координатора.
+- **Источники.** Related SoundCloud/YouTube (случайный сдвиг), Last.fm похожие артисты (softmax 0.7, топ-треки, резолв в YouTube через `TrackMatcher`), second hop, теги `tag.getTopTracks`, новые релизы подписок, знакомое (21/30 дней). Общий `WaveNetworkGate` — не больше 4 запросов, таймаут источника 6 с; ошибка/пусто не валят волну.
+- **Фильтры.** Дизлайки, blocklist, показы 14 дней, проигрывания 7 дней, очередь, 60 с–12 мин, Go+/snipped, маркеры `full album`/`1 hour`/`mix 20xx`/`8d`/`nightcore`/`sped up`/`slowed`/`karaoke`/`instrumental`/`cover` (кроме любимых пользователем). Три скипа <30 с за 30 дней → `artist_blocklist` на 30 дней (`AUTO_SKIPS`).
+- **Скоринг.** 0.30 artist + 0.15 genre + 0.20 origin + 0.20 novelty + 0.10 seed + 0.05 popularity − штрафы + Gumbel(0, 0.15). Первый трек — уверенный RELATED; знакомое ≤10%, не первым и не подряд; разведка 15–25%; MMR λ=0.7; один артист не чаще раза в окне 5 и ≤2 на 20; ≤3 треков одного семени подряд. При нехватке — повторная генерация, затем короткая пачка; добора лайками/историей нет.
+- **Вкус.** Затухание 0.5^(дни/30) при чтении и записи; лайк +3, дослушал +1, скип в волне −1, скип в своих плейлистах −0.3, дизлайк −4. Топ-200 сырых весов досортировывается в Kotlin. `PlaybackSessionCoordinator` пишет PLAYED/SKIPPED/FINISHED, `PlayerViewModel` вызывает `onDislike`; refill волны — 10 треков.
+- **Проверка.** `assembleDebug`/`assembleRelease` — BUILD SUCCESSFUL; 56 suite / 319 тестов, 0 failures. Новые тесты: `WaveEngineTest`, `RoomWaveHistoryStoreTest`, обновлённый `TasteRepositoryTest`, миграция 17→18. Release APK 7 942 342 байта, SHA-256 `f989a29b0e976a569e3c4318edb9cbeff1e58f555e428a824713eab104339989`; live не проверялся — устройство было недоступно.
 
 ---
 

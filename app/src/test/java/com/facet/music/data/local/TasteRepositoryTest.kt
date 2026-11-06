@@ -3,8 +3,13 @@ package com.facet.music.data.local
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.facet.music.core.wave.Clock
+import com.facet.music.core.wave.WaveHistoryStore
+import com.facet.music.data.local.entity.GenreWeightEntity
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.TasteContext
+import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -20,6 +25,7 @@ class TasteRepositoryTest {
 
     private lateinit var database: AppDatabase
     private lateinit var repository: TasteRepositoryImpl
+    private var now = 1_800_000_000_000L
 
     @Before
     fun setUp() {
@@ -27,7 +33,13 @@ class TasteRepositoryTest {
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        repository = TasteRepositoryImpl(database.tasteDao())
+        repository = TasteRepositoryImpl(
+            tasteDao = database.tasteDao(),
+            clock = object : Clock {
+                override fun nowMs(): Long = now
+            },
+            waveHistoryStore = mockk<WaveHistoryStore>(relaxed = true),
+        )
     }
 
     @After
@@ -55,23 +67,56 @@ class TasteRepositoryTest {
     }
 
     @Test
-    fun `early skip subtracts weight and long listen does not`() = runBlocking {
-        repository.onSkip(sampleTrack, playedMs = 29_999L)
+    fun `skip in wave costs more than skip in own playlist`() = runBlocking {
+        repository.onSkip(sampleTrack, playedMs = 29_999L, context = TasteContext.WAVE)
+        repository.onSkip(sampleTrack, playedMs = 29_999L, context = TasteContext.NORMAL)
+
+        assertEquals(-1.3, database.tasteDao().getGenreWeight("rock") ?: 0.0, 0.0001)
+
+        repository.onSkip(sampleTrack, playedMs = 30_000L, context = TasteContext.WAVE)
+        assertEquals(-1.3, database.tasteDao().getGenreWeight("rock") ?: 0.0, 0.0001)
+    }
+
+    @Test
+    fun `dislike subtracts four and unlike removes like`() = runBlocking {
+        repository.onLike(sampleTrack)
+        repository.onDislike(sampleTrack)
 
         assertEquals(-1.0, database.tasteDao().getGenreWeight("rock") ?: 0.0, 0.0001)
 
-        repository.onSkip(sampleTrack, playedMs = 30_000L)
+        repository.onLike(sampleTrack)
+        repository.onUnlike(sampleTrack)
 
         assertEquals(-1.0, database.tasteDao().getGenreWeight("rock") ?: 0.0, 0.0001)
     }
 
     @Test
-    fun `unlike removes like weight`() = runBlocking {
-        repository.onLike(sampleTrack)
-        repository.onUnlike(sampleTrack)
+    fun `effective weight halves in thirty days on read and write`() = runBlocking {
+        val old = now - 30L * 86_400_000L
+        database.tasteDao().upsertGenreWeight(
+            GenreWeightEntity(genre = "rock", weight = 4.0, updatedAt = old),
+        )
 
-        assertEquals(0.0, database.tasteDao().getGenreWeight("rock") ?: 0.0, 0.0001)
-        assertEquals(0.0, database.tasteDao().getArtistWeight("artist") ?: 0.0, 0.0001)
+        val top = repository.getTopGenres(5)
+        assertEquals("rock", top.first().value)
+        assertEquals(2.0, top.first().weight, 0.0001)
+
+        repository.onLike(sampleTrack)
+        assertEquals(5.0, database.tasteDao().getGenreWeight("rock") ?: 0.0, 0.0001)
+    }
+
+    @Test
+    fun `top artists and genres are sorted by decayed weight`() = runBlocking {
+        val old = now - 60L * 86_400_000L
+        database.tasteDao().upsertGenreWeight(
+            GenreWeightEntity(genre = "old", weight = 4.0, updatedAt = old),
+        )
+        database.tasteDao().upsertGenreWeight(
+            GenreWeightEntity(genre = "fresh", weight = 2.0, updatedAt = now),
+        )
+
+        val top = repository.getTopGenres(5)
+        assertEquals(listOf("fresh", "old"), top.map { it.value })
     }
 
     private val sampleTrack = track(artist = "Artist", genre = "Rock")

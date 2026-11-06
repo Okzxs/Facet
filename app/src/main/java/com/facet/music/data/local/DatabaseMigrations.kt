@@ -399,6 +399,73 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
     }
 }
 
+/**
+ * 17 → 18: движок «Моей волны».
+ *
+ * Появились показы, сессии и блокировка исполнителей, а история получила
+ * долю прослушивания: по ней волна выбирает дослушанные треки-семена.
+ */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `wave_impressions` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `trackKey` TEXT NOT NULL,
+                `trackId` TEXT NOT NULL,
+                `artistKey` TEXT NOT NULL,
+                `sessionId` TEXT NOT NULL,
+                `origin` TEXT NOT NULL,
+                `seedKey` TEXT,
+                `shownAt` INTEGER NOT NULL,
+                `outcome` TEXT NOT NULL,
+                `playedMs` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_wave_impressions_trackKey` " +
+                "ON `wave_impressions` (`trackKey`)",
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_wave_impressions_artistKey` " +
+                "ON `wave_impressions` (`artistKey`)",
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_wave_impressions_shownAt` " +
+                "ON `wave_impressions` (`shownAt`)",
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `wave_sessions` (
+                `sessionId` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                `randomSeed` INTEGER NOT NULL,
+                `mode` TEXT NOT NULL,
+                `seedArtistKeys` TEXT NOT NULL,
+                `seedTrackKeys` TEXT NOT NULL,
+                `isRadio` INTEGER NOT NULL,
+                `radioSeed` TEXT,
+                `cursor` INTEGER NOT NULL,
+                PRIMARY KEY(`sessionId`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `artist_blocklist` (
+                `artistKey` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                `until` INTEGER,
+                `reason` TEXT NOT NULL,
+                PRIMARY KEY(`artistKey`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL("ALTER TABLE `play_history` ADD COLUMN `playedFraction` REAL")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -416,4 +483,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_14_15,
     MIGRATION_15_16,
     MIGRATION_16_17,
+    MIGRATION_17_18,
 )

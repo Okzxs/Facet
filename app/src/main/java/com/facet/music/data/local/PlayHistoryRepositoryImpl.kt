@@ -36,9 +36,18 @@ class PlayHistoryRepositoryImpl @Inject constructor(
         }.flowOn(Dispatchers.IO)
     }
 
-    override suspend fun addToHistory(track: Track) = withContext(Dispatchers.IO) {
-        playHistoryDao.recordPlay(track.toHistoryEntity(), keepCount = 50)
-    }
+    override suspend fun addToHistory(track: Track, playedFraction: Float?) =
+        withContext(Dispatchers.IO) {
+            playHistoryDao.recordPlay(
+                track.toHistoryEntity(playedFraction = playedFraction),
+                keepCount = 50,
+            )
+        }
+
+    override suspend fun updatePlayedFraction(trackId: String, fraction: Float) =
+        withContext(Dispatchers.IO) {
+            playHistoryDao.updatePlayedFraction(trackId, fraction)
+        }
 
     override suspend fun clearHistory() = withContext(Dispatchers.IO) {
         playHistoryDao.clearHistory()

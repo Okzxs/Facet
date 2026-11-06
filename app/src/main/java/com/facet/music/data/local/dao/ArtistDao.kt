@@ -36,6 +36,9 @@ interface FollowedArtistDao {
     @Query("SELECT `artistKey` FROM `followed_artists`")
     fun observeKeys(): Flow<List<String>>
 
+    @Query("SELECT * FROM `followed_artists` ORDER BY `followedAt` DESC")
+    suspend fun getAll(): List<FollowedArtistEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: FollowedArtistEntity)
 

@@ -1,190 +1,96 @@
 package com.facet.music.data.source.wave
 
+import com.facet.music.core.wave.CandidateOrigin
+import com.facet.music.core.wave.Clock
+import com.facet.music.core.wave.SeedArtist
+import com.facet.music.core.wave.TrackSeed
+import com.facet.music.core.wave.WaveEngine
+import com.facet.music.core.wave.WaveGeneration
+import com.facet.music.core.wave.WaveHistory
+import com.facet.music.core.wave.WaveHistoryStore
+import com.facet.music.core.wave.WaveSessionPlan
+import com.facet.music.core.wave.WaveSessionState
+import com.facet.music.core.wave.WaveTasteProfile
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
-import com.facet.music.data.repository.LastFmRepository
-import com.facet.music.data.repository.LikedTracksRepository
-import com.facet.music.data.repository.PlayHistoryRepository
-import com.facet.music.data.repository.SoundCloudChartsRepository
-import com.facet.music.data.repository.SoundCloudRepository
-import com.facet.music.data.repository.TasteRepository
-import com.facet.music.data.repository.TasteWeight
 import io.mockk.coEvery
-import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 class WaveRepositoryTest {
 
-    private val likedTracksRepository = mockk<LikedTracksRepository>()
-    private val playHistoryRepository = mockk<PlayHistoryRepository>()
-    private val soundCloudRepository = mockk<SoundCloudRepository>()
-    private val chartsRepository = mockk<SoundCloudChartsRepository>()
-    private val lastFmRepository = mockk<LastFmRepository>()
-    private val tasteRepository = mockk<TasteRepository>()
-
+    private val engine = mockk<WaveEngine>()
+    private val historyStore = mockk<WaveHistoryStore>(relaxed = true)
     private lateinit var repository: WaveRepositoryImpl
+
+    private val track = Track(
+        id = "track-1",
+        source = Source.SOUNDCLOUD,
+        title = "Title",
+        artist = "Artist",
+        artworkUrl = null,
+        streamUrl = null,
+        durationMs = 180_000L,
+        genre = "rock",
+        transcodingUrl = "https://soundcloud.com/test/track-1",
+    )
+
+    private val plan = WaveSessionPlan(
+        sessionId = "session-1",
+        createdAt = 1_800_000_000_000L,
+        randomSeed = 42L,
+        profile = WaveTasteProfile(),
+        history = WaveHistory(),
+        seedArtists = listOf(SeedArtist("artist", "Artist", 1.0)),
+        seedGenres = listOf("rock"),
+        seedTracks = listOf(
+            TrackSeed(track, 1.0, "artist|title", "artist"),
+        ),
+        previousSeedKeys = emptySet(),
+    )
 
     @Before
     fun setUp() {
-        every { likedTracksRepository.getLikedTracks() } returns flowOf(emptyList())
-        every { playHistoryRepository.getPlayHistory() } returns flowOf(emptyList())
-        coEvery { soundCloudRepository.search(any(), any()) } returns Result.success(emptyList())
-        coEvery { chartsRepository.getTop50() } returns Result.success(emptyList())
-        coEvery { lastFmRepository.getSimilarArtists(any(), any()) } returns
-            Result.success(emptyList())
-        coEvery { tasteRepository.getTopArtists(any()) } returns emptyList()
-        coEvery { tasteRepository.getTopGenres(any()) } returns emptyList()
-
+        coEvery { engine.startSession(any(), any()) } returns plan
         repository = WaveRepositoryImpl(
-            likedTracksRepository = likedTracksRepository,
-            playHistoryRepository = playHistoryRepository,
-            soundCloudRepository = soundCloudRepository,
-            chartsRepository = chartsRepository,
-            lastFmRepository = lastFmRepository,
-            tasteRepository = tasteRepository,
-            dislikedTrackDao = mockk(relaxed = true),
+            engine = engine,
+            historyStore = historyStore,
+            clock = object : Clock {
+                override fun nowMs(): Long = 1_800_000_000_000L
+            },
         )
     }
 
     @Test
-    fun `combines all sources without duplicates and updates session counters`() = runBlocking {
-        val liked = (1..12).map { track("l$it", "Rock") }
-        val history = (1..5).map { track("h$it", null) }
+    fun `start session exposes engine plan and persists it`() = runBlocking {
+        val session = repository.startSession(listOf("seed-id")).getOrThrow()
 
-        every { likedTracksRepository.getLikedTracks() } returns flowOf(liked)
-        every { playHistoryRepository.getPlayHistory() } returns flowOf(history)
-        coEvery { tasteRepository.getTopArtists(any()) } returns
-            listOf(TasteWeight("Artist", 10.0))
-        coEvery { lastFmRepository.getSimilarArtists("Artist", 4) } returns
-            Result.success(listOf("Similar A", "Similar B"))
-        coEvery { soundCloudRepository.search("Similar A", 5) } returns
-            Result.success((1..5).map { track("sa$it", null) })
-        coEvery { soundCloudRepository.search("Similar B", 5) } returns
-            Result.success((1..5).map { track("sb$it", null) })
-        coEvery { soundCloudRepository.search("Rock", 6) } returns
-            Result.success((1..5).map { track("g$it", "Rock") })
-
-        val result = repository.generateWave().getOrThrow()
-
-        assertEquals(20, result.tracks.size)
-        assertEquals(20, result.tracks.distinctBy { it.id }.size)
-        assertEquals(10, result.fromLikes)
-        assertEquals(4, result.fromHistory)
-        assertEquals(2, result.fromGenres)
-        assertEquals(4, result.fromSimilar)
-        assertEquals(result.tracks.size, result.fromLikes + result.fromHistory +
-            result.fromGenres + result.fromSimilar)
-
-        val session = repository.activeSession.value
-        assertEquals(20, session?.shownTrackIds?.size)
-        assertEquals(1, session?.batchNumber)
-        assertFalse(session?.isTerminated ?: true)
+        assertEquals("session-1", session.sessionId)
+        assertEquals(listOf("Artist"), session.seedArtists)
+        assertEquals(listOf("rock"), session.seedGenres)
+        assertEquals(setOf("seed-id"), session.shownTrackIds)
+        assertTrue(session.radioMode.not())
     }
 
     @Test
-    fun `next batch skips shown tracks and terminates when sources are exhausted`() = runBlocking {
-        val liked = (1..5).map { track("l$it", null) }
-        every { likedTracksRepository.getLikedTracks() } returns flowOf(liked)
-        coEvery { chartsRepository.getTop50() } returns Result.success(
-            liked + (1..5).map { track("c$it", null) },
+    fun `next batch updates counters and shown ids`() = runBlocking {
+        coEvery { engine.startSession(any(), any()) } returns plan
+        coEvery { engine.nextBatch(any(), any(), any()) } returns WaveGeneration(
+            tracks = listOf(track),
+            origins = mapOf(CandidateOrigin.RELATED to 1),
+            state = WaveSessionState(batchNumber = 1, shownTrackKeys = setOf("artist|title")),
+            requestedSize = 10,
         )
 
         repository.startSession().getOrThrow()
+        val batch = repository.nextBatch(10).getOrThrow()
 
-        val first = repository.nextBatch(size = 5).getOrThrow()
-        assertEquals(liked.map { it.id }.sorted(), first.tracks.map { it.id }.sorted())
-        assertEquals(5, first.session.fromLikes)
-
-        val second = repository.nextBatch(size = 5).getOrThrow()
-        assertEquals((1..5).map { "c$it" }.sorted(), second.tracks.map { it.id }.sorted())
-        assertEquals(5, second.session.fromGenres)
-
-        assertTrue(first.tracks.map { it.id }.intersect(second.tracks.map { it.id }.toSet()).isEmpty())
-
-        val third = repository.nextBatch(size = 5).getOrThrow()
-        assertTrue(third.tracks.isEmpty())
-        assertTrue(third.session.isTerminated)
-        assertEquals(10, third.session.shownTrackIds.size)
-        assertEquals(3, third.session.batchNumber)
+        assertEquals(listOf(track), batch.tracks)
+        assertEquals(1, batch.session.batchNumber)
+        assertTrue(batch.session.shownTrackIds.contains(track.id))
     }
-
-    @Test
-    fun `empty sources yield an empty terminated wave`() = runBlocking {
-        repository.startSession().getOrThrow()
-
-        val batch = repository.nextBatch(size = 5).getOrThrow()
-
-        assertTrue(batch.tracks.isEmpty())
-        assertTrue(batch.session.isTerminated)
-        assertTrue(repository.activeSession.value?.isTerminated ?: false)
-    }
-
-    @Test
-    fun `genre findings skip tracks with a different genre`() = runBlocking {
-        val liked = (1..20).map { track("l$it", "House") }
-        every { likedTracksRepository.getLikedTracks() } returns flowOf(liked)
-        coEvery { soundCloudRepository.search("House", 6) } returns Result.success(
-            listOf(
-                track("g-ok", "House"),
-                track("g-wrong-1", "Rap"),
-                track("g-wrong-2", null),
-            ),
-        )
-
-        repository.startSession().getOrThrow()
-        val batch = repository.nextBatch(size = 20).getOrThrow()
-
-        assertTrue(batch.tracks.any { it.id == "g-ok" })
-        assertTrue(batch.tracks.none { it.id.startsWith("g-wrong") })
-    }
-
-    @Test
-    fun `similar tracks are taken from the requested artist when available`() = runBlocking {
-        val liked = (1..5).map { track("l$it", null) }
-        every { likedTracksRepository.getLikedTracks() } returns flowOf(liked)
-        coEvery { tasteRepository.getTopArtists(any()) } returns
-            listOf(TasteWeight("Artist", 10.0))
-        coEvery { lastFmRepository.getSimilarArtists("Artist", 4) } returns
-            Result.success(listOf("Similar A"))
-        coEvery { soundCloudRepository.search("Similar A", 5) } returns Result.success(
-            listOf(
-                track("wrong-1", null, artist = "Чужой"),
-                track("wrong-2", null, artist = "Другой"),
-                track("right-1", null, artist = "Similar A"),
-                track("right-2", null, artist = "Similar A feat. X"),
-            ),
-        )
-
-        repository.startSession().getOrThrow()
-        val batch = repository.nextBatch(size = 20).getOrThrow()
-
-        // SoundCloud отдаёт чужие треки по запросу — берём только самого артиста
-        assertTrue(batch.tracks.any { it.id == "right-1" })
-        assertTrue(batch.tracks.any { it.id == "right-2" })
-        assertTrue(batch.tracks.none { it.id.startsWith("wrong") })
-    }
-
-    private fun track(
-        id: String,
-        genre: String?,
-        title: String = "Title $id",
-        artist: String = "Artist",
-    ) = Track(
-        id = id,
-        source = Source.SOUNDCLOUD,
-        title = title,
-        artist = artist,
-        artworkUrl = null,
-        streamUrl = null,
-        durationMs = 60_000L,
-        genre = genre,
-        transcodingUrl = "https://soundcloud.com/test/$id",
-    )
 }

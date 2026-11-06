@@ -1,5 +1,6 @@
 package com.facet.music.data.repository
 
+import com.facet.music.core.wave.WaveOutcome
 import com.facet.music.data.model.Track
 import kotlinx.coroutines.flow.StateFlow
 
@@ -27,7 +28,7 @@ data class WaveSession(
     val seedGenres: List<String> = emptyList(),
     val shownTrackIds: Set<String> = emptySet(),
     val batchNumber: Int = 0,
-    val isRussianPriority: Boolean = true,
+    val isRussianPriority: Boolean = false,
     val isTerminated: Boolean = false,
     /** Радио от трека: очередь строится только от похожих артистов, без вкусов. */
     val radioMode: Boolean = false,
@@ -73,6 +74,14 @@ interface WaveRepository {
 
     /** Завершить сессию волны. */
     suspend fun reset()
+
+    /** Записать исход показа текущего трека (played/skipped/finished). */
+    suspend fun recordOutcome(track: Track, outcome: WaveOutcome, playedMs: Long)
+
+    /** Раз в сутки чистит показы старше 90 дней. */
+    suspend fun cleanupIfNeeded()
+
+    suspend fun blockArtist(artistKey: String)
 
     /**
      * Совместимый метод: новая сессия и первая пачка одним вызовом.

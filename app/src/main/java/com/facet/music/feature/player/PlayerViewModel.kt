@@ -252,6 +252,11 @@ class PlayerViewModel @Inject constructor(
                             }
                     }
                     dislikedTrackDao.insert(DislikedTrackEntity(trackId = track.id))
+                    runCatching { tasteRepository.onDislike(track) }
+                        .rethrowCancellation()
+                        .onFailure { error ->
+                            Log.w(tag, "Feedback вкусов не записан после дизлайка", error)
+                        }
                 } else {
                     dislikedTrackDao.delete(track.id)
                 }

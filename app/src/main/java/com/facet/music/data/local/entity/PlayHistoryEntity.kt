@@ -26,6 +26,8 @@ data class PlayHistoryEntity(
     val transcodingUrl: String?,
     val playedAt: Long = System.currentTimeMillis(),
     val artistUrl: String? = null,
+    /** Какая доля трека реально проиграна; null — запись старой версии. */
+    val playedFraction: Float? = null,
 )
 
 fun PlayHistoryEntity.toTrack(isLiked: Boolean = false): Track = Track(
@@ -42,7 +44,10 @@ fun PlayHistoryEntity.toTrack(isLiked: Boolean = false): Track = Track(
     transcodingUrl = transcodingUrl,
 )
 
-fun Track.toHistoryEntity(playedAt: Long = System.currentTimeMillis()): PlayHistoryEntity = PlayHistoryEntity(
+fun Track.toHistoryEntity(
+    playedAt: Long = System.currentTimeMillis(),
+    playedFraction: Float? = null,
+): PlayHistoryEntity = PlayHistoryEntity(
     id = id,
     source = source.name,
     title = title,
@@ -53,4 +58,5 @@ fun Track.toHistoryEntity(playedAt: Long = System.currentTimeMillis()): PlayHist
     genre = genre,
     transcodingUrl = transcodingUrl,
     playedAt = playedAt,
+    playedFraction = playedFraction,
 )

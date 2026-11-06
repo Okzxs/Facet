@@ -17,6 +17,9 @@ interface LikedTracksDao {
     @Query("SELECT * FROM liked_tracks ORDER BY likedAt DESC")
     fun getLikedTracks(): Flow<List<LikedTrackEntity>>
 
+    @Query("SELECT * FROM liked_tracks ORDER BY likedAt DESC")
+    suspend fun getAll(): List<LikedTrackEntity>
+
     @Query("SELECT * FROM liked_tracks WHERE season = :season ORDER BY likedAt DESC")
     fun getLikedTracksBySeason(season: String): Flow<List<LikedTrackEntity>>
 

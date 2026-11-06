@@ -7,6 +7,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.facet.music.core.analytics.AnalyticsEvents
 import com.facet.music.core.analytics.AnalyticsTracker
 import com.facet.music.core.di.ApplicationScope
+import com.facet.music.core.wave.WaveOutcome
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.PlayHistoryRepository
 import com.facet.music.data.repository.QueueRepository
@@ -65,6 +66,7 @@ class PlaybackSessionCoordinator @Inject constructor(
         started = true
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
         tickerJob = scope.launch { tick() }
+        scope.launch { runCatching { waveRepository.cleanupIfNeeded() } }
     }
 
     private suspend fun tick() {
@@ -102,7 +104,9 @@ class PlaybackSessionCoordinator @Inject constructor(
                 }
                 if (playedMs >= HISTORY_MIN_MS || fraction >= 0.5f) {
                     historyWritten = true
-                    runCatching { playHistoryRepository.addToHistory(track) }
+                    runCatching {
+                        playHistoryRepository.addToHistory(track, playedFraction = fraction)
+                    }
                 }
             }
 
@@ -138,6 +142,18 @@ class PlaybackSessionCoordinator @Inject constructor(
                 fraction > FINISHED_THRESHOLD -> tasteRepository.onTrackFinished(track, fraction, context)
                 played < SKIP_THRESHOLD_MS -> tasteRepository.onSkip(track, played, context)
             }
+        }
+        if (fraction > FINISHED_THRESHOLD) {
+            runCatching { playHistoryRepository.updatePlayedFraction(track.id, fraction) }
+        }
+
+        if (origin == QueueOrigin.WAVE || origin == QueueOrigin.WAVE_FROM_TRACK) {
+            val outcome = when {
+                fraction > FINISHED_THRESHOLD -> WaveOutcome.FINISHED
+                played < SKIP_THRESHOLD_MS -> WaveOutcome.SKIPPED
+                else -> WaveOutcome.PLAYED
+            }
+            runCatching { waveRepository.recordOutcome(track, outcome, played) }
         }
     }
 
@@ -179,7 +195,7 @@ class PlaybackSessionCoordinator @Inject constructor(
         const val FINISHED_THRESHOLD = 0.8f
         const val SKIP_THRESHOLD_MS = 30_000L
         const val WAVE_REFILL_THRESHOLD = 3
-        const val WAVE_REFILL_BATCH = 12
+        const val WAVE_REFILL_BATCH = 10
         const val SAVE_INTERVAL_MS = 10_000L
     }
 }

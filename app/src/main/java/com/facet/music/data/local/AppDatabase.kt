@@ -15,6 +15,8 @@ import com.facet.music.data.local.dao.RecentlyShownDao
 import com.facet.music.data.local.dao.ResolvedMatchDao
 import com.facet.music.data.local.dao.SearchCacheDao
 import com.facet.music.data.local.dao.TasteDao
+import com.facet.music.data.local.dao.WaveDao
+import com.facet.music.data.local.entity.ArtistBlocklistEntity
 import com.facet.music.data.local.entity.ArtistCacheEntity
 import com.facet.music.data.local.entity.ChartCacheEntity
 import com.facet.music.data.local.entity.DislikedTrackEntity
@@ -31,6 +33,8 @@ import com.facet.music.data.local.entity.RecentlyShownEntity
 import com.facet.music.data.local.entity.ResolvedMatchEntity
 import com.facet.music.data.local.entity.SearchCacheEntity
 import com.facet.music.data.local.entity.UserPreferenceEntity
+import com.facet.music.data.local.entity.WaveImpressionEntity
+import com.facet.music.data.local.entity.WaveSessionEntity
 
 /**
  * Локальная база данных Room приложения Facet.
@@ -53,8 +57,11 @@ import com.facet.music.data.local.entity.UserPreferenceEntity
         ResolvedMatchEntity::class,
         ArtistCacheEntity::class,
         FollowedArtistEntity::class,
+        WaveImpressionEntity::class,
+        WaveSessionEntity::class,
+        ArtistBlocklistEntity::class,
     ],
-    version = 17,
+    version = 18,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -71,4 +78,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun resolvedMatchDao(): ResolvedMatchDao
     abstract fun artistCacheDao(): ArtistCacheDao
     abstract fun followedArtistDao(): FollowedArtistDao
+    abstract fun waveDao(): WaveDao
 }

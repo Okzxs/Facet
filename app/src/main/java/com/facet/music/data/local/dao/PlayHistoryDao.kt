@@ -18,8 +18,14 @@ interface PlayHistoryDao {
     @Query("SELECT * FROM play_history ORDER BY playedAt DESC LIMIT :limit")
     fun getPlayHistory(limit: Int = 50): Flow<List<PlayHistoryEntity>>
 
+    @Query("SELECT * FROM play_history ORDER BY playedAt DESC LIMIT :limit")
+    suspend fun getAll(limit: Int = 50): List<PlayHistoryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlayHistory(item: PlayHistoryEntity)
+
+    @Query("UPDATE play_history SET playedFraction = :fraction WHERE id = :id")
+    suspend fun updatePlayedFraction(id: String, fraction: Float)
 
     @Query("DELETE FROM play_history WHERE id NOT IN (SELECT id FROM play_history ORDER BY playedAt DESC LIMIT :keepCount)")
     suspend fun trimHistory(keepCount: Int = 50)
