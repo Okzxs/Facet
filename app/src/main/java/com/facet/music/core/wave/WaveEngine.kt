@@ -441,7 +441,7 @@ class WaveEngine(
             selected.map { it.candidate.artistKey })
             .takeLast(ROLLING_TWENTY - 1)
         val rollingCount = rollingWindow.count { it == artistKey }
-        if (batchCount >= artistLimit || rollingCount >= artistLimit) return false
+        if (batchCount >= artistLimit || rollingCount >= config.artistMaxPerTwenty) return false
         val window = (state.recentArtistKeys.takeLast(config.artistWindow - 1) +
             selected.map { it.candidate.artistKey })
             .takeLast(config.artistWindow - 1)
