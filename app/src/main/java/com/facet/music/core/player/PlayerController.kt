@@ -6,6 +6,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import com.facet.music.core.source.PlaybackResolver
+import com.facet.music.core.text.MusicNormalizer
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.QueueRepository
 import com.facet.music.data.repository.SettingsRepository
@@ -437,6 +438,54 @@ class PlayerController @Inject constructor(
             val player = awaitPlayer() ?: return@launch
             if (index < player.mediaItemCount) player.removeMediaItem(index)
             if (player.mediaItemCount == 0) player.clearMediaItems()
+        }
+    }
+
+
+    /** Удаляет ещё не проигранные треки артиста, не прерывая текущий. */
+    fun removeUpcomingByArtist(artist: String): Int {
+        val target = MusicNormalizer.normalizeArtist(artist)
+        if (target.isBlank()) return 0
+        val state = _state.value
+        val current = state.currentIndex.coerceAtLeast(0)
+        val removedIndices = state.queue.indices.filter { index ->
+            index > current && MusicNormalizer.normalizeArtist(state.queue[index].artist) == target
+        }
+        if (removedIndices.isEmpty()) return 0
+        val removedIds = removedIndices.mapTo(hashSetOf()) { state.queue[it].id }
+        originalQueue = originalQueue.filterNot { it.id in removedIds }
+        val newQueue = state.queue.filterIndexed { index, _ -> index !in removedIndices }
+        _state.update { it.copy(queue = newQueue) }
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            removedIndices.asReversed().forEach { index ->
+                if (index < player.mediaItemCount) player.removeMediaItem(index)
+            }
+        }
+        return removedIndices.size
+    }
+
+    /** Заменяет всё после текущего новой пачкой, текущий трек не трогает. */
+    fun replaceUpcoming(tracks: List<Track>) {
+        val state = _state.value
+        if (state.queue.isEmpty() || state.currentIndex !in state.queue.indices) return
+        val keep = state.queue.take(state.currentIndex + 1)
+        val keptIds = keep.mapTo(hashSetOf()) { it.id }
+        val additions = tracks.filter { it.id.isNotBlank() && keptIds.add(it.id) }
+        originalQueue = keep + additions
+        _state.update { it.copy(queue = keep + additions) }
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            val from = state.currentIndex + 1
+            if (from < player.mediaItemCount) {
+                player.removeMediaItems(from, player.mediaItemCount - from)
+            }
+            if (additions.isNotEmpty()) {
+                player.addMediaItems(
+                    player.mediaItemCount,
+                    additions.map { TrackMediaItem.create(it) },
+                )
+            }
         }
     }
 

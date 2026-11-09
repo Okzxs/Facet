@@ -162,6 +162,6 @@ class SimilarArtistsSource @Inject constructor(
         const val RESOLVE_BUDGET = 4
         const val FALLBACK_ARTISTS = 2
         const val FALLBACK_TRACKS = 2
-        const val REQUEST_TIMEOUT_MS = 1_500L
+        const val REQUEST_TIMEOUT_MS = 4_000L
     }
 }

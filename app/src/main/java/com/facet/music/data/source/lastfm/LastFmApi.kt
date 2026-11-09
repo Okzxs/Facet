@@ -40,6 +40,14 @@ interface LastFmApi {
     ): LastFmTopTracksResponse
 
     @GET("2.0/")
+    suspend fun getTopArtists(
+        @Query("method") method: String,
+        @Query("api_key") apiKey: String,
+        @Query("format") format: String,
+        @Query("limit") limit: Int,
+    ): LastFmTopArtistsResponse
+
+    @GET("2.0/")
     suspend fun getArtistTopTags(
         @Query("method") method: String,
         @Query("artist") artist: String,
@@ -100,4 +108,14 @@ data class LastFmTopTags(
 @Serializable
 data class LastFmTag(
     val name: String = "",
+)
+
+@Serializable
+data class LastFmTopArtistsResponse(
+    val artists: LastFmTopArtists? = null,
+)
+
+@Serializable
+data class LastFmTopArtists(
+    val artist: List<LastFmArtist> = emptyList(),
 )

@@ -466,6 +466,15 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
     }
 }
 
+/** 18 → 19: сессия волны хранит режим, радио-артиста и полные seed-треки. */
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE `wave_sessions` ADD COLUMN `mood` TEXT NOT NULL DEFAULT 'BALANCE'")
+        database.execSQL("ALTER TABLE `wave_sessions` ADD COLUMN `radioArtistKey` TEXT")
+        database.execSQL("ALTER TABLE `wave_sessions` ADD COLUMN `seedTracksJson` TEXT")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -484,4 +493,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_15_16,
     MIGRATION_16_17,
     MIGRATION_17_18,
+    MIGRATION_18_19,
 )

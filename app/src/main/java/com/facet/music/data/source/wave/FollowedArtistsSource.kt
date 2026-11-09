@@ -108,6 +108,6 @@ class FollowedArtistsSource @Inject constructor(
         const val FRESH_DAYS_MS = 60 * 86_400_000L
         const val MAX_ARTISTS = 2
         const val MAX_TRACKS = 2
-        const val REQUEST_TIMEOUT_MS = 2_500L
+        const val REQUEST_TIMEOUT_MS = 4_000L
     }
 }

@@ -1,5 +1,7 @@
 package com.facet.music.data.repository
 
+import com.facet.music.core.wave.WaveCandidateDetails
+import com.facet.music.core.wave.WaveMood
 import com.facet.music.core.wave.WaveOutcome
 import com.facet.music.data.model.Track
 import kotlinx.coroutines.flow.StateFlow
@@ -28,7 +30,6 @@ data class WaveSession(
     val seedGenres: List<String> = emptyList(),
     val shownTrackIds: Set<String> = emptySet(),
     val batchNumber: Int = 0,
-    val isRussianPriority: Boolean = false,
     val isTerminated: Boolean = false,
     /** Радио от трека: очередь строится только от похожих артистов, без вкусов. */
     val radioMode: Boolean = false,
@@ -44,6 +45,7 @@ data class WaveSession(
 data class WaveBatch(
     val tracks: List<Track>,
     val session: WaveSession,
+    val details: Map<String, WaveCandidateDetails> = emptyMap(),
 )
 
 /**
@@ -58,13 +60,20 @@ interface WaveRepository {
      * Создать новую сессию.
      * [seeds] — уже показанные треки, которые нужно исключить из выдачи.
      */
-    suspend fun startSession(seeds: List<String> = emptyList()): Result<WaveSession>
+    suspend fun startSession(
+        seeds: List<String> = emptyList(),
+        mood: WaveMood = WaveMood.BALANCE,
+        seedArtistNames: List<String> = emptyList(),
+    ): Result<WaveSession>
 
     /**
      * Запустить радио от конкретного трека: похожие артисты Last.fm и жанр
      * трека, без вклада лайков и истории. Дальше работает обычный refill.
      */
     suspend fun startRadio(seed: Track): Result<WaveSession>
+
+    /** Радио по артисту: фиксированные семена без трека-сида. */
+    suspend fun startRadioForArtist(artist: String): Result<WaveSession>
 
     /**
      * Собрать следующую пачку треков с учётом накопленных вкусов
@@ -77,6 +86,19 @@ interface WaveRepository {
 
     /** Записать исход показа текущего трека (played/skipped/finished). */
     suspend fun recordOutcome(track: Track, outcome: WaveOutcome, playedMs: Long)
+
+    /** Трек реально стал текущим: создаём показ с origin/seed. */
+    suspend fun recordShown(track: Track)
+
+    suspend fun onTrackLiked(track: Track)
+
+    suspend fun onTrackDisliked(track: Track)
+
+    /** Восстановить последнюю сессию после смерти процесса. */
+    suspend fun restoreSession(): Boolean
+
+    /** Три быстрых скипа подряд: координатор заменит непроигранное. */
+    suspend fun consumeMoodRefresh(): Boolean
 
     /** Раз в сутки чистит показы старше 90 дней. */
     suspend fun cleanupIfNeeded()

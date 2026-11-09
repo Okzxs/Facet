@@ -14,6 +14,20 @@ interface RandomProvider {
     fun create(seed: Long): Random
 }
 
+enum class WaveMood(
+    val familiarShare: Double,
+    val explorationShare: Double,
+) {
+    FAMILIAR(0.15, 0.10),
+    BALANCE(0.08, 0.20),
+    DISCOVERY(0.03, 0.35);
+
+    companion object {
+        fun fromName(raw: String?): WaveMood =
+            entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: BALANCE
+    }
+}
+
 enum class CandidateOrigin(val prior: Double, val exploration: Boolean) {
     RELATED(1.0, false),
     SIMILAR_ARTIST(0.8, false),
@@ -73,6 +87,21 @@ data class WaveImpression(
 
 enum class WaveOutcome { SHOWN, PLAYED, SKIPPED, FINISHED, LIKED, DISLIKED }
 
+data class WaveCandidateDetails(
+    val trackKey: String,
+    val origin: CandidateOrigin,
+    val seedKey: String?,
+    val artistAffinity: Double,
+    val genreAffinity: Double,
+    val originPrior: Double,
+    val novelty: Double,
+    val seedWeight: Double,
+    val popularity: Double,
+    val penalty: Double,
+    val noise: Double,
+    val score: Double,
+)
+
 data class WaveHistory(
     val impressions: List<WaveImpression> = emptyList(),
     val plays: List<PlayedTrack> = emptyList(),
@@ -96,8 +125,11 @@ data class WaveSessionPlan(
     val seedTracks: List<TrackSeed>,
     val previousSeedKeys: Set<String>,
     val previousSeedArtistKeys: Set<String> = emptySet(),
+    val excludedTrackKeys: Set<String> = emptySet(),
     val isRadio: Boolean = false,
     val radioSeed: Track? = null,
+    val radioArtistKey: String? = null,
+    val mood: WaveMood = WaveMood.BALANCE,
 )
 
 data class WaveSessionRecord(
@@ -110,6 +142,9 @@ data class WaveSessionRecord(
     val isRadio: Boolean,
     val radioSeed: String?,
     val cursor: Int,
+    val mood: String = WaveMood.BALANCE.name,
+    val radioArtistKey: String? = null,
+    val seedTracksJson: String? = null,
 )
 
 data class WaveSessionState(
@@ -122,6 +157,7 @@ data class WaveSessionState(
 data class WaveGeneration(
     val tracks: List<Track>,
     val origins: Map<CandidateOrigin, Int>,
+    val details: Map<String, WaveCandidateDetails> = emptyMap(),
     val state: WaveSessionState,
     val requestedSize: Int,
 ) {
@@ -132,11 +168,11 @@ data class WaveConfig(
     val startBatchSize: Int = 20,
     val refillBatchSize: Int = 10,
     val maxBatchSize: Int = 30,
-    val familiarShare: Double = 0.10,
+    val familiarShare: Double = 0.08,
     val explorationShare: Double = 0.20,
     val explorationMinShare: Double = 0.15,
     val explorationMaxShare: Double = 0.25,
-    val candidateTimeoutMs: Long = 6_000L,
+    val candidateTimeoutMs: Long = 15_000L,
     val maxConcurrentRequests: Int = 4,
     val requestTimeoutMs: Long = 2_500L,
     val relatedSeedMin: Int = 3,

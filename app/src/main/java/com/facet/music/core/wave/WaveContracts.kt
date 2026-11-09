@@ -44,6 +44,10 @@ interface WaveHistoryStore {
 
     suspend fun recordShown(sessionId: String, candidates: List<Candidate>)
 
+    suspend fun impressionFor(trackKey: String): WaveImpression?
+
+    suspend fun latestSession(): WaveSessionRecord?
+
     /**
      * Обновить исход показа. Если строки показа для трека ещё нет (например,
      * трек играл из обычной очереди), событие просто игнорируется.

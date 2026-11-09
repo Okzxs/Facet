@@ -106,7 +106,7 @@ fun ArtistScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
     onArtistClick: (Artist) -> Unit,
     onTrackArtistClick: (Track) -> Unit,
-    onWaveClick: (List<Track>) -> Unit,
+    onWaveClick: (String) -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
     viewModel: ArtistViewModel = hiltViewModel(),
@@ -177,7 +177,11 @@ fun ArtistScreen(
                         val shuffled = queue.shuffled()
                         shuffled.firstOrNull()?.let { first -> onTrackClick(first, shuffled) }
                     },
-                    onWave = { onWaveClick(queue) },
+                    onWave = {
+                        state.profile?.name
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(onWaveClick)
+                    },
                     onToggleFollow = viewModel::toggleFollow,
                 )
             }

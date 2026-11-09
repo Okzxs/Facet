@@ -34,4 +34,7 @@ interface LastFmRepository {
     ): Result<List<LastFmTrack>>
 
     suspend fun getArtistTopTags(artist: String, limit: Int = 10): Result<List<String>>
+
+    /** Глобальный чарт артистов — холодный старт волны. */
+    suspend fun getTopArtists(limit: Int = 30): Result<List<String>>
 }

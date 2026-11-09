@@ -257,6 +257,18 @@ class PlayerViewModel @Inject constructor(
                         .onFailure { error ->
                             Log.w(tag, "Feedback вкусов не записан после дизлайка", error)
                         }
+                    runCatching { waveRepository.onTrackDisliked(track) }
+                        .rethrowCancellation()
+                        .onFailure { error ->
+                            Log.w(tag, "Волна не записала дизлайк", error)
+                        }
+                    if (waveRepository.activeSession.value != null ||
+                        playerState.value.queueOrigin == QueueOrigin.WAVE ||
+                        playerState.value.queueOrigin == QueueOrigin.WAVE_FROM_TRACK
+                    ) {
+                        runCatching { playerController.removeUpcomingByArtist(track.artist) }
+                        playerController.playNext()
+                    }
                 } else {
                     dislikedTrackDao.delete(track.id)
                 }
@@ -264,6 +276,28 @@ class PlayerViewModel @Inject constructor(
             result.onFailure { error ->
                 Log.e(tag, "Не удалось переключить дизлайк", error)
                 _uiState.update { it.copy(error = DISLIKE_FAILED_MESSAGE) }
+            }
+        }
+    }
+
+
+    /** «Не рекомендовать исполнителя» из меню плеера. */
+    fun blockCurrentArtist() {
+        val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
+        viewModelScope.launch {
+            runCatching {
+                waveRepository.blockArtist(
+                    com.facet.music.core.text.MusicNormalizer.normalizeArtist(track.artist),
+                )
+                playerController.removeUpcomingByArtist(track.artist)
+                if (waveRepository.activeSession.value != null ||
+                    playerState.value.queueOrigin == QueueOrigin.WAVE ||
+                    playerState.value.queueOrigin == QueueOrigin.WAVE_FROM_TRACK
+                ) {
+                    playerController.playNext()
+                }
+            }.onFailure { error ->
+                Log.e(tag, "Не удалось заблокировать исполнителя", error)
             }
         }
     }
@@ -375,6 +409,29 @@ class PlayerViewModel @Inject constructor(
                 .onFailure { error ->
                     Log.e(tag, "Не удалось запустить волну от трека", error)
                 }
+        }
+    }
+
+    /** «Волна по артисту»: фиксированные семена артиста. */
+    fun startWaveFromArtist(artist: String) {
+        if (artist.isBlank() || _uiState.value.isRadioLoading) return
+        _uiState.update { it.copy(isRadioLoading = true) }
+        viewModelScope.launch {
+            val result = waveRepository.startRadioForArtist(artist)
+                .mapCatching { waveRepository.nextBatch(size = RADIO_BATCH).getOrThrow() }
+            _uiState.update { it.copy(isRadioLoading = false) }
+            result.onSuccess { batch ->
+                if (batch.tracks.isNotEmpty()) {
+                    playTrackWithQueue(
+                        track = batch.tracks.first(),
+                        queue = batch.tracks,
+                        resetWave = false,
+                        origin = QueueOrigin.WAVE_FROM_TRACK,
+                    )
+                }
+            }.onFailure { error ->
+                Log.e(tag, "Не удалось запустить волну по артисту", error)
+            }
         }
     }
 

@@ -7,6 +7,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.facet.music.core.analytics.AnalyticsEvents
 import com.facet.music.core.analytics.AnalyticsTracker
 import com.facet.music.core.di.ApplicationScope
+import com.facet.music.core.network.ConnectivityObserver
 import com.facet.music.core.wave.WaveOutcome
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.PlayHistoryRepository
@@ -36,6 +37,7 @@ class PlaybackSessionCoordinator @Inject constructor(
     private val tasteRepository: TasteRepository,
     private val waveRepository: WaveRepository,
     private val analyticsTracker: AnalyticsTracker,
+    private val connectivityObserver: ConnectivityObserver,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -66,6 +68,7 @@ class PlaybackSessionCoordinator @Inject constructor(
         started = true
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
         tickerJob = scope.launch { tick() }
+        scope.launch { runCatching { waveRepository.restoreSession() } }
         scope.launch { runCatching { waveRepository.cleanupIfNeeded() } }
     }
 
@@ -91,6 +94,11 @@ class PlaybackSessionCoordinator @Inject constructor(
                 historyWritten = false
                 analyticsFired = false
                 if (track != null) {
+                    if (currentOrigin == QueueOrigin.WAVE ||
+                        currentOrigin == QueueOrigin.WAVE_FROM_TRACK
+                    ) {
+                        runCatching { waveRepository.recordShown(track) }
+                    }
                     playerController.preloadNext()
                     saveQueue()
                 }
@@ -154,6 +162,24 @@ class PlaybackSessionCoordinator @Inject constructor(
                 else -> WaveOutcome.PLAYED
             }
             runCatching { waveRepository.recordOutcome(track, outcome, played) }
+            if (outcome == WaveOutcome.SKIPPED || outcome == WaveOutcome.PLAYED ||
+                outcome == WaveOutcome.FINISHED
+            ) {
+                scope.launch {
+                    if (waveRepository.consumeMoodRefresh()) replaceWaveQueue()
+                }
+            }
+        }
+    }
+
+    private suspend fun replaceWaveQueue() {
+        if (waveRefillJob?.isActive == true) return
+        waveRefillJob = scope.launch {
+            waveRepository.nextBatch(size = WAVE_REFILL_BATCH).onSuccess { batch ->
+                if (batch.tracks.isNotEmpty()) {
+                    playerController.replaceUpcoming(batch.tracks)
+                }
+            }
         }
     }
 
@@ -162,15 +188,21 @@ class PlaybackSessionCoordinator @Inject constructor(
         if (session.isTerminated) return
         if (state.currentTrack == null || state.queue.isEmpty()) return
         if (state.queue.lastIndex - state.currentIndex > WAVE_REFILL_THRESHOLD) return
+        if (!connectivityObserver.isOnline.value) return
         if (waveRefillJob?.isActive == true) return
         waveRefillJob = scope.launch {
-            waveRepository.nextBatch(size = WAVE_REFILL_BATCH).onSuccess { batch ->
-                val active = waveRepository.activeSession.value
-                if (batch.tracks.isNotEmpty() &&
-                    active?.sessionId == batch.session.sessionId
-                ) {
-                    playerController.appendToQueue(batch.tracks)
+            for ((attempt, waitMs) in WAVE_REFILL_RETRY_DELAYS.withIndex()) {
+                if (!connectivityObserver.isOnline.value) return@launch
+                val result = waveRepository.nextBatch(size = WAVE_REFILL_BATCH)
+                val batch = result.getOrNull()
+                if (batch != null && batch.tracks.isNotEmpty()) {
+                    val active = waveRepository.activeSession.value
+                    if (active?.sessionId == batch.session.sessionId) {
+                        playerController.appendToQueue(batch.tracks)
+                    }
+                    return@launch
                 }
+                if (attempt < WAVE_REFILL_RETRY_DELAYS.lastIndex) delay(waitMs)
             }
         }
     }
@@ -194,8 +226,9 @@ class PlaybackSessionCoordinator @Inject constructor(
         const val HISTORY_MIN_MS = 30_000L
         const val FINISHED_THRESHOLD = 0.8f
         const val SKIP_THRESHOLD_MS = 30_000L
-        const val WAVE_REFILL_THRESHOLD = 3
+        const val WAVE_REFILL_THRESHOLD = 5
         const val WAVE_REFILL_BATCH = 10
+        val WAVE_REFILL_RETRY_DELAYS = longArrayOf(2_000L, 5_000L, 15_000L)
         const val SAVE_INTERVAL_MS = 10_000L
     }
 }

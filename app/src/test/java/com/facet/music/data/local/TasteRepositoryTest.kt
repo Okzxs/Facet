@@ -4,12 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.facet.music.core.wave.Clock
-import com.facet.music.core.wave.WaveHistoryStore
 import com.facet.music.data.local.entity.GenreWeightEntity
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.TasteContext
-import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -38,7 +36,6 @@ class TasteRepositoryTest {
             clock = object : Clock {
                 override fun nowMs(): Long = now
             },
-            waveHistoryStore = mockk<WaveHistoryStore>(relaxed = true),
         )
     }
 

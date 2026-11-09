@@ -185,6 +185,15 @@ class RoomWaveHistoryStore @Inject constructor(
         }
     }
 
+    override suspend fun impressionFor(trackKey: String): WaveImpression? =
+        withContext(Dispatchers.IO) {
+            waveDao.latestImpression(trackKey)?.toDomain()
+        }
+
+    override suspend fun latestSession(): WaveSessionRecord? = withContext(Dispatchers.IO) {
+        waveDao.latestSession()?.toDomain()
+    }
+
     override suspend fun saveSession(record: WaveSessionRecord) = withContext(Dispatchers.IO) {
         waveDao.deleteExpiredBlocks(clock.nowMs())
         waveDao.upsertSession(
@@ -198,6 +207,9 @@ class RoomWaveHistoryStore @Inject constructor(
                 isRadio = record.isRadio,
                 radioSeed = record.radioSeed,
                 cursor = record.cursor,
+                mood = record.mood,
+                radioArtistKey = record.radioArtistKey,
+                seedTracksJson = record.seedTracksJson,
             ),
         )
         waveDao.trimSessions(SESSION_KEEP)
@@ -245,6 +257,25 @@ class RoomWaveHistoryStore @Inject constructor(
         atMs = playedAt,
         playedFraction = playedFraction,
         liked = false,
+    )
+
+    private fun WaveSessionEntity.toDomain(): WaveSessionRecord = WaveSessionRecord(
+        sessionId = sessionId,
+        createdAt = createdAt,
+        randomSeed = randomSeed,
+        mode = mode,
+        seedArtistKeys = runCatching {
+            json.decodeFromString<List<String>>(seedArtistKeys)
+        }.getOrDefault(emptyList()),
+        seedTrackKeys = runCatching {
+            json.decodeFromString<List<String>>(seedTrackKeys)
+        }.getOrDefault(emptyList()),
+        isRadio = isRadio,
+        radioSeed = radioSeed,
+        cursor = cursor,
+        mood = mood,
+        radioArtistKey = radioArtistKey,
+        seedTracksJson = seedTracksJson,
     )
 
     private fun WaveImpressionEntity.toDomain(): WaveImpression = WaveImpression(

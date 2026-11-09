@@ -10,11 +10,15 @@ import com.facet.music.core.wave.WaveHistory
 import com.facet.music.core.wave.WaveHistoryStore
 import com.facet.music.core.wave.WaveSessionPlan
 import com.facet.music.core.wave.WaveSessionState
+import com.facet.music.core.analytics.AnalyticsTracker
+import com.facet.music.core.wave.TasteProfileProvider
+import com.facet.music.core.wave.WaveMood
 import com.facet.music.core.wave.WaveTasteProfile
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import io.mockk.coEvery
 import io.mockk.mockk
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -55,13 +59,19 @@ class WaveRepositoryTest {
 
     @Before
     fun setUp() {
-        coEvery { engine.startSession(any(), any()) } returns plan
+        coEvery { engine.startSession(any(), any(), any(), any()) } returns plan
         repository = WaveRepositoryImpl(
             engine = engine,
             historyStore = historyStore,
+            tasteProfileProvider = object : TasteProfileProvider {
+                override suspend fun profile(): WaveTasteProfile = WaveTasteProfile()
+            },
             clock = object : Clock {
                 override fun nowMs(): Long = 1_800_000_000_000L
             },
+            json = Json,
+            analyticsTracker = mockk(relaxed = true),
+            artistRepository = mockk(relaxed = true),
         )
     }
 
@@ -78,7 +88,7 @@ class WaveRepositoryTest {
 
     @Test
     fun `next batch updates counters and shown ids`() = runBlocking {
-        coEvery { engine.startSession(any(), any()) } returns plan
+        coEvery { engine.startSession(any(), any(), any(), any()) } returns plan
         coEvery { engine.nextBatch(any(), any(), any()) } returns WaveGeneration(
             tracks = listOf(track),
             origins = mapOf(CandidateOrigin.RELATED to 1),

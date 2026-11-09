@@ -98,6 +98,6 @@ class SecondHopSource @Inject constructor(
         const val SIMILAR_LIMIT = 10
         const val TOP_TRACKS = 5
         const val RESOLVE_BUDGET = 2
-        const val REQUEST_TIMEOUT_MS = 2_500L
+        const val REQUEST_TIMEOUT_MS = 4_000L
     }
 }

@@ -115,6 +115,24 @@ class LastFmRepositoryImpl @Inject constructor(
             }
         }
 
+    override suspend fun getTopArtists(limit: Int): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            if (apiKey.isBlank()) return@withContext Result.success(emptyList())
+            runCatching {
+                api.getTopArtists(
+                    method = METHOD_TOP_ARTISTS,
+                    apiKey = apiKey,
+                    format = FORMAT,
+                    limit = limit.coerceIn(1, MAX_ARTISTS),
+                ).artists?.artist.orEmpty()
+                    .map { it.name.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+            }.rethrowCancellation().onFailure { error ->
+                Log.w(TAG, "Last.fm chart.getTopArtists недоступен", error)
+            }
+        }
+
     private fun LastFmTrackDto.toDomain(): LastFmTrack? {
         val title = name.trim()
         val artistName = artist?.name?.trim().orEmpty()
@@ -134,6 +152,7 @@ class LastFmRepositoryImpl @Inject constructor(
         const val METHOD_ARTIST_TOP_TRACKS = "artist.gettoptracks"
         const val METHOD_TAG_TOP_TRACKS = "tag.gettoptracks"
         const val METHOD_ARTIST_TOP_TAGS = "artist.gettoptags"
+        const val METHOD_TOP_ARTISTS = "chart.gettopartists"
         const val MAX_ARTISTS = 20
         const val MAX_TRACKS = 50
         const val MAX_TAGS = 20

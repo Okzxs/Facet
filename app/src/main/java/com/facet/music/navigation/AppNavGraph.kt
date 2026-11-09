@@ -381,11 +381,9 @@ fun AppNavGraph() {
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
                         onArtistClick = { artist -> openArtist(artist) },
                         onTrackArtistClick = { track -> openArtist(track) },
-                        onWaveClick = { tracks ->
-                            tracks.firstOrNull()?.let { seed ->
-                                playerViewModel.startWaveFromTrack(seed)
-                                isPlayerOpen = true
-                            }
+                        onWaveClick = { artist ->
+                            playerViewModel.startWaveFromArtist(artist)
+                            isPlayerOpen = true
                         },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
@@ -407,11 +405,9 @@ fun AppNavGraph() {
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
                         onArtistClick = { artist -> openArtist(artist) },
                         onTrackArtistClick = { track -> openArtist(track) },
-                        onWaveClick = { tracks ->
-                            tracks.firstOrNull()?.let { seed ->
-                                playerViewModel.startWaveFromTrack(seed)
-                                isPlayerOpen = true
-                            }
+                        onWaveClick = { artist ->
+                            playerViewModel.startWaveFromArtist(artist)
+                            isPlayerOpen = true
                         },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },

@@ -327,8 +327,6 @@
     <string name="wave_generating">Собираем волну…</string>
     <string name="wave_new">Новая волна</string>
     <string name="wave_start">Включить волну</string>
-    <string name="wave_priority_ru">RU в приоритете</string>
-    <string name="wave_priority_all">Все языки</string>
     <string name="wave_reset">Сбросить</string>
     <string name="wave_from_similar">%1$d похожих</string>
     <string name="wave_from_likes">%1$d любимых</string>
@@ -480,4 +478,14 @@
     <string name="spotify_signed_in_toast">Spotify подключён</string>
     <string name="spotify_import_empty">В вашей библиотеке Spotify пока нет плейлистов</string>
 
+
+    <string name="wave_mood_title">Настроение волны</string>
+    <string name="wave_mood_familiar">Знакомое</string>
+    <string name="wave_mood_balance">Баланс</string>
+    <string name="wave_mood_discovery">Открытия</string>
+    <string name="wave_cold_start_title">Настроим волну</string>
+    <string name="wave_cold_start_hint">Выберите 3–5 исполнителей — они станут начальным профилем вкуса.</string>
+    <string name="wave_cold_start_confirm">Собрать волну</string>
+    <string name="wave_debug_empty">Для этого трека нет деталей скоринга.</string>
+    <string name="player_block_artist">Не рекомендовать исполнителя</string>
 </resources>

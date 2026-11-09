@@ -27,11 +27,14 @@ class WaveEngine(
     private val clock: Clock,
     private val randomProvider: RandomProvider,
     private val config: WaveConfig = WaveConfig(),
+    private val log: (String) -> Unit = {},
 ) {
 
     suspend fun startSession(
         isRadio: Boolean = false,
         radioSeed: Track? = null,
+        mood: WaveMood = WaveMood.BALANCE,
+        seedArtistNames: List<String> = emptyList(),
     ): WaveSessionPlan {
         val now = clock.nowMs()
         val random = randomProvider.create(randomProvider.newSeed())
@@ -56,12 +59,21 @@ class WaveEngine(
             buildSeedTracks(seedRows, previous, now, random)
         }
 
-        val seedArtists = if (isRadio && radioSeed != null) {
-            radioSeed.artist.trim().takeIf { it.isNotBlank() }?.let {
-                listOf(SeedArtist(MusicNormalizer.normalizeArtist(it), it, 1.0))
-            }.orEmpty()
-        } else {
-            softmaxArtists(profile, random)
+        val seedArtists = when {
+            isRadio && radioSeed != null -> radioSeed.artist.trim()
+                .takeIf { it.isNotBlank() }
+                ?.let {
+                    listOf(SeedArtist(MusicNormalizer.normalizeArtist(it), it, 1.0))
+                }
+                .orEmpty()
+
+            seedArtistNames.isNotEmpty() -> seedArtistNames
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinctBy { MusicNormalizer.normalizeArtist(it) }
+                .map { SeedArtist(MusicNormalizer.normalizeArtist(it), it, 1.0) }
+
+            else -> softmaxArtists(profile, random)
         }
 
         val seedGenres = if (isRadio && radioSeed != null) {
@@ -87,6 +99,8 @@ class WaveEngine(
             previousSeedArtistKeys = previousArtists,
             isRadio = isRadio,
             radioSeed = radioSeed,
+            radioArtistKey = radioSeed?.artist?.let { MusicNormalizer.normalizeArtist(it) },
+            mood = mood,
         )
     }
 
@@ -110,10 +124,6 @@ class WaveEngine(
             selected = select(candidates, target, freshPlan, state, now, retryRandom)
         }
 
-        if (selected.isNotEmpty()) {
-            historyStore.recordShown(plan.sessionId, selected.map { it.candidate.candidate })
-        }
-
         val origins = selected.groupingBy { it.candidate.candidate.origin }.eachCount()
         val nextState = state.copy(
             recentArtistKeys = (state.recentArtistKeys + selected.map { it.candidate.artistKey })
@@ -126,6 +136,7 @@ class WaveEngine(
         return WaveGeneration(
             tracks = selected.map { it.candidate.candidate.track },
             origins = origins,
+            details = selected.associate { it.candidate.trackKey to it.details },
             state = nextState,
             requestedSize = target,
         )
@@ -155,12 +166,20 @@ class WaveEngine(
             async {
                 val seed = seeds.getValue(source)
                 try {
-                    withTimeoutOrNull(config.candidateTimeoutMs) {
+                    val result = withTimeoutOrNull(config.candidateTimeoutMs) {
                         source.candidates(plan, seed)
-                    }.orEmpty()
+                    }
+                    if (result == null) {
+                        log("Источник ${source.javaClass.simpleName} не успел за ${config.candidateTimeoutMs} мс")
+                        emptyList()
+                    } else {
+                        if (result.isEmpty()) log("Источник ${source.javaClass.simpleName} пуст")
+                        result
+                    }
                 } catch (error: CancellationException) {
                     throw error
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    log("Источник ${source.javaClass.simpleName} упал: ${error.message}")
                     emptyList()
                 }
             }
@@ -203,6 +222,7 @@ class WaveEngine(
             val track = candidate.track
             val key = keyOf(track)
             val artistKey = artistKeyOf(track)
+            if (key in plan.excludedTrackKeys) return@mapNotNull null
             if (key in history.dislikedTrackKeys || track.id in history.dislikedTrackIds) {
                 return@mapNotNull null
             }
@@ -308,11 +328,26 @@ class WaveEngine(
                 config.weightPopularity * popularity -
                 penalty + noise
 
+        val baseScore = score(exploration = false)
         return ScoredCandidate(
             candidate = candidate,
             isNewArtist = !artistKnown,
-            baseScore = score(exploration = false),
+            baseScore = baseScore,
             explorationScore = score(exploration = true),
+            details = WaveCandidateDetails(
+                trackKey = candidate.trackKey,
+                origin = candidate.candidate.origin,
+                seedKey = candidate.candidate.seedKey,
+                artistAffinity = candidate.artistAffinity,
+                genreAffinity = candidate.genreAffinity,
+                originPrior = candidate.candidate.origin.prior,
+                novelty = novelty,
+                seedWeight = seedWeight,
+                popularity = popularity,
+                penalty = penalty,
+                noise = noise,
+                score = baseScore,
+            ),
         )
     }
 
@@ -332,13 +367,10 @@ class WaveEngine(
             .ifEmpty { core.filter { it.isNewArtist } }
         if (core.isEmpty() && familiar.isEmpty()) return emptyList()
 
-        val familiarTarget = floor(size * config.familiarShare).toInt()
+        val familiarShare = if (plan.isRadio) 0.0 else plan.mood.familiarShare
+        val familiarTarget = floor(size * familiarShare).toInt()
             .coerceAtMost(familiar.size)
-        val explorationTarget = (size * config.explorationShare).roundToInt()
-            .coerceIn(
-                ceil(size * config.explorationMinShare).toInt(),
-                floor(size * config.explorationMaxShare).toInt(),
-            )
+        val explorationTarget = (size * plan.mood.explorationShare).roundToInt()
             .coerceAtMost(maxOf(0, size - 1))
         val slots = buildSlots(size, familiarTarget, explorationTarget, random)
 
@@ -402,7 +434,9 @@ class WaveEngine(
     ): ScoredCandidate? {
         val artistLimit = if (size >= 20) config.artistMaxPerTwenty else 1
         val allowed = pool.asSequence()
-            .filter { candidate -> allowedByLimits(candidate, selected, state, artistLimit) }
+            .filter { candidate ->
+                allowedByLimits(candidate, selected, state, plan, size, artistLimit)
+            }
             .toList()
         if (allowed.isEmpty()) return null
 
@@ -433,6 +467,8 @@ class WaveEngine(
         candidate: ScoredCandidate,
         selected: List<ScoredCandidate>,
         state: WaveSessionState,
+        plan: WaveSessionPlan,
+        size: Int,
         artistLimit: Int,
     ): Boolean {
         val artistKey = candidate.candidate.artistKey
@@ -446,6 +482,18 @@ class WaveEngine(
             selected.map { it.candidate.artistKey })
             .takeLast(config.artistWindow - 1)
         if (window.any { it == artistKey }) return false
+
+        if (plan.isRadio && plan.radioArtistKey == artistKey) {
+            val radioCap = ceil(size * RADIO_ARTIST_SHARE).toInt().coerceAtLeast(1)
+            if (batchCount >= radioCap) return false
+            if ((state.recentArtistKeys.takeLast(RADIO_ARTIST_WINDOW - 1) +
+                    selected.map { it.candidate.artistKey })
+                    .takeLast(RADIO_ARTIST_WINDOW - 1)
+                    .any { it == artistKey }
+            ) {
+                return false
+            }
+        }
 
         val seedKey = candidate.candidate.candidate.seedKey
         if (seedKey != null) {
@@ -655,6 +703,7 @@ class WaveEngine(
         val isNewArtist: Boolean,
         val baseScore: Double,
         val explorationScore: Double,
+        val details: WaveCandidateDetails,
     )
 
     private enum class SlotType { CORE, EXPLORE, FAMILIAR }
@@ -666,5 +715,7 @@ class WaveEngine(
         const val RECENT_KEYS_KEPT = 40
         const val ROLLING_TWENTY = 20
         const val FIRST_TRACK_AFFINITY_BONUS = 0.25
+        const val RADIO_ARTIST_SHARE = 0.25
+        const val RADIO_ARTIST_WINDOW = 4
     }
 }

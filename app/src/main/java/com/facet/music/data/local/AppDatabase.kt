@@ -61,7 +61,7 @@ import com.facet.music.data.local.entity.WaveSessionEntity
         WaveSessionEntity::class,
         ArtistBlocklistEntity::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

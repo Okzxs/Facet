@@ -326,8 +326,6 @@
     <string name="wave_generating">Building the wave…</string>
     <string name="wave_new">New wave</string>
     <string name="wave_start">Start the wave</string>
-    <string name="wave_priority_ru">RU first</string>
-    <string name="wave_priority_all">All languages</string>
     <string name="wave_reset">Reset</string>
     <string name="wave_from_similar">%1$d similar</string>
     <string name="wave_from_likes">%1$d favourites</string>
@@ -475,4 +473,14 @@
     <string name="spotify_signed_in_toast">Spotify connected</string>
     <string name="spotify_import_empty">No playlists in your Spotify library yet</string>
 
+
+    <string name="wave_mood_title">Wave mood</string>
+    <string name="wave_mood_familiar">Familiar</string>
+    <string name="wave_mood_balance">Balance</string>
+    <string name="wave_mood_discovery">Discoveries</string>
+    <string name="wave_cold_start_title">Tune your wave</string>
+    <string name="wave_cold_start_hint">Pick 3–5 artists you like — we’ll use them as the first taste profile.</string>
+    <string name="wave_cold_start_confirm">Build the wave</string>
+    <string name="wave_debug_empty">No score details for this track.</string>
+    <string name="player_block_artist">Don’t recommend this artist</string>
 </resources>

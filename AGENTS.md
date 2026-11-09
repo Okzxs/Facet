@@ -63,7 +63,7 @@ com.facet.music
 └── FacetApp.kt        # @HiltAndroidApp, NewPipe.init()
 ```
 
-**БД:** Room v18, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). `MIGRATION_14_15` обнуляет `streamUrl`/`previewSeconds` у старых строк Deezer/Apple и удаляет их кэш поиска и аудио; `MIGRATION_15_16` удаляет `audio_cache` и создаёт `resolved_matches` (PK `originalTrackId`: `matchedSource`, `matchedUrl`, `confidence`, `createdAt`); `MIGRATION_16_17` создаёт `artist_cache` (PK `key`: `json`, `fetchedAt`), `followed_artists` (PK `artistKey`: `source`, `url`, `name`, `avatarUrl`, `followedAt`) и колонку `artistUrl` во всех таблицах с треками; `MIGRATION_17_18` создаёт `wave_impressions`, `wave_sessions`, `artist_blocklist` и колонку `play_history.playedFraction`. Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
+**БД:** Room v19, `exportSchema = true` (схемы в `app/schemas`), миграции собраны в `DatabaseMigrations.kt` (`ALL_MIGRATIONS`); каждая миграция покрыта изолированным тестом в `DatabaseMigrationTest` (базовые схемы v1–v3, не экспортированные ранее, восстановлены DDL-заглушками). `MIGRATION_14_15` обнуляет `streamUrl`/`previewSeconds` у старых строк Deezer/Apple и удаляет их кэш поиска и аудио; `MIGRATION_15_16` удаляет `audio_cache` и создаёт `resolved_matches` (PK `originalTrackId`: `matchedSource`, `matchedUrl`, `confidence`, `createdAt`); `MIGRATION_16_17` создаёт `artist_cache` (PK `key`: `json`, `fetchedAt`), `followed_artists` (PK `artistKey`: `source`, `url`, `name`, `avatarUrl`, `followedAt`) и колонку `artistUrl` во всех таблицах с треками; `MIGRATION_17_18` создаёт `wave_impressions`, `wave_sessions`, `artist_blocklist` и колонку `play_history.playedFraction`. Observe-методы скачанного проверяют файл на диске и вычищают мусорные записи из БД; сбои БД в лайках не крашат приложение (`runCatching` + `rethrowCancellation`, ошибка в UI). Дизлайки живут в `disliked_tracks` (`DislikedTrackDao`) и исключают треки из рекомендаций (`RecommendationPlanner.filterDisliked`). Кэш поиска — `search_cache` (PK `query`: `source`, сырой `jsonResponse`, `timestamp`); `SearchCacheRepository` отдаёт ответ моложе 24 ч, просроченные записи удаляются лениво при чтении и при каждой записи.
 
 ---
 
@@ -79,6 +79,19 @@ com.facet.music
 | Last.fm (похожие артисты) | Web API | ✅ v1 |
 | Яндекс Музыка | Неофициальный API | v2 |
 | ВК Музыка | VK API | v2 |
+
+---
+
+## Сессия 69, фаза 8, часть 2: UI и умное пополнение (09.11.2026)
+
+- **Обратная связь.** Веса семян в сессии: скип <30 с ×0.5, два скипа одного семени выключают его, дослушал ×1.3, лайк ×2 и новый seed; дизлайк блокирует артиста и убирает его будущие треки. Три быстрых скипа заменяют непроигранную волну. SHOWN пишется при переходе, исход — при уходе.
+- **Room v19.** `wave_sessions` + `mood`, `radioArtistKey`, `seedTracksJson`; `MIGRATION_18_19`. Сессия/курсор/семена восстанавливаются после смерти процесса.
+- **Пополнение.** `PlaybackSessionCoordinator`: порог 5, пачка 10, single-flight, `ConnectivityObserver`, 3 попытки 2/5/15 с, `addMediaItems`.
+- **Радио.** Трек/артист с фиксированными семенами, FAMILIAR=0, артист ≤25% и 1 из 4; для артиста — его популярные треки.
+- **UI.** «Не нравится» и «Не рекомендовать исполнителя» в плеере; «Новая волна» с хаптиком; `WaveMood` (15/10, 8/20, 3/35) сохраняется в настройках; холодный старт 3–5 артистов (Last.fm + YouTube fallback); debug long-press показывает origin/seed/score.
+- **8.12.** `russianPriority` и RU-строки удалены; главная оставлена на `RecommendationPlanner` (перевод на движок требует отдельного адаптера).
+- **8.13.** `wave_summary` с агрегатами в Supabase без названий треков.
+- **Проверка.** 56 suite / 322 теста; live SM-A266B и MI 8 (холодный старт). APK 21 801 967 байт, SHA-256 `a914b572f2672697d7c9bb82144e3370d9ffc9d9434bea7e5404064b5cd4e893` (без R8 из-за свопа; конфиг возвращён).
 
 ---
 

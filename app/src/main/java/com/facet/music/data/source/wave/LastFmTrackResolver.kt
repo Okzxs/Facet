@@ -53,7 +53,7 @@ class LastFmTrackResolver @Inject constructor(
         .trim('-')
 
     private companion object {
-        const val RESOLVE_TIMEOUT_MS = 2_000L
+        const val RESOLVE_TIMEOUT_MS = 4_000L
         const val SEARCH_LIMIT = 8
         val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
     }

@@ -106,5 +106,6 @@ object WaveProvidesModule {
         clock = clock,
         randomProvider = randomProvider,
         config = config,
+        log = { message -> android.util.Log.w("WaveEngine", message) },
     )
 }

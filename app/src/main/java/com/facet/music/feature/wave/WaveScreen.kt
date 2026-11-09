@@ -16,12 +16,16 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,15 +51,23 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Waves
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,6 +75,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -81,8 +95,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.facet.music.BuildConfig
 import com.facet.music.R
 import com.facet.music.core.ui.components.TrackArtwork
+import com.facet.music.core.wave.WaveCandidateDetails
+import com.facet.music.core.wave.WaveMood
 import com.facet.music.data.model.Track
 import com.facet.music.navigation.LocalBottomDockHeight
 import kotlin.math.PI
@@ -107,7 +124,9 @@ fun WaveScreen(
     // Инсеты ставим сами: корневого Scaffold больше нет. Низ — запас под плавающий док.
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottomInset = LocalBottomDockHeight.current
+    val haptic = LocalHapticFeedback.current
     var visible by remember { mutableStateOf(false) }
+    var debugTrack by remember { mutableStateOf<Track?>(null) }
     LaunchedEffect(Unit) { visible = true }
 
     AnimatedVisibility(
@@ -145,7 +164,10 @@ fun WaveScreen(
                 WaveActionButton(
                     isGenerating = uiState.isGenerating,
                     hasTracks = uiState.tracks.isNotEmpty(),
-                    onClick = viewModel::generateWave,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.refreshWave()
+                    },
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
                 )
             }
@@ -160,9 +182,16 @@ fun WaveScreen(
             }
 
             if (uiState.tracks.isNotEmpty()) {
+                item(key = "wave_mood") {
+                    WaveMoodSelector(
+                        mood = uiState.mood,
+                        onMood = viewModel::setMood,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                    )
+                }
+
                 item(key = "wave_meta") {
                     WaveMetaBadges(
-                        isRussianPriority = uiState.isRussianPriority,
                         genres = uiState.genres,
                         onReset = viewModel::resetWave,
                     )
@@ -224,6 +253,11 @@ fun WaveScreen(
                         index = index,
                         track = track,
                         onClick = { viewModel.playTrack(track) },
+                        onLongClick = if (BuildConfig.DEBUG) {
+                            { debugTrack = track }
+                        } else {
+                            null
+                        },
                         onArtistClick = { onArtistClick(track) },
                     )
                 }
@@ -233,8 +267,32 @@ fun WaveScreen(
                 }
             }
         }
+
+        if (BuildConfig.DEBUG) {
+            debugTrack?.let { track ->
+                CandidateDebugDialog(
+                    track = track,
+                    details = uiState.details[trackKey(track)],
+                    onDismiss = { debugTrack = null },
+                )
+            }
+        }
+
+        if (uiState.showColdStart) {
+            ColdStartDialog(
+                artists = uiState.coldStartArtists,
+                selected = uiState.selectedColdStartArtists,
+                loading = uiState.isColdStartLoading,
+                onToggle = viewModel::toggleColdStartArtist,
+                onConfirm = viewModel::confirmColdStart,
+                onDismiss = viewModel::dismissColdStart,
+            )
+        }
     }
 }
+
+private fun trackKey(track: Track): String =
+    com.facet.music.core.text.MusicNormalizer.trackKey(track.artist, track.title)
 
 @Composable
 private fun WaveHeader() {
@@ -528,8 +586,43 @@ private fun WaveActionButton(
 }
 
 @Composable
+private fun WaveMoodSelector(
+    mood: WaveMood,
+    onMood: (WaveMood) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.wave_mood_title),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            WaveMood.entries.forEachIndexed { index, item ->
+                SegmentedButton(
+                    selected = mood == item,
+                    onClick = { onMood(item) },
+                    shape = SegmentedButtonDefaults.itemShape(index, WaveMood.entries.size),
+                    label = {
+                        Text(
+                            text = stringResource(
+                                when (item) {
+                                    WaveMood.FAMILIAR -> R.string.wave_mood_familiar
+                                    WaveMood.BALANCE -> R.string.wave_mood_balance
+                                    WaveMood.DISCOVERY -> R.string.wave_mood_discovery
+                                },
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun WaveMetaBadges(
-    isRussianPriority: Boolean,
     genres: List<String>,
     onReset: () -> Unit,
 ) {
@@ -537,18 +630,6 @@ private fun WaveMetaBadges(
         contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "meta_language") {
-            BreakdownChip(
-                icon = Icons.Rounded.Language,
-                label = if (isRussianPriority) {
-                    stringResource(R.string.wave_priority_ru)
-                } else {
-                    stringResource(R.string.wave_priority_all)
-                },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            )
-        }
         genres.distinctBy { it.lowercase() }.take(3).forEach { genre ->
             item(key = "meta_genre_$genre") {
                 BreakdownChip(
@@ -672,11 +753,13 @@ private fun BreakdownChip(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun WaveTrackRow(
     index: Int,
     track: Track,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
     onArtistClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -712,10 +795,11 @@ private fun WaveTrackRow(
     ) {
         Row(
             modifier = Modifier
-                .clickable(
+                .combinedClickable(
                     interactionSource = interactionSource,
                     indication = ripple(color = MaterialTheme.colorScheme.primary),
                     onClick = onClick,
+                    onLongClick = onLongClick,
                 )
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -758,6 +842,113 @@ private fun WaveTrackRow(
                 modifier = Modifier.size(28.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun ColdStartDialog(
+    artists: List<String>,
+    selected: Set<String>,
+    loading: Boolean,
+    onToggle: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.wave_cold_start_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Text(
+                    text = stringResource(R.string.wave_cold_start_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .align(Alignment.CenterHorizontally),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    artists.take(24).forEach { artist ->
+                        FilterChip(
+                            selected = artist in selected,
+                            onClick = { onToggle(artist) },
+                            label = { Text(artist) },
+                            modifier = Modifier.padding(vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = selected.size in 3..5,
+            ) {
+                Text(stringResource(R.string.wave_cold_start_confirm))
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss, colors = ButtonDefaults.textButtonColors()) {
+                Text(stringResource(R.string.common_close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun CandidateDebugDialog(
+    track: Track,
+    details: WaveCandidateDetails?,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(track.title) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (details == null) {
+                    Text(stringResource(R.string.wave_debug_empty))
+                } else {
+                    DebugRow("origin", details.origin.name)
+                    DebugRow("seed", details.seedKey ?: "—")
+                    DebugRow("score", "%.3f".format(details.score))
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    DebugRow("artist", "%.3f".format(details.artistAffinity))
+                    DebugRow("genre", "%.3f".format(details.genreAffinity))
+                    DebugRow("origin prior", "%.3f".format(details.originPrior))
+                    DebugRow("novelty", "%.3f".format(details.novelty))
+                    DebugRow("seed weight", "%.3f".format(details.seedWeight))
+                    DebugRow("popularity", "%.3f".format(details.popularity))
+                    DebugRow("penalty", "%.3f".format(details.penalty))
+                    DebugRow("noise", "%.3f".format(details.noise))
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text(stringResource(R.string.common_close)) }
+        },
+    )
+}
+
+@Composable
+private fun DebugRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(text = value, style = MaterialTheme.typography.bodySmall)
     }
 }
 

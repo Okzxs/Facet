@@ -99,6 +99,6 @@ class TagSource @Inject constructor(
         const val TOP_TRACKS_LIMIT = 20
         const val TRACKS_PER_TAG = 8
         const val RESOLVE_BUDGET = 2
-        const val REQUEST_TIMEOUT_MS = 1_500L
+        const val REQUEST_TIMEOUT_MS = 4_000L
     }
 }

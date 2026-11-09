@@ -60,7 +60,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 18 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 19 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -97,7 +97,7 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(18, database.openHelper.writableDatabase.version)
+            assertEquals(19, database.openHelper.writableDatabase.version)
             assertTrue(hasTable(database.openHelper.writableDatabase, "resolved_matches"))
             assertTrue(!hasTable(database.openHelper.writableDatabase, "audio_cache"))
             assertTrue(hasTable(database.openHelper.writableDatabase, "artist_cache"))
@@ -105,6 +105,9 @@ class DatabaseMigrationTest {
             assertTrue(hasTable(database.openHelper.writableDatabase, "wave_impressions"))
             assertTrue(hasTable(database.openHelper.writableDatabase, "wave_sessions"))
             assertTrue(hasTable(database.openHelper.writableDatabase, "artist_blocklist"))
+            assertTrue(
+                "seedTracksJson" in tableColumns(database.openHelper.writableDatabase, "wave_sessions"),
+            )
             assertTrue("artistUrl" in tableColumns(database.openHelper.writableDatabase, "liked_tracks"))
             assertTrue(
                 "playedFraction" in tableColumns(database.openHelper.writableDatabase, "play_history"),
@@ -364,6 +367,42 @@ class DatabaseMigrationTest {
                 "'Artist', NULL, 1000)",
         )
         assertEquals(1, countRows(db, "followed_artists"))
+    }
+
+    @Test
+    fun `migration 18 to 19 adds session mood and stored seeds`() {
+        val db = openLegacyDatabase("m-18-19.db", 18) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+            it.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `wave_sessions` (
+                    `sessionId` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    `randomSeed` INTEGER NOT NULL,
+                    `mode` TEXT NOT NULL,
+                    `seedArtistKeys` TEXT NOT NULL,
+                    `seedTrackKeys` TEXT NOT NULL,
+                    `isRadio` INTEGER NOT NULL,
+                    `radioSeed` TEXT,
+                    `cursor` INTEGER NOT NULL,
+                    PRIMARY KEY(`sessionId`)
+                )
+                """.trimIndent(),
+            )
+        }
+
+        MIGRATION_18_19.migrate(db)
+
+        assertTrue("mood" in tableColumns(db, "wave_sessions"))
+        assertTrue("radioArtistKey" in tableColumns(db, "wave_sessions"))
+        assertTrue("seedTracksJson" in tableColumns(db, "wave_sessions"))
+        db.execSQL(
+            "INSERT INTO `wave_sessions` " +
+                "(`sessionId`,`createdAt`,`randomSeed`,`mode`,`seedArtistKeys`," +
+                "`seedTrackKeys`,`isRadio`,`radioSeed`,`cursor`) " +
+                "VALUES ('s',1,1,'NORMAL','[]','[]',0,NULL,0)",
+        )
+        assertEquals("BALANCE", queryString(db, "SELECT mood FROM wave_sessions WHERE sessionId='s'"))
     }
 
     @Test

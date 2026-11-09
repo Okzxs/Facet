@@ -1,8 +1,6 @@
 package com.facet.music.data.local
 
 import com.facet.music.core.wave.Clock
-import com.facet.music.core.wave.WaveHistoryStore
-import com.facet.music.core.wave.WaveOutcome
 import com.facet.music.data.local.dao.TasteDao
 import com.facet.music.data.local.dao.decayedWeight
 import com.facet.music.data.model.Track
@@ -23,7 +21,6 @@ import javax.inject.Singleton
 class TasteRepositoryImpl @Inject constructor(
     private val tasteDao: TasteDao,
     private val clock: Clock,
-    private val waveHistoryStore: WaveHistoryStore,
 ) : TasteRepository {
 
     override suspend fun onTrackFinished(
@@ -47,7 +44,6 @@ class TasteRepositoryImpl @Inject constructor(
 
     override suspend fun onLike(track: Track) {
         changeWeight(track, LIKE_DELTA)
-        waveHistoryStore.recordOutcome(null, track, WaveOutcome.LIKED, 0L)
     }
 
     override suspend fun onUnlike(track: Track) {
@@ -56,7 +52,6 @@ class TasteRepositoryImpl @Inject constructor(
 
     override suspend fun onDislike(track: Track) {
         changeWeight(track, DISLIKE_DELTA)
-        waveHistoryStore.recordOutcome(null, track, WaveOutcome.DISLIKED, 0L)
     }
 
     override suspend fun getTopGenres(limit: Int): List<TasteWeight> =

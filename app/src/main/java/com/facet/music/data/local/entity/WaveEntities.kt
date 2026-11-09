@@ -1,5 +1,6 @@
 package com.facet.music.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -40,6 +41,10 @@ data class WaveSessionEntity(
     val isRadio: Boolean,
     val radioSeed: String?,
     val cursor: Int,
+    @ColumnInfo(defaultValue = "BALANCE")
+    val mood: String = "BALANCE",
+    val radioArtistKey: String? = null,
+    val seedTracksJson: String? = null,
 )
 
 /** Ручная или автоматическая блокировка исполнителя. */

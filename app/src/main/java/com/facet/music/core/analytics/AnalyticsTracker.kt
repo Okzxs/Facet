@@ -31,6 +31,7 @@ import javax.inject.Singleton
 object AnalyticsEvents {
     const val APP_OPEN = "app_open"
     const val TRACK_PLAY = "track_play"
+    const val WAVE_SUMMARY = "wave_summary"
 }
 
 /**

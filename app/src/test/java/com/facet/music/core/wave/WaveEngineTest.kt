@@ -105,7 +105,7 @@ class WaveEngineTest {
                 familiar.map { Candidate(it, CandidateOrigin.FAMILIAR, it.id) },
         )
 
-        val result = engine.nextBatch(plan.copy(history = history), WaveSessionState(), 10)
+        val result = engine.nextBatch(plan.copy(history = history), WaveSessionState(), 20)
 
         assertTrue(result.tracks.first().id.startsWith("rel-"))
         assertEquals(1, result.origins[CandidateOrigin.FAMILIAR] ?: 0)
@@ -151,6 +151,65 @@ class WaveEngineTest {
         val exploration = result.tracks.count { it.id.startsWith("tag-") }
         assertTrue("exploration=$exploration", exploration in 3..5)
         assertEquals(20, result.tracks.size)
+    }
+
+    @Test
+    fun `discovery mood uses thirty five percent exploration`() = runBlocking {
+        val core = (1..20).map { track("core-$it", "Artist $it") }
+        val tags = (1..12).map { track("tag-$it", "Tag Artist $it") }
+        val store = FakeHistoryStore(WaveHistory())
+        val engine = engine(
+            store = store,
+            candidates = core.map { Candidate(it, CandidateOrigin.RELATED, it.id) } +
+                tags.map { Candidate(it, CandidateOrigin.TAG, it.id) },
+        )
+
+        val result = engine.nextBatch(
+            plan.copy(mood = WaveMood.DISCOVERY),
+            WaveSessionState(),
+            20,
+        )
+
+        val exploration = result.tracks.count { it.id.startsWith("tag-") }
+        assertTrue("exploration=$exploration", exploration in 6..8)
+    }
+
+    @Test
+    fun `radio excludes familiar and caps the seed artist`() = runBlocking {
+        val focus = (1..10).map { track("focus-$it", "Focus Artist") }
+        val other = (1..15).map { track("other-$it", "Other $it") }
+        val familiar = (1..4).map { track("old-$it", "Old $it") }
+        val history = WaveHistory(
+            plays = familiar.map { PlayedTrack(it, now - 40 * DAY_MS, 1f, false) },
+        )
+        val store = FakeHistoryStore(history)
+        val engine = engine(
+            store = store,
+            candidates = focus.map { Candidate(it, CandidateOrigin.RELATED, "focus") } +
+                other.map { Candidate(it, CandidateOrigin.SIMILAR_ARTIST, "other") } +
+                familiar.map { Candidate(it, CandidateOrigin.FAMILIAR, "old") },
+        )
+
+        val result = engine.nextBatch(
+            plan.copy(
+                history = history,
+                isRadio = true,
+                radioArtistKey = "focus artist",
+                seedArtists = listOf(SeedArtist("focus artist", "Focus Artist", 1.0)),
+            ),
+            WaveSessionState(),
+            20,
+        )
+
+        assertEquals(0, result.origins[CandidateOrigin.FAMILIAR] ?: 0)
+        val focusCount = result.tracks.count { it.id.startsWith("focus-") }
+        assertTrue("focus=$focusCount", focusCount <= 5)
+        val focusPositions = result.tracks.mapIndexedNotNull { index, track ->
+            index.takeIf { track.id.startsWith("focus-") }
+        }
+        focusPositions.zipWithNext().forEach { (left, right) ->
+            assertTrue("focus positions $left/$right", right - left >= 4)
+        }
     }
 
     @Test
@@ -217,7 +276,7 @@ class WaveEngineTest {
     }
 
     @Test
-    fun `shown impressions are stored for every selected track`() = runBlocking {
+    fun `candidate details are stored for every selected track`() = runBlocking {
         val core = (1..10).map { track("core-$it", "Artist $it") }
         val store = FakeHistoryStore(WaveHistory())
         val engine = engine(
@@ -227,8 +286,8 @@ class WaveEngineTest {
 
         val result = engine.nextBatch(plan, WaveSessionState(), 10)
 
-        assertEquals(result.tracks.size, store.shown.size)
-        assertTrue(store.shown.all { it.origin == CandidateOrigin.RELATED })
+        assertEquals(result.tracks.size, result.details.size)
+        assertTrue(result.details.values.all { it.origin == CandidateOrigin.RELATED })
     }
 
     @Test
@@ -324,6 +383,10 @@ class WaveEngineTest {
         override suspend fun previousSessionSeedKeys(limit: Int): Set<String> = emptySet()
 
         override suspend fun previousSessionSeedArtistKeys(limit: Int): Set<String> = emptySet()
+
+        override suspend fun impressionFor(trackKey: String): WaveImpression? = null
+
+        override suspend fun latestSession(): WaveSessionRecord? = null
 
         override suspend fun recordShown(sessionId: String, candidates: List<Candidate>) {
             shown += candidates

@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.PersonOff
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Bedtime
@@ -648,6 +649,20 @@ fun PlayerScreen(
                                     onClick = {
                                         showMenu = false
                                         track?.let { viewModel.startWaveFromTrack(it) }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_block_artist)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.PersonOff,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    enabled = track != null,
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.blockCurrentArtist()
                                     },
                                 )
                                 HorizontalDivider()

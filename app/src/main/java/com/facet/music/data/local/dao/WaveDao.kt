@@ -57,6 +57,9 @@ interface WaveDao {
     @Query("SELECT * FROM wave_sessions ORDER BY createdAt DESC LIMIT :limit")
     suspend fun sessions(limit: Int): List<WaveSessionEntity>
 
+    @Query("SELECT * FROM wave_sessions ORDER BY createdAt DESC LIMIT 1")
+    suspend fun latestSession(): WaveSessionEntity?
+
     @Query("SELECT seedTrackKeys FROM wave_sessions ORDER BY createdAt DESC LIMIT :limit")
     suspend fun recentSeedTrackKeys(limit: Int): List<String>
 

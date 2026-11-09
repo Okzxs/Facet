@@ -7,6 +7,7 @@ import com.facet.music.data.local.entity.DislikedTrackEntity
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.TasteRepository
+import com.facet.music.data.repository.WaveRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,6 +21,7 @@ class TrackLikeManager @Inject constructor(
     private val dislikedTrackDao: DislikedTrackDao,
     private val locationProvider: LocationProvider,
     private val tasteRepository: TasteRepository,
+    private val waveRepository: WaveRepository,
 ) {
 
     private val mutex = Mutex()
@@ -40,6 +42,7 @@ class TrackLikeManager @Inject constructor(
             if (likedNow) {
                 runCatching { dislikedTrackDao.delete(track.id) }
                 runCatching { tasteRepository.onLike(track) }
+                runCatching { waveRepository.onTrackLiked(track) }
             } else {
                 runCatching { tasteRepository.onUnlike(track) }
             }

@@ -42,7 +42,7 @@ class RelatedTracksSource @Inject constructor(
         }.distinctBy { it.trackKey }
             .filter { sourceUrl(it.track) != null }
             .let { rows ->
-                if (rows.size <= MAX_SEEDS) rows else rows.shuffled(random).take(MAX_SEEDS)
+                if (rows.size <= MAX_SEEDS) rows else weightedTake(rows, MAX_SEEDS, random)
             }
 
         seeds.map { seed ->
@@ -83,6 +83,33 @@ class RelatedTracksSource @Inject constructor(
         }
     }
 
+    private fun weightedTake(
+        rows: List<TrackSeed>,
+        count: Int,
+        random: Random,
+    ): List<TrackSeed> {
+        val remaining = rows.toMutableList()
+        val result = mutableListOf<TrackSeed>()
+        repeat(count.coerceAtMost(remaining.size)) {
+            val total = remaining.sumOf { it.weight.coerceAtLeast(0.0) }
+            var point = random.nextDouble() * total
+            var index = 0
+            if (total > 0.0) {
+                for (i in remaining.indices) {
+                    point -= remaining[i].weight.coerceAtLeast(0.0)
+                    if (point <= 0.0) {
+                        index = i
+                        break
+                    }
+                }
+            } else {
+                index = random.nextInt(remaining.size)
+            }
+            result += remaining.removeAt(index)
+        }
+        return result
+    }
+
     private fun sourceUrl(track: Track): String? {
         if (track.source != Source.SOUNDCLOUD && track.source != Source.YOUTUBE) return null
         return track.transcodingUrl?.takeIf { it.startsWith("http") }
@@ -99,6 +126,6 @@ class RelatedTracksSource @Inject constructor(
         const val MAX_SEEDS = 5
         const val RELATED_LIMIT = 30
         const val TRACKS_PER_SEED = 8
-        const val REQUEST_TIMEOUT_MS = 1_500L
+        const val REQUEST_TIMEOUT_MS = 4_000L
     }
 }

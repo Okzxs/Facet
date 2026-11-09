@@ -2,6 +2,7 @@ package com.facet.music.data.repository
 
 import com.facet.music.core.i18n.AppLocale
 import com.facet.music.core.service.ServiceType
+import com.facet.music.core.wave.WaveMood
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -62,6 +63,8 @@ data class AppSettings(
     val resumeAfterFocusLoss: Boolean = true,
     /** Выбранные источники поиска: по умолчанию все. */
     val searchSources: Set<ServiceType> = ServiceType.entries.toSet(),
+    /** Настроение волны: знакомое / баланс / открытия. */
+    val waveMood: WaveMood = WaveMood.BALANCE,
 ) {
     /** Настроены ли ключи Spotify: нужны оба поля, иначе поиск не работает. */
     val isSpotifyConfigured: Boolean
@@ -146,6 +149,9 @@ interface SettingsRepository {
 
     /** Сохранить набор источников поиска; пустой набор трактуется как «все». */
     suspend fun setSearchSources(sources: Set<ServiceType>)
+
+    /** Сохранить настроение волны. */
+    suspend fun setWaveMood(mood: WaveMood)
 
     companion object {
         /** Допустимые варианты качества скачивания. */
