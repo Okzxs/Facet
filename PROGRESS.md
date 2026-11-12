@@ -1,6 +1,16 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 12.11.2026 (сессия 69, фаза 9 — UI и жесты)
+## Последнее обновление: 12.11.2026 (сессия 69, фаза 9 — UI и жесты; запрет локального release)
+
+## Сборка Release через CI/CD (12.11.2026)
+- **Локальная сборка Release запрещена** (8 ГБ ОЗУ: R8/minify вызвал OOM Killer и падение системы во время фазы 9). Правило внесено в `AGENTS.md` и `MEMORY.md`; локально разрешены только `assembleDebug`/`compileDebugKotlin`/`testDebugUnitTest`.
+- **`.github/workflows/android_release.yml`** — облачная сборка релиза:
+  - триггеры: пуш тега `v*` или ручной запуск `workflow_dispatch`;
+  - `ubuntu-latest`, JDK 17 (Temurin), кэш Gradle (`gradle/actions/setup-gradle@v4`);
+  - шаг подписи: секреты `KEYSTORE_BASE64` (keystore.jks в base64), `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` → файлы `keystore.jks` + `keystore.properties` в корне (формат совпадает с чтением в `app/build.gradle.kts`: `storeFile`/`storePassword`/`keyAlias`/`keyPassword`, `storeFile` резолвится от rootProject). Если секрет не задан — сборка unsigned;
+  - `./gradlew assembleRelease --no-daemon` (с R8/minify — в облаке это безопасно);
+  - готовый `app/build/outputs/apk/release/app-release.apk` загружается как артефакт `facet-release-apk` (`actions/upload-artifact@v4`, `if-no-files-found: error`).
+- Порядок получения release APK: пуш тега (`git tag v1.0.x && git push origin v1.0.x`) → вкладка Actions → скачать `facet-release-apk`.
 
 ## Сессия 69: фаза 9 — Material 3 Expressive, жесты, текст песни
 

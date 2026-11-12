@@ -225,6 +225,9 @@ com.facet.music
 - **НЕ обновлять** AGP выше 8.5.2 (совместимость с текущей средой)
 - Окружение: Windows, слабый ноут (i3-5005u, AMD radeon R7 M360, 8GB RAM). Не предлагать Android Studio и эмулятор. Установка APK — на реальный телефон через adb по WiFi
 
+### Сборка и память
+- **Локальная сборка Release запрещена из-за нехватки ОЗУ. Release собирается только через CI/CD** (`.github/workflows/android_release.yml` — тег `v*` или ручной запуск; R8/minify в локальной среде вызывал OOM Killer и падение системы). Локально разрешены только `assembleDebug`, `compileDebugKotlin`, `testDebugUnitTest`; **ни при каких условиях не запускать `assembleRelease`/`minifyReleaseWithR8`**. Release APK получить: пуш тега `v*` и скачать артефакт из GitHub Actions.
+
 ### Kotlin / Compose
 - `@Composable`-функции **нельзя вызывать** внутри `remember { }` или лямбд без Composable-контекста
 - `isSystemInDarkTheme()` вызывать **до** `remember { }`, результат класть в state

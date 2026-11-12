@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -84,6 +85,7 @@ internal const val LYRIC_IDLE_ALPHA = 0.35f
 internal const val LYRIC_USER_PAUSE_MS = 4_000L
 internal const val LYRIC_CENTER_SHARE = 0.35f
 
+@Immutable
 data class LyricsData(
     val lines: List<String>,
     val timesMs: LongArray,

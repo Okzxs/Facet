@@ -1,9 +1,24 @@
-# Активный контекст — Обновлено 06.11.2026
+# Активный контекст — Обновлено 12.11.2026
 
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 69, фаза 8, часть 2 (09.11.2026): UI волны, обратная связь, пополнение, радио, холодный старт; 56 suite / 322 теста | Фаза 8 закрыта; дальше — по команде |
+| Facet | активен  | Сессия 69, фаза 9 (12.11.2026): Material 3 Expressive, жесты, текст песни; 58 suite / 330 тестов | Live-прогон фазы 9 на устройстве (текст, свайп обложки, predictive back, морф Play) |
+
+## Жёсткие правила среды (не нарушать)
+- **Локальная сборка Release запрещена из-за нехватки ОЗУ. Release собирается только через CI/CD.** R8/minify локально вызывал OOM Killer (сессия умирала, см. 12.11.2026). Разрешены локально: `assembleDebug`, `compileDebugKotlin`, `testDebugUnitTest`. Release: пуш тега `v*` → артефакт из GitHub Actions (`.github/workflows/android_release.yml`).
+- Установка APK на телефон: adb по WiFi (`adb connect <ip>:<порт>`; был `192.168.1.102:36861`).
+
+### Сессия 69, фаза 9: Material 3 Expressive, жесты, текст песни (12.11.2026)
+- Зависимости: material3 `1.4.0-alpha07`, Media3 `1.9.4`, material-kolor `2.0.2` (compileSdk 35 / AGP 8.5.2 / Kotlin 2.0.21 не менялись).
+- `core/ui/theme`: `Motion.kt` (spatial/effects-токены), `Shape.kt` (4/8/12/16/28), `Contrast.kt` (`bestContentColor`/`contrastContentColor`), HCT-палитры в `Color.kt`/`PlayerPalette.kt`.
+- Жесты: `PlayerGestures.kt` (BoundsHolder, пороги), закрытие плеера вниз с velocity, свайп обложки (dragX, соседи, HUD, порог 30% или 1000 px/s), `PredictiveBackHandler` на try/finally (отмена жеста = отмена coroutine в activity-compose 1.9.3, не Throwable).
+- 9.12 текст песни: `PlaybackClock.kt` (кадры только при isPlaying, ресинк 300 мс, на паузе ноль кадров), `PlayerLyrics.kt` (`LyricsData` @Immutable + бинарный поиск + lead 200 мс, derivedStateOf, статичный стиль строки, graphicsLayer ±2, animateScrollBy, пауза автоскролла 4 с, seek по тапу), `PlayerControls.kt` (прогресс на clock, throttle 100 мс), кэш 20 + prefetch.
+- 9.4 морф кнопки Play: `Morph(MaterialShapes.Circle, Square)` + `PlayMorphShape` в `ExpressivePlayerComponents.kt`.
+- 9.9 `core/error/UiError.kt` (@StringRes), `PlaybackErrorMessages` → UiError, 12 строк EN/RU, `UiErrorTest`.
+- 9.11 `AppLoadingIndicator` (material3 1.4) в загрузках списков; 9.10 display Regular / headline Medium; 9.8 аудит contentDescription.
+- Сплит `PlayerScreen.kt` 2098 → 1059: `PlayerHero.kt`, `PlayerActions.kt`, `PlayerSheets.kt`, `LyricsForeground` в `PlayerLyrics.kt`.
+- Проверка: assembleDebug зелёный, 58 suite / 330 тестов, 0 failures. Коммит `71332f4`. Release-сборка локально НЕ выполнялась (запрет). Live-прогон не делался.
 
 ### Сессия 69, фаза 8, часть 2: UI и умное пополнение
 - `WaveMood` (FAMILIAR/BALANCE/DISCOVERY), сохранение в `AppSettings.wave_mood`, сегментированные кнопки M3.

@@ -51,3 +51,6 @@ postman/
 /ui.xml
 /keystore.properties
 /icon_*.png
+
+# Kotlin compiler caches from local runs
+.kotlin/
