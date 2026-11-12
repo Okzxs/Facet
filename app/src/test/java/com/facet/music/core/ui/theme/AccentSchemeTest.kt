@@ -37,10 +37,14 @@ class AccentSchemeTest {
     }
 
     @Test
-    fun `black and white accents give distinguishable grays`() {
+    fun `black and white accents give the same monochrome scheme`() {
+        // HCT Monochrome ignores seed tone: чёрный и белый seed дают одну и ту же
+        // нейтральную палитру (тональности ролей фиксированы, хрома нулевая).
         val black = accentColorScheme(Color.Black, darkTheme = false).primary
         val white = accentColorScheme(Color.White, darkTheme = false).primary
-        assertTrue("black primary must be darker than white primary", black.red < white.red)
+        assertEquals(black.red.toDouble(), white.red.toDouble(), 0.01)
+        assertEquals(black.green.toDouble(), white.green.toDouble(), 0.01)
+        assertEquals(black.blue.toDouble(), white.blue.toDouble(), 0.01)
     }
 
     @Test

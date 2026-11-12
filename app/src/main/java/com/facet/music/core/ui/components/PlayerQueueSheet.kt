@@ -359,7 +359,8 @@ private fun QueueTrackItem(
                 // Обложка трека
                 val context = LocalContext.current
                 val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
-                val placeholderPainter = remember { ColorPainter(Color(0xFF2A2A34)) }
+                val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
+                val placeholderPainter = remember(placeholderColor) { ColorPainter(placeholderColor) }
 
                 Box(
                     modifier = Modifier

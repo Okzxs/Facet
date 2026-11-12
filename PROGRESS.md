@@ -1,6 +1,32 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 09.11.2026 (сессия 69, фаза 8, часть 2)
+## Последнее обновление: 12.11.2026 (сессия 69, фаза 9 — UI и жесты)
+
+## Сессия 69: фаза 9 — Material 3 Expressive, жесты, текст песни
+
+**Статус:** 9.1–9.12 закрыты; `assembleDebug` зелёный; 58 suite / 330 тестов, 0 failures. Live-проверка на устройстве не выполнялась (устройство недоступно в этой среде).
+
+### Что сделано
+- **9.1 Зависимости.** material3 `1.4.0-alpha07`, Media3 `1.9.4`, material-kolor `2.0.2`; compileSdk 35 / AGP 8.5.2 / Kotlin 2.0.21 без изменений. Экспресс-API включаются через `@OptIn(ExperimentalMaterial3ExpressiveApi::class)`.
+- **9.2 HCT-палитры.** `Color.kt`/`PlayerPalette.kt` на material-kolor; серые/ахроматические обложки дают монохромную схему.
+- **9.3 Контраст.** `Contrast.kt` (`bestContentColor`, `contrastContentColor`) — контент над обложками и палитрой проверяется тестами `ColorContrastTest`/`AccentSchemeTest`.
+- **9.4 Морф кнопки Play.** `ExpressivePlayerComponents.kt`: `Morph(MaterialShapes.Circle, MaterialShapes.Square)` + `PlayMorphShape` (outline из `Morph.toPath(progress)`), анимация 240 мс, press-scale сохранён.
+- **9.5 Жесты.** `PlayerGestures.kt` (`BoundsHolder`, пороги закрытия/свитча); закрытие плеера свайпом вниз с velocity-отпусканием; горизонтальный свайп обложки — прямая манипуляция (`dragX`), соседи выезжают по краям, порог 30% ширины или 1000 px/s, HUD направления, хаптик; `PredictiveBackHandler` тянет offset, отмена жеста обрабатывается `try/finally` (в activity-compose 1.9.3 прерывание — отмена coroutine, не `Throwable`); `enableOnBackInvokedCallback` в манифесте.
+- **9.6 Motion.kt.** Токены движения (`spatialFast`/`spatialDefault`/`effectsDefault`), Shape.kt — скругления 4/8/12/16/28.
+- **9.7 Мини-плеер.** Виден на экране «Любимые» и при закрытом доке; 48dp крестик закрытия (`clearQueue`), buffering-состояние, drawBehind-прогресс, semantics.
+- **9.8 Аудит доступности.** Все 79 `contentDescription = null` — декоративные (иконки внутри подписанных кнопок/чипов/меню, обложки карточек с текстом, иконки вкладок с label); все icon-only `IconButton` имеют описания; touch-цели ≥48dp. fontScale 1.3/2.0 — на live-прогоне.
+- **9.9 UiError.** `core/error/UiError.kt` — sealed class с `@StringRes`; `PlaybackErrorMessages` возвращает `UiError` (`toFriendlyPlaybackError`), обёрнутые `ResolveException` в цепочке cause распознаются; `PlayerState.error`/`PlayerUiState.error`/`lyricsError` — `UiError?`; резолв — `stringResource(error.messageRes)` в UI. 12 строк EN/RU (`error_*`), тест `UiErrorTest` (5). `DownloadMessages`/`*_FAILED_MESSAGE` библиотеки не тронуты (отдельный скоуп).
+- **9.10 Типографика.** Type.kt: display — Regular, headline — Medium; SemiBold/Bold — только акцентные состояния.
+- **9.11 LoadingIndicator.** `AppLoadingIndicator` (material3 1.4) вместо `CircularProgressIndicator` в загрузках списков: артист, релизы, волна, медиатека, пагинация поиска; мелкие индикаторы кнопок (14–22dp) оставлены.
+- **9.12 Текст песни.** `PlaybackClock.kt` — единый источник позиции (интерполяция по кадрам, только при isPlaying, ресинк 300 мс); `PlayerLyrics.kt` — `LyricsData` (бинарный поиск, lead 200 мс), `derivedStateOf` для активной строки, статичный стиль строки, `graphicsLayer` только у активных ±2, `animateScrollBy`, пауза автоскролла 4 с + кнопка «К текущей строке», seek по тапу; `PlayerControls.kt` — прогресс на том же clock (кадры с throttle 100 мс); кэш текстов 20 треков + prefetch.
+- **Сплит PlayerScreen.** 2098 → 1059 строк: `PlayerHero.kt` (hero-зона, обложечный передний план, стеклянная карточка, ArtworkImage, sourceLabel), `PlayerActions.kt` (сквирклы скачивания/лайка/дизлайка), `PlayerSheets.kt` (детюн, вариации), `LyricsForeground` → `PlayerLyrics.kt`.
+
+### Проверка
+- `assembleDebug` — BUILD SUCCESSFUL; `testDebugUnitTest` — **58 suite / 330 тестов, 0 failures** (новые: `UiErrorTest`, `ColorContrastTest`, миграционные и волна-тесты предыдущих фаз).
+- Release-сборка в этой сессии не выполнялась; versionCode/versionName не менялись.
+- Живой прогон (жесты, predictive back, морф кнопки, текст на паузе) — на устройстве пользователя.
+
+---
 
 ## Сессия 69: фаза 8, часть 2 — UI и умное пополнение
 

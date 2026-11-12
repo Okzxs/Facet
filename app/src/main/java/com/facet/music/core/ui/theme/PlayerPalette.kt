@@ -180,11 +180,10 @@ private suspend fun computePlayerColors(
         hsl[2] = hsl[2].coerceIn(0.38f, 0.62f)
         val tintInt = ColorUtils.HSLToColor(hsl)
         val tintColor = Color(tintInt)
-        val tintLuminance = ColorUtils.calculateLuminance(tintInt)
 
-        // Контрастная пара к оттенку. Раньше onPrimaryContainer/onSecondaryContainer
-        // возвращали сам tintColor — текст сливался с полупрозрачным контейнером.
-        val onTint = if (tintLuminance > 0.5f) Color.Black else Color.White
+        // Контрастная пара к оттенку: чёрный/белый по WCAG, при нехватке
+        // контраста оттенок подстраивается по тону HCT.
+        val (accessibleTint, onTint) = bestContentColor(tintColor)
 
         // Плавная рампа фона: без резкой ступени 0.88 → 0.40, которая читалась
         // как видимая полоса и делала верх «кричащим».
@@ -192,10 +191,10 @@ private suspend fun computePlayerColors(
         val bottomAlpha = if (isLightCover) 0.26f else 0.20f
 
         val colors = PlayerDynamicColors(
-            dominant = tintColor,
+            dominant = accessibleTint,
             backgroundTop = tintColor.copy(alpha = topAlpha),
             backgroundBottom = tintColor.copy(alpha = bottomAlpha),
-            primary = tintColor,
+            primary = accessibleTint,
             onPrimary = onTint,
             primaryContainer = tintColor.copy(alpha = 0.30f),
             onPrimaryContainer = onTint,

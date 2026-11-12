@@ -340,6 +340,22 @@
     <string name="common_previous_cd">Previous</string>
     <string name="common_next_cd">Next</string>
     <string name="common_back">Back</string>
+    <string name="mini_player_state_playing">Playing</string>
+    <string name="mini_player_state_paused">Paused</string>
+    <string name="mini_player_state_loading">Loading</string>
+    <string name="player_lyrics_to_current_cd">Jump to the current line</string>
+    <string name="error_no_internet">No internet connection. Check your network.</string>
+    <string name="error_timeout">The request timed out. Try again.</string>
+    <string name="error_secure_connection">Secure connection error. Try again.</string>
+    <string name="error_playback">Couldn’t play this track. Try again.</string>
+    <string name="error_lyrics">Couldn’t load lyrics. Try again.</string>
+    <string name="error_track_unavailable">This track is unavailable at the source.</string>
+    <string name="error_subscription_only">This track requires a subscription.</string>
+    <string name="error_geo_blocked">This track is unavailable in your region.</string>
+    <string name="error_no_match">We couldn’t find this track on SoundCloud and YouTube.</string>
+    <string name="error_player_unavailable">Couldn’t connect to the player.</string>
+    <string name="error_like_failed">Couldn’t update the like: database is unavailable</string>
+    <string name="error_dislike_failed">Couldn’t update the dislike: database is unavailable</string>
 
     <!-- Длительность и количество -->
     <string name="duration_hours_minutes">%1$d h %2$d min</string>

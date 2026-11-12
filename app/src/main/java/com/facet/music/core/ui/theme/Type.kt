@@ -31,48 +31,49 @@ val GoogleSansFlex = FontFamily(
 
 /**
  * Каноничная шкала Material 3: размеры, интерлиньяж и трекинг — из гайдлайнов.
- * Вес: display/headline — SemiBold, title — Medium, body — Regular, label — Medium.
- * Ручные `fontWeight` в экранах не нужны.
+ * Вес: display — Regular, headline — Medium, title — Medium, body — Regular, label — Medium.
+ * SemiBold/Bold — только акцентные состояния в экранах.
+ * Ручные `fontWeight` в обычных подписях не нужны.
  */
 val AppTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = GoogleSansFlex,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Normal,
         fontSize = 57.sp,
         lineHeight = 64.sp,
         letterSpacing = (-0.25).sp,
     ),
     displayMedium = TextStyle(
         fontFamily = GoogleSansFlex,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Normal,
         fontSize = 45.sp,
         lineHeight = 52.sp,
         letterSpacing = 0.sp,
     ),
     displaySmall = TextStyle(
         fontFamily = GoogleSansFlex,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Normal,
         fontSize = 36.sp,
         lineHeight = 44.sp,
         letterSpacing = 0.sp,
     ),
     headlineLarge = TextStyle(
         fontFamily = GoogleSansFlex,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         fontSize = 32.sp,
         lineHeight = 40.sp,
         letterSpacing = 0.sp,
     ),
     headlineMedium = TextStyle(
         fontFamily = GoogleSansFlex,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         fontSize = 28.sp,
         lineHeight = 36.sp,
         letterSpacing = 0.sp,
     ),
     headlineSmall = TextStyle(
         fontFamily = GoogleSansFlex,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         fontSize = 24.sp,
         lineHeight = 32.sp,
         letterSpacing = 0.sp,

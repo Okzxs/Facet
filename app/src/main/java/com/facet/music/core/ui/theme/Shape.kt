@@ -6,15 +6,15 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 
 /**
- * Строгая шкала Material 3: 12 — мелкие элементы, 16 — карточки,
- * 24 — крупные блоки и плеер. Асимметрии и «магических» радиусов нет.
+ * Шкала Material 3 Expressive: 4 — мелкие элементы, 8 — чипсы,
+ * 12 — карточки, 16 — крупные блоки, 28 — плеер и островки.
  */
 val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(12.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
     large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 /** Форма-пилюля для кнопок, чипсов и индикатора навигации. */

@@ -6,7 +6,6 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -18,7 +17,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -40,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +62,7 @@ import com.facet.music.core.ui.components.FloatingMiniPlayer
 import com.facet.music.core.ui.components.MiniPlayerGap
 import com.facet.music.core.ui.components.MiniPlayerHorizontalMargin
 import com.facet.music.core.ui.components.MiniPlayerIslandHeight
+import com.facet.music.core.ui.theme.Motion
 import com.facet.music.core.ui.theme.prewarmPlayerPalette
 import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Source
@@ -70,6 +71,7 @@ import com.facet.music.feature.artist.ArtistScreen
 import com.facet.music.feature.home.HomeScreen
 import com.facet.music.feature.library.LibraryScreen
 import com.facet.music.feature.library.LikedTracksScreen
+import com.facet.music.feature.player.DISMISS_THRESHOLD
 import com.facet.music.feature.player.PlayerSwipeState
 import com.facet.music.feature.player.PlayerViewModel
 import com.facet.music.feature.player.PlayerScreen
@@ -231,8 +233,9 @@ fun AppNavGraph() {
     }
 
     // Островок показываем, когда есть трек и известна геометрия низа.
-    // На «Любимых» док скрыт, но островок остаётся.
-    val showMiniPlayer = (showBottomBar || isLikedTracksScreen) &&
+    // На «Любимых» док скрыт, но островок остаётся — кроме момента, когда
+    // поверх открыт полноэкранный плеер: иначе мини-плеер торчит под ним.
+    val showMiniPlayer = (showBottomBar || (isLikedTracksScreen && !isPlayerOpen)) &&
         miniTrack != null &&
         (navBarHeightPx > 0 || isLikedTracksScreen) &&
         !isMiniPlayerDismissed
@@ -241,7 +244,7 @@ fun AppNavGraph() {
     // контент не прыгал в момент появления/исчезновения мини-плеера.
     val miniPlayerReserve by animateDpAsState(
         targetValue = if (showMiniPlayer) MiniPlayerIslandHeight + MiniPlayerGap else 0.dp,
-        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+        animationSpec = Motion.spatialDefault(),
         label = "miniPlayerReserve",
     )
     val bottomDockHeight = navBarHeight + miniPlayerReserve
@@ -254,7 +257,7 @@ fun AppNavGraph() {
         } else {
             navigationBarInset + MiniPlayerGap
         },
-        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+        animationSpec = Motion.spatialDefault(),
         label = "miniPlayerBottom",
     )
 
@@ -428,11 +431,11 @@ fun AppNavGraph() {
         AnimatedVisibility(
             visible = showBottomBar,
             enter = slideInVertically(
-                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-            ) { height -> height } + fadeIn(animationSpec = tween(PlayerSlideMillis)),
+                animationSpec = Motion.spatialDefault(),
+            ) { height -> height } + fadeIn(animationSpec = Motion.effectsDefault()),
             exit = slideOutVertically(
-                animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
-            ) { height -> height } + fadeOut(animationSpec = tween(PlayerSlideMillis)),
+                animationSpec = Motion.spatialDefault(),
+            ) { height -> height } + fadeOut(animationSpec = Motion.effectsDefault()),
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             ExpressiveBottomDock(
@@ -457,15 +460,15 @@ fun AppNavGraph() {
                 // иначе вместе с морфом обложки получается двойная трансформация.
                 AnimatedVisibility(
                     visible = showMiniPlayer,
-                    enter = fadeIn(animationSpec = tween(PlayerSlideMillis)) + scaleIn(
+                    enter = fadeIn(animationSpec = Motion.effectsDefault()) + scaleIn(
                         initialScale = 0.96f,
                         transformOrigin = TransformOrigin(0.5f, 1f),
-                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                        animationSpec = Motion.spatialDefault(),
                     ),
-                    exit = fadeOut(animationSpec = tween(PlayerSlideMillis)) + scaleOut(
+                    exit = fadeOut(animationSpec = Motion.effectsDefault()) + scaleOut(
                         targetScale = 0.96f,
                         transformOrigin = TransformOrigin(0.5f, 1f),
-                        animationSpec = tween(PlayerSlideMillis, easing = FastOutSlowInEasing),
+                        animationSpec = Motion.spatialDefault(),
                     ),
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -481,12 +484,15 @@ fun AppNavGraph() {
                         Modifier.sharedElement(
                             rememberSharedContentState(PlayerCoverSharedKey),
                             animatedVisibilityScope = animatedScope,
+                            // Морф обложки — пространственная пружина spatial default (9.6).
+                            boundsTransform = { _, _ -> Motion.spatialDefault<Rect>() },
                         )
                     }
                     miniTrack?.let { track ->
                         FloatingMiniPlayer(
                             track = track,
                             isPlaying = playerState.isPlaying,
+                            isBuffering = playerState.isBuffering || playerState.isLoading,
                             onExpandClick = onMiniPlayerExpand,
                             onPlayPauseClick = { playerViewModel.togglePlayPause() },
                             onNext = { playerViewModel.playNext() },
@@ -510,10 +516,16 @@ fun AppNavGraph() {
                 // открытии — морф обложки. Раньше scaleIn/scaleOut накладывались
                 // на полёт обложки, и картинка «ехала» дважды — отсюда кривой морф.
                 val playerEnter = fadeIn(
-                    animationSpec = tween(durationMillis = 180),
+                    animationSpec = tween(
+                        durationMillis = Motion.EnterMillis,
+                        easing = Motion.EmphasizedDecelerate,
+                    ),
                 )
                 val playerExit = fadeOut(
-                    animationSpec = tween(durationMillis = 160),
+                    animationSpec = tween(
+                        durationMillis = Motion.ExitMillis,
+                        easing = Motion.EmphasizedAccelerate,
+                    ),
                 )
                 AnimatedVisibility(
                     visibleState = playerVisibleState,
@@ -530,6 +542,8 @@ fun AppNavGraph() {
                         Modifier.sharedElement(
                             rememberSharedContentState(PlayerCoverSharedKey),
                             animatedVisibilityScope = animatedScope,
+                            // Морф обложки — пространственная пружина spatial default (9.6).
+                            boundsTransform = { _, _ -> Motion.spatialDefault<Rect>() },
                         )
                     }
                     // Панели с текстом и кнопками рисуются в оверлее shared-перехода
@@ -582,11 +596,33 @@ fun AppNavGraph() {
     }
 
     // Системный «назад» закрывает плеер, не трогая back stack вкладок.
-    BackHandler(enabled = isPlayerOpen) { isPlayerOpen = false }
+    // Predictive back: прогресс жеста тянет тот же offsetPx и масштаб, что и свайп,
+    // отпустил раньше порога — плеер пружиной возвращается на место.
+    PredictiveBackHandler(enabled = isPlayerOpen) { progressFlow ->
+        playerSwipe.beginDrag()
+        try {
+            progressFlow.collect { event ->
+                val height = playerSwipe.screenHeightPx
+                if (height > 0f) {
+                    playerSwipe.dragTo(event.progress * height * 0.9f)
+                }
+            }
+        } finally {
+            // Блок выполняется и при отмене жеста, и после коммита back:
+            // плеер либо закрывается за порогом, либо пружиной возвращается.
+            if (!playerSwipe.isDismissed) {
+                val height = playerSwipe.screenHeightPx
+                val passed = playerSwipe.offsetPx > height * DISMISS_THRESHOLD
+                if (passed) {
+                    playerSwipe.dismiss()
+                    isPlayerOpen = false
+                } else {
+                    playerSwipe.settle()
+                }
+            }
+        }
+    }
 }
-
-private const val TabTransitionMillis = 300
-private const val PlayerSlideMillis = 300
 
 /** Общий ключ обложки для морфа между полноэкранным и мини-плеером. */
 private const val PlayerCoverSharedKey = "player-cover"
@@ -616,19 +652,13 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(): In
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition(): EnterTransition {
     val direction = tabDirection()
     if (direction == 0) {
-        return fadeIn(animationSpec = tween(150))
+        return fadeIn(animationSpec = Motion.effectsFast())
     }
     return slideInHorizontally(
         initialOffsetX = { width -> direction * width / 3 },
-        animationSpec = tween(
-            durationMillis = TabTransitionMillis,
-            easing = FastOutSlowInEasing,
-        ),
+        animationSpec = Motion.spatialDefault(),
     ) + fadeIn(
-        animationSpec = tween(
-            durationMillis = TabTransitionMillis,
-            easing = FastOutSlowInEasing,
-        ),
+        animationSpec = Motion.effectsDefault(),
     )
 }
 
@@ -638,18 +668,12 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(): ExitTransition {
     val direction = tabDirection()
     if (direction == 0) {
-        return fadeOut(animationSpec = tween(150))
+        return fadeOut(animationSpec = Motion.effectsFast())
     }
     return slideOutHorizontally(
         targetOffsetX = { width -> -direction * width / 3 },
-        animationSpec = tween(
-            durationMillis = TabTransitionMillis,
-            easing = FastOutSlowInEasing,
-        ),
+        animationSpec = Motion.spatialDefault(),
     ) + fadeOut(
-        animationSpec = tween(
-            durationMillis = TabTransitionMillis,
-            easing = FastOutSlowInEasing,
-        ),
+        animationSpec = Motion.effectsDefault(),
     )
 }

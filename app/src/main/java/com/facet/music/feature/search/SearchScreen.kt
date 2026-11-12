@@ -124,7 +124,10 @@ import coil3.compose.AsyncImage
 import com.facet.music.R
 import com.facet.music.core.service.ServiceHealth
 import com.facet.music.core.service.ServiceType
+import com.facet.music.core.ui.theme.StatusOnlineDark
+import com.facet.music.core.ui.theme.StatusOnlineLight
 import com.facet.music.core.ui.components.AddToPlaylistSheet
+import com.facet.music.core.ui.components.AppLoadingIndicator
 import com.facet.music.core.ui.components.TrackCard
 import com.facet.music.navigation.LocalBottomDockHeight
 import com.facet.music.data.model.Artist
@@ -165,9 +168,7 @@ private fun ServiceType.brandColor(): Color = when (this) {
     ServiceType.SPOTIFY -> SpotifyGreen
 }
 
-// Семантические цвета статусов: зелёный/красный не должны зависеть от Dynamic Color.
-private val OnlineGreenLight = Color(0xFF1E8E3E)
-private val OnlineGreenDark = Color(0xFF81C995)
+// Семантические цвета статусов живут в теме (Color.kt), не зависят от Dynamic Color.
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -864,7 +865,7 @@ private fun serviceIcon(service: ServiceType) = when (service) {
 
 @Composable
 private fun serviceOnlineColor(): Color =
-    if (isSystemInDarkTheme()) OnlineGreenDark else OnlineGreenLight
+    if (isSystemInDarkTheme()) StatusOnlineDark else StatusOnlineLight
 
 @Composable
 private fun ExpressiveSearchField(
@@ -1357,10 +1358,7 @@ private fun ResultsList(
                             .padding(vertical = 18.dp),
                         horizontalArrangement = Arrangement.Center,
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.dp,
-                        )
+                        AppLoadingIndicator(size = 22.dp)
                     }
                 }
             }

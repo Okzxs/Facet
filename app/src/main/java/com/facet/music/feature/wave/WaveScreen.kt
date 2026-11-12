@@ -97,6 +97,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.BuildConfig
 import com.facet.music.R
+import com.facet.music.core.ui.components.AppLoadingIndicator
 import com.facet.music.core.ui.components.TrackArtwork
 import com.facet.music.core.wave.WaveCandidateDetails
 import com.facet.music.core.wave.WaveMood
@@ -870,11 +871,9 @@ private fun ColdStartDialog(
                 )
                 Spacer(Modifier.height(12.dp))
                 if (loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .align(Alignment.CenterHorizontally),
-                        strokeWidth = 2.dp,
+                    AppLoadingIndicator(
+                        size = 24.dp,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
                     )
                 } else {
                     artists.take(24).forEach { artist ->

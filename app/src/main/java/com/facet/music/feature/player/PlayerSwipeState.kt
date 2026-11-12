@@ -73,7 +73,7 @@ class PlayerSwipeState(private val scope: CoroutineScope) {
     }
 
     /** Отпускание ниже порога: пружиной возвращаем плеер на место. */
-    fun settle() {
+    fun settle(velocity: Float = 0f) {
         isDragging = false
         settleJob?.cancel()
         val start = offsetPx
@@ -85,6 +85,7 @@ class PlayerSwipeState(private val scope: CoroutineScope) {
             animate(
                 initialValue = start,
                 targetValue = 0f,
+                initialVelocity = velocity,
                 animationSpec = spring(
                     dampingRatio = 0.8f,
                     stiffness = Spring.StiffnessLow,

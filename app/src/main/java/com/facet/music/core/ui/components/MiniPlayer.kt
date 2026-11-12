@@ -1,30 +1,29 @@
 package com.facet.music.core.ui.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.DraggableState
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -33,25 +32,32 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,9 +65,10 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
+import com.facet.music.core.ui.theme.Motion
 import com.facet.music.core.ui.theme.PillShape
 import com.facet.music.data.model.Track
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -115,6 +122,7 @@ internal fun swipeTrackDirection(offsetPx: Float, widthPx: Float, velocityX: Flo
 internal fun FloatingMiniPlayer(
     track: Track,
     isPlaying: Boolean,
+    isBuffering: Boolean,
     onExpandClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNext: () -> Unit,
@@ -127,96 +135,83 @@ internal fun FloatingMiniPlayer(
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val shape = MaterialTheme.shapes.medium
+    val shape = MaterialTheme.shapes.extraLarge
     val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
-    // Колбэки могут пересоздаваться на каждой рекомпозиции, а жест и опрос
-    // позиции живут дольше — читаем актуальные версии через rememberUpdatedState.
     val latestFraction = rememberUpdatedState(currentFraction)
     val latestNext = rememberUpdatedState(onNext)
     val latestPrevious = rememberUpdatedState(onPrevious)
 
-    var progress by remember(track.id) { mutableFloatStateOf(0f) }
+    val stateText = stringResource(
+        when {
+            isBuffering -> R.string.mini_player_state_loading
+            isPlaying -> R.string.mini_player_state_playing
+            else -> R.string.mini_player_state_paused
+        },
+    )
+    val nextLabel = stringResource(R.string.common_next_cd)
+    val previousLabel = stringResource(R.string.common_previous_cd)
 
-    // Смещение контента при свайпе: ноль в покое, растёт за пальцем,
-    // после отпускания возвращается пружиной.
-    val offsetX = remember { Animatable(0f) }
-    val velocityTracker = remember { VelocityTracker() }
-
-    LaunchedEffect(track.id, isPlaying) {
-        progress = latestFraction.value().coerceIn(0f, 1f)
-        while (isPlaying) {
-            delay(150) // ~6-7 обновлений в секунду
-            progress = latestFraction.value().coerceIn(0f, 1f)
+    // Смещение контента при свайпе живёт в draw-state: graphicsLayer читает его
+    // без рекомпозиции. DraggableState применяет дельты синхронно, без запуска
+    // корутины на каждое событие; пружинный возврат — одна корутина на жест.
+    val offsetState = remember { mutableFloatStateOf(0f) }
+    val widthState = remember { mutableFloatStateOf(0f) }
+    val settle = remember { Animatable(0f) }
+    var settleJob by remember { mutableStateOf<Job?>(null) }
+    val draggableState = remember {
+        DraggableState { delta ->
+            val max = widthState.floatValue.coerceAtLeast(1f)
+            offsetState.floatValue = (offsetState.floatValue + delta).coerceIn(-max, max)
         }
     }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(MiniPlayerIslandHeight)
-            // Плоская поверхность без обводки: чистый Material 3.
+            .heightIn(min = MiniPlayerIslandHeight)
+            .shadow(6.dp, shape)
             .background(surfaceColor, shape)
             .clip(shape)
-            .pointerInput(track.id) {
-                detectHorizontalDragGestures(
-                    onDragStart = {
-                        // Новый жест прерывает пружину возврата.
-                        scope.launch { offsetX.stop() }
-                        velocityTracker.resetTracking()
-                    },
-                    onDragEnd = {
-                        val velocityX = velocityTracker.calculateVelocity().x
-                        val direction = swipeTrackDirection(
-                            offsetPx = offsetX.value,
-                            widthPx = size.width.toFloat(),
-                            velocityX = velocityX,
-                        )
-
-                        if (direction != 0) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            if (direction > 0) latestNext.value() else latestPrevious.value()
-                        }
-
-                        // Новый трек уже подставлен — контент пружинно встаёт на место.
-                        scope.launch {
-                            offsetX.animateTo(
-                                targetValue = 0f,
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMediumLow,
-                                ),
-                            )
-                        }
-                    },
-                    onDragCancel = {
-                        scope.launch {
-                            offsetX.animateTo(
-                                targetValue = 0f,
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMediumLow,
-                                ),
-                            )
-                        }
-                    },
-                ) { change, dragAmount ->
-                    change.consume()
-                    velocityTracker.addPosition(change.uptimeMillis, change.position)
-                    scope.launch {
-                        val maxOffset = size.width.toFloat()
-                        offsetX.snapTo((offsetX.value + dragAmount).coerceIn(-maxOffset, maxOffset))
+            .onSizeChanged { widthState.floatValue = it.width.toFloat() }
+            .draggable(
+                state = draggableState,
+                orientation = Orientation.Horizontal,
+                onDragStarted = { settleJob?.cancel() },
+                onDragStopped = { velocity ->
+                    val direction = swipeTrackDirection(
+                        offsetPx = offsetState.floatValue,
+                        widthPx = widthState.floatValue,
+                        velocityX = velocity,
+                    )
+                    if (direction != 0) {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        if (direction > 0) latestNext.value() else latestPrevious.value()
                     }
-                }
-            }
-            .clickable(role = Role.Button, onClick = onExpandClick),
+                    settleJob = scope.launch {
+                        settle.snapTo(offsetState.floatValue)
+                        settle.animateTo(0f, Motion.spatialDefault()) {
+                            offsetState.floatValue = value
+                        }
+                    }
+                },
+            )
+            .clickable(role = Role.Button, onClick = onExpandClick)
+            .semantics {
+                stateDescription = stateText
+                customActions = listOf(
+                    CustomAccessibilityAction(nextLabel) { latestNext.value(); true },
+                    CustomAccessibilityAction(previousLabel) { latestPrevious.value(); true },
+                )
+            },
+        contentAlignment = Alignment.Center,
     ) {
         Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Обложка и подписи едут за пальцем; кнопка Play остаётся на месте.
@@ -224,8 +219,8 @@ internal fun FloatingMiniPlayer(
                 modifier = Modifier
                     .weight(1f)
                     .graphicsLayer {
-                        translationX = offsetX.value
-                        val travel = (abs(offsetX.value) / size.width.toFloat().coerceAtLeast(1f))
+                        translationX = offsetState.floatValue
+                        val travel = (abs(offsetState.floatValue) / size.width.toFloat().coerceAtLeast(1f))
                             .coerceIn(0f, 1f)
                         alpha = 1f - travel * 0.25f
                     },
@@ -253,7 +248,7 @@ internal fun FloatingMiniPlayer(
                             error = notePainter,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(MaterialTheme.shapes.large),
+                                .clip(MaterialTheme.shapes.small),
                         )
                     } else {
                         Box(
@@ -295,12 +290,17 @@ internal fun FloatingMiniPlayer(
 
             Spacer(Modifier.width(8.dp))
 
-            // Визуально 40dp, зона касания 48dp.
+            // Визуально 40dp, зона касания 48dp. Во время буферизации — индикатор
+            // загрузки, повторные нажатия игнорируются.
             Box(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .clickable(role = Role.Button, onClick = onPlayPauseClick),
+                    .clickable(
+                        role = Role.Button,
+                        enabled = !isBuffering,
+                        onClick = onPlayPauseClick,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(
@@ -310,19 +310,27 @@ internal fun FloatingMiniPlayer(
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = if (isPlaying) {
-                                Icons.Filled.Pause
-                            } else {
-                                Icons.Filled.PlayArrow
-                            },
-                            contentDescription = if (isPlaying) {
-                                stringResource(R.string.common_pause_cd)
-                            } else {
-                                stringResource(R.string.common_play_cd)
-                            },
-                            modifier = Modifier.size(22.dp),
-                        )
+                        if (isBuffering) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.5.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (isPlaying) {
+                                    Icons.Filled.Pause
+                                } else {
+                                    Icons.Filled.PlayArrow
+                                },
+                                contentDescription = if (isPlaying) {
+                                    stringResource(R.string.common_pause_cd)
+                                } else {
+                                    stringResource(R.string.common_play_cd)
+                                },
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -330,10 +338,10 @@ internal fun FloatingMiniPlayer(
             Spacer(Modifier.width(2.dp))
 
             // Крестик закрывает плеер целиком: стоп, пустая очередь, скрытие
-            // островка. Маленький, чтобы не конкурировать с Play.
+            // островка. Зона касания 48dp, иконка 20dp.
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .clickable(role = Role.Button, onClick = onCloseClick),
                 contentAlignment = Alignment.Center,
@@ -342,14 +350,16 @@ internal fun FloatingMiniPlayer(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = stringResource(R.string.player_close_mini),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
 
         // Тонкий прогресс внизу островка: inset 24dp держит его внутри скругления.
         MiniPlayerProgressBar(
-            fraction = progress,
+            fraction = { latestFraction.value() },
+            isPlaying = isPlaying,
+            resetKey = track.id,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(start = 24.dp, end = 24.dp, bottom = 3.dp)
@@ -358,24 +368,40 @@ internal fun FloatingMiniPlayer(
     }
 }
 
-/** Полоска прогресса, которую обновляет опрос позиции плеера. */
+/**
+ * Полоска прогресса: значение читается в drawBehind, кадровый тик инвалидирует
+ * только отрисовку (не рекомпозицию). На паузе цикл не крутится — лишних кадров нет.
+ */
 @Composable
 private fun MiniPlayerProgressBar(
-    fraction: Float,
+    fraction: () -> Float,
+    isPlaying: Boolean,
+    resetKey: String,
     modifier: Modifier = Modifier,
 ) {
+    val primary = MaterialTheme.colorScheme.primary
+    val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val latestFraction = rememberUpdatedState(fraction)
+    val progress = remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(resetKey, isPlaying) {
+        progress.floatValue = latestFraction.value().coerceIn(0f, 1f)
+        if (!isPlaying) return@LaunchedEffect
+        while (true) {
+            withFrameMillis {
+                progress.floatValue = latestFraction.value().coerceIn(0f, 1f)
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .height(2.dp)
             .clip(PillShape)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                .fillMaxHeight()
-                .clip(PillShape)
-                .background(MaterialTheme.colorScheme.primary),
-        )
-    }
+            .drawBehind {
+                val f = progress.floatValue
+                drawRect(trackColor)
+                drawRect(primary, size = Size(size.width * f, size.height))
+            },
+    )
 }

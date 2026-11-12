@@ -74,6 +74,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
+import com.facet.music.core.ui.components.AppLoadingIndicator
 import com.facet.music.core.ui.components.EmptyState
 import com.facet.music.core.ui.components.PlaylistCover
 import com.facet.music.core.ui.components.SectionHeader
@@ -194,7 +195,7 @@ fun ArtistScreen(
                             .padding(vertical = 48.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator()
+                        AppLoadingIndicator()
                     }
                 }
 
@@ -836,7 +837,7 @@ private fun ReleaseTracksSheet(
                         .padding(vertical = 32.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    AppLoadingIndicator()
                 }
             } else {
                 LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {

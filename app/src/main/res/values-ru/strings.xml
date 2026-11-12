@@ -341,6 +341,22 @@
     <string name="common_previous_cd">Предыдущий</string>
     <string name="common_next_cd">Следующий</string>
     <string name="common_back">Назад</string>
+    <string name="mini_player_state_playing">Воспроизводится</string>
+    <string name="mini_player_state_paused">Пауза</string>
+    <string name="mini_player_state_loading">Загрузка</string>
+    <string name="player_lyrics_to_current_cd">К текущей строке</string>
+    <string name="error_no_internet">Нет подключения к интернету. Проверьте сеть.</string>
+    <string name="error_timeout">Превышено время ожидания. Попробуйте снова.</string>
+    <string name="error_secure_connection">Ошибка защищённого соединения. Попробуйте снова.</string>
+    <string name="error_playback">Не удалось воспроизвести трек. Попробуйте снова.</string>
+    <string name="error_lyrics">Не удалось загрузить текст. Попробуйте снова.</string>
+    <string name="error_track_unavailable">Трек недоступен в источнике.</string>
+    <string name="error_subscription_only">Трек доступен только по подписке.</string>
+    <string name="error_geo_blocked">Трек недоступен в вашем регионе.</string>
+    <string name="error_no_match">Не нашли этот трек в SoundCloud и YouTube.</string>
+    <string name="error_player_unavailable">Не удалось подключиться к плееру.</string>
+    <string name="error_like_failed">Не удалось обновить лайк: база данных недоступна</string>
+    <string name="error_dislike_failed">Не удалось обновить дизлайк: база данных недоступна</string>
 
     <!-- Длительность и количество -->
     <string name="duration_hours_minutes">%1$d ч %2$d мин</string>

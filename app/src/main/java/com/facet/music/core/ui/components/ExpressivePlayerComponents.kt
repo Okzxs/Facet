@@ -2,7 +2,6 @@ package com.facet.music.core.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -22,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -33,24 +31,36 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.toPath
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.graphics.shapes.Morph
 import com.facet.music.R
 
 /** Пружинный press-scale (0.90 при нажатии) — общий микро-жест Expressive-кнопок. */
@@ -265,7 +275,8 @@ fun PlayerControlIsland(
     }
 }
 
-/** Главная кнопка Play/Pause: морф радиуса (круг в паузе / сквиркл в игре) + press-scale. */
+/** Главная кнопка Play/Pause: морф MaterialShapes (круг в паузе / сквиркл в игре) + press-scale. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PlayMorphButton(
     isPlaying: Boolean,
@@ -274,10 +285,13 @@ private fun PlayMorphButton(
     onAccentColor: Color,
     onClick: () -> Unit,
 ) {
-    val radius by animateDpAsState(
-        targetValue = if (isPlaying) 22.dp else 32.dp,
+    val morph = remember {
+        Morph(MaterialShapes.Circle, MaterialShapes.Square)
+    }
+    val morphProgress by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0f,
         animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
-        label = "playMorphRadius",
+        label = "playMorphProgress",
     )
     val interaction = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interaction)
@@ -292,7 +306,7 @@ private fun PlayMorphButton(
                 scaleX = scale
                 scaleY = scale
             },
-        shape = RoundedCornerShape(radius),
+        shape = PlayMorphShape(morph, morphProgress),
         colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = accentColor,
             contentColor = onAccentColor,
@@ -315,5 +329,24 @@ private fun PlayMorphButton(
                 modifier = Modifier.size(30.dp),
             )
         }
+    }
+}
+
+/** Форма кнопки Play: outline строится из Morph-полигона, масштабируется под размер. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private class PlayMorphShape(
+    private val morph: Morph,
+    private val progress: Float,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val path = morph.toPath(progress, Path())
+        val matrix = Matrix().apply { scale(size.width, size.height) }
+        path.transform(matrix)
+        path.translate(size.center - path.getBounds().center)
+        return Outline.Generic(path)
     }
 }

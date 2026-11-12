@@ -5,6 +5,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import com.facet.music.core.error.UiError
 import com.facet.music.core.source.PlaybackResolver
 import com.facet.music.core.text.MusicNormalizer
 import com.facet.music.data.model.Track
@@ -525,7 +526,7 @@ class PlayerController @Inject constructor(
             it.copy(
                 isLoading = false,
                 isBuffering = false,
-                error = error.toFriendlyPlaybackMessage(),
+                error = error.toFriendlyPlaybackError(),
             )
         }
         Log.e(tag, "Плеер остановлен после $errorStreak ошибок: ${error.errorCodeName}")
@@ -540,7 +541,7 @@ class PlayerController @Inject constructor(
         scope.launch {
             val player = awaitPlayer()
             if (player == null) {
-                _state.update { it.copy(error = PLAYER_UNAVAILABLE_MESSAGE) }
+                _state.update { it.copy(error = UiError.PlayerUnavailable) }
                 return@launch
             }
             if (player.mediaItemCount == 0) {
@@ -791,7 +792,6 @@ class PlayerController @Inject constructor(
     private companion object {
         const val MAX_CONSECUTIVE_ERRORS = 3
         const val FOCUS_RESUME_WINDOW_MS = 15 * 60 * 1000L
-        const val PLAYER_UNAVAILABLE_MESSAGE = "Не удалось подключиться к плееру"
     }
 }
 
@@ -815,5 +815,5 @@ data class PlayerState(
     val repeatMode: RepeatMode = RepeatMode.OFF,
     val isShuffle: Boolean = false,
     val queueOrigin: QueueOrigin = QueueOrigin.MAIN,
-    val error: String? = null,
+    val error: UiError? = null,
 )

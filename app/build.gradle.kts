@@ -100,7 +100,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3:material3:1.4.0-alpha07")
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
@@ -128,13 +128,13 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     // Media3 (ExoPlayer + офлайн-скачивание и кэш HLS-потоков)
-    implementation("androidx.media3:media3-exoplayer:1.5.0")
-    implementation("androidx.media3:media3-exoplayer-hls:1.5.0")
-    implementation("androidx.media3:media3-datasource:1.5.0")
-    implementation("androidx.media3:media3-datasource-okhttp:1.5.0")
-    implementation("androidx.media3:media3-database:1.5.0")
-    implementation("androidx.media3:media3-session:1.5.0")
-    implementation("androidx.media3:media3-ui:1.5.0")
+    implementation("androidx.media3:media3-exoplayer:1.9.4")
+    implementation("androidx.media3:media3-exoplayer-hls:1.9.4")
+    implementation("androidx.media3:media3-datasource:1.9.4")
+    implementation("androidx.media3:media3-datasource-okhttp:1.9.4")
+    implementation("androidx.media3:media3-database:1.9.4")
+    implementation("androidx.media3:media3-session:1.9.4")
+    implementation("androidx.media3:media3-ui:1.9.4")
 
     // Retrofit + OkHttp + Serialization
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
@@ -145,6 +145,9 @@ dependencies {
 
     // Palette
     implementation("androidx.palette:palette-ktx:1.0.0")
+
+    // HCT-тональные палитры Material 3 (замена HSL-генерации акцента)
+    implementation("com.materialkolor:material-kolor:2.0.2")
 
     // Coil (images)
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")

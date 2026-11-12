@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -288,7 +289,7 @@ class PlayerControllerQueueTest {
             )
         }
 
-        assertFalse(controller.state.value.error.isNullOrBlank())
+        assertNotNull(controller.state.value.error)
         assertTrue(controller.state.value.isBuffering.not())
 
         position = 0L

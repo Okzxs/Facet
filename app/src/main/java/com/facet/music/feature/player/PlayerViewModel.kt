@@ -6,8 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.facet.music.core.download.DownloadManager
 import com.facet.music.core.download.DownloadMessages
 import com.facet.music.core.download.DownloadState
+import com.facet.music.core.error.UiError
 import com.facet.music.core.navigation.NavigationEvents
-import com.facet.music.core.player.ERROR_LYRICS
 import com.facet.music.core.player.PlaybackVariation
 import com.facet.music.core.player.PlayerController
 import com.facet.music.core.player.PlayerState
@@ -15,12 +15,11 @@ import com.facet.music.core.player.QueueOrigin
 import com.facet.music.core.player.SleepTimerState
 import com.facet.music.core.player.TrackLikeManager
 import com.facet.music.core.player.sleepTimerEndTime
-import com.facet.music.core.player.toFriendlyPlaybackMessage
+import com.facet.music.core.player.toFriendlyPlaybackError
 import com.facet.music.core.service.ServiceType
 import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.entity.DislikedTrackEntity
-import com.facet.music.data.model.LyricsResult
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.LikedTracksRepository
@@ -30,11 +29,13 @@ import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.TasteRepository
 import com.facet.music.data.repository.WaveRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -65,6 +66,12 @@ class PlayerViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
+
+    private val lyricsCache = object : LinkedHashMap<String, LyricsData>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LyricsData>): Boolean {
+            return size > LYRICS_CACHE_SIZE
+        }
+    }
 
     /** Состояние плеера (isPlaying, currentTrack, playbackSpeed, queue, shuffle, repeat) */
     val playerState: StateFlow<PlayerState> = playerController.state
@@ -192,7 +199,7 @@ class PlayerViewModel @Inject constructor(
                             it.copy(
                                 track = track,
                                 positionMs = 0L,
-                                lyrics = null,
+                                lyricsData = null,
                                 isLyricsLoading = true,
                                 lyricsError = null,
                                 error = null,
@@ -227,7 +234,7 @@ class PlayerViewModel @Inject constructor(
             trackLikeManager.toggle(track)
                 .onFailure { error ->
                     Log.e(tag, "Не удалось переключить лайк", error)
-                    _uiState.update { it.copy(error = LIKE_FAILED_MESSAGE) }
+                    _uiState.update { it.copy(error = UiError.LikeFailed) }
                 }
         }
     }
@@ -275,7 +282,7 @@ class PlayerViewModel @Inject constructor(
             }.rethrowCancellation()
             result.onFailure { error ->
                 Log.e(tag, "Не удалось переключить дизлайк", error)
-                _uiState.update { it.copy(error = DISLIKE_FAILED_MESSAGE) }
+                _uiState.update { it.copy(error = UiError.DislikeFailed) }
             }
         }
     }
@@ -358,7 +365,7 @@ class PlayerViewModel @Inject constructor(
                 positionMs = 0L,
                 isResolving = true,
                 error = null,
-                lyrics = null,
+                lyricsData = null,
                 isLyricsLoading = true,
                 lyricsError = null,
             )
@@ -507,7 +514,7 @@ class PlayerViewModel @Inject constructor(
 
     fun loadLyricsIfNeeded(track: Track? = null) {
         val currentTrack = track ?: _uiState.value.track ?: playerState.value.currentTrack ?: return
-        if (_uiState.value.lyrics == null && !_uiState.value.isLyricsLoading) {
+        if (_uiState.value.lyricsData == null && !_uiState.value.isLyricsLoading) {
             _uiState.update { it.copy(isLyricsLoading = true, lyricsError = null) }
             viewModelScope.launch {
                 loadLyrics(currentTrack)
@@ -517,18 +524,43 @@ class PlayerViewModel @Inject constructor(
 
     private suspend fun loadLyrics(track: Track) {
         Log.d("LRCLIB", "PlayerViewModel.loadLyrics для трека '${track.title}' (${track.artist})")
+        val key = lyricsKey(track)
+        lyricsCache[key]?.let { cached ->
+            _uiState.update { it.copy(lyricsData = cached, isLyricsLoading = false, lyricsError = null) }
+            prefetchNextLyrics()
+            return
+        }
         lyricsRepository.getLyrics(title = track.title, artist = track.artist, durationMs = track.durationMs)
             .onSuccess { result ->
-                Log.d("LRCLIB", "PlayerViewModel: тексты успешно получены (isSynced=${result.isSynced}, строк=${result.lines.size})")
-                _uiState.update { it.copy(lyrics = result, isLyricsLoading = false, lyricsError = null) }
+                val data = withContext(Dispatchers.Default) { buildLyricsData(result) }
+                Log.d("LRCLIB", "PlayerViewModel: тексты успешно получены (isSynced=${data.isSynced}, строк=${data.lines.size})")
+                synchronized(lyricsCache) { lyricsCache[key] = data }
+                _uiState.update { it.copy(lyricsData = data, isLyricsLoading = false, lyricsError = null) }
+                prefetchNextLyrics()
             }
             .onFailure { error ->
-                val friendlyMessage = error.toFriendlyPlaybackMessage(ERROR_LYRICS)
-                Log.w("LRCLIB", "PlayerViewModel: не удалось загрузить тексты: $friendlyMessage", error)
+                val friendlyError = error.toFriendlyPlaybackError(UiError.Lyrics)
+                Log.w("LRCLIB", "PlayerViewModel: не удалось загрузить тексты: $friendlyError", error)
                 _uiState.update {
-                    it.copy(lyrics = null, isLyricsLoading = false, lyricsError = friendlyMessage)
+                    it.copy(lyricsData = null, isLyricsLoading = false, lyricsError = friendlyError)
                 }
             }
+    }
+
+    private fun lyricsKey(track: Track): String = "${track.artist}|${track.title}"
+
+    private fun prefetchNextLyrics() {
+        val state = playerState.value
+        val next = state.queue.getOrNull(state.currentIndex + 1) ?: return
+        val key = lyricsKey(next)
+        if (synchronized(lyricsCache) { lyricsCache.containsKey(key) }) return
+        viewModelScope.launch {
+            lyricsRepository.getLyrics(title = next.title, artist = next.artist, durationMs = next.durationMs)
+                .onSuccess { result ->
+                    val data = withContext(Dispatchers.Default) { buildLyricsData(result) }
+                    synchronized(lyricsCache) { lyricsCache[key] = data }
+                }
+        }
     }
 
     fun togglePlayPause() {
@@ -585,11 +617,7 @@ class PlayerViewModel @Inject constructor(
         /** Сколько держать крестик ошибки/отмены перед возвратом иконки скачивания. */
         const val ERROR_ICON_DURATION_MS = 1_000L
 
-        /** Сообщение при сбое БД на лайке — показывается вместо краша. */
-        const val LIKE_FAILED_MESSAGE = "Не удалось обновить лайк: база данных недоступна"
-
-        /** Сообщение при сбое БД на дизлайке. */
-        const val DISLIKE_FAILED_MESSAGE = "Не удалось обновить дизлайк: база данных недоступна"
+        const val LYRICS_CACHE_SIZE = 20
     }
 }
 
@@ -600,10 +628,10 @@ data class PlayerUiState(
     val track: Track? = null,
     val positionMs: Long = 0L,
     val isResolving: Boolean = false,
-    val error: String? = null,
-    val lyrics: LyricsResult? = null,
+    val error: UiError? = null,
+    val lyricsData: LyricsData? = null,
     val isLyricsLoading: Boolean = false,
-    val lyricsError: String? = null,
+    val lyricsError: UiError? = null,
     val downloadError: String? = null,
     /** Идёт сборка первой пачки радио от трека. */
     val isRadioLoading: Boolean = false,

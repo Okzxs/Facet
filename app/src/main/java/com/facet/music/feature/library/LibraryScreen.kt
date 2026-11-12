@@ -83,6 +83,7 @@ import com.facet.music.core.import.ImportError
 import com.facet.music.core.spotify.SpotifyPlaylistSummary
 import com.facet.music.core.import.ImportedPlaylist
 import com.facet.music.core.ui.components.AddToPlaylistSheet
+import com.facet.music.core.ui.components.AppLoadingIndicator
 import com.facet.music.core.ui.components.CollectionChipCard
 import com.facet.music.core.ui.components.CollectionSummary
 import com.facet.music.core.ui.components.PlaylistCover
@@ -432,7 +433,7 @@ fun LibraryScreen(
                                 .padding(vertical = 16.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            AppLoadingIndicator(size = 28.dp)
                         }
                         spotifyPlaylists.isEmpty() -> Text(
                             text = stringResource(R.string.spotify_import_empty),

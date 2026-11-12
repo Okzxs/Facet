@@ -85,3 +85,7 @@ val SurfaceContainerHighestDark = Color(0xFF2A2A2A)
 val InverseSurfaceDark = Color(0xFFE8E8E8)
 val InverseOnSurfaceDark = Color(0xFF303030)
 val InversePrimaryDark = Color(0xFF0B57D0)
+
+// Семантические цвета статусов: зелёный не зависит от акцента и Dynamic Color.
+val StatusOnlineLight = Color(0xFF1E8E3E)
+val StatusOnlineDark = Color(0xFF81C995)
