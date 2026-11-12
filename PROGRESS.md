@@ -1,6 +1,18 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 12.11.2026 (сессия 69, фаза 9 — UI и жесты; запрет локального release)
+## Последнее обновление: 12.11.2026 (фиксы базового UX после фазы 9)
+
+## Фиксы базового UX (12.11.2026, коммит `7fa6162`)
+
+Live-тест фазы 9 дал 3 критических бага; причины найдены по коду, исправлены:
+
+- **Перемотка (слайдер).** (1) `controlIslandSwipeGuard` (`PlayerScreen.kt:521–525`, применён на 856) — `detectVerticalDragGestures` на родителе слайдера выигрывал гонку touch slop при диагональном пальце и гасил жест; удалён (root-жест уже пропускает остров по bounds). (2) Seek на паузе: `PlayerProgressSection` при `!isPlaying` делал один `emit()` из замороженного clock и выходил — после seek UI не обновлялся; теперь на паузе позиция читается напрямую (delay 250 мс, без кадров). (3) `seekTo(fraction)` молча терялся при `durationMs()==0` — фолбэк на длительность трека.
+- **Текст песни.** Автоскролл `animateScrollBy` → `animateScrollToItem(index, scrollOffset = -(полвьюпорта − полстроки))`; первое центрирование мгновенное; на смену трека сбрасываются `hasCentered`/`userPaused` и позиция списка (`LyricsForeground` не пересоздаётся в `AnimatedContent(isLyricsMode)`).
+- **«Назад».** Все пользовательские вызовы `playPrevious()` → `force = true` (остров, мини-плеер; hero-свайп уже был). «>3 с → в начало» осталось только в `MusicService.ForwardingPlayer.seekToPrevious` (наушники/транспорт).
+
+Проверка: 58 suite / 330 тестов, 0 failures; assembleDebug зелёный; APK подписан релизным ключом и установлен на телефон (lastUpdateTime 2026-11-12 15:03).
+
+---
 
 ## Сборка Release через CI/CD (12.11.2026)
 - **Локальная сборка Release запрещена** (8 ГБ ОЗУ: R8/minify вызвал OOM Killer и падение системы во время фазы 9). Правило внесено в `AGENTS.md` и `MEMORY.md`; локально разрешены только `assembleDebug`/`compileDebugKotlin`/`testDebugUnitTest`.
