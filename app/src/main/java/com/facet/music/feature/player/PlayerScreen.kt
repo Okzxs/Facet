@@ -28,7 +28,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -518,12 +517,6 @@ fun PlayerScreen(
         }
     }
 
-    // Остров управления гасит вертикальные драги: его кнопки и слайдер
-    // не должны запускать закрытие (страховка к проверке bounds выше).
-    val controlIslandSwipeGuard = Modifier.pointerInput(Unit) {
-        detectVerticalDragGestures { change, _ -> change.consume() }
-    }
-
     // Панели (карточка трека и остров управления) при морфе рисуются в оверлее
     // shared-перехода выше обложки. Оверлей не наследует сдвиг и прозрачность
     // свайпа — повторяем их, чтобы панели не прыгали при закрытии жестом.
@@ -835,7 +828,7 @@ fun PlayerScreen(
                         onAccentColor = onCoverAccent,
                         borderColor = Color.Transparent,
                         onPlayPause = { viewModel.togglePlayPause() },
-                        onPrev = { viewModel.playPrevious() },
+                        onPrev = { viewModel.playPrevious(force = true) },
                         onNext = { viewModel.playNext() },
                         onSpeedClick = { viewModel.cyclePlaybackSpeed() },
                         onQueueClick = { showQueueSheet = true },
@@ -852,12 +845,12 @@ fun PlayerScreen(
                             .then(panelModifier)
                             .padding(horizontal = 16.dp)
                             .onGloballyPositioned { controlIslandBounds.value = it.boundsInRoot() }
-                            .padding(top = 8.dp)
-                            .then(controlIslandSwipeGuard),
+                            .padding(top = 8.dp),
                     ) {
                         PlayerProgressSection(
                             isPlaying = playerState.isPlaying,
                             playbackClock = playbackClock,
+                            positionMs = { viewModel.currentPositionMs() },
                             trackId = track?.id,
                             durationMs = track?.durationMs ?: 0L,
                             primaryColor = coverAccent,

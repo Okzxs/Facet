@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -83,7 +82,6 @@ internal const val LYRIC_LEAD_MS = 200L
 internal const val LYRIC_BAR_SLOT_DP = 12
 internal const val LYRIC_IDLE_ALPHA = 0.35f
 internal const val LYRIC_USER_PAUSE_MS = 4_000L
-internal const val LYRIC_CENTER_SHARE = 0.35f
 
 @Immutable
 data class LyricsData(
@@ -182,6 +180,15 @@ internal fun LyricsListView(
     var recenterNonce by remember { mutableIntStateOf(0) }
     var hasCentered by remember { mutableStateOf(false) }
 
+    // Смена трека: список и центрирование не должны тянуться из прошлого трека.
+    LaunchedEffect(lyrics) {
+        hasCentered = false
+        userPaused = false
+        if (lyrics != null && !lyrics.isEmpty) {
+            listState.scrollToItem(0)
+        }
+    }
+
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
             .distinctUntilChanged()
@@ -199,31 +206,19 @@ internal fun LyricsListView(
 
     LaunchedEffect(currentIndex, userPaused, recenterNonce, viewportHeightPx) {
         if (currentIndex < 0 || viewportHeightPx <= 0 || userPaused) return@LaunchedEffect
-        val desiredTop = (viewportHeightPx * LYRIC_CENTER_SHARE).toInt()
+        // Активная строка — ровно по центру: offset «полвьюпорта минус полстроки».
+        // animateScrollToItem сам доводит до цели, накопительной ошибки нет.
         val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == currentIndex }
+        val scrollOffset = -(viewportHeightPx / 2 - (info?.size ?: barSlotPx) / 2)
         if (!hasCentered) {
-            listState.scrollToItem(index = currentIndex, scrollOffset = -(desiredTop - barSlotPx / 2))
+            listState.scrollToItem(index = currentIndex, scrollOffset = scrollOffset)
             hasCentered = true
-        } else if (info == null) {
+        } else {
             autoScrolling = true
             try {
-                listState.animateScrollToItem(index = currentIndex, scrollOffset = -(desiredTop - barSlotPx / 2))
+                listState.animateScrollToItem(index = currentIndex, scrollOffset = scrollOffset)
             } finally {
                 autoScrolling = false
-            }
-        } else {
-            val targetTop = desiredTop - info.size / 2 - barSlotPx / 2
-            val delta = info.offset - targetTop
-            if (abs(delta) > 2) {
-                autoScrolling = true
-                try {
-                    listState.animateScrollBy(
-                        value = -delta.toFloat(),
-                        animationSpec = Motion.effectsDefault(),
-                    )
-                } finally {
-                    autoScrolling = false
-                }
             }
         }
     }

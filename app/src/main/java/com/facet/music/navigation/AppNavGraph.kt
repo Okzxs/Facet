@@ -496,7 +496,7 @@ fun AppNavGraph() {
                             onExpandClick = onMiniPlayerExpand,
                             onPlayPauseClick = { playerViewModel.togglePlayPause() },
                             onNext = { playerViewModel.playNext() },
-                            onPrevious = { playerViewModel.playPrevious() },
+                            onPrevious = { playerViewModel.playPrevious(force = true) },
                             // lastTrack не трогаем: exit-анимация должна доиграть
                             // с обложкой, а не пустой плашкой.
                             onCloseClick = {

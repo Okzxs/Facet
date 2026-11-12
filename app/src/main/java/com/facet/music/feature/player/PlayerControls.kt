@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,7 @@ import com.facet.music.core.ui.theme.Motion
 internal fun PlayerProgressSection(
     isPlaying: Boolean,
     playbackClock: () -> Long,
+    positionMs: () -> Long,
     trackId: String? = null,
     durationMs: Long,
     primaryColor: Color,
@@ -53,11 +55,15 @@ internal fun PlayerProgressSection(
     val latestTrackId by rememberUpdatedState(trackId)
     val latestDuration by rememberUpdatedState(durationMs)
     val latestClock by rememberUpdatedState(playbackClock)
+    val latestRawPosition by rememberUpdatedState(positionMs)
+    val latestPlaying by rememberUpdatedState(isPlaying)
     val latestBuffer by rememberUpdatedState(bufferedFraction)
     val latestSeek by rememberUpdatedState(onSeek)
 
     fun emit() {
-        val position = latestClock()
+        // На паузе clock заморожен на момент ухода в паузу, а seek двигает
+        // плеер напрямую — читаем сырую позицию, иначе seek не виден в UI.
+        val position = if (latestPlaying) latestClock() else latestRawPosition()
         playbackPositionMs = position
         val duration = latestDuration
         playbackFraction = if (duration > 0) position.toFloat() / duration else 0f
@@ -66,8 +72,11 @@ internal fun PlayerProgressSection(
 
     LaunchedEffect(trackId, isPlaying) {
         if (!isPlaying) {
-            emit()
-            return@LaunchedEffect
+            // Пауза: позиция меняется только seek'ом — дешёвый опрос без кадров.
+            while (true) {
+                emit()
+                delay(PROGRESS_PAUSED_POLL_MS)
+            }
         }
         var lastEmit = 0L
         while (true) {
@@ -181,3 +190,6 @@ internal fun formatMs(ms: Long): String {
 }
 
 internal const val PROGRESS_EMIT_INTERVAL_MS = 100L
+
+/** Опрос позиции на паузе: позиция меняется только seek'ом, кадры не нужны. */
+internal const val PROGRESS_PAUSED_POLL_MS = 250L

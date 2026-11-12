@@ -570,7 +570,12 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun seekTo(fraction: Float) {
-        val duration = playerController.durationMs()
+        // ExoPlayer может ещё не отдать duration (HLS готовится): тогда молча
+        // теряли seek и слайдер «отпружинивал» назад. Фолбэк — длительность трека.
+        val duration = playerController.durationMs().takeIf { it > 0 }
+            ?: playerState.value.currentTrack?.durationMs?.takeIf { it > 0 }
+            ?: playerState.value.queue.getOrNull(playerState.value.currentIndex)?.durationMs
+            ?: 0L
         if (duration > 0) {
             playerController.seekTo((fraction * duration).toLong())
         }
