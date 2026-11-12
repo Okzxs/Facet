@@ -31,10 +31,14 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "KEYSTORE_BASE64 is not set; building unsigned release"
+            echo "::warning::KEYSTORE_BASE64 secret is not set; Gradle will build app-release-unsigned.apk"
             exit 0
           fi
-          echo "$KEYSTORE_BASE64" | base64 --decode > keystore.jks
+          if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::KEYSTORE_BASE64 is set, but KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD secret is missing"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > keystore.jks
           cat > keystore.properties <<EOF
           storeFile=keystore.jks
           storePassword=$KEYSTORE_PASSWORD
@@ -43,11 +47,13 @@ jobs:
           EOF
 
       - name: Build release APK
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: facet-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
