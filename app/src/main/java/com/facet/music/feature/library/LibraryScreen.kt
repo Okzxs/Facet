@@ -97,14 +97,6 @@ import com.facet.music.data.model.toTrack
 import com.facet.music.navigation.LocalBottomDockHeight
 import kotlinx.coroutines.launch
 
-/**
- * Медиатека — единый экран коллекции без вкладок.
- *
- * Сверху крупный чипс «Любимые треки» (открывает отдельный экран), ниже
- * секция «Плейлисты» с сеткой сохранённых плейлистов и секция «Скачанное».
- * Раньше это были три сегмента одной вкладки, и содержимое каждого
- * начиналось с собственного заголовка — теперь один заголовок и общий ритм.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
@@ -141,24 +133,17 @@ fun LibraryScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var pendingDelete by remember { mutableStateOf<Track?>(null) }
-    // Трек, для которого открыта шторка «Добавить в плейлист».
     var playlistTrack by remember { mutableStateOf<Track?>(null) }
-    // Диалог ввода ссылки для импорта и сам текст ссылки.
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
     var importLink by rememberSaveable { mutableStateOf("") }
-    // Диалог создания плейлиста прямо из медиатеки.
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
     var newPlaylistName by rememberSaveable { mutableStateOf("") }
 
-    // Импорт уже был (или контент уже есть) — FAB больше не показываем.
-    // Вход остаётся в заголовке «Плейлисты» → «Импорт».
     val showImportFab = !appSettings.importCompleted &&
         playlists.isEmpty() &&
         likedTracks.isEmpty()
-    // Без входа в Spotify и после успешного импорта блок с подсказкой скрыт.
     val showSpotifyImport = spotifyConnected && !appSettings.spotifyLikesImported
 
-    // Очередь живёт в плеере: подтверждение действий — Snackbar.
     val handlePlayNext: (Track) -> Unit = { track ->
         if (onPlayNext(track)) {
             scope.launch {
@@ -222,8 +207,6 @@ fun LibraryScreen(
         viewModel.consumePlaylistError()
     }
 
-    // Причина ошибки импорта → локализованный текст. Строку считаем в
-    // композиции: stringResource нельзя вызывать из корутины Snackbar.
     val importErrorMessage = importError?.let { error -> stringResource(importErrorRes(error)) }
     LaunchedEffect(importErrorMessage) {
         val message = importErrorMessage ?: return@LaunchedEffect
@@ -250,12 +233,9 @@ fun LibraryScreen(
         viewModel.consumeSpotifyError()
     }
 
-    // Большая шапка сворачивается при прокрутке: заголовок остаётся в одну строку,
-    // а над сеткой плейлистов появляется больше места.
     val topBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
-        // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -265,8 +245,6 @@ fun LibraryScreen(
         topBar = {
             LargeTopAppBar(
                 title = {
-                    // Стиль не задаём: LargeTopAppBar сам переводит заголовок
-                    // из крупного в компактный при сворачивании.
                     Text(text = stringResource(R.string.library_title))
                 },
                 scrollBehavior = topBarScrollBehavior,
@@ -297,8 +275,6 @@ fun LibraryScreen(
                         )
                     },
                     text = { Text(stringResource(R.string.import_entry)) },
-                    // Док — оверлей: поднимаем FAB над ним, иначе кнопка под ним.
-                    // Небольшой запас по краю не даёт кнопке липнуть к островку.
                     modifier = Modifier.padding(
                         end = 4.dp,
                         bottom = LocalBottomDockHeight.current + 12.dp,
@@ -311,7 +287,6 @@ fun LibraryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            // Запас снизу: последний элемент не должен прятаться под FAB.
             contentPadding = PaddingValues(
                 bottom = (if (showImportFab) 96.dp else 24.dp) +
                     LocalBottomDockHeight.current,
@@ -329,7 +304,6 @@ fun LibraryScreen(
                 )
             }
 
-            // ─── Любимые треки: большой чипс на всю ширину ────────────────
             item(key = "library_favorites") {
                 CollectionChipCard(
                     title = stringResource(R.string.library_favorites),
@@ -340,9 +314,6 @@ fun LibraryScreen(
                 )
             }
 
-            // ─── Импорт любимых Spotify ──────────────────────────────────
-            // Без входа или после импорта блок не показываем: подсказка
-            // «Требуется вход в Spotify» больше не висит мёртвым грузом.
             if (showSpotifyImport) {
                 item(key = "library_import_likes") {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -369,7 +340,6 @@ fun LibraryScreen(
                 }
             }
 
-            // ─── Плейлисты ───────────────────────────────────────────────
             item(key = "library_playlists_header") {
                 SectionHeader(
                     title = stringResource(R.string.library_tab_playlists),
@@ -407,7 +377,6 @@ fun LibraryScreen(
                                     modifier = Modifier.weight(1f),
                                 )
                             }
-                            // Нечётное число плиток: пустая колонка держит ширину.
                             if (row.size < PLAYLIST_GRID_COLUMNS) {
                                 Spacer(Modifier.weight(1f))
                             }
@@ -416,7 +385,6 @@ fun LibraryScreen(
                 }
             }
 
-            // ─── Плейлисты Spotify (только после входа) ──────────────────
             if (spotifyConnected) {
                 item(key = "library_spotify_header") {
                     SectionHeader(
@@ -459,7 +427,6 @@ fun LibraryScreen(
                 }
             }
 
-            // ─── Скачанное ───────────────────────────────────────────────
             item(key = "library_downloaded_header") {
                 SectionHeader(title = stringResource(R.string.library_tab_downloaded))
             }
@@ -497,7 +464,6 @@ fun LibraryScreen(
             }
         }
 
-        // Подтверждение удаления скачанного файла с устройства.
         pendingDelete?.let { track ->
             DeleteDownloadDialog(
                 title = track.title,
@@ -510,7 +476,6 @@ fun LibraryScreen(
         }
     }
 
-    // ─── Импорт плейлиста по ссылке ───────────────────────────────────────
     if (showImportDialog) {
         ImportLinkDialog(
             link = importLink,
@@ -550,8 +515,6 @@ fun LibraryScreen(
         )
     }
 
-    // Шторка живёт вне Scaffold: ModalBottomSheet рисуется в отдельном окне,
-    // а Snackbar «Добавлено в …» показывает сама медиатека.
     playlistTrack?.let { track ->
         AddToPlaylistSheet(
             track = track,
@@ -569,7 +532,6 @@ fun LibraryScreen(
     }
 }
 
-/** Подпись чипса «Любимые треки»: количество и суммарная длительность. */
 @Composable
 private fun likedTracksSubtitle(tracks: List<Track>): String {
     val count = pluralStringResource(R.plurals.track_count, tracks.size, tracks.size)
@@ -577,7 +539,6 @@ private fun likedTracksSubtitle(tracks: List<Track>): String {
     return if (totalMs > 0L) "$count · ${formatTotalDuration(totalMs)}" else count
 }
 
-/** Суммарная длительность коллекции: «1 ч 5 мин» или «42 мин». */
 @Composable
 private fun formatTotalDuration(ms: Long): String {
     val totalMinutes = ms / 60_000L
@@ -590,7 +551,6 @@ private fun formatTotalDuration(ms: Long): String {
     }
 }
 
-/** Пустая секция «Плейлисты»: создание и импорт прямо из медиатеки. */
 @Composable
 private fun PlaylistsEmptyCard(
     onCreate: () -> Unit,
@@ -636,7 +596,6 @@ private fun PlaylistsEmptyCard(
     }
 }
 
-/** Пустая секция «Скачанное»: объясняем, как сохранить музыку офлайн. */
 @Composable
 private fun DownloadsEmptyCard(onOpenSearch: () -> Unit) {
     Surface(
@@ -680,7 +639,6 @@ private fun DownloadsEmptyCard(onOpenSearch: () -> Unit) {
     }
 }
 
-/** Плитка плейлиста Spotify: обложка, название и счётчик треков. */
 @Composable
 private fun SpotifyPlaylistTile(
     playlist: SpotifyPlaylistSummary,
@@ -718,7 +676,6 @@ private fun SpotifyPlaylistTile(
     }
 }
 
-/** Диалог удаления скачанного трека с устройства. */
 @Composable
 private fun DeleteDownloadDialog(
     title: String,
@@ -738,7 +695,6 @@ private fun DeleteDownloadDialog(
     )
 }
 
-/** Диалог создания плейлиста из медиатеки. */
 @Composable
 private fun CreatePlaylistDialog(
     name: String,
@@ -772,7 +728,6 @@ private fun CreatePlaylistDialog(
     )
 }
 
-/** Диалог ввода ссылки на плейлист. */
 @Composable
 private fun ImportLinkDialog(
     link: String,
@@ -811,7 +766,6 @@ private fun ImportLinkDialog(
     )
 }
 
-/** Прогресс загрузки и сохранения: диалог без кнопок и вне закрытия тапом. */
 @Composable
 private fun ImportProgressDialog(text: String) {
     AlertDialog(
@@ -824,7 +778,6 @@ private fun ImportProgressDialog(text: String) {
     )
 }
 
-/** Превью импорта: название, счётчик и первые 10 треков. */
 @Composable
 private fun ImportPreviewDialog(
     playlist: ImportedPlaylist,
@@ -875,7 +828,6 @@ private fun ImportPreviewDialog(
     )
 }
 
-/** Код ошибки импорта → строковый ресурс: локализацию выбирает UI. */
 private fun importErrorRes(error: ImportError): Int = when (error) {
     ImportError.EMPTY_LINK -> R.string.import_error_empty
     ImportError.UNSUPPORTED_LINK -> R.string.import_error_unsupported
@@ -887,8 +839,6 @@ private fun importErrorRes(error: ImportError): Int = when (error) {
     ImportError.SAVE_FAILED -> R.string.import_error_save
 }
 
-/** Сколько треков показываем в превью до подтверждения импорта. */
 private const val PREVIEW_TRACK_COUNT = 10
 
-/** Сколько плиток плейлистов в строке сетки медиатеки. */
 private const val PLAYLIST_GRID_COLUMNS = 2

@@ -19,11 +19,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
 
-/**
- * Related-выдача от треков-семян: SoundCloud getRelated и YouTube related.
- * Запросы к семенам идут параллельно, поэтому источник укладывается в общий
- * таймаут; из выдачи берём случайный сдвиг, а не только первые позиции.
- */
 @Singleton
 class RelatedTracksSource @Inject constructor(
     private val soundCloudRepository: SoundCloudRepository,

@@ -12,6 +12,7 @@ import com.facet.music.data.repository.RecentlyShownRepository
 import com.facet.music.data.repository.SoundCloudChartsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
+import com.facet.music.data.source.external.DeezerMetadataClient
 import com.facet.music.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -72,8 +73,6 @@ class HomeViewModelRecommendationsTest {
             recentlyShownIds = firstArg<Collection<String>>().toSet()
         }
         coEvery { dislikedTrackDao.getAll() } returns emptyList()
-        // Холодный старт идёт через чарты; в тестах чарт пуст, поэтому
-        // срабатывает YouTube-фолбэк, как и раньше.
         every { downloadRepository.observeDownloadedIds() } returns flowOf(emptySet())
     }
 
@@ -467,7 +466,10 @@ class HomeViewModelRecommendationsTest {
             recentlyShownRepository = recentlyShownRepository,
             dislikedTrackDao = dislikedTrackDao,
             recommendationPlanner = recommendationPlanner,
-            deezerMetadataClient = mockk(relaxed = true),
+            deezerMetadataClient = mockk<DeezerMetadataClient>(relaxed = true).also {
+                coEvery { it.fetchNewReleases(any()) } returns Result.success(emptyList())
+                coEvery { it.fetchAlbumTracks(any()) } returns Result.success(emptyList())
+            },
         )
 
     private fun track(

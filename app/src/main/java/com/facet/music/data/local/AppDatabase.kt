@@ -36,9 +36,6 @@ import com.facet.music.data.local.entity.UserPreferenceEntity
 import com.facet.music.data.local.entity.WaveImpressionEntity
 import com.facet.music.data.local.entity.WaveSessionEntity
 
-/**
- * Локальная база данных Room приложения Facet.
- */
 @Database(
     entities = [
         LikedTrackEntity::class,

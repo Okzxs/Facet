@@ -8,9 +8,6 @@ import androidx.room.Transaction
 import com.facet.music.data.local.entity.ChartCacheEntity
 import kotlinx.coroutines.flow.Flow
 
-/**
- * DAO для работы с локальным кэшем чартов SoundCloud.
- */
 @Dao
 interface ChartCacheDao {
 

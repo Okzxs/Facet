@@ -8,10 +8,6 @@ import com.facet.music.data.model.Track
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Результат выбора источника: качать нужно [streamUrl], но в библиотеке
- * трек остаётся с исходными метаданными и исходным [Track.id].
- */
 data class ResolvedDownload(
     val track: Track,
     val source: Source,
@@ -19,17 +15,11 @@ data class ResolvedDownload(
     val mimeType: String?,
 )
 
-/** Ни один progressive-источник не смог отдать файл. */
 class DownloadSourceUnavailableException(
     message: String = DownloadMessages.SOURCE_NOT_FOUND,
     cause: Throwable? = null,
 ) : IllegalStateException(message, cause)
 
-/**
- * Скачивание идёт через тот же [PlaybackResolver], что и плеер, но требует
- * progressive-поток: HLS нельзя собрать в один файл. Никакого отдельного
- * поиска по источникам больше нет — матчи и кэш общие.
- */
 @Singleton
 class DownloadSourceResolver @Inject constructor(
     private val playbackResolver: PlaybackResolver,

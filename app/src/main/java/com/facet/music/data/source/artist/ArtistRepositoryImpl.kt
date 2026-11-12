@@ -43,16 +43,6 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * NewPipe-реализация экрана артиста.
- *
- * YouTube: треки — из `videos`, релизы — из `albums`, подборки — из
- * `playlists`; у Topic-канала вкладок нет, поэтому релизы и треки добираются
- * поиском YouTube Music (`music_albums`/`music_songs`).
- * SoundCloud: `tracks`, `albums`, `playlists`; популярное сортируется по
- * прослушиваниям. Если у артиста есть профиль во втором источнике, популярные
- * треки объединяются через [TrackMerger] и сортируются по числу прослушиваний.
- */
 @Singleton
 class ArtistRepositoryImpl @Inject constructor(
     private val newPipeDownloader: NewPipeDownloader,
@@ -119,7 +109,6 @@ class ArtistRepositoryImpl @Inject constructor(
             }
             runCatching { json.decodeFromString<ArtistPage>(entity.json) }
                 .getOrNull()
-                // Токен страницы живёт только в памяти процесса.
                 ?.copy(nextPage = null)
         }
 
@@ -310,8 +299,6 @@ class ArtistRepositoryImpl @Inject constructor(
         val isTopic = info.name.endsWith(TOPIC_SUFFIX, ignoreCase = true)
         val displayName = info.name.removeSuffix(TOPIC_SUFFIX).trim().ifBlank { info.name }
 
-        // У YouTube Music Topic-канала вкладок нет: табы и статистика живут
-        // у парного обычного канала (parentChannelUrl).
         val parentInfo = if (source == Source.YOUTUBE && isTopic) {
             info.parentChannelUrl?.takeIf { it.isNotBlank() }?.let { parentUrl ->
                 runCatching {
@@ -495,8 +482,6 @@ class ArtistRepositoryImpl @Inject constructor(
             handler.contentFilters.any { it.equals(tab, ignoreCase = true) }
         }?.let { return it }
 
-        // ChannelInfo.tabs у части каналов пуст (например, у YouTube Music
-        // Topic). Собираем ссылку вкладки напрямую из URL канала.
         val path = tabPath(bundle.source, tab)
         if (path != null) {
             val base = bundle.profile.url.substringBefore('?').trimEnd('/')
@@ -504,8 +489,6 @@ class ArtistRepositoryImpl @Inject constructor(
             val parsed = runCatching {
                 bundle.service.channelTabLHFactory.fromUrl(directUrl)
             }.getOrNull()
-            // ChannelTabExtractor.getName() берёт contentFilters[0]; без явной
-            // вкладки fromUrl() отдаёт пустой список и экстрактор падает.
             return ListLinkHandler(
                 parsed?.url ?: directUrl,
                 bundle.profile.url.ifBlank { bundle.info.id.ifBlank { parsed?.id ?: directUrl } },

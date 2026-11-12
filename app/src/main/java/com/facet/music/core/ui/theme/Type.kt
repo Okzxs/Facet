@@ -10,11 +10,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.facet.music.R
 
-/**
- * Google Sans Flex (variable, OFL) — единый шрифт приложения.
- * Каждый вес — одна и та же variable-тушка с настройкой оси wght (API 26+).
- * Вес 800 (ExtraBold) намеренно не объявлен: иерархия строится на шкале M3.
- */
 @OptIn(ExperimentalTextApi::class)
 private fun googleSansFlex(weight: Int) = Font(
     resId = R.font.google_sans_flex,
@@ -29,12 +24,6 @@ val GoogleSansFlex = FontFamily(
     googleSansFlex(700),
 )
 
-/**
- * Каноничная шкала Material 3: размеры, интерлиньяж и трекинг — из гайдлайнов.
- * Вес: display — Regular, headline — Medium, title — Medium, body — Regular, label — Medium.
- * SemiBold/Bold — только акцентные состояния в экранах.
- * Ручные `fontWeight` в обычных подписях не нужны.
- */
 val AppTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = GoogleSansFlex,

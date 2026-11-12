@@ -19,15 +19,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * Состояние шторки «Добавить в плейлист»: список плейлистов и две операции —
- * добавить в существующий и создать новый сразу с треком.
- *
- * Успех отдаётся одноразовым событием [added] с названием плейлиста: Snackbar
- * показывает вызывающий экран, у него уже есть свой `SnackbarHostState`.
- * Текст ошибки не хранится строкой — UI берёт локализованный ресурс по флагу
- * [failed], иначе в английской локали всплывал бы русский текст.
- */
 @HiltViewModel
 class AddToPlaylistViewModel @Inject constructor(
     private val repository: PlaylistRepository,
@@ -46,7 +37,6 @@ class AddToPlaylistViewModel @Inject constructor(
     private val _failed = MutableStateFlow(false)
     val failed: StateFlow<Boolean> = _failed.asStateFlow()
 
-    /** Добавляет трек в существующий плейлист. */
     fun addTrack(track: Track, playlist: Playlist) {
         viewModelScope.launch {
             runCatching { repository.addTrack(playlist.id, track) }
@@ -62,10 +52,6 @@ class AddToPlaylistViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Создаёт плейлист и сразу кладёт в него трек: пользователь открыл шторку
-     * ради этого трека, оставлять плейлист пустым было бы сюрпризом.
-     */
     fun createAndAdd(track: Track, name: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return

@@ -14,11 +14,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.facet.music.navigation.BottomNavItem
 
-/**
- * Нижняя навигация — стандартный Material 3 NavigationBar:
- * индикатор-капсула, иконки 24dp, подписи labelMedium.
- * Никаких кастомных форм и плавающих пилюль.
- */
 @Composable
 fun ExpressiveBottomDock(
     items: List<BottomNavItem>,
@@ -35,9 +30,6 @@ fun ExpressiveBottomDock(
             val selected = item.screen.route == selectedRoute
             NavigationBarItem(
                 selected = selected,
-                // Выбранная вкладка тоже нажимается: на детальном экране
-                // (импорт) она подсвечена как «Библиотека», и тап должен
-                // вернуть на неё, а не молчать из-за selected.
                 onClick = { onSelect(item) },
                 icon = {
                     Icon(

@@ -122,7 +122,6 @@ fun WaveScreen(
     viewModel: WaveViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    // Инсеты ставим сами: корневого Scaffold больше нет. Низ — запас под плавающий док.
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottomInset = LocalBottomDockHeight.current
     val haptic = LocalHapticFeedback.current
@@ -132,7 +131,6 @@ fun WaveScreen(
 
     AnimatedVisibility(
         visible = visible,
-        // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),

@@ -3,11 +3,18 @@
 ## Активные проекты
 | Проект  | Статус   | Последняя сессия | Следующее действие |
 |---------|----------|------------------|--------------------|
-| Facet | активен  | Сессия 69, фаза 9 (12.11.2026): Material 3 Expressive, жесты, текст песни; 58 suite / 330 тестов | Live-прогон фазы 9 на устройстве (текст, свайп обложки, predictive back, морф Play) |
+| Facet | релиз 1.1.0 | Сессия 69, фазы 10–11 и релиз 1.1.0 (12.11.2026): 65 suite / 389 тестов, код очищен от комментариев, `versionCode = 6` | Проверить CI-сборку по тегу `v1.1.0` и прогнать релизный чек-лист на Samsung A26 и A55 (One UI 7) |
 
 ## Жёсткие правила среды (не нарушать)
 - **Локальная сборка Release запрещена из-за нехватки ОЗУ. Release собирается только через CI/CD.** R8/minify локально вызывал OOM Killer (сессия умирала, см. 12.11.2026). Разрешены локально: `assembleDebug`, `compileDebugKotlin`, `testDebugUnitTest`. Release: пуш тега `v*` → артефакт из GitHub Actions (`.github/workflows/android_release.yml`).
 - Установка APK на телефон: adb по WiFi (`adb connect <ip>:<порт>`; был `192.168.1.102:36861`).
+
+### Финал 1.1.0 и фазы 10–11 (12.11.2026)
+- **Версия:** `versionCode = 6`, `versionName = "1.1.0"`, тег `v1.1.0` запускает CI release-сборку. Зависимости production без изменений; в `testImplementation` добавлен `com.squareup.okhttp3:mockwebserver:4.12.0`.
+- **UX-фиксы (`7fa6162`, `796ae4f`):** удалён `controlIslandSwipeGuard`, исправлен seek на паузе (`delay 250 мс`) и при `durationMs() == 0`; автоскролл текста переведён на `animateScrollToItem` с центрированием и сбросом при смене трека; вертикальный свайп обложки для Next/Previous с правилом `15 с → в начало` при свайпе назад; пользовательские кнопки Previous переведены на `force = true`.
+- **Фаза 10 (тесты и фиксы):** расширены JVM-тесты до **65 suite / 389 тестов (0 failures, 1 pre-existing skipped)**; добавлены `SoundCloudApiTest` (`MockWebServer`), `RetryInterceptorTest`, `PlaybackLoadErrorPolicyTest`, `PlaybackSessionCoordinatorTest`, `PlayerLyricsTest`, `StringResourcesParityTest`, расширены тесты резолвера, матчера, поиска, очереди, вкусов и волны. Попутно исправлены баги в `PlayerController.playNext(track)` (перемещение существующего элемента без дубля) и `PlaybackResolver` (сохранение `ResolveError.Network` при промахе внешнего матча).
+- **Фаза 11 (код без комментариев):** токенизатором удалены все строчные/блочные/KDoc комментарии в 254 из 302 файлов Kotlin и Gradle (`AppConfig` директивы `@Suppress`/`@file:` не затронуты), архитектурные инварианты перенесены в `AGENTS.md`.
+- **Итоги 1.1.0 по архитектуре:** Room v14→v19 (`resolved_matches`, `artist_cache`, `followed_artists`, `artistUrl`, `wave_impressions`, `wave_sessions`, `artist_blocklist`, `play_history.playedFraction`), удалён Apple, Deezer сведён к метаданным (новинки/альбомы/импорт), новый `ArtistScreen` на YouTube/SoundCloud, настроения/обратная связь волны (`WaveEngine` + 6 `CandidateSource`) и `PlaybackSessionCoordinator` + Samsung Now Bar.
 
 ### Сессия 69, фаза 9: Material 3 Expressive, жесты, текст песни (12.11.2026)
 - Зависимости: material3 `1.4.0-alpha07`, Media3 `1.9.4`, material-kolor `2.0.2` (compileSdk 35 / AGP 8.5.2 / Kotlin 2.0.21 не менялись).
@@ -397,7 +404,7 @@
 - Сборка: перед Gradle выставлять `JAVA_HOME` на JDK 17 (`C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`); системный `JAVA_HOME` указывает на Java 11
 - Тесты: JVM (JUnit 4 + Robolectric + MockK), запуск `.\gradlew test`, без эмулятора и androidTest
 - Версии: запрет на повышение AGP выше 8.5.2 и изменение версий библиотек
-- Язык: комментарии в коде, служебные файлы (MEMORY.md, PROGRESS.md) и документация — строго на русском языке
+- Язык: комментарии в коде не пишутся (правило `AGENTS.md`), служебные файлы (MEMORY.md, PROGRESS.md) и документация — строго на русском языке
 
 ## Последние сессии
 - Сессия 43 (28.10): обложка плеера начала сжиматься и уезжать вниз-влево прямо во время свайпа — `coverSwipeModifier` от `swipeProgress = playerOffsetPx / screenHeightPx`, scale до 0.25, сдвиг на 35% ширины и +40% высоты (без `dragOffsetPx`, потому что корень уже едет). При отмене жеста пружина возвращает обложку, при закрытии прогресс сбрасывается и морф забирает `sharedElement`. Добавлен `Modifier.motionBlur` на `RenderEffect` (Android 12+): свайп до 15px, enter/exit через `Transition<EnterExitState>.animateFloat`, при нуле `renderEffect = null`. 156 JVM-тестов, 0 failures; APK 27 835 081 байт. Живой тест не выполнялся; следующий шаг — проверка свайпа и блюра на устройстве.

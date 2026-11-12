@@ -4,15 +4,6 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 
-/**
- * Трек внутри плейлиста.
- *
- * Поля трека денормализованы: плейлист открывается без сети и без повторного
- * поиска в источнике. [playlistId] — внешний ключ с каскадным удалением:
- * удаление плейлиста само вычищает его строки, отдельный запрос не нужен.
- * Пара `(playlistId, trackId)` уникальна — один и тот же трек нельзя добавить
- * в плейлист дважды.
- */
 @Entity(
     tableName = "playlist_tracks",
     primaryKeys = ["playlistId", "trackId"],

@@ -9,10 +9,6 @@ import kotlinx.coroutines.test.setMain
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
 
-/**
- * Подменяет Dispatchers.Main на тестовый диспетчер.
- * Нужен для viewModelScope и внутренних scope PlayerController на JVM.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainDispatcherRule(
     private val testDispatcher: TestDispatcher = UnconfinedTestDispatcher(),

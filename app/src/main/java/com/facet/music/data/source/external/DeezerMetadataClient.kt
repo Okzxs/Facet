@@ -22,7 +22,6 @@ import okhttp3.Request
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Свежий релиз Deezer для блока «Недавние релизы» на главной. */
 data class DeezerRelease(
     val id: Long,
     val title: String,
@@ -30,18 +29,6 @@ data class DeezerRelease(
     val coverUrl: String?,
 )
 
-/**
- * Deezer как справочник метаданных: новые релизы и треки альбома.
- *
- * Собственного аудиопотока у Deezer нет: публичный API отдаёт только
- * 30-секундные превью, а полный трек требует ARL-cookie. Поэтому клиент
- * никогда не возвращает `streamUrl`; плеер находит полную версию через
- * [com.facet.music.core.source.PlaybackResolver].
- *
- * Экран артиста больше не использует Deezer: он живёт на YouTube/SoundCloud.
- *
- * Сеть вызывается не чаще раза в секунду ([RateLimiter]).
- */
 @Singleton
 class DeezerMetadataClient @Inject constructor(
     @ApiClient private val client: OkHttpClient,
@@ -49,10 +36,6 @@ class DeezerMetadataClient @Inject constructor(
     @SourceRateLimiter(RateLimiterKeys.DEEZER) private val rateLimiter: RateLimiter,
 ) {
 
-    /**
-     * Новинки лейблов: `/editorial/0/releases` отдаёт альбомы, поэтому карточка
-     * хранит id альбома, а треки подгружаются при нажатии.
-     */
     suspend fun fetchNewReleases(limit: Int = 10): Result<List<DeezerRelease>> = runCatching {
         val body = rateLimiter.acquire {
             requestBody("$BASE_URL/editorial/0/releases?limit=${limit.coerceIn(1, MAX_LIMIT)}")
@@ -71,10 +54,6 @@ class DeezerMetadataClient @Inject constructor(
             .orEmpty()
     }
 
-    /**
-     * Треки альбома одним запросом: `/album/{id}` уже содержит `tracks.data`.
-     * Нужно для блока новинок на главной.
-     */
     suspend fun fetchAlbumTracks(albumId: Long): Result<List<Track>> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -105,7 +84,6 @@ class DeezerMetadataClient @Inject constructor(
             title = title,
             artist = artist.ifBlank { UNKNOWN_ARTIST },
             artworkUrl = artwork,
-            // Deezer — только метаданные: превью не воспроизводится.
             streamUrl = null,
             durationMs = durationSec * 1000L,
             genre = null,

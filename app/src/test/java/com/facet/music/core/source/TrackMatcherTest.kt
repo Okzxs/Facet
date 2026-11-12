@@ -167,4 +167,73 @@ class TrackMatcherTest {
         val original = track("spotify:1", "Nightcall", "Kavinsky", source = Source.SPOTIFY)
         assertNull(matcher.best(original, emptyList()))
     }
+
+    @Test
+    fun `rejects remix when original is not a remix`() {
+        val original = track("spotify:7", "Nightcall", "Kavinsky", 258_000L, source = Source.SPOTIFY)
+        val remix = track(
+            id = "yt-remix",
+            title = "Kavinsky - Nightcall (Club Remix)",
+            artist = "Kavinsky",
+            durationMs = 258_000L,
+            source = Source.YOUTUBE,
+        )
+
+        assertNull(matcher.best(original, listOf(remix)))
+    }
+
+    @Test
+    fun `allows remix when original is also a remix`() {
+        val original = track(
+            "spotify:8",
+            "Nightcall (Breakbot Remix)",
+            "Kavinsky",
+            258_000L,
+            source = Source.SPOTIFY,
+        )
+        val remix = track(
+            id = "yt-remix-match",
+            title = "Kavinsky - Nightcall (Breakbot Remix)",
+            artist = "Kavinsky",
+            durationMs = 258_000L,
+            source = Source.YOUTUBE,
+        )
+
+        assertEquals(remix, matcher.best(original, listOf(remix))?.track)
+    }
+
+    @Test
+    fun `normalization handles case punctuation and brackets`() {
+        val original = track("spotify:9", "Midnight City", "M83", 243_000L, source = Source.SPOTIFY)
+        val candidate = track(
+            id = "yt-norm",
+            title = "m83 — MIDNIGHT, CITY! [Official Audio]",
+            artist = "M83 (Topic)",
+            durationMs = 243_500L,
+            source = Source.YOUTUBE,
+        )
+
+        assertTrue(matcher.match(original, candidate) != null)
+    }
+
+    @Test
+    fun `rejects candidate outside duration bounds and allows unknown duration`() {
+        val original = track("spotify:10", "Track", "Artist", 180_000L, source = Source.SPOTIFY)
+        val tooShort = track("yt-short", "Artist - Track", "Artist", 30_000L, source = Source.YOUTUBE)
+        val tooLong = track("yt-long", "Artist - Track", "Artist", 950_000L, source = Source.YOUTUBE)
+        val unknownDuration = track("yt-zero", "Artist - Track", "Artist", 0L, source = Source.YOUTUBE)
+
+        assertNull(matcher.match(original, tooShort))
+        assertNull(matcher.match(original, tooLong))
+        assertTrue(matcher.match(original, unknownDuration) != null)
+    }
+
+    @Test
+    fun `closer duration yields higher score than five second drift`() {
+        val original = track("spotify:11", "Track", "Artist", 200_000L, source = Source.SPOTIFY)
+        val close = track("yt-close", "Artist - Track", "Artist", 201_000L, source = Source.YOUTUBE)
+        val drifted = track("yt-drift", "Artist - Track", "Artist", 205_000L, source = Source.YOUTUBE)
+
+        assertTrue(matcher.score(original, close) > matcher.score(original, drifted))
+    }
 }

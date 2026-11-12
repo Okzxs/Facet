@@ -105,21 +105,12 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/**
- * Находит Activity в цепочке ContextWrapper: `LocalContext` может быть
- * обёрнут темой или конфигурацией локали, и прямой cast тогда не сработает.
- */
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
 }
 
-/**
- * Экран настроек — плоский список: заголовки секций, строки и тонкие
- * разделители с отступом. Карточки убраны: на длинном экране они дробили
- * ритм и отнимали ширину у текста.
- */
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
@@ -143,8 +134,6 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Ссылка согласия открывается в браузере: WebView внутри приложения
-    // Spotify не любит, а системный браузер уже авторизован у пользователя.
     LaunchedEffect(spotifyAuthUrl) {
         val url = spotifyAuthUrl ?: return@LaunchedEffect
         runCatching {
@@ -163,8 +152,6 @@ fun SettingsScreen(
         viewModel.consumeSpotifyAuthError()
     }
 
-    // Смена языка уже пересоздаёт Activity через MainActivity, но если по какой-то
-    // причине этого не случилось — пользователь может перезапустить экран вручную.
     val languageChangedMessage = stringResource(R.string.settings_language_changed)
     val restartLabel = stringResource(R.string.settings_language_restart)
     val onLanguageSelect: (String) -> Unit = { language ->
@@ -181,7 +168,6 @@ fun SettingsScreen(
         }
     }
 
-    // Статус мог измениться в системных настройках — перечитываем при возврате
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -196,14 +182,12 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
                 .background(MaterialTheme.colorScheme.background)
                 .verticalScroll(rememberScrollState())
                 .systemBarsPadding(),
         ) {
             SettingsHeader(onBack = onBack)
 
-            // ─── Оформление ─────────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_appearance)
 
             Column(
@@ -268,17 +252,12 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setAccentEnabled,
             )
 
-            // Палитра: точки живут прямо на фоне, без плашки-карточки.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .alpha(if (settings.accentEnabled) 1f else 0.38f)
                     .padding(top = 12.dp, bottom = 8.dp),
             ) {
-                // Готовые кружки и «Свой цвет» пишут в одно поле customAccentColor:
-                // оно имеет высший приоритет в теме и работает поверх Dynamic Color.
-                // Список скроллится горизонтально: на узких экранах кружки сохраняют
-                // размер вместо сплющивания, а крайние Spacer держат отступ от границ.
                 val customArgb = settings.customAccentColor
                 val isPresetSelected = AccentOptions.any { it.color.toArgb() == customArgb }
                 val recents = settings.recentAccentColors
@@ -330,7 +309,6 @@ fun SettingsScreen(
                 }
             }
 
-            // ─── Язык ───────────────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_language_section)
 
             Column(
@@ -350,7 +328,6 @@ fun SettingsScreen(
                 )
             }
 
-            // ─── Интеграции ────────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_integrations)
             SpotifyIntegrationCard(
                 settings = settings,
@@ -361,7 +338,6 @@ fun SettingsScreen(
                 onOpenGuide = { showSpotifyGuide = true },
             )
 
-            // ─── Разрешения ────────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_permissions)
 
             Row(
@@ -436,7 +412,6 @@ fun SettingsScreen(
                 }
             }
 
-            // ─── Работа в фоне ─────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_background_section)
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_focus_resume_title),
@@ -466,7 +441,6 @@ fun SettingsScreen(
 
             SettingsDivider()
 
-            // ─── Загрузки и кэш ────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_downloads_section)
 
             Column(
@@ -534,7 +508,6 @@ fun SettingsScreen(
                 }
             }
 
-            // ─── Приватность ───────────────────────────────────────────────
             SettingsSectionTitle(R.string.settings_privacy_section)
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_analytics_title),
@@ -543,9 +516,6 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setAnalyticsEnabled,
             )
 
-            // ─── Поддержка ─────────────────────────────────────────────────
-            // Публичная страница DonationAlerts: SDK и ключи не нужны, ссылка
-            // открывается в системном браузере.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -583,7 +553,6 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(32.dp))
 
-            // Футер с версией сборки: читается как подпись экрана, а не как элемент списка.
             Text(
                 text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
@@ -604,8 +573,6 @@ fun SettingsScreen(
             }
         }
 
-        // Снекбар смены языка живёт над прокручиваемым содержимым, но внутри
-        // того же Box, поэтому виден на любой позиции скролла.
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
@@ -638,7 +605,6 @@ fun SettingsScreen(
     }
 }
 
-/** Заголовок секции настроек: мелкий капс-стиль в акценте темы. */
 @Composable
 private fun SettingsSectionTitle(titleRes: Int) {
     Text(
@@ -649,7 +615,6 @@ private fun SettingsSectionTitle(titleRes: Int) {
     )
 }
 
-/** Разделитель строк с отступом от краёв: ритм списка без карточек. */
 @Composable
 private fun SettingsDivider() {
     HorizontalDivider(
@@ -658,7 +623,6 @@ private fun SettingsDivider() {
     )
 }
 
-/** Строка-переключатель: заголовок, пояснение и Switch справа. */
 @Composable
 private fun SettingsSwitchRow(
     title: String,
@@ -693,10 +657,6 @@ private fun SettingsSwitchRow(
     }
 }
 
-/**
- * Диалог лицензий: приложение распространяется по GPLv3 из-за NewPipe Extractor,
- * полный текст лежит в LICENSE в корне репозитория.
- */
 @Composable
 private fun LicensesDialog(onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
@@ -729,13 +689,10 @@ private fun LicensesDialog(onDismiss: () -> Unit) {
     )
 }
 
-/** Ссылка на полный текст лицензии в репозитории. */
 private const val LICENSES_URL = "https://github.com/Okzxs/my-music-app/blob/main/LICENSE"
 
-/** Публичная страница поддержки разработки. */
 private const val SUPPORT_URL = "https://www.donationalerts.com/r/facetapp"
 
-/** Размер кэша в мегабайтах с одним знаком после запятой. */
 private fun formatMegabytes(bytes: Long): String =
     String.format(Locale.ROOT, "%.1f", bytes / 1_048_576.0)
 
@@ -776,11 +733,6 @@ private fun SettingsHeader(onBack: () -> Unit) {
     }
 }
 
-/**
- * Кружок «Свой цвет» в конце списка акцентов: радужный RGB-градиент с иконкой
- * палитры, а после применения собственного цвета — заливка этим цветом с галочкой.
- * Размер и зона нажатия как у готовых кружков; открывает RGB-диалог со слайдерами.
- */
 @Composable
 private fun CustomColorDot(
     color: Color?,
@@ -792,7 +744,6 @@ private fun CustomColorDot(
         animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
         label = "customColorDotSize",
     )
-    // Замкнутый радужный контур: первый и последний цвет совпадают, чтобы стык не мерцал.
     val rainbowBrush = remember {
         Brush.sweepGradient(
             listOf(
@@ -811,7 +762,6 @@ private fun CustomColorDot(
         modifier = Modifier
             .size(44.dp)
             .clip(CircleShape)
-            // Штатная рябь вместо indication = null: круг должен читаться как кнопка.
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -851,10 +801,6 @@ private fun CustomColorDot(
     }
 }
 
-/**
- * Диалог выбора произвольного цвета: три RGB-слайдера + живой превью.
- * «Сбросить» убирает собственный цвет и возвращает тему к системной логике.
- */
 @Composable
 private fun CustomColorDialog(
     initial: Color?,
@@ -867,8 +813,6 @@ private fun CustomColorDialog(
     var green by remember { mutableFloatStateOf(startColor.green) }
     var blue by remember { mutableFloatStateOf(startColor.blue) }
     val preview = Color(red, green, blue)
-    // HEX-поле и слайдеры связаны в обе стороны: корректный код двигает слайдеры,
-    // слайдеры переписывают код. Некорректный ввод цвет не применяет.
     var hexInput by remember { mutableStateOf(formatHexColor(startColor)) }
     var hexError by remember { mutableStateOf(false) }
 
@@ -976,7 +920,6 @@ private fun CustomColorDialog(
     )
 }
 
-/** Один RGB-слайдер с подписью канала и текущим значением 0–255. */
 @Composable
 private fun RgbSlider(
     label: String,
@@ -1014,7 +957,6 @@ private fun RgbSlider(
     }
 }
 
-/** ARGB-превью в HEX-виде, например #A85CD9. */
 private fun formatHexColor(color: Color): String {
     val r = (color.red * 255f).roundToInt()
     val g = (color.green * 255f).roundToInt()
@@ -1022,17 +964,10 @@ private fun formatHexColor(color: Color): String {
     return "#%02X%02X%02X".format(r, g, b)
 }
 
-/** Допустимые символы HEX-кода без учёта регистра. */
 private const val HEX_DIGITS = "0123456789abcdefABCDEF"
 
-/** Предельная длина ввода HEX-поля: «#» плюс 6 цифр. */
 private const val MAX_HEX_INPUT_LENGTH = 7
 
-/**
- * Разбирает HEX-код вида #RRGGBB или RRGGBB (регистр не важен).
- * Возвращает null на некорректном коде — диалог подсветит ошибку
- * и оставит слайдеры и превью нетронутыми.
- */
 private fun parseHexColor(input: String): Color? {
     val hex = input.removePrefix("#").trim()
     if (hex.length != 6 || !hex.all { HEX_DIGITS.contains(it) }) return null
@@ -1040,10 +975,6 @@ private fun parseHexColor(input: String): Color? {
     return Color((rgb or 0xFF000000L).toInt())
 }
 
-/**
- * Маленький кружок недавнего цвета: тап применяет цвет мгновенно.
- * Размер меньше кружков основной палитры, чтобы ряд читался вторичным.
- */
 @Composable
 private fun RecentColorDot(
     color: Color,
@@ -1091,10 +1022,6 @@ private fun RecentColorDot(
     }
 }
 
-/**
- * Кружок акцентного цвета: выбранный раздувается и получает
- * контур с галочкой. Доступен на всех версиях Android.
- */
 @Composable
 private fun AccentDot(
     option: AccentOption,
@@ -1146,7 +1073,6 @@ private fun AccentDot(
     }
 }
 
-/** Сегментированный выбор языка интерфейса. */
 @Composable
 private fun SegmentedButtonRow(selected: String, onSelect: (String) -> Unit) {
     val options = listOf(
@@ -1167,7 +1093,6 @@ private fun SegmentedButtonRow(selected: String, onSelect: (String) -> Unit) {
     }
 }
 
-/** Карточка интеграции Spotify: ключи, вход по OAuth и понятный статус. */
 @Composable
 private fun SpotifyIntegrationCard(
     settings: AppSettings,
@@ -1200,7 +1125,6 @@ private fun SpotifyIntegrationCard(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
-                // Инструкция всегда под рукой: без неё ключи взять неоткуда.
                 TextButton(onClick = onOpenGuide) {
                     Text(
                         text = stringResource(R.string.spotify_guide_open),
@@ -1282,8 +1206,6 @@ private fun SpotifyIntegrationCard(
                     }
                 }
             } else {
-                // Вход без секрета: PKCE-поток открывает браузер и возвращает
-                // пользователя сам. Секрет нужен только поиску без входа.
                 Button(
                     onClick = { onSignIn(clientId, clientSecret) },
                     enabled = clientId.isNotBlank(),
@@ -1300,8 +1222,6 @@ private fun SpotifyIntegrationCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
-            // Предупреждение о лимите Spotify: один client_id работает не более
-            // чем на 10 устройствах, дальше нужен Extended Quota Mode.
             Spacer(Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.settings_spotify_quota_warning),
@@ -1311,13 +1231,6 @@ private fun SpotifyIntegrationCard(
     }
 }
 
-/**
- * Инструкция «как получить ключи Spotify»: четыре шага, адрес возврата
- * и кнопка открытия Developer Dashboard.
- *
- * Redirect URI показываем отдельной строкой: его копируют в Dashboard
- * символ в символ, иначе Spotify откажет в авторизации.
- */
 @Composable
 private fun SpotifyGuideDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -1381,7 +1294,6 @@ private fun SpotifyGuideDialog(onDismiss: () -> Unit) {
     )
 }
 
-/** Один шаг инструкции: номер в кружке, заголовок и пояснение. */
 @Composable
 private fun GuideStep(number: Int, titleRes: Int, bodyRes: Int) {
     Row(modifier = Modifier.padding(bottom = 12.dp)) {
@@ -1415,5 +1327,4 @@ private fun GuideStep(number: Int, titleRes: Int, bodyRes: Int) {
     }
 }
 
-/** Адрес Spotify Developer Dashboard для кнопки инструкции. */
 private const val SPOTIFY_DASHBOARD_URL = "https://developer.spotify.com/dashboard"

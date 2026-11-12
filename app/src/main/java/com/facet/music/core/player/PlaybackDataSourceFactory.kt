@@ -10,10 +10,6 @@ import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Цепочка Media3: кэш → ResolvingDataSource → OkHttp. Один кэш на процесс,
- * один upstream на все элементы, HLS и progressive идут через одну цепочку.
- */
 @UnstableApi
 @Singleton
 class PlaybackDataSourceFactory @Inject constructor(

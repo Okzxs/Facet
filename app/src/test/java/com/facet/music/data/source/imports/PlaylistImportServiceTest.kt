@@ -18,10 +18,6 @@ import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Загрузчик плейлистов: проверяем ветки, которые не требуют сети —
- * пустую ссылку, мусор, Яндекс, Apple-ссылку и Spotify без ключей.
- */
 class PlaylistImportServiceTest {
 
     private val json = Json {
@@ -38,8 +34,6 @@ class PlaylistImportServiceTest {
                 spotifyClientSecret = if (spotifyConfigured) "client-secret" else "",
             ),
         )
-        // Реальный StateFlow вместо relaxed-мока: у мока generic-свойства
-        // value возвращается Object и падает на касте к SpotifyAuthState.
         val auth = mockk<SpotifyAuthRepository>(relaxed = true)
         every { auth.authState } returns MutableStateFlow(SpotifyAuthState())
         val spotify = SpotifyProvider(

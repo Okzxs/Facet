@@ -3,12 +3,10 @@ package com.facet.music.core.wave
 import com.facet.music.data.model.Track
 import kotlin.random.Random
 
-/** Источник времени; в тестах подменяется фиксированными часами. */
 interface Clock {
     fun nowMs(): Long
 }
 
-/** Фабрика случайности сессии: один seed на сессию, отдельные потоки источникам. */
 interface RandomProvider {
     fun newSeed(): Long
     fun create(seed: Long): Random
@@ -37,7 +35,6 @@ enum class CandidateOrigin(val prior: Double, val exploration: Boolean) {
     FAMILIAR(0.4, false),
 }
 
-/** Кандидат конкретного источника. */
 data class Candidate(
     val track: Track,
     val origin: CandidateOrigin,
@@ -51,7 +48,6 @@ data class SeedArtist(
     val weight: Double,
 )
 
-/** Трек-семя с уже посчитанным весом (свежесть × штраф прошлых сессий). */
 data class TrackSeed(
     val track: Track,
     val weight: Double,
@@ -65,7 +61,6 @@ data class WaveTasteProfile(
     val likedMarkers: Set<String> = emptySet(),
 )
 
-/** Трек, который пользователь уже слушал или лайкнул. */
 data class PlayedTrack(
     val track: Track,
     val atMs: Long,
@@ -113,7 +108,6 @@ data class WaveHistory(
     val queueTrackKeys: Set<String> = emptySet(),
 )
 
-/** Состояние сессии, которое нужно сохранять между пачками. */
 data class WaveSessionPlan(
     val sessionId: String,
     val createdAt: Long,

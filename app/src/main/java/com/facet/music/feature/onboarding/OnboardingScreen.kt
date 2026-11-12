@@ -41,10 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.R
 
-/**
- * Онбординг первого запуска: знак, слоган и три ключевые возможности.
- * Показывается один раз, пока в настройках не выставлен флаг прохождения.
- */
 @Composable
 fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel(),
@@ -128,7 +124,6 @@ fun OnboardingScreen(
     }
 }
 
-/** Строка возможности: иконка в кружке и два текста. */
 @Composable
 private fun FeatureRow(
     icon: ImageVector,

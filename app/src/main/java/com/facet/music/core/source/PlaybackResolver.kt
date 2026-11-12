@@ -31,14 +31,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
 
-/**
- * Единственное место получения ссылки на поток.
- *
- * Порядок: in-memory кэш → скачанный файл → собственный провайдер → внешний
- * матч SoundCloud/YouTube → сохранённый матч в Room. Параллельные запросы
- * одного трека делят один Deferred, поэтому повторный Play, предзагрузка
- * и ResolvingDataSource не запускают второй резолв.
- */
 @Singleton
 class PlaybackResolver @Inject constructor(
     private val downloadRepository: DownloadRepository,
@@ -61,7 +53,6 @@ class PlaybackResolver @Inject constructor(
     private val _activeTrackId = MutableStateFlow<String?>(null)
     val activeTrackId: StateFlow<String?> = _activeTrackId.asStateFlow()
 
-    /** Запомнить трек для ResolvingDataSource: у URI есть только id. */
     fun remember(track: Track) {
         knownTracks[track.id] = track
     }
@@ -142,22 +133,31 @@ class PlaybackResolver @Inject constructor(
             )
         }
 
+        var ownFailure: ResolveException? = null
         val ownSource = registry.provider(track.source)
         if (ownSource != null && !track.source.isMetadataOnly) {
             val own = retrying(track) { ownSource.resolveStream(track) }
             own.getOrNull()?.let { stream ->
                 if (!requireProgressive || !stream.isHls) return Result.success(stream)
             }
-            val ownError = (own.exceptionOrNull() as? ResolveException)?.error
+            val ownException = own.exceptionOrNull() as? ResolveException
+            val ownError = ownException?.error
             if (ownError == ResolveError.GeoBlocked || ownError == ResolveError.SubscriptionOnly) {
                 return own
             }
+            ownFailure = ownException
         }
 
         if (track.source == Source.LOCAL) {
             return Result.failure(ResolveException(ResolveError.NotAvailable))
         }
-        return resolveExternal(track, requireProgressive)    }
+        val external = resolveExternal(track, requireProgressive)
+        if (external.isFailure && ownFailure?.error == ResolveError.Network) {
+            val extError = (external.exceptionOrNull() as? ResolveException)?.error
+            if (extError == ResolveError.NoMatch) return Result.failure(ownFailure)
+        }
+        return external
+    }
 
     private suspend fun downloadedStream(track: Track): ResolvedStream? {
         val downloaded = runCatching {

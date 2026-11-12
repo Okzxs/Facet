@@ -28,13 +28,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** Состояние экрана артиста. */
 data class ArtistUiState(
     val name: String = "",
     val profile: ArtistProfile? = null,
     val popular: List<Track> = emptyList(),
     val allTracks: List<Track> = emptyList(),
-    /** Сколько треков из «Всех треков» раскрыто стрелкой; шаг — 5. */
     val visibleTrackCount: Int = 5,
     val releases: List<ArtistRelease> = emptyList(),
     val playlists: List<ArtistPlaylist> = emptyList(),
@@ -51,14 +49,6 @@ data class ArtistUiState(
     val displayName: String get() = profile?.name ?: name
 }
 
-/**
- * Экран артиста на YouTube/SoundCloud.
- *
- * Точный маршрут сразу отдаёт кэш из Room, затем обновляет страницу; старый
- * маршрут `artist/{name}` сначала ищет лучшего артиста по имени. Релизы,
- * плейлисты и похожие исполнители догружаются после основной шапки — экран
- * не ждёт самую медленную секцию.
- */
 @HiltViewModel
 class ArtistViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -125,7 +115,6 @@ class ArtistViewModel @Inject constructor(
         load()
     }
 
-    /** Стрелка «Всех треков»: показать ещё пять и при необходимости догрузить страницу. */
     fun showMoreTracks() {
         val state = _uiState.value
         if (state.isLoadingMore) return

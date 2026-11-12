@@ -4,10 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Новые сервисы импорта: YouTube-плейлисты (id из query `list`) и
- * SoundCloud-сеты (канонический URL как идентификатор).
- */
 class PlaylistLinkParserExtraTest {
 
     private fun success(link: String): PlaylistLinkParseResult.Success {

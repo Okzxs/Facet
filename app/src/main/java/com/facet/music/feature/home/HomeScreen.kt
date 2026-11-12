@@ -120,7 +120,6 @@ fun HomeScreen(
     val homeListState = rememberLazyListState()
     val recommendationsListState = rememberLazyListState()
 
-    // Новинка — альбом: треки приходят из ViewModel, открываем плеер здесь.
     LaunchedEffect(Unit) {
         viewModel.openPlayer.collect { (track, queue) -> onTrackClick(track, queue) }
     }
@@ -128,8 +127,6 @@ fun HomeScreen(
     PullToRefreshBox(
         isRefreshing = uiState.isRefreshing,
         onRefresh = viewModel::refresh,
-        // Статус-бар раньше обеспечивал корневой Scaffold; теперь отступ ставит сам экран.
-        // Фон — тоже: без него экран прозрачный и просвечивает окно приложения.
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -142,7 +139,6 @@ fun HomeScreen(
                 start = ScreenPadding,
                 end = ScreenPadding,
                 top = 20.dp,
-                // Запас снизу под плавающий док (его больше нет в слоте Scaffold).
                 bottom = 24.dp + LocalBottomDockHeight.current,
             ),
             verticalArrangement = Arrangement.spacedBy(BlockGap),
@@ -165,14 +161,12 @@ fun HomeScreen(
                 }
             }
 
-            // Волна: вход в бесконечный поток.
             item(key = "wave_promo") {
                 RevealBlock(index = 2) {
                     WavePromoCard(onClick = onWaveClick)
                 }
             }
 
-            // Новинки и чарты: пока грузятся — скелетоны, а не пустота.
             if (uiState.isExtrasLoading) {
                 item(key = "extras_skeleton") {
                     ExtrasSkeleton()
@@ -258,9 +252,6 @@ fun HomeScreen(
     }
 }
 
-/**
- * Мягкое появление блока: только прозрачность и небольшой подъём.
- */
 @Composable
 private fun RevealBlock(
     index: Int,
@@ -297,8 +288,6 @@ private fun RevealBlock(
 
 @Composable
 private fun HomeHeader(onSettingsClick: () -> Unit) {
-    // Язык даты берём из конфигурации: AppLocale подменяет её вместе с языком UI,
-    // поэтому «ru» и «en» дают разные названия дней и месяцев.
     val configuration = LocalConfiguration.current
     val locale = remember(configuration) { configuration.locales[0] }
     val dateLabel = remember(locale) {
@@ -352,10 +341,6 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
     }
 }
 
-/**
- * Заголовок секции Home — стандартный titleLarge. Без надзаголовков и капса:
- * иерархию задают размер и воздух между секциями.
- */
 @Composable
 private fun WavePromoCard(onClick: () -> Unit) {
     Surface(
@@ -533,7 +518,6 @@ private fun GenrePlaylistsBlock(
     }
 }
 
-/** Скелетоны блоков: пульсирующие прямоугольники вместо пустого экрана. */
 @Composable
 private fun ExtrasSkeleton() {
     val transition = rememberInfiniteTransition(label = "extrasSkeleton")
@@ -581,7 +565,6 @@ private fun ContinueListeningCard(
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    // Строку для скринридера считаем заранее: лямбда semantics не @Composable.
     val continueCd = stringResource(R.string.home_continue_cd, track.title)
     Surface(
         modifier = Modifier

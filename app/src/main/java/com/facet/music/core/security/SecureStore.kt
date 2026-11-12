@@ -9,17 +9,6 @@ import com.google.crypto.tink.KeyTemplates
 import com.google.crypto.tink.aead.AeadConfig
 import com.google.crypto.tink.integration.android.AndroidKeysetManager
 
-/**
- * Шифрованное хранилище небольших секретов.
- *
- * Значения шифруются AES-256-GCM ключом Tink, а сам набор ключей защищён ключом
- * Android Keystore: в SharedPreferences не остаётся ни открытых токенов,
- * ни материала ключа. Имя значения передаётся как associated data, поэтому
- * зашифрованное значение нельзя переставить на другой ключ.
- *
- * Ошибки шифрования не пробрасываются в UI: при недоступном Keystore
- * приложение просто считает секрет отсутствующим и предлагает войти заново.
- */
 class SecureStore internal constructor(
     private val prefs: SharedPreferences,
     private val aeadFactory: () -> Aead?,
@@ -32,10 +21,8 @@ class SecureStore internal constructor(
 
     private val aead: Aead? by lazy(aeadFactory)
 
-    /** Есть ли значение по ключу (без расшифровки). */
     fun contains(key: String): Boolean = prefs.contains(key)
 
-    /** Расшифрованное значение или null, если его нет либо оно повреждено. */
     fun getString(key: String): String? {
         val stored = prefs.getString(key, null) ?: return null
         val cipher = aead ?: return null
@@ -52,7 +39,6 @@ class SecureStore internal constructor(
         }.getOrNull()
     }
 
-    /** Шифрует и сохраняет значение. false — записать не удалось. */
     fun putString(key: String, value: String): Boolean {
         val cipher = aead ?: return false
         return runCatching {
@@ -77,13 +63,6 @@ class SecureStore internal constructor(
         prefs.edit().remove(key).apply()
     }
 
-    /**
-     * Одноразовый перенос открытых значений из старого файла настроек.
-     *
-     * Успешно зашифрованный ключ удаляется из источника; если шифрование
-     * не удалось, открытое значение остаётся и миграция повторится при
-     * следующем запуске.
-     */
     fun migrateLegacy(source: SharedPreferences, keys: Collection<String>) {
         val present = keys.filter { source.contains(it) }
         if (present.isEmpty()) return

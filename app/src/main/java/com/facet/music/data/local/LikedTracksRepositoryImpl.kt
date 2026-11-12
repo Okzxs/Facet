@@ -15,9 +15,6 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Реализация репозитория лайкнутых треков на базе Room.
- */
 @Singleton
 class LikedTracksRepositoryImpl @Inject constructor(
     private val likedTracksDao: LikedTracksDao,

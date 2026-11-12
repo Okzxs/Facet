@@ -2,10 +2,6 @@ package com.facet.music.core.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Нейтральная палитра: строгие серые без цветового уклона.
-// Акцент на Android 12+ приходит из Dynamic Color (обои), здесь — fallback
-// в духе Google Blue для старых устройств.
-
 val Primary = Color(0xFF0B57D0)
 val OnPrimary = Color(0xFFFFFFFF)
 val PrimaryContainer = Color(0xFFD3E3FD)
@@ -26,7 +22,6 @@ val OnError = Color(0xFFFFFFFF)
 val ErrorContainer = Color(0xFFF9DEDC)
 val OnErrorContainer = Color(0xFF410E0B)
 
-// Светлые поверхности: чистый нейтральный серый без тёплых оттенков.
 val Background = Color(0xFFFAFAFA)
 val OnBackground = Color(0xFF1A1A1A)
 val Surface = Color(0xFFFAFAFA)
@@ -46,7 +41,6 @@ val InverseSurface = Color(0xFF303030)
 val InverseOnSurface = Color(0xFFF1F1F1)
 val InversePrimary = Color(0xFFA8C7FA)
 
-// Тёмная палитра: канонический тёмно-серый Material 3, без коричневого.
 val PrimaryDark = Color(0xFFA8C7FA)
 val OnPrimaryDark = Color(0xFF062E6F)
 val PrimaryContainerDark = Color(0xFF0842A0)
@@ -86,6 +80,5 @@ val InverseSurfaceDark = Color(0xFFE8E8E8)
 val InverseOnSurfaceDark = Color(0xFF303030)
 val InversePrimaryDark = Color(0xFF0B57D0)
 
-// Семантические цвета статусов: зелёный не зависит от акцента и Dynamic Color.
 val StatusOnlineLight = Color(0xFF1E8E3E)
 val StatusOnlineDark = Color(0xFF81C995)

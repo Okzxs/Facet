@@ -6,9 +6,6 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.facet.music.data.local.entity.RecentlyShownEntity
 
-/**
- * DAO для показанных рекомендаций (таблица recently_shown).
- */
 @Dao
 interface RecentlyShownDao {
 

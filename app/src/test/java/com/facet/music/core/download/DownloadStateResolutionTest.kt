@@ -4,10 +4,6 @@ import androidx.work.WorkInfo
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Проверяет приоритет источников состояния скачивания:
- * Room → терминальный WorkInfo → активный WorkInfo с прогрессом.
- */
 class DownloadStateResolutionTest {
 
     @Test

@@ -23,13 +23,6 @@ import androidx.compose.ui.unit.dp
 import com.facet.music.R
 import com.facet.music.core.download.DownloadState
 
-/**
- * Компактная кнопка скачивания для карточек треков.
- *
- * Показывает четыре состояния: стрелка, кольцо прогресса, галочка и крестик.
- * Используется в «Для вас», «Недавнем», «Воспоминаниях» и медиатеке,
- * чтобы скачать трек можно было без открытия плеера.
- */
 @Composable
 fun TrackDownloadButton(
     state: DownloadState,

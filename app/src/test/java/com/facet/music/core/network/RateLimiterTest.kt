@@ -9,14 +9,9 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Виртуальное время корутин: `delay` внутри лимитера прокручивается мгновенно,
- * а часы лимитера берутся из планировщика теста, поэтому интервалы точные.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RateLimiterTest {
 
-    /** Лимитер на виртуальных часах теста. */
     private fun TestScope.virtualLimiter(
         minIntervalMs: Long = RateLimiter.DEFAULT_MIN_INTERVAL_MS,
     ): RateLimiter = RateLimiter(minIntervalMs) { testScheduler.currentTime }

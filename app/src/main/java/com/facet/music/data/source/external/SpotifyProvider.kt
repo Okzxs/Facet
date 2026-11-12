@@ -36,33 +36,11 @@ import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Плейлист Spotify: название и треки.
- *
- * Стрима нет (DRM), поэтому `streamUrl` у треков пуст — ссылку найдёт
- * [com.facet.music.core.source.StreamResolver] на YouTube.
- */
 data class SpotifyPlaylist(
     val name: String,
     val tracks: List<Track>,
 )
 
-/**
- * Spotify — только метаданные и поиск, без стрима.
- *
- * Авторизация — Client Credentials Flow: приложение пользователя обменивает
- * `client_id`/`client_secret` на токен (`accounts.spotify.com/api/token`).
- * Токен кэшируется в памяти до истечения, на 401 делается один перезапрос.
- *
- * Аудио Spotify защищено DRM и сторонним клиентам недоступно, поэтому
- * `streamUrl` всегда null, а воспроизведение идёт через
- * [com.facet.music.core.source.PlaybackResolver] → матч на SoundCloud/YouTube.
- * `resolveStream` не переопределяем: базовый интерфейс честно отвечает
- * «поток недоступен».
- *
- * Успешные ответы поиска кэшируются сырым JSON (Room, TTL 24 ч). Лимитер
- * общий для поиска и запроса токена: квота Spotify считается на все запросы.
- */
 @Singleton
 class SpotifyProvider @Inject constructor(
     @ApiClient private val client: OkHttpClient,
@@ -82,8 +60,6 @@ class SpotifyProvider @Inject constructor(
         supportsDownload = false,
     )
 
-    // Токен общий для всех запросов: обновляем под мьютексом, читаем без него.
-    // Mutex вместо synchronized — обновление теперь suspend (ждёт слот лимитера).
     private val tokenMutex = Mutex()
 
     @Volatile
@@ -92,10 +68,6 @@ class SpotifyProvider @Inject constructor(
     @Volatile
     private var tokenExpiresAtMs: Long = 0L
 
-    /**
-     * Источник настроен, если пользователь вошёл через Spotify (OAuth)
-     * или задал Client ID + Secret для поиска без входа.
-     */
     override suspend fun isConfigured(): Boolean =
         spotifyAuth.authState.value.connected || credentials() != null
 
@@ -115,10 +87,6 @@ class SpotifyProvider @Inject constructor(
             }.rethrowCancellation()
         }
 
-    /**
-     * Плейлист по id: `/v1/playlists/{id}` даёт название, `/v1/playlists/{id}/tracks`
-     * — треки. Оба запроса идут через общий лимитер (квота Spotify общая).
-     */
     suspend fun fetchPlaylist(playlistId: String): Result<SpotifyPlaylist> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -146,15 +114,6 @@ class SpotifyProvider @Inject constructor(
             }
         }
 
-    /**
-     * Треки плейлиста без названия — удобный вход для импорта.
-     * Название берётся тем же запросом внутри [fetchPlaylist].
-     */
-    /**
-     * Публичные плейлисты произвольного пользователя: `/users/{id}/playlists`.
-     * Нужен только действующий токен (Client Credentials подойдёт для
-     * публичных плейлистов, пользовательский — если профиль свой).
-     */
     suspend fun fetchUserPlaylists(userId: String): Result<List<SpotifyPlaylistSummary>> =
         runCatching {
             val body = rateLimiter.acquire {
@@ -166,7 +125,6 @@ class SpotifyProvider @Inject constructor(
             parsePlaylistSummaries(body)
         }
 
-    /** Разбор списка плейлистов: id, название, обложка и число треков. */
     private fun parsePlaylistSummaries(body: String): List<SpotifyPlaylistSummary> =
         json.parseToJsonElement(body).jsonObject["items"]?.jsonArray
             ?.mapNotNull { element ->
@@ -185,11 +143,6 @@ class SpotifyProvider @Inject constructor(
     suspend fun fetchPlaylistTracks(playlistId: String): Result<List<Track>> =
         fetchPlaylist(playlistId).map { playlist -> playlist.tracks }
 
-    /**
-     * Любимые треки пользователя: `/v1/me/tracks` постранично по 50.
-     * Нужен пользовательский токен (scope `user-library-read`):
-     * Client Credentials к личной библиотеке доступа не даёт.
-     */
     suspend fun fetchLikedTracks(maxTracks: Int = MAX_LIKED_TRACKS): Result<List<Track>> =
         runCatching {
             if (spotifyAuth.accessToken() == null) error(LOGIN_REQUIRED_MESSAGE)
@@ -209,16 +162,11 @@ class SpotifyProvider @Inject constructor(
                 val total = json.parseToJsonElement(body).jsonObject["total"]
                     ?.jsonPrimitive?.intOrNull
                 offset += LIKED_PAGE_SIZE
-                // Пустая страница или достигнутый total — конец библиотеки.
                 if (page.isEmpty() || (total != null && offset >= total)) break
             }
             result.values.take(maxTracks)
         }
 
-    /**
-     * Разбор `/v1/playlists/{id}/tracks`: элемент `track` может быть null
-     * (удалённый трек) или эпизодом подкаста — такие строки пропускаем.
-     */
     private fun parsePlaylistTracks(body: String): List<Track> =
         json.parseToJsonElement(body).jsonObject["items"]?.jsonArray
             ?.mapNotNull { element ->
@@ -231,11 +179,9 @@ class SpotifyProvider @Inject constructor(
             }
             .orEmpty()
 
-    /** Кэш → сеть. В кэш попадает только успешно разобранный ответ. */
     private suspend fun loadTracks(query: String, limit: Int, useCache: Boolean): List<Track> {
         if (useCache) {
             searchCache.get(query, source)?.let { cached ->
-                // Битый кэш не должен ломать поиск: молча уходим в сеть.
                 runCatching { parseTracks(cached) }.getOrNull()?.let { return it }
             }
         }
@@ -249,19 +195,12 @@ class SpotifyProvider @Inject constructor(
     }
 
     private suspend fun credentials(): Credentials? {
-        // Настройки приходят из SharedPreferences через репозиторий: источник
-        // не читает файл сам, чтобы не дублировать логику загрузки.
         val settings = settingsRepository.settings.first()
         val id = settings.spotifyClientId.trim()
         val secret = settings.spotifyClientSecret.trim()
         return if (id.isEmpty() || secret.isEmpty()) null else Credentials(id, secret)
     }
 
-    /**
-     * GET с авторизацией. Приоритет — пользовательский токен OAuth: он даёт
-     * доступ к личным плейлистам, а Client Credentials — только к публичным
-     * данным. На 401 токен мог быть отозван: обновляем и повторяем один раз.
-     */
     private suspend fun authorizedBody(url: String, credentials: Credentials?): String {
         val userToken = spotifyAuth.accessToken()
         if (userToken != null) {
@@ -302,14 +241,12 @@ class SpotifyProvider @Inject constructor(
         return response.body
     }
 
-    /** Разбор тела ответа — общий для свежего и закэшированного JSON. */
     private fun parseTracks(body: String): List<Track> =
         json.parseToJsonElement(body).jsonObject["tracks"]?.jsonObject
             ?.get("items")?.jsonArray
             ?.mapNotNull { parseTrack(it.jsonObject) }
             .orEmpty()
 
-    /** access_token из кэша или новый запрос Client Credentials Flow. */
     private suspend fun token(credentials: Credentials, forceRefresh: Boolean): String {
         accessToken?.takeIf { !forceRefresh && System.currentTimeMillis() < tokenExpiresAtMs }
             ?.let { return it }
@@ -320,7 +257,6 @@ class SpotifyProvider @Inject constructor(
             }
             val issued = requestToken(credentials)
             accessToken = issued.token
-            // Запас в минуту: не отправляем запрос с токеном, живущим секунды.
             tokenExpiresAtMs = System.currentTimeMillis() +
                 issued.expiresInMs - TOKEN_EXPIRY_MARGIN_MS
             return issued.token
@@ -328,7 +264,6 @@ class SpotifyProvider @Inject constructor(
     }
 
     private suspend fun requestToken(credentials: Credentials): IssuedToken {
-        // Запрос токена тоже упирается в лимит: Spotify считает квоту на все вызовы.
         rateLimiter.awaitSlot()
         val body = "grant_type=$GRANT_TYPE".toRequestBody(FORM_MIME_TYPE)
         val request = Request.Builder()
@@ -350,7 +285,6 @@ class SpotifyProvider @Inject constructor(
         }
     }
 
-    /** `Basic base64(client_id:client_secret)` — требование Spotify. */
     private fun basicAuth(credentials: Credentials): String {
         val raw = "${credentials.clientId}:${credentials.clientSecret}"
         return Base64.getEncoder().encodeToString(raw.toByteArray(Charsets.UTF_8))
@@ -368,7 +302,6 @@ class SpotifyProvider @Inject constructor(
             ?.get("name")?.jsonPrimitive?.contentOrNull
             ?.trim()
             .orEmpty()
-        // Из images берём самую крупную: Spotify отдаёт 64/300/640 px.
         val artwork = item["album"]?.jsonObject
             ?.get("images")?.jsonArray
             ?.mapNotNull { element ->
@@ -385,7 +318,6 @@ class SpotifyProvider @Inject constructor(
             title = title,
             artist = artist.ifBlank { UNKNOWN_ARTIST },
             artworkUrl = artwork,
-            // Стрима нет: ссылку найдёт StreamResolver на YouTube.
             streamUrl = null,
             durationMs = item["duration_ms"]?.jsonPrimitive?.longOrNull ?: 0L,
             genre = null,
@@ -415,13 +347,10 @@ class SpotifyProvider @Inject constructor(
         const val FORM_CONTENT_TYPE = "application/x-www-form-urlencoded"
         const val MAX_LIMIT = 20
 
-        /** Сколько любимых треков максимум тянем из Spotify за один импорт. */
         const val MAX_LIKED_TRACKS = 1000
 
-        /** Spotify отдаёт /me/tracks страницами не больше 50. */
         const val LIKED_PAGE_SIZE = 50
 
-        /** Текст ошибки, когда вход не выполнен: UI показывает подсказку сам. */
         const val LOGIN_REQUIRED_MESSAGE = "Требуется вход в Spotify"
         const val MAX_PLAYLIST_TRACKS = 100
         const val DEFAULT_PLAYLIST_NAME = "Плейлист Spotify"

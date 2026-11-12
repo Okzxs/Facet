@@ -43,7 +43,6 @@ class DatabaseMigrationTest {
     private val databaseName = "migration-test.db"
     private lateinit var context: Context
 
-    /** Helpers открывают легаси-базы; закрываем их все в tearDown. */
     private val openedHelpers = mutableListOf<SupportSQLiteOpenHelper>()
 
     @Before
@@ -113,14 +112,12 @@ class DatabaseMigrationTest {
                 "playedFraction" in tableColumns(database.openHelper.writableDatabase, "play_history"),
             )
 
-            // Индексы миграции 8 → 9 созданы на живой схеме
             val migrated = database.openHelper.writableDatabase
             assertTrue(hasIndex(migrated, "index_liked_tracks_season"))
             assertTrue(hasIndex(migrated, "index_liked_tracks_likedAt"))
             assertTrue(hasIndex(migrated, "index_play_history_playedAt"))
             assertTrue(hasIndex(migrated, "index_genre_weights_weight"))
 
-            // Таблица офлайн-режима создана миграцией 5 → 6 и обновлена в 6 → 7
             database.downloadedTracksDao().insert(
                 DownloadedTrackEntity(
                     id = "downloaded-1",
@@ -154,7 +151,6 @@ class DatabaseMigrationTest {
             assertEquals("false", database.tasteDao().getPreference("pref_ru_language"))
             assertNull(database.tasteDao().getPreference("missing"))
 
-            // Таблица памяти рекомендаций создана миграцией 7 → 8
             database.recentlyShownDao().upsertAll(
                 listOf(
                     RecentlyShownEntity(trackId = "shown-1", shownAt = 5_000L),
@@ -165,7 +161,6 @@ class DatabaseMigrationTest {
                 database.recentlyShownDao().getTrackIdsSince(1_000L),
             )
 
-            // Таблица дизлайков создана миграцией 9 → 10
             database.dislikedTrackDao().insert(
                 DislikedTrackEntity(trackId = "disliked-1", dislikedAt = 7_000L),
             )
@@ -174,7 +169,6 @@ class DatabaseMigrationTest {
                 database.dislikedTrackDao().getAll().map { it.trackId },
             )
 
-            // Таблица кэша поиска создана миграцией 10 → 11
             database.searchCacheDao().upsert(
                 SearchCacheEntity(
                     query = "cachalot",
@@ -188,7 +182,6 @@ class DatabaseMigrationTest {
                 database.searchCacheDao().get("cachalot", "DEEZER")?.source,
             )
 
-            // Таблицы плейлистов созданы миграцией 11 → 12 и работают вместе с FK.
             val playlistId = database.playlistDao().insertPlaylist(
                 PlaylistEntity(name = "Дорога", createdAt = 10_000L),
             )
@@ -211,7 +204,6 @@ class DatabaseMigrationTest {
                 database.playlistDao().observeTracks(playlistId).first().single().trackId,
             )
 
-            // Кэш артиста и подписки появились в 16 → 17.
             database.artistCacheDao().upsert(
                 ArtistCacheEntity(key = "YOUTUBE:test", json = "{}", fetchedAt = 12_000L),
             )
@@ -293,10 +285,6 @@ class DatabaseMigrationTest {
             context.deleteDatabase(databaseName)
         }
     }
-
-    // ─── Изолированные тесты отдельных миграций ───────────────────────────────
-    // Схемы v1–v3 не экспортировались в app/schemas, поэтому базовые схемы
-    // восстанавливаются DDL-заглушками: для проверки ALTER/CREATE этого достаточно.
 
     @Test
     fun `migration 2 to 3 adds coordinates columns to likes`() {
@@ -709,10 +697,6 @@ class DatabaseMigrationTest {
         assertEquals(listOf("query"), primaryKeyColumns(db, "search_cache"))
     }
 
-    /**
-     * Миграция обязана давать ровно ту схему, что Room экспортировал в 11.json:
-     * иначе после обновления приложения база не откроется (Room schema validation).
-     */
     @Test
     fun `schema 11 json matches migrated search cache table`() {
         val schemaFile = schemaFile("11.json")
@@ -765,7 +749,6 @@ class DatabaseMigrationTest {
         assertEquals(listOf("playlistId", "trackId"), primaryKeyColumns(db, "playlist_tracks"))
         assertTrue(hasIndex(db, "index_playlist_tracks_playlistId"))
 
-        // Внешний ключ с ON DELETE CASCADE: удаление плейлиста чистит треки.
         db.query("PRAGMA foreign_key_list(`playlist_tracks`)").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals("playlists", cursor.getString(cursor.getColumnIndexOrThrow("table")))
@@ -789,10 +772,6 @@ class DatabaseMigrationTest {
         assertEquals(0, countRows(db, "playlist_tracks"))
     }
 
-    /**
-     * Миграция обязана давать ровно ту схему, что Room экспортировал в 12.json:
-     * иначе после обновления приложения база не откроется (Room schema validation).
-     */
     @Test
     fun `schema 12 json matches migrated playlist tables`() {
         val schemaFile = schemaFile("12.json")
@@ -863,9 +842,6 @@ class DatabaseMigrationTest {
         )
     }
 
-    // ─── Хелперы ──────────────────────────────────────────────────────────────
-
-    /** Открывает сырую базу версии [version] со схемой [create] для прогона одной миграции. */
     private fun openLegacyDatabase(
         name: String,
         version: Int,
@@ -905,20 +881,17 @@ class DatabaseMigrationTest {
             .use { return it.moveToFirst() }
     }
 
-    /** Число строк в таблице — для проверки каскадного удаления. */
     private fun countRows(db: SupportSQLiteDatabase, table: String): Int {
         db.query("SELECT COUNT(*) FROM `$table`").use { cursor ->
             return if (cursor.moveToFirst()) cursor.getInt(0) else 0
         }
     }
 
-    /** Строковое значение первого столбца или null. */
     private fun queryString(db: SupportSQLiteDatabase, sql: String): String? =
         db.query(sql).use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }
 
-    /** Проверяет, что первый столбец первой строки равен SQL NULL. */
     private fun assertNullColumn(db: SupportSQLiteDatabase, sql: String) {
         db.query(sql).use { cursor ->
             assertTrue("Запрос не вернул строку: $sql", cursor.moveToFirst())
@@ -926,13 +899,11 @@ class DatabaseMigrationTest {
         }
     }
 
-    /** Число строк, удовлетворяющих условию WHERE. */
     private fun countWhere(db: SupportSQLiteDatabase, table: String, where: String): Int =
         db.query("SELECT COUNT(*) FROM `$table` WHERE $where").use { cursor ->
             if (cursor.moveToFirst()) cursor.getInt(0) else 0
         }
 
-    /** Колонки первичного ключа в порядке составного ключа. */
     private fun primaryKeyColumns(db: SupportSQLiteDatabase, table: String): List<String> {
         db.query("PRAGMA table_info(`$table`)").use { cursor ->
             val nameIndex = cursor.getColumnIndexOrThrow("name")
@@ -946,7 +917,6 @@ class DatabaseMigrationTest {
         }
     }
 
-    /** Ищет экспортированную схему независимо от рабочей папки теста. */
     private fun schemaFile(name: String): File? {
         val relative = "schemas/com.facet.music.data.local.AppDatabase/$name"
         return listOf(
@@ -957,7 +927,6 @@ class DatabaseMigrationTest {
     }
 
     private companion object {
-        /** liked_tracks до координат (схемы v1–v2). */
         val LIKED_TRACKS_V1_DDL = """
             CREATE TABLE IF NOT EXISTS `liked_tracks` (
                 `id` TEXT NOT NULL,
@@ -973,7 +942,6 @@ class DatabaseMigrationTest {
             )
         """.trimIndent()
 
-        /** liked_tracks состояния v4: координаты и сезон уже на месте. */
         val LIKED_TRACKS_V4_DDL = """
             CREATE TABLE IF NOT EXISTS `liked_tracks` (
                 `id` TEXT NOT NULL,
@@ -1016,7 +984,6 @@ class DatabaseMigrationTest {
             )
         """.trimIndent()
 
-        /** downloaded_tracks состояния v7: mediaUrl + mimeType. */
         val DOWNLOADED_TRACKS_V7_DDL = """
             CREATE TABLE IF NOT EXISTS `downloaded_tracks` (
                 `id` TEXT NOT NULL,
@@ -1031,7 +998,6 @@ class DatabaseMigrationTest {
             )
         """.trimIndent()
 
-        /** queue состояния v13 — схема не меняется в 14 и 15. */
         val QUEUE_V13_DDL = """
             CREATE TABLE IF NOT EXISTS `queue` (
                 `position` INTEGER NOT NULL,

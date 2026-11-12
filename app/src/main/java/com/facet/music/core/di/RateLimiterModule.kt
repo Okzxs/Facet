@@ -9,12 +9,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/**
- * Лимитеры частоты для внешних источников: по одному на сервис.
- *
- * Deezer (только метаданные) и Spotify ограничены одной секундой между
- * запросами, чтобы не ловить 429 и не превышать квоту.
- */
 @Module
 @InstallIn(SingletonComponent::class)
 object RateLimiterModule {

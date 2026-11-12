@@ -63,7 +63,6 @@ import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
 import com.facet.music.R
 
-/** Пружинный press-scale (0.90 при нажатии) — общий микро-жест Expressive-кнопок. */
 @Composable
 fun rememberPressScale(interactionSource: InteractionSource): Float {
     val pressed by interactionSource.collectIsPressedAsState()
@@ -75,12 +74,6 @@ fun rememberPressScale(interactionSource: InteractionSource): Float {
     return scale
 }
 
-/**
- * Плавающий «остров» управления плеером:
- * - каплевидная асимметричная форма (44dp сверху, 22dp снизу) и цветная тень от палитры;
- * - к верхней кромке «прирос» язычок режима текста, выступающий над островом;
- * - внутри: слот прогресса и ряд — скорость, пред/плей/след, очередь.
- */
 @Composable
 fun PlayerControlIsland(
     isPlaying: Boolean,
@@ -115,8 +108,6 @@ fun PlayerControlIsland(
             ) {
                 progressContent()
 
-                // Кнопка текста прямо на панели управления: режим переключается
-                // и из шапки, но под большим пальцем она ближе к Play/Pause.
                 if (onLyricsClick != null) {
                     Spacer(Modifier.height(10.dp))
                     Box(
@@ -157,8 +148,6 @@ fun PlayerControlIsland(
                     }
                 }
 
-                // Запас между волной и рядом кнопок: палец, целящийся в Play/Pause,
-                // не должен задевать зону перемотки
                 Spacer(Modifier.height(16.dp))
 
                 Row(
@@ -275,7 +264,6 @@ fun PlayerControlIsland(
     }
 }
 
-/** Главная кнопка Play/Pause: морф MaterialShapes (круг в паузе / сквиркл в игре) + press-scale. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PlayMorphButton(
@@ -332,7 +320,6 @@ private fun PlayMorphButton(
     }
 }
 
-/** Форма кнопки Play: outline строится из Morph-полигона, масштабируется под размер. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private class PlayMorphShape(
     private val morph: Morph,

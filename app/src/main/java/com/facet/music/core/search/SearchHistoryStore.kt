@@ -10,13 +10,6 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * История поисковых запросов: последние [MAX_ENTRIES] уникальных запросов.
- *
- * Нужна, чтобы после очистки поля можно было вернуться к прошлому запросу
- * одним тапом (как в крупных клиентах). Хранится в отдельном
- * SharedPreferences-файле и не попадает в основную таблицу настроек.
- */
 @Singleton
 class SearchHistoryStore @Inject constructor(
     @ApplicationContext context: Context,
@@ -32,7 +25,6 @@ class SearchHistoryStore @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
-    /** Добавляет запрос в начало истории, убирая дубликаты и лишние пробелы. */
     fun add(query: String) {
         val normalized = query.trim().replace(WHITESPACE, " ")
         if (normalized.length < MIN_LENGTH) return
@@ -57,7 +49,6 @@ class SearchHistoryStore @Inject constructor(
         prefs.edit { remove(KEY_HISTORY) }
     }
 
-    /** Совпадение по началу строки — для подсказок под полем ввода. */
     fun matches(prefix: String): List<String> {
         val needle = prefix.trim().lowercase(Locale.ROOT)
         if (needle.isEmpty()) return recent()

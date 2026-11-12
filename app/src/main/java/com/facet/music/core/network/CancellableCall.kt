@@ -9,11 +9,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 
-/**
- * Блокирующий вызов OkHttp, который отменяется вместе с корутиной: Job
- * отменяет активный Call сразу, не дожидаясь таймаута. [runInterruptible]
- * дополнительно прерывает поток, если сеть игнорирует cancel().
- */
 @OptIn(InternalCoroutinesApi::class)
 internal suspend fun <T> OkHttpClient.executeCancellable(
     request: Request,

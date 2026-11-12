@@ -17,28 +17,13 @@ import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-/** Сервер ответил статусом, при котором файл скачать нельзя. */
 internal class HttpStatusException(
     val code: Int,
     url: String,
 ) : IOException("HTTP $code при скачивании $url")
 
-/** Ошибка скачивания с коротким кодом/текстом для WorkInfo. */
 internal class DownloadException(message: String) : IOException(message)
 
-/**
- * Логика скачивания трека, отделённая от WorkManager ради тестов.
- *
- * Источник и URL резолвятся заново перед каждой попыткой: подписанные
- * ссылки стриминговых сервисов живут недолго, а задача могла простоять
- * в очереди несколько часов. Если сервер ответил 403/410, делаем ровно
- * один повторный резолв и одну повторную загрузку.
- *
- * Файл сначала пишется в `.part`, затем проверяется размер и только потом
- * происходит атомарный rename поверх целевого файла. Room обновляется
- * после rename; при любой ошибке удаляется только `.part`, а старый
- * рабочий файл остаётся на месте.
- */
 internal class DownloadEngine(
     private val downloadsDir: File,
     private val client: OkHttpClient,
@@ -62,7 +47,6 @@ internal class DownloadEngine(
                     mimeType = resolved.mimeType,
                 ),
             )
-            // Страховка: HLS нельзя сохранить одним файлом.
             if (mimeType == MimeTypes.APPLICATION_M3U8) {
                 return Result.failure(DownloadException(DownloadTrackWorker.ERROR_ONLINE_ONLY))
             }
@@ -76,16 +60,12 @@ internal class DownloadEngine(
                 downloadsDir,
                 DownloadTrackWorker.downloadFileName(track.id, extension),
             )
-            // Уникальный .part на попытку: при REPLACE старый воркер не должен
-            // удалить недокачанный файл новой задачи.
             val tempFile = File(downloadsDir, "${targetFile.name}.$workId.part")
 
             try {
                 val bytes = downloadToFile(resolved.streamUrl, tempFile)
                 if (bytes == 0L) throw DownloadException("empty_file")
                 moveAtomically(tempFile, targetFile)
-                // MP3 помечаем ID3-тегами и обложкой; M4A/WebM не трогаем —
-                // у них другая структура контейнера.
                 if (mimeType == MimeTypes.AUDIO_MPEG) {
                     runCatching { applyId3Tags(track, targetFile) }
                 }
@@ -104,7 +84,6 @@ internal class DownloadEngine(
                 return Result.failure(e)
             }
 
-            // Room обновляем только после того, как новый файл занял место старого.
             try {
                 currentCoroutineContext().ensureActive()
                 save(track, mediaUrl(targetFile), mimeType)
@@ -119,12 +98,6 @@ internal class DownloadEngine(
         }
     }
 
-    /**
-     * Скачивает поток в [targetFile] и возвращает число записанных байт.
-     * Отмена корутины отменяет активный OkHttp [okhttp3.Call], а не только
-     * прекращает чтение между пакетами.
-     */
-    /** Теги поверх готового MP3: название, исполнитель и обложка из сети. */
     private fun applyId3Tags(track: Track, file: File) {
         val artwork = track.artworkUrl?.let { url ->
             runCatching { fetchArtwork(url) }.getOrNull()
@@ -138,7 +111,6 @@ internal class DownloadEngine(
         )
     }
 
-    /** Обложка небольшая; гигантские картинки в теги не тянем. */
     private fun fetchArtwork(url: String): ByteArray? {
         val request = Request.Builder()
             .url(url)
@@ -202,7 +174,6 @@ internal class DownloadEngine(
                 return downloadedBytes
             }
         } catch (e: IOException) {
-            // Отменённый Call бросает IOException — наверх должна уйти отмена.
             currentCoroutineContext().ensureActive()
             throw e
         } finally {
@@ -210,10 +181,6 @@ internal class DownloadEngine(
         }
     }
 
-    /**
-     * Атомарно заменяет [target] готовым [source]. Старый файл не удаляем
-     * заранее: при сбое rename он должен остаться рабочим.
-     */
     private fun moveAtomically(source: File, target: File) {
         val sourcePath = source.toPath()
         val targetPath = target.toPath()
@@ -227,7 +194,6 @@ internal class DownloadEngine(
         } catch (e: AtomicMoveNotSupportedException) {
             Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING)
         } catch (e: FileAlreadyExistsException) {
-            // Windows не заменяет существующий файл через ATOMIC_MOVE.
             Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING)
         }
     }
@@ -237,10 +203,8 @@ internal class DownloadEngine(
         private const val BUFFER_SIZE = 64 * 1024
         private const val PROGRESS_STEP = 5
 
-        /** Обложка больше 3 МБ в теги не влезет без раздувания файла. */
         private const val MAX_ARTWORK_BYTES = 3L * 1024 * 1024
 
-        /** Ссылка протухла: сервер больше не отдаёт файл по этому URL. */
         private val EXPIRED_URL_CODES = setOf(403, 410)
     }
 }

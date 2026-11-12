@@ -24,11 +24,6 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Фасад плеера. Список треков живёт здесь для UI, но очередь воспроизведения
- * зеркалится в ExoPlayer: gapless, предзагрузка и системная шторка работают
- * без пересоздания медиаэлемента.
- */
 @Singleton
 class PlayerController @Inject constructor(
     private val connection: PlayerConnection,
@@ -56,6 +51,8 @@ class PlayerController @Inject constructor(
 
     @Volatile
     private var errorPositionMs: Long = 0L
+
+    internal var nowMs: () -> Long = { System.currentTimeMillis() }
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
@@ -96,7 +93,7 @@ class PlayerController @Inject constructor(
             if (playWhenReady) {
                 audioFocusPausedAt = null
             } else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
-                audioFocusPausedAt = System.currentTimeMillis()
+                audioFocusPausedAt = nowMs()
             } else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
                 audioFocusPausedAt = null
             }
@@ -288,8 +285,17 @@ class PlayerController @Inject constructor(
         }
         scope.launch {
             val player = awaitPlayer() ?: return@launch
-            val insertAt = (player.currentMediaItemIndex + 1).coerceAtMost(player.mediaItemCount)
-            player.addMediaItems(insertAt, listOf(TrackMediaItem.create(track)))
+            val currentAt = player.currentMediaItemIndex
+            val existingAt = (0 until player.mediaItemCount).firstOrNull {
+                player.getMediaItemAt(it).mediaId == track.id
+            }
+            if (existingAt != null && existingAt != currentAt) {
+                val target = if (existingAt < currentAt) currentAt else currentAt + 1
+                player.moveMediaItem(existingAt, target.coerceIn(0, player.mediaItemCount - 1))
+            } else if (existingAt == null) {
+                val insertAt = (currentAt + 1).coerceAtMost(player.mediaItemCount)
+                player.addMediaItems(insertAt, listOf(TrackMediaItem.create(track)))
+            }
         }
         return true
     }
@@ -443,7 +449,6 @@ class PlayerController @Inject constructor(
     }
 
 
-    /** Удаляет ещё не проигранные треки артиста, не прерывая текущий. */
     fun removeUpcomingByArtist(artist: String): Int {
         val target = MusicNormalizer.normalizeArtist(artist)
         if (target.isBlank()) return 0
@@ -466,7 +471,6 @@ class PlayerController @Inject constructor(
         return removedIndices.size
     }
 
-    /** Заменяет всё после текущего новой пачкой, текущий трек не трогает. */
     fun replaceUpcoming(tracks: List<Track>) {
         val state = _state.value
         if (state.queue.isEmpty() || state.currentIndex !in state.queue.indices) return
@@ -490,10 +494,6 @@ class PlayerController @Inject constructor(
         }
     }
 
-    /**
-     * Повтор после ошибки: не начинает трек с нуля, а возвращается к позиции,
-     * на которой плеер остановился.
-     */
     fun retryAfterError() {
         val position = errorPositionMs.coerceAtLeast(0L)
         errorStreak = 0
@@ -679,7 +679,6 @@ class PlayerController @Inject constructor(
         return if (duration > 0) (bufferedPositionMs().toFloat() / duration).coerceIn(0f, 1f) else 0f
     }
 
-    /** Разрешить следующий трек заранее, чтобы переход не ждал сеть. */
     fun preloadNext() {
         val state = _state.value
         if (state.queue.isEmpty()) return
@@ -734,7 +733,6 @@ class PlayerController @Inject constructor(
         player.repeatMode = repeatMode()
     }
 
-    /** Сохранённая очередь: после подключения кладём её в плеер без автоплея. */
     private fun restoreQueueFromDb() {
         scope.launch {
             val snapshot = runCatching { queueRepository.load() }.getOrNull() ?: return@launch
@@ -770,13 +768,9 @@ class PlayerController @Inject constructor(
         }
     }
 
-    /**
-     * После потери аудиофокуса (TikTok, звонок) возвращаемся к игре, если
-     * пользователь вернулся в Facet в течение 15 минут и настройка включена.
-     */
     suspend fun resumeAfterFocusLoss() {
         val pausedAt = audioFocusPausedAt ?: return
-        if (System.currentTimeMillis() - pausedAt > FOCUS_RESUME_WINDOW_MS) {
+        if (nowMs() - pausedAt > FOCUS_RESUME_WINDOW_MS) {
             audioFocusPausedAt = null
             return
         }

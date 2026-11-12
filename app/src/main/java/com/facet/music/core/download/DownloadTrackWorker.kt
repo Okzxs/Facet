@@ -16,28 +16,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
-/**
- * Фоновое скачивание трека в приватное хранилище приложения.
- *
- * Скачиваем только progressive-файлы: HLS — это набор сегментов, из которого
- * нельзя собрать один файл. Источник выбирается по [Track.source]:
- * SoundCloud отдаёт MP3, YouTube — M4A (реже WEBM/Opus). Если у
- * SoundCloud-трека есть только HLS, резолвер ищет версию на YouTube.
- * Когда progressive-потока нет нигде, задача завершается ошибкой, и UI
- * показывает крестик со Snackbar с понятным текстом.
- *
- * Воркер получает из WorkData только идентичность трека и сам вызывает
- * [DownloadSourceResolver] перед скачиванием. Так протухшая подписанная
- * ссылка не превращается в вечную ошибку: при 403/410 источник резолвится
- * ещё раз. Вся работа с файлами и повторами живёт в [DownloadEngine].
- */
 class DownloadTrackWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        // Самый первый лог: по нему видно, что WorkManager реально запустил воркер.
         Log.d(
             TAG,
             "doWork(): старт, workId=$id, trackId=${inputData.getString(KEY_TRACK_ID)}",
@@ -82,8 +66,6 @@ class DownloadTrackWorker(
                         )
                         val message = error.message ?: ERROR_UNKNOWN
                         if (isTransient(error) && runAttemptCount < MAX_ATTEMPTS) {
-                            // Транзиентный сбой: WorkManager повторит задачу
-                            // по экспоненциальному backoff из setBackoffCriteria.
                             Log.d(TAG, "Повтор #${runAttemptCount + 1} для '${track.title}'")
                             Result.retry()
                         } else {
@@ -98,11 +80,6 @@ class DownloadTrackWorker(
         }
     }
 
-    /**
-     * Транзиентный сбой, после которого повтор имеет смысл: обрыв сети, таймаут,
-     * 5xx и несовпавший размер файла. [DownloadException] — осознанный отказ
-     * источника («только онлайн», нет каталога), повторять его бесполезно.
-     */
     private fun isTransient(error: Throwable): Boolean = when (error) {
         is DownloadException -> false
         is HttpStatusException -> error.code in RETRYABLE_HTTP_CODES
@@ -110,7 +87,6 @@ class DownloadTrackWorker(
         else -> false
     }
 
-    /** Восстанавливает трек из входных данных WorkManager. */
     private fun readTrack(): Track? {
         val id = inputData.getString(KEY_TRACK_ID) ?: return null
         return Track(
@@ -132,19 +108,14 @@ class DownloadTrackWorker(
     companion object {
         private const val TAG = "DownloadWorker"
 
-        /** Единый текст ошибки, когда progressive-файл недоступен. */
         const val ERROR_ONLINE_ONLY = "Трек доступен только для онлайн-прослушивания"
 
-        /** Текст в outputData, когда исключение пришло без сообщения. */
         const val ERROR_UNKNOWN = "download_failed"
 
-        /** Попыток на одну задачу: дальше транзиентный сбой становится FAILED. */
         private const val MAX_ATTEMPTS = 3
 
-        /** HTTP-коды, при которых повтор через backoff оправдан. */
         private val RETRYABLE_HTTP_CODES = setOf(408, 425, 429, 500, 502, 503, 504, 509)
 
-        /** Подкаталог во внутреннем хранилище приложения. */
         const val DOWNLOADS_DIR = "downloads"
 
         const val KEY_TRACK_ID = "track_id"
@@ -158,7 +129,6 @@ class DownloadTrackWorker(
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
 
-        /** MIME из результата resolve либо безопасный фолбэк по источнику. */
         internal fun mimeTypeFor(source: Source, result: AudioStreamResult): String =
             result.mimeType?.takeIf { it.isNotBlank() } ?: defaultMimeType(source)
 
@@ -167,7 +137,6 @@ class DownloadTrackWorker(
             else -> MimeTypes.AUDIO_MPEG
         }
 
-        /** Расширение файла по MIME: Room и ExoPlayer должны видеть один формат. */
         internal fun extensionFor(mimeType: String, source: Source): String = when (mimeType) {
             MimeTypes.AUDIO_MP4, MimeTypes.AUDIO_AAC -> "m4a"
             MimeTypes.AUDIO_WEBM, MimeTypes.AUDIO_OPUS -> "webm"
@@ -175,10 +144,6 @@ class DownloadTrackWorker(
             else -> if (source == Source.YOUTUBE) "m4a" else "mp3"
         }
 
-        /**
-         * Имя файла — SHA-256 от track.id в hex. Это устраняет коллизии
-         * 32-битного hashCode и не зависит от длины URL.
-         */
         fun downloadFileName(trackId: String, extension: String = "mp3"): String {
             val safeExtension = extension
                 .lowercase()

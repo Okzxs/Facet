@@ -9,16 +9,6 @@ import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-/**
- * Минимальный писатель ID3v2.3: название, исполнитель и обложка.
- *
- * Аудио не читается в память: заголовок и фреймы пишутся во временный файл,
- * затем туда же потоково копируется исходный звук. Это важно для больших
- * MP3, где `readBytes()` раздувал heap на десятки мегабайт.
- *
- * Теги пишутся только для MP3. M4A/WebM не трогаем: у них другая структура
- * контейнера, а MP4-атомы moov/udta/meta/ilst слишком рискованны без библиотеки.
- */
 object Id3Writer {
 
     private const val HEADER_SIZE = 10
@@ -26,12 +16,6 @@ object Id3Writer {
     private const val PICTURE_TYPE_COVER_FRONT = 0x03
     private const val COPY_BUFFER = 64 * 1024
 
-    /**
-     * Дописывает теги к MP3-файлу. Существующий ID3v2 в начале файла
-     * отбрасывается, чтобы теги не дублировались.
-     *
-     * @return true, если файл перезаписан.
-     */
     fun write(
         file: File,
         title: String,
@@ -95,7 +79,6 @@ object Id3Writer {
         }
     }
 
-    /** MIME обложки по сигнатуре байтов: JPEG, PNG или WebP. */
     fun artworkMimeType(bytes: ByteArray): String = when {
         bytes.size >= 3 &&
             bytes[0] == 0xFF.toByte() &&
@@ -116,7 +99,6 @@ object Id3Writer {
         else -> "image/jpeg"
     }
 
-    /** Пропускает уже существующий ID3v2-блок в начале файла. */
     private fun existingTagSize(source: RandomAccessFile): Long {
         if (source.length() < HEADER_SIZE) return 0L
         val header = ByteArray(HEADER_SIZE)
@@ -155,7 +137,6 @@ object Id3Writer {
             write(mime.toByteArray(Charsets.US_ASCII))
             write(0)
             write(PICTURE_TYPE_COVER_FRONT)
-            // Пустое описание: BOM и терминатор UTF-16.
             write(0xFF)
             write(0xFE)
             write(0)
@@ -180,13 +161,11 @@ object Id3Writer {
         target.write(payload)
     }
 
-    /** UTF-16 с BOM: кириллица без потерь в любой читалке тегов. */
     private fun utf16(value: String): ByteArray {
         val bytes = value.toByteArray(Charset.forName("UTF-16LE"))
         return byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + bytes
     }
 
-    /** Синхсайф-размер: 7 бит на байт, старший бит всегда 0. */
     private fun writeSynchsafe(target: ByteArray, offset: Int, value: Int) {
         target[offset] = ((value ushr 21) and 0x7F).toByte()
         target[offset + 1] = ((value ushr 14) and 0x7F).toByte()

@@ -2,11 +2,6 @@ package com.facet.music.core.text
 
 import java.util.Locale
 
-/**
- * Единая нормализация музыкальных подписей: артист, название, ключ трека,
- * жанровые токены и маркеры версий. Нужна и рекомендациям, и «Моей волне»,
- * чтобы один трек из разных источников давал один ключ.
- */
 object MusicNormalizer {
 
     fun normalizeArtist(raw: String): String {
@@ -17,10 +12,8 @@ object MusicNormalizer {
             .lowercase(Locale.ROOT)
     }
 
-    /** Отображаемое имя без feat./prod. и лишних пробелов, с исходным регистром. */
     fun stripArtistCredits(raw: String): String = raw.replace(ARTIST_CREDITS_PATTERN, "")
 
-    /** Нормализованное название без скобочных пометок и пунктуации. */
     fun normalizeTitle(raw: String): String = raw
         .lowercase(Locale.ROOT)
         .replace(TITLE_NOISE, " ")
@@ -28,10 +21,6 @@ object MusicNormalizer {
         .replace(WHITESPACE_PATTERN, " ")
         .trim()
 
-    /**
-     * Ключ сравнения: нормализованный артист и название. Пустое название
-     * даёт пустой ключ — такие строки нельзя схлопывать между собой.
-     */
     fun trackKey(artist: String, title: String): String {
         val titleKey = normalizeTitle(title)
         if (titleKey.isBlank()) return ""
@@ -41,7 +30,6 @@ object MusicNormalizer {
     fun normalizeWords(value: String): String =
         NON_WORD.replace(value.lowercase(Locale.ROOT), " ").trim()
 
-    /** Жанр в виде набора значимых слов; пустой набор — жанра нет. */
     fun genreTokens(value: String?): Set<String> =
         normalizeWords(value.orEmpty())
             .split(' ')
@@ -49,7 +37,6 @@ object MusicNormalizer {
             .filter { it.length >= MIN_GENRE_TOKEN_LENGTH }
             .toSet()
 
-    /** Маркеры «неправильной» версии, найденные в названии. */
     fun markersIn(value: String): Set<String> {
         if (value.isBlank()) return emptySet()
         val normalized = " ${normalizeWords(value)} "
@@ -64,7 +51,6 @@ object MusicNormalizer {
 
     private val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
 
-    /** Скобочные пометки версии: «(Official Video)», «[Remastered]». */
     private val TITLE_NOISE = Regex("[(\\[][^)\\]]*[)\\]]")
 
     private val ARTIST_CREDITS_PATTERN = Regex(

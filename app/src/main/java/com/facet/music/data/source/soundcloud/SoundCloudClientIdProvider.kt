@@ -23,20 +23,11 @@ import javax.inject.Singleton
 
 private val Context.soundCloudClientDataStore by preferencesDataStore(name = "soundcloud_client")
 
-/** Значение client_id и момент его получения. */
 internal data class CachedClientId(
     val value: String,
     val fetchedAtMs: Long,
 )
 
-/**
- * Кэш client_id SoundCloud: память → DataStore (TTL 24 ч) → JS-бандлы сайта.
- *
- * client_id меняется вместе с бандлами SoundCloud, поэтому при 401/403
- * [invalidate] стирает и память, и DataStore, и следующий запрос получает
- * новое значение. Статический кэш NewPipe сбросить нельзя — API этого не
- * позволяет, поэтому он используется только как последний фолбэк.
- */
 @Singleton
 class SoundCloudClientIdProvider @Inject constructor(
     @ApplicationContext context: Context,
@@ -66,7 +57,6 @@ class SoundCloudClientIdProvider @Inject constructor(
         fresh
     }
 
-    /** Сброс после 401/403: следующий get() добудет новый client_id. */
     suspend fun invalidate() {
         mutex.withLock {
             memory = null
@@ -74,7 +64,6 @@ class SoundCloudClientIdProvider @Inject constructor(
         }
     }
 
-    /** Прогрев в фоне после первого кадра; ошибки не влияют на UI. */
     suspend fun warmUp() {
         runCatching { get() }
     }
@@ -144,7 +133,6 @@ class SoundCloudClientIdProvider @Inject constructor(
     }
 }
 
-/** Обёртка над DataStore: единственный экземпляр на процесс. */
 internal class SoundCloudClientStore(
     private val context: Context,
 ) {

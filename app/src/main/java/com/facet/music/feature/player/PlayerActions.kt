@@ -145,7 +145,6 @@ import kotlinx.coroutines.launch
 import java.util.Date
 import kotlin.math.abs
 
-/** Визуальные состояния кнопки: прогресс не перезапускает анимацию иконки. */
 private enum class DownloadButtonKind {
     Download,
     Progress,
@@ -160,10 +159,6 @@ private fun DownloadState.toButtonKind(): DownloadButtonKind = when (this) {
     DownloadState.NotDownloaded -> DownloadButtonKind.Download
 }
 
-/**
- * Кнопка скачивания 46dp: стрелка → прогресс → галочка,
- * при отмене/ошибке — крестик, который через секунду морфится обратно.
- */
 @Composable
 internal fun DownloadSquircle(
     state: DownloadState,
@@ -243,7 +238,6 @@ internal fun DownloadSquircle(
     }
 }
 
-/** Лайк-сквиркл 46dp с тональным контейнером в цветах плеера. */
 @Composable
 internal fun LikeSquircle(
     isLiked: Boolean,
@@ -269,7 +263,6 @@ internal fun LikeSquircle(
     }
 }
 
-/** Дизлайк-сквиркл 46dp: красный, пока трек исключён из рекомендаций. */
 @Composable
 internal fun DislikeSquircle(
     isDisliked: Boolean,

@@ -29,29 +29,24 @@ class LyricsRepositoryImpl @Inject constructor(
 
             Log.d(tag, "Requesting: ${cleanQuery.title} - ${cleanQuery.artist} - ${durationSec}s")
 
-            // 1. Попытка GET с очищенными параметрами и длительностью
             var found = tryGetLyrics(cleanQuery.title, cleanQuery.artist, durationSec)
 
-            // 2. Фолбэк на GET без длительности (на SoundCloud длительность часто отличается на секунды)
             if (found == null && durationSec != null) {
                 Log.d(tag, "Фолбэк: запрос GET без duration (${cleanQuery.title} - ${cleanQuery.artist})")
                 found = tryGetLyrics(cleanQuery.title, cleanQuery.artist, null)
             }
 
-            // 3. Фолбэк на search по track_name и artist_name
             if (found == null) {
                 Log.d(tag, "Фолбэк: поиск search (${cleanQuery.title} - ${cleanQuery.artist})")
                 found = trySearchLyrics(trackName = cleanQuery.title, artistName = cleanQuery.artist.ifBlank { null })
             }
 
-            // 4. Фолбэк на search с полнотекстовым запросом q
             if (found == null) {
                 val fullQuery = "${cleanQuery.artist} ${cleanQuery.title}".trim()
                 Log.d(tag, "Фолбэк: полнотекстовый поиск search q='$fullQuery'")
                 found = trySearchLyrics(query = fullQuery)
             }
 
-            // 5. Если метаданные очищались, но ничего не найдено — попытка с исходными строками
             if (found == null && (cleanQuery.title != title || cleanQuery.artist != artist)) {
                 Log.d(tag, "Фолбэк: поиск с исходными строками ('$title' - '$artist')")
                 found = trySearchLyrics(query = "$artist $title".trim())
@@ -137,14 +132,10 @@ class LyricsRepositoryImpl @Inject constructor(
         return null
     }
 
-    /**
-     * Очистка метаданных трека от шума SoundCloud ("Artist - Title", "(Official Video)", суффиксы).
-     */
     private fun cleanTrackMetadata(title: String, artist: String): CleanQuery {
         var cleanTitle = title
         var cleanArtist = artist
 
-        // Если в названии трека зашит исполнитель: "Artist - Title"
         if (title.contains(" - ")) {
             val parts = title.split(" - ", limit = 2)
             if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
@@ -153,7 +144,6 @@ class LyricsRepositoryImpl @Inject constructor(
             }
         }
 
-        // Очистка от суффиксов в скобках
         val noiseRegex = Regex(
             "(?i)\\s*[\\[(](official\\s*(video|audio|music\\s*video|lyric\\s*video|lyrics)?|audio|lyrics|lyric\\s*video|remastered(\\s*\\d+)?|live|hd|hq|extended)[\\])]"
         )

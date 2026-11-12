@@ -74,16 +74,6 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
 
-/**
- * Переиспользуемая карточка трека — горизонтальный layout.
- * Используется в поиске, главной, библиотеке. В покое фон прозрачный:
- * список держится на воздухе и отступах, а не на плашках.
- *
- * Действия «играть следующим» и «в очередь» не занимают место в строке:
- * они открываются меню по долгому тапу. Riff и Dotify держат такие действия
- * рядом с треком, но у нас trailing-слот уже занят скачиванием, лайком и
- * плейлистом — лишняя иконка сжала бы название до пары букв.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackCard(
@@ -96,23 +86,9 @@ fun TrackCard(
     artworkSize: Int = 56,
     artworkCornerDp: Int = 12,
     trailingContent: @Composable (() -> Unit)? = null,
-    /**
-     * Необязательное действие «в плейлист». Если передано, в trailing-области
-     * появляется компактная иконка 40dp; экраны без плейлистов её не показывают.
-     */
     onAddToPlaylist: (() -> Unit)? = null,
-    /**
-     * Необязательный переход к артисту по долгому тапу на карточке.
-     * Если не передан, карточка ведёт себя как раньше — только короткий тап.
-     */
     onArtistClick: (() -> Unit)? = null,
-    /**
-     * Необязательное действие «играть следующим». Если передан хотя бы один
-     * из колбэков очереди, долгий тап открывает меню действий вместо
-     * мгновенного перехода к артисту.
-     */
     onPlayNext: (() -> Unit)? = null,
-    /** Необязательное действие «в очередь» — см. [onPlayNext]. */
     onAddToQueue: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -122,7 +98,6 @@ fun TrackCard(
     val containerColor by animateColorAsState(
         targetValue = when {
             pressed -> MaterialTheme.colorScheme.surfaceContainerHigh
-            // Играющий трек подсвечен в списке: тон чуть выше обычной карточки.
             isPlaying -> MaterialTheme.colorScheme.surfaceContainerHigh
             else -> MaterialTheme.colorScheme.surfaceContainerLow
         },
@@ -138,8 +113,6 @@ fun TrackCard(
         label = "trackCardScale",
     )
 
-    // Действия очереди живут в меню по долгому тапу: ещё одна иконка в
-    // и без того плотном trailing-слоте сжала бы название трека.
     val hasQueueActions = onPlayNext != null || onAddToQueue != null
     var actionsExpanded by remember { mutableStateOf(false) }
 
@@ -151,7 +124,6 @@ fun TrackCard(
             onLongClick = { actionsExpanded = true },
             onClick = onClick,
         )
-        // Старое поведение без действий очереди: долгий тап сразу к артисту.
         onArtistClick != null -> Modifier.combinedClickable(
             interactionSource = interactionSource,
             indication = ripple(color = MaterialTheme.colorScheme.primary),
@@ -181,9 +153,6 @@ fun TrackCard(
             ListItem(
                 modifier = clickModifier,
                 headlineContent = {
-                    // Название и автор живут в одной колонке без supporting-слота:
-                    // ListItem иначе разводит их по высоте, и у коротких названий
-                    // между строками появляется пустая дыра.
                     Column(verticalArrangement = Arrangement.Center) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -198,7 +167,6 @@ fun TrackCard(
                                 },
                                 modifier = Modifier.weight(1f, fill = false),
                             )
-                            // Сводный поиск: «+N» — трек нашёлся ещё в N источниках.
                             if (track.sourceCount > 1) {
                                 Spacer(Modifier.width(6.dp))
                                 Surface(
@@ -216,7 +184,6 @@ fun TrackCard(
                                     )
                                 }
                             }
-                            // SoundCloud Go+: поток без подписки не отдаётся.
                             if (track.isSubscriptionOnly) {
                                 Spacer(Modifier.width(6.dp))
                                 Surface(
@@ -257,7 +224,6 @@ fun TrackCard(
                             size = artworkSize,
                             cornerDp = artworkCornerDp,
                         )
-                        // Значок «скачано» — маленькая галочка поверх обложки
                         if (isDownloaded) {
                             Surface(
                                 modifier = Modifier
@@ -313,8 +279,6 @@ fun TrackCard(
             )
         }
 
-        // Меню действий по долгому тапу. Попап не обрезается Surface карточки,
-        // поэтому якорем служит внешний Box.
         if (hasQueueActions) {
             DropdownMenu(
                 expanded = actionsExpanded,
@@ -370,10 +334,6 @@ fun TrackCard(
     }
 }
 
-/**
- * Эквалайзер из трёх полосок для играющего трека: высоты бегут по кругу
- * через infiniteTransition, отрисовка на Canvas без лишних рекомпозиций.
- */
 @Composable
 fun PlayingEqualizerIcon(modifier: Modifier = Modifier) {
     val color = MaterialTheme.colorScheme.primary
@@ -392,7 +352,6 @@ fun PlayingEqualizerIcon(modifier: Modifier = Modifier) {
         val step = barWidth * 2f
         for (index in 0..2) {
             val t = (phase + index * 0.33f) % 1f
-            // sin/PI работают в Double — явно сужаем к Float для геометрии Canvas.
             val wave = abs(sin(t * 2.0 * PI)).toFloat()
             val barHeight = size.height * (0.35f + 0.65f * wave)
             drawRoundRect(
@@ -405,10 +364,6 @@ fun PlayingEqualizerIcon(modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * Три статичные точки вместо бегущих полосок: трек на паузе.
- * Тот же размер, что у эквалайзера, чтобы строка не «дёргалась».
- */
 @Composable
 fun PausedEqualizerDots(modifier: Modifier = Modifier) {
     val color = MaterialTheme.colorScheme.primary
@@ -481,7 +436,6 @@ fun TrackArtwork(
     }
 }
 
-/** Форматирование длительности: мс → "3:22" */
 fun formatDuration(ms: Long): String {
     val totalSec = ms / 1000
     val min = totalSec / 60

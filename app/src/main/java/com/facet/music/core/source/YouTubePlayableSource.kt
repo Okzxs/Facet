@@ -9,7 +9,6 @@ import com.facet.music.data.repository.YouTubeRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** YouTube как полноценный источник потока. */
 @Singleton
 class YouTubePlayableSource @Inject constructor(
     private val repository: YouTubeRepository,
@@ -70,7 +69,6 @@ class YouTubePlayableSource @Inject constructor(
         startsWith("http://", ignoreCase = true) || startsWith("https://", ignoreCase = true)
 }
 
-/** Общая пагинация для источников без серверного `page`. */
 internal suspend fun pagedSearch(
     limit: Int,
     page: Int,

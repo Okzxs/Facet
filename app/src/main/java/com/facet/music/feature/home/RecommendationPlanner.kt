@@ -7,20 +7,11 @@ import java.util.Locale
 import javax.inject.Inject
 import kotlin.random.Random
 
-/**
- * Параметры одного поискового запроса для fallback.
- *
- * [allowedArtists] — нормализованные имена артистов-сидов. Трек обязан
- * совпасть с полем `artist`, а не с названием. Пустой набор не допускается.
- */
 internal data class RecommendationQuery(
     val text: String,
     val allowedArtists: Set<String>,
 )
 
-/**
- * Артист-сид с накопленным весом из лайков и истории прослушиваний.
- */
 internal data class ArtistSeed(
     val name: String,
     val normalizedName: String,
@@ -28,12 +19,6 @@ internal data class ArtistSeed(
     val genre: String?,
 )
 
-/**
- * Конкретный трек-сид для запроса related-выдачи.
- *
- * [url] — страница трека в YouTube или SoundCloud, по которой NewPipe
- * строит список похожих видео/треков.
- */
 internal data class TrackSeed(
     val track: Track,
     val weight: Double,
@@ -45,22 +30,10 @@ internal data class TrackSeed(
             ?: ""
 }
 
-/**
- * Собирает персональные рекомендации: треки-сиды, related-кандидатов,
- * строгий artist-fallback и диверсификацию финальной ленты.
- */
 class RecommendationPlanner @Inject constructor() {
 
-    /**
-     * Меняется в тестах, чтобы зафиксировать случайную подвыборку.
-     */
     internal var random: Random = Random.Default
 
-    /**
-     * Строит до восьми артистов-сидов для точечного fallback. Лайки весят
-     * больше прослушиваний, свежие записи — больше старых. Один и тот же
-     * трек не учитывается дважды.
-     */
     internal fun buildArtistSeeds(
         liked: List<Track>,
         history: List<Track>,
@@ -102,9 +75,6 @@ class RecommendationPlanner @Inject constructor() {
             }
     }
 
-    /**
-     * Случайно выбирает 4–6 артистов из топ-8. Если артистов меньше, берём всех.
-     */
     internal fun selectSeeds(seeds: List<ArtistSeed>): List<ArtistSeed> {
         val pool = seeds.take(MAX_SEED_ARTISTS)
         if (pool.size <= MIN_SEED_SUBSET) return pool.shuffled(random)
@@ -114,13 +84,6 @@ class RecommendationPlanner @Inject constructor() {
         return pool.shuffled(random).take(count)
     }
 
-    /**
-     * Строит треки-сиды из последних лайков и прослушиваний.
-     *
-     * Учитываются только треки, для которых можно запросить related-выдачу
-     * (YouTube/SoundCloud и URL страницы). Лайк весит в четыре раза больше
-     * прослушивания; внутри каждой группы свежие записи получают больший вес.
-     */
     internal fun buildTrackSeeds(
         liked: List<Track>,
         history: List<Track>,
@@ -157,11 +120,6 @@ class RecommendationPlanner @Inject constructor() {
         return seeds.values.sortedByDescending { it.weight }
     }
 
-    /**
-     * Выбирает 4–6 треков-сидов. Сначала старается взять разных артистов,
-     * затем добивает подвыборку остальными треками. Финальный порядок случайный,
-     * но приоритет лайков и свежих записей сохраняется за счёт пула топ-20.
-     */
     internal fun selectTrackSeeds(seeds: List<TrackSeed>): List<TrackSeed> {
         val pool = seeds.take(TRACK_SEED_POOL)
         if (pool.isEmpty()) return emptyList()
@@ -191,10 +149,6 @@ class RecommendationPlanner @Inject constructor() {
         return selected.shuffled(random)
     }
 
-    /**
-     * Артисты, которые заметно доминируют в персональной выборке. Для них
-     * допускается один дополнительный трек в финальной ленте.
-     */
     internal fun findDominantArtists(
         liked: List<Track>,
         history: List<Track>,
@@ -219,10 +173,6 @@ class RecommendationPlanner @Inject constructor() {
             .keys
     }
 
-    /**
-     * Строит точечные fallback-запросы только по топ-артистам из лайков и
-     * истории. Глобальный популярный запрос здесь не добавляется.
-     */
     internal fun buildArtistFallbackQueries(
         liked: List<Track>,
         history: List<Track>,
@@ -254,10 +204,6 @@ class RecommendationPlanner @Inject constructor() {
         return queries
     }
 
-    /**
-     * Строгая проверка для fallback: сравниваем только поле `artist`.
-     * Название трека не является доказательством принадлежности артисту.
-     */
     internal fun matchesExactArtist(
         track: Track,
         allowedArtists: Set<String>,
@@ -270,10 +216,6 @@ class RecommendationPlanner @Inject constructor() {
             trackArtist in allowedArtists
     }
 
-    /**
-     * Убирает из кандидатов треки, которые пользователь отметил дизлайком.
-     * Фильтр применяется до отбора, чтобы дизлайки не занимали слоты ленты.
-     */
     internal fun filterDisliked(
         candidates: List<Track>,
         dislikedTrackIds: Set<String>,
@@ -282,12 +224,6 @@ class RecommendationPlanner @Inject constructor() {
         return candidates.filter { it.id !in dislikedTrackIds }
     }
 
-    /**
-     * Убирает дубликаты одного и того же трека из разных загрузок.
-     *
-     * YouTube отдаёт каждый перезалив отдельным id, поэтому дедуп по id
-     * пропускал одинаковые песни. Сравниваем нормализованные «артист + название».
-     */
     internal fun dedupeByTitle(tracks: List<Track>): List<Track> {
         val seen = HashSet<String>()
         return tracks.filter { track ->
@@ -296,14 +232,8 @@ class RecommendationPlanner @Inject constructor() {
         }
     }
 
-    /** Ключ сравнения: артист без feat./prod. + название без скобочных пометок. */
     internal fun Track.matchKey(): String = MusicNormalizer.trackKey(artist, title)
 
-    /**
-     * Перемешивает кандидатов и набирает не больше [limit] треков.
-     * Обычный кап — [maxPerArtist], для доминирующих артистов —
-     * [maxPerDominantArtist].
-     */
     internal fun selectTracks(
         candidates: List<Track>,
         limit: Int = RECOMMENDATION_TRACKS_LIMIT,
@@ -337,10 +267,6 @@ class RecommendationPlanner @Inject constructor() {
         return selected
     }
 
-    /**
-     * Добивает готовую ленту fallback-кандидатами с теми же ограничениями
-     * и перемешивает итог.
-     */
     internal fun appendTracks(
         selected: List<Track>,
         candidates: List<Track>,
@@ -425,7 +351,6 @@ class RecommendationPlanner @Inject constructor() {
         return if (normalized.isNotBlank() && normalized != UNKNOWN_ARTIST) {
             "artist:$normalized"
         } else {
-            // Без артиста не даём разным трекам схлопнуться в один «Unknown».
             "track:${track.id}"
         }
     }
@@ -465,9 +390,4 @@ class RecommendationPlanner @Inject constructor() {
 
 internal const val POPULAR_QUERY = "popular songs official audio"
 
-/**
- * Убирает feat./prod. и всё, что идёт после них, схлопывает пробелы
- * и приводит имя к нижнему регистру. Оставлено для совместимости тестов:
- * единая реализация живёт в [MusicNormalizer].
- */
 internal fun normalizeArtist(raw: String): String = MusicNormalizer.normalizeArtist(raw)

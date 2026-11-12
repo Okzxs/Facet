@@ -6,10 +6,6 @@ import androidx.room.PrimaryKey
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 
-/**
- * Сущность истории прослушиваний для таблицы play_history в Room.
- * Индекс по playedAt: недавние прослушивания выбираются по времени.
- */
 @Entity(
     tableName = "play_history",
     indices = [Index("playedAt")],
@@ -26,7 +22,6 @@ data class PlayHistoryEntity(
     val transcodingUrl: String?,
     val playedAt: Long = System.currentTimeMillis(),
     val artistUrl: String? = null,
-    /** Какая доля трека реально проиграна; null — запись старой версии. */
     val playedFraction: Float? = null,
 )
 

@@ -139,36 +139,27 @@ private enum class SearchContentState { Idle, Loading, Error, Empty, Results }
 
 private val searchSuggestions = listOf("Electronic", "Hip-Hop", "Rock", "Chill", "Pop", "R&B")
 
-/**
- * Порядок кнопок-источников в поиске: сначала бренды с полноценным стримом,
- * Spotify последним — он работает только при введённых ключах.
- */
 private val sourceButtonOrder = listOf(
     ServiceType.YOUTUBE,
     ServiceType.SOUNDCLOUD,
     ServiceType.SPOTIFY,
 )
 
-// Брендовые цвета источников: фон кнопки — с альфой, текст — чистый цвет.
 private val YoutubeRed = Color(0xFFFF0000)
 private val SoundCloudOrange = Color(0xFFFF5500)
 private val SpotifyGreen = Color(0xFF1DB954)
 
-/** Векторная иконка бренда внутри квадратной кнопки источника. */
 private fun ServiceType.brandIconRes(): Int = when (this) {
     ServiceType.YOUTUBE -> R.drawable.ic_brand_youtube
     ServiceType.SOUNDCLOUD -> R.drawable.ic_brand_soundcloud
     ServiceType.SPOTIFY -> R.drawable.ic_brand_spotify
 }
 
-/** Фирменный цвет бренда. */
 private fun ServiceType.brandColor(): Color = when (this) {
     ServiceType.YOUTUBE -> YoutubeRed
     ServiceType.SOUNDCLOUD -> SoundCloudOrange
     ServiceType.SPOTIFY -> SpotifyGreen
 }
-
-// Семантические цвета статусов живут в теме (Color.kt), не зависят от Dynamic Color.
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -186,11 +177,8 @@ fun SearchScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    // Трек, для которого открыта шторка «Добавить в плейлист».
     var playlistTrack by remember { mutableStateOf<Track?>(null) }
 
-    // Очередь живёт в плеере, поэтому единственный отклик на действие —
-    // Snackbar с названием трека.
     val handlePlayNext: (Track) -> Unit = { track ->
         if (onPlayNext(track)) {
             scope.launch {
@@ -229,13 +217,10 @@ fun SearchScreen(
     }
 
     Scaffold(
-        // Фон ставим сами: корневого Scaffold больше нет, без него экран прозрачный.
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         containerColor = MaterialTheme.colorScheme.surface,
-        // Статус-бар обеспечиваем сами (корневого Scaffold больше нет); низ —
-        // через contentPadding списков с запасом под плавающий док.
         contentWindowInsets = WindowInsets.statusBars,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
@@ -363,8 +348,6 @@ fun SearchScreen(
         }
     }
 
-    // Шторка вне Scaffold: она рисуется в отдельном окне, а Snackbar
-    // «Добавлено в …» показывает сам поиск.
     playlistTrack?.let { track ->
         AddToPlaylistSheet(
             track = track,
@@ -522,12 +505,6 @@ private fun SourceSwitcher(
     }
 }
 
-/**
- * Квадратная кнопка источника 48×48: фон — фирменный цвет с альфой 0.15,
- * внутри векторная иконка бренда в полный цвет. Выбранный источник получает
- * более плотный фон 0.25 и рамку 2dp цвета бренда; недоступный — приглушённую
- * иконку (alpha 0.4), но остаётся нажимаемым.
- */
 @Composable
 private fun SourceButton(
     service: ServiceType,
@@ -555,7 +532,6 @@ private fun SourceButton(
 
     Surface(
         onClick = onClick,
-        // Ненастроенный источник (Spotify без ключей) не выбирается.
         enabled = configured,
         modifier = modifier.size(42.dp),
         shape = MaterialTheme.shapes.medium,
@@ -568,7 +544,6 @@ private fun SourceButton(
                 painter = painterResource(service.brandIconRes()),
                 contentDescription = contentDescription,
                 tint = brand,
-                // Недоступный или ненастроенный сервис виден по приглушённой иконке.
                 modifier = Modifier
                     .size(23.dp)
                     .alpha(if (!configured) 0.35f else if (unavailable) 0.4f else 1f),
@@ -1022,10 +997,6 @@ private fun SuggestionChips(onSuggestion: (String) -> Unit) {
     }
 }
 
-/**
- * Недавние запросы: горизонтальный ряд чипсов над подсказками.
- * Появляются, только пока поле пустое — чтобы не мешать вводу.
- */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RecentQueriesRow(
@@ -1691,10 +1662,6 @@ private fun ShimmerTrackRow() {
     }
 }
 
-/**
- * Блок с бегущим бликом. Анимация живёт в graphicsLayer, поэтому кадры
- * не вызывают рекомпозицию — только обновление transform-слоя.
- */
 @Composable
 private fun ShimmerBlock(
     modifier: Modifier = Modifier,

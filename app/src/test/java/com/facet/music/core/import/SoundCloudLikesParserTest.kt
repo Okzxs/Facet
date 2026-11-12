@@ -5,9 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/**
- * api-v2 `/track_likes`: collection треков и next_href для пагинации.
- */
 class SoundCloudLikesParserTest {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -60,7 +57,6 @@ class SoundCloudLikesParserTest {
 
     @Test
     fun `unwraps like object with nested track`() {
-        // Реальный ответ api-v2: элемент коллекции — лайк, а трек внутри `track`.
         val body = """
             {
               "collection": [

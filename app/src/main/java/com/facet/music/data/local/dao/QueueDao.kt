@@ -19,7 +19,6 @@ interface QueueDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<QueueEntity>)
 
-    /** Очередь перезаписывается целиком: старые позиции не должны остаться. */
     @Transaction
     suspend fun replaceAll(items: List<QueueEntity>) {
         clear()

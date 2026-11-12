@@ -29,12 +29,6 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Результат загрузки плейлиста по ссылке.
- *
- * Ошибка несёт [ImportError] — UI сам выбирает локализованный текст
- * (`import_error_*`), а [message] остаётся для лога и отладки.
- */
 sealed interface PlaylistImportResult {
     data class Success(val playlist: ImportedPlaylist) : PlaylistImportResult
 
@@ -44,41 +38,18 @@ sealed interface PlaylistImportResult {
     ) : PlaylistImportResult
 }
 
-/**
- * Результат загрузки публичного профиля: список плейлистов для выбора.
- */
 sealed interface ProfileImportResult {
     data class Success(val playlists: List<ProfilePlaylist>) : ProfileImportResult
     data class Failure(val error: ImportError, val message: String) : ProfileImportResult
 }
 
-/**
- * Загрузчик плейлиста по ссылке.
- *
- * Разбирает ссылку, ходит в сеть и возвращает треки — но ничего не пишет
- * в Room: сохранение и создание плейлиста делает вызывающая сторона через
- * [com.facet.music.data.repository.PlaylistRepository]. Так превью можно
- * показать до подтверждения импорта.
- */
 interface PlaylistImportService {
 
-    /** Загружает плейлист по ссылке. Отмену корутины пробрасывает дальше. */
     suspend fun load(link: String): PlaylistImportResult
 
-    /**
-     * Публичные плейлисты профиля Spotify или SoundCloud — для экрана
-     * «Импорт профиля». Ссылки на треки и плейлисты не принимаются.
-     */
     suspend fun loadProfile(link: String): ProfileImportResult
 }
 
-/**
- * Spotify — Client Credentials через [SpotifyProvider]; Deezer — открытый
- * API без авторизации.
- *
- * Ответы Deezer разбирает [PlaylistPayloadParser] (чистые JVM-функции),
- * а сеть идёт через общий [OkHttpClient] проекта с лимитером источника.
- */
 @Singleton
 class PlaylistImportServiceImpl @Inject constructor(
     @ApiClient private val client: OkHttpClient,
@@ -118,11 +89,6 @@ class PlaylistImportServiceImpl @Inject constructor(
             )
         }
 
-    /**
-     * YouTube и SoundCloud через NewPipe: у обоих сервисов есть
-     * `PlaylistExtractor`, поэтому логика общая — постранично набираем
-     * `StreamInfoItem` и переводим их в доменные треки.
-     */
     private fun loadWithNewPipe(
         service: StreamingService,
         url: String,
@@ -147,7 +113,6 @@ class PlaylistImportServiceImpl @Inject constructor(
     }.rethrowCancellation()
         .getOrElse { error -> networkFailure(error) }
 
-    /** Строка плейлиста NewPipe → доменный трек; пустые/битые пропускаем. */
     private fun StreamInfoItem.toImportedTrack(service: ImportService): Track? {
         if (url.isBlank() || name.isBlank()) return null
         return Track(
@@ -164,7 +129,6 @@ class PlaylistImportServiceImpl @Inject constructor(
         )
     }
 
-    /** Без ключей Spotify не ходим в сеть — сразу говорим, что делать. */
     private suspend fun loadSpotify(playlistId: String): PlaylistImportResult {
         if (!spotifyProvider.isConfigured()) {
             return failure(ImportError.SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_CONFIGURED_MESSAGE)
@@ -237,7 +201,6 @@ class PlaylistImportServiceImpl @Inject constructor(
             }
         }
 
-    /** Публичные плейлисты Spotify: нужны ключи, вход не обязателен. */
     private suspend fun loadSpotifyProfile(userId: String): ProfileImportResult {
         if (!spotifyProvider.isConfigured()) {
             return ProfileImportResult.Failure(
@@ -270,10 +233,6 @@ class PlaylistImportServiceImpl @Inject constructor(
         )
     }
 
-    /**
-     * Публичные плейлисты SoundCloud: профиль открываем через NewPipe,
-     * обходим вкладки канала и собираем `PlaylistInfoItem`.
-     */
     private suspend fun loadSoundCloudProfile(profileUrl: String): ProfileImportResult =
         runCatching {
             val service = ServiceList.SoundCloud
@@ -322,7 +281,6 @@ class PlaylistImportServiceImpl @Inject constructor(
     private companion object {
         const val TAG = "PlaylistImportService"
 
-        /** Сколько страниц NewPipe максимум листаем: 5 × ~100 треков. */
         const val MAX_NEWPIPE_PAGES = 5
         const val UNKNOWN_ARTIST = "Unknown artist"
         const val DEEZER_PLAYLIST_URL = "https://api.deezer.com/playlist/"

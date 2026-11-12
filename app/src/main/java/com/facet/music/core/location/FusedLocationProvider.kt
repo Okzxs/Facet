@@ -15,10 +15,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
 
-/**
- * Геопозиция через FusedLocationProviderClient.
- * Не запрашивает разрешение само — работает только с уже выданным доступом.
- */
 @Singleton
 class FusedLocationProvider @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -34,8 +30,6 @@ class FusedLocationProvider @Inject constructor(
             return null
         }
 
-        // Сначала свежая точка с пониженной точностью; если её нет или она
-        // не успела за таймаут — добираем последнюю известную.
         val location = withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
             requestCurrentLocation()
         } ?: withTimeoutOrNull(LAST_KNOWN_TIMEOUT_MS) {

@@ -28,25 +28,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** Вкладка экрана импорта. */
 enum class ImportTab { PROFILE, TEXT }
 
-/** Почему лайки SoundCloud не загрузились — текст выбирает экран. */
 enum class LikesError {
-    /** У профиля действительно нет лайков. */
     EMPTY,
 
-    /** API ответил пусто, хотя лайки есть: профиль закрыт или скрыл их. */
     PRIVATE,
 
-    /** HTTP-ошибка api-v2 (например, 401/403 из-за client_id). */
     API,
 
-    /** Сеть недоступна или ответ не разобрался. */
     NETWORK,
 }
 
-/** Плейлист профиля с отметкой выбора. */
 data class ProfilePlaylistItem(
     val id: String,
     val url: String?,
@@ -70,22 +63,15 @@ data class ImportUiState(
     val textFound: List<Track> = emptyList(),
     val textMissing: Int = 0,
     val importedPlaylists: Int = 0,
-    /** Превью лайков SoundCloud до импорта. */
     val likesPreview: List<Track> = emptyList(),
     val likesImported: Int? = null,
-    /** Ошибка загрузки лайков и HTTP-код, если виноват API. */
     val likesError: LikesError? = null,
     val likesApiCode: Int? = null,
-    /** id трека → реальное время лайка в SoundCloud. */
     val likesTimes: Map<String, Long> = emptyMap(),
 ) {
     val selectedCount: Int get() = playlists.count { it.selected }
 }
 
-/**
- * Импорт профиля (Spotify/SoundCloud) и текстового списка треков.
- * Сеть и сохранение — в репозиториях, здесь только состояния экрана.
- */
 @HiltViewModel
 class ImportViewModel @Inject constructor(
     private val playlistImportService: PlaylistImportService,
@@ -100,10 +86,6 @@ class ImportViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ImportUiState())
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
 
-    /**
-     * Загрузка лайков SoundCloud для превью. client_id берётся публичный —
-     * тот же, что использует NewPipe; профиль должен быть публичным.
-     */
     fun loadSoundCloudLikes() {
         if (_uiState.value.isLoading) return
         viewModelScope.launch {
@@ -118,8 +100,6 @@ class ImportViewModel @Inject constructor(
                 )
             }
             val rawLink = _uiState.value.link
-            // Если ссылка распознана как профиль — берём канонический URL;
-            // иначе провайдер сам добавит https://soundcloud.com/.
             val profileUrl = ProfileLinkParser.parse(rawLink)
                 ?.takeIf { it.service == ImportService.SOUNDCLOUD }
                 ?.id
@@ -159,7 +139,6 @@ class ImportViewModel @Inject constructor(
         }
     }
 
-    /** Сохранение показанных лайков в избранное без дублей. */
     fun importSoundCloudLikes() {
         val state = _uiState.value
         val preview = state.likesPreview
@@ -170,9 +149,6 @@ class ImportViewModel @Inject constructor(
                 likedTracksRepository.getLikedTracks().first()
             }.getOrDefault(emptyList()).mapTo(HashSet()) { it.id }
 
-            // Время лайка из SoundCloud: избранное сортируется по нему, а не
-            // по порядку импорта. Существующим трекам обновляем только дату,
-            // чтобы не потерять сезон и геометку «Воспоминаний».
             preview.forEach { track ->
                 val likedAt = state.likesTimes[track.id]?.takeIf { it > 0 }
                 if (track.id in existing) {
@@ -191,8 +167,6 @@ class ImportViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isImporting = false,
-                    // Считаем все обработанные лайки: существующим обновилась
-                    // дата, и пользователь видит реальное число, а не «0 новых».
                     likesImported = preview.size,
                     message = null,
                 )
@@ -233,12 +207,10 @@ class ImportViewModel @Inject constructor(
         _uiState.update { it.copy(message = null, error = null) }
     }
 
-    /** Показали итог импорта лайков — сбрасываем, чтобы он не повторялся. */
     fun consumeLikesImported() {
         _uiState.update { it.copy(likesImported = null) }
     }
 
-    /** Загрузка публичных плейлистов профиля. */
     fun loadProfile() {
         val link = _uiState.value.link.trim()
         if (link.isEmpty()) {
@@ -270,7 +242,6 @@ class ImportViewModel @Inject constructor(
         }
     }
 
-    /** Импорт выбранных плейлистов: каждый становится локальным плейлистом. */
     fun importSelected() {
         val state = _uiState.value
         if (state.isImporting) return
@@ -309,7 +280,6 @@ class ImportViewModel @Inject constructor(
         }
     }
 
-    /** Разбор текста и поиск каждого трека в SoundCloud, затем YouTube. */
     fun parseText() {
         val queries = TextPlaylistParser.parse(_uiState.value.text)
         if (queries.isEmpty()) {
@@ -335,7 +305,6 @@ class ImportViewModel @Inject constructor(
         }
     }
 
-    /** Сохранение найденных треков в новый локальный плейлист. */
     fun importText() {
         val state = _uiState.value
         if (state.textFound.isEmpty() || state.isImporting) return
@@ -371,7 +340,6 @@ class ImportViewModel @Inject constructor(
     }
 
     private companion object {
-        /** Больше 200 строк за один заход не ищем: это десятки запросов. */
         const val MAX_TEXT_TRACKS = 200
     }
 }

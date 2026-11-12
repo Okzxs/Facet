@@ -3,26 +3,6 @@ package com.facet.music.data.local
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-/**
- * Миграции схемы Facet.
- *
- * v1 → v2: появилась таблица кэша чартов.
- * v2 → v3: к лайкам добавлены координаты для «Воспоминаний».
- * v3 → v4: к лайкам добавлен сезон.
- * v4 → v5: веса жанров/артистов и предпочтения волны.
- * v5 → v6: таблица скачанных треков для офлайн-режима.
- * v6 → v7: офлайн-кэш Media3: вместо пути к файлу — URL потока и MIME-тип.
- * v7 → v8: память о треках, уже показанных в рекомендациях.
- * v8 → v9: индексы по горячим полям выборок (сезон и дата лайка, время прослушивания, вес жанра).
- * v9 → v10: таблица дизлайков для фильтрации рекомендаций.
- * v10 → v11: кэш сырых JSON-ответов поиска внешних источников.
- * v11 → v12: плейлисты пользователя и их треки.
- * v12 → v13: очередь воспроизведения переживает перезапуск.
- * v13 → v14: кэш прослушанного в cacheDir.
- * v14 → v15: превью Deezer/Apple обнулены, их кэш поиска и аудио удалён.
- * v15 → v16: старый audio_cache удалён, появились сохранённые внешние матчи.
- * v16 → v17: кэш артиста, подписки и ссылка на канал артиста у треков.
- */
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -113,7 +93,6 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
 
 val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(database: SupportSQLiteDatabase) {
-        // Пересоздаём таблицу: localFilePath заменяется на mediaUrl + mimeType.
         database.execSQL(
             """
             CREATE TABLE IF NOT EXISTS `downloaded_tracks_new` (
@@ -129,8 +108,6 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
             )
             """.trimIndent(),
         )
-        // Старые записи указывали на локальный mp3 — превращаем путь в file:// URL,
-        // который ExoPlayer играет напрямую с диска.
         database.execSQL(
             """
             INSERT OR REPLACE INTO `downloaded_tracks_new`
@@ -172,8 +149,6 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
 
 val MIGRATION_8_9 = object : Migration(8, 9) {
     override fun migrate(database: SupportSQLiteDatabase) {
-        // Имена индексов совпадают с теми, что Room генерирует для Index(...)
-        // в сущностях, иначе схема после миграции не сойдётся с 9.json.
         database.execSQL(
             "CREATE INDEX IF NOT EXISTS `index_liked_tracks_season` " +
                 "ON `liked_tracks` (`season`)",
@@ -234,8 +209,6 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
             )
             """.trimIndent(),
         )
-        // Поля трека денормализованы: плейлист читается без сети. Внешний ключ
-        // с ON DELETE CASCADE повторяет Entity, иначе Room не примет схему.
         database.execSQL(
             """
             CREATE TABLE IF NOT EXISTS `playlist_tracks` (
@@ -261,11 +234,6 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
-/**
- * 12 → 13: очередь воспроизведения переживает перезапуск.
- * Строки денормализованы, как в плейлистах: для восстановления хватает
- * самой таблицы, джойны с лайками не нужны.
- */
 val MIGRATION_12_13 = object : Migration(12, 13) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -290,10 +258,6 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
-/**
- * 13 → 14: кэш прослушанного. Файлы лежат в cacheDir, в таблице — путь,
- * размер и время доступа для LRU-очистки.
- */
 val MIGRATION_13_14 = object : Migration(13, 14) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -311,14 +275,6 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
-/**
- * 14 → 15: Deezer и Apple больше не источники воспроизведения.
- *
- * Старые строки очереди могут хранить 30-секундные превью — обнуляем их,
- * чтобы плеер резолвил полную версию на YouTube. Кэш поиска и аудиокэш
- * этих источников тоже больше не нужны: первые ответы содержали превью,
- * вторые могли быть скачанными отрывками.
- */
 val MIGRATION_14_15 = object : Migration(14, 15) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -333,10 +289,6 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
-/**
- * 15 → 16: старый кэш `audio_cache` заменён Media3 SimpleCache, а внешние
- * матчи metadata-only треков теперь переживают перезапуск.
- */
 val MIGRATION_15_16 = object : Migration(15, 16) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("DROP TABLE IF EXISTS `audio_cache`")
@@ -355,12 +307,6 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
-/**
- * 16 → 17: экран артиста на YouTube/SoundCloud, кэш страницы и подписки.
- *
- * `artistUrl` денормализуется во все таблицы с треками: из плеера и списков
- * можно открыть точный канал, а не искать артиста по имени.
- */
 val MIGRATION_16_17 = object : Migration(16, 17) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -399,12 +345,6 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
     }
 }
 
-/**
- * 17 → 18: движок «Моей волны».
- *
- * Появились показы, сессии и блокировка исполнителей, а история получила
- * долю прослушивания: по ней волна выбирает дослушанные треки-семена.
- */
 val MIGRATION_17_18 = object : Migration(17, 18) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL(
@@ -466,7 +406,6 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
     }
 }
 
-/** 18 → 19: сессия волны хранит режим, радио-артиста и полные seed-треки. */
 val MIGRATION_18_19 = object : Migration(18, 19) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE `wave_sessions` ADD COLUMN `mood` TEXT NOT NULL DEFAULT 'BALANCE'")

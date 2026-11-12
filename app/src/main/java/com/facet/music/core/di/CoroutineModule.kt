@@ -10,7 +10,6 @@ import kotlinx.coroutines.SupervisorJob
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
-/** Область жизни, совпадающая с процессом приложения. */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class ApplicationScope
@@ -19,10 +18,6 @@ annotation class ApplicationScope
 @InstallIn(SingletonComponent::class)
 object CoroutineModule {
 
-    /**
-     * Общий фон для задач, которые обязаны пережить Activity: обмен
-     * OAuth-кода на токены, миграция секретов, запись очереди.
-     */
     @Provides
     @Singleton
     @ApplicationScope

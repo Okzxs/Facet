@@ -3,7 +3,6 @@ package com.facet.music.data.local.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/** Сериализованная страница артиста; TTL проверяется по [fetchedAt]. */
 @Entity(tableName = "artist_cache")
 data class ArtistCacheEntity(
     @PrimaryKey
@@ -12,7 +11,6 @@ data class ArtistCacheEntity(
     val fetchedAt: Long,
 )
 
-/** Подписка на артиста: ключ — источник и URL канала. */
 @Entity(tableName = "followed_artists")
 data class FollowedArtistEntity(
     @PrimaryKey

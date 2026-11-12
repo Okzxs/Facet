@@ -13,10 +13,6 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Накопитель вкусов в Room с затуханием: при чтении вес уменьшается вдвое
- * за 30 дней, при записи к затухающему значению прибавляется дельта.
- */
 @Singleton
 class TasteRepositoryImpl @Inject constructor(
     private val tasteDao: TasteDao,

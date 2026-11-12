@@ -5,20 +5,12 @@ import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.abs
 
-/** Уверенное совпадение с кандидатом из другого источника. */
 data class TrackMatch(
     val track: Track,
     val score: Double,
     val confidence: Double,
 )
 
-/**
- * Сопоставление metadata-only трека с находками SoundCloud и YouTube.
- *
- * Ошибка матчинга дороже отказа: чужой трек в плеере хуже, чем честное
- * «не найдено». Поэтому есть порог [MIN_SCORE], жёсткий допуск по длительности
- * и штрафы за каверы, ремиксы, live, nightcore, sped up и karaoke.
- */
 class TrackMatcher @Inject constructor() {
 
     fun score(original: Track, candidate: Track): Double {
@@ -76,7 +68,6 @@ class TrackMatcher @Inject constructor() {
         return score
     }
 
-    /** Уверенный матч конкретного кандидата или null. */
     fun match(original: Track, candidate: Track): TrackMatch? {
         if (candidate.durationMs > 0 &&
             candidate.durationMs !in MIN_DURATION_MS..MAX_DURATION_MS
@@ -93,7 +84,6 @@ class TrackMatcher @Inject constructor() {
         )
     }
 
-    /** Лучший кандидат, прошедший порог, или null. */
     fun best(original: Track, candidates: List<Track>): TrackMatch? = candidates
         .asSequence()
         .mapNotNull { match(original, it) }

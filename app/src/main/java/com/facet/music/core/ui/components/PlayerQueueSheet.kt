@@ -41,15 +41,6 @@ import com.facet.music.core.player.QueueOrigin
 import com.facet.music.core.player.RepeatMode
 import com.facet.music.data.model.Track
 
-/**
- * Шторка очереди воспроизведения (PlayerQueueSheet) по спецификации reference-notes.md:
- * - Высота: ~78% высоты экрана
- * - Скругление: верхние углы 28dp
- * - Handle: 32×4 dp
- * - Подсветка активного трека
- * - Свайп для удаления трека из очереди
- * - Кнопки Shuffle и Repeat в шапке
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerQueueSheet(
@@ -69,8 +60,6 @@ fun PlayerQueueSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
 
-    // Автоматическая прокрутка к текущему треку при открытии:
-    // перед ним стоят секция «Сейчас играет» и треки «Проиграно».
     LaunchedEffect(currentIndex, queue.size) {
         if (currentIndex in queue.indices) {
             listState.animateScrollToItem(currentIndex.coerceAtLeast(0))
@@ -98,7 +87,6 @@ fun PlayerQueueSheet(
                 .height(sheetHeight)
                 .padding(horizontal = 20.dp),
         ) {
-            // ─── Шапка: Заголовок + кнопки Shuffle / Repeat ────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -116,7 +104,6 @@ fun PlayerQueueSheet(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    // Откуда очередь: обычный запуск, «Моя волна» или радио от трека.
                     Text(
                         text = stringResource(
                             when (queueOrigin) {
@@ -131,7 +118,6 @@ fun PlayerQueueSheet(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Кнопка Shuffle
                     FilledTonalIconToggleButton(
                         checked = isShuffle,
                         onCheckedChange = { onToggleShuffle() },
@@ -148,7 +134,6 @@ fun PlayerQueueSheet(
                         )
                     }
 
-                    // Кнопка Repeat
                     FilledTonalIconButton(
                         onClick = onToggleRepeat,
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
@@ -179,7 +164,6 @@ fun PlayerQueueSheet(
                 thickness = 0.5.dp,
             )
 
-            // ─── Список треков очереди ─────────────────────────────────────────
             if (queue.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -204,7 +188,6 @@ fun PlayerQueueSheet(
                     contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    // ─── Сейчас играет ────────────────────────────────────
                     currentItem?.let { track ->
                         item(key = "section_now") {
                             QueueSectionHeader(stringResource(R.string.queue_section_now))
@@ -219,7 +202,6 @@ fun PlayerQueueSheet(
                         }
                     }
 
-                    // ─── Далее ────────────────────────────────────────────
                     if (nextItems.isNotEmpty()) {
                         item(key = "section_next") {
                             QueueSectionHeader(stringResource(R.string.queue_section_next))
@@ -239,7 +221,6 @@ fun PlayerQueueSheet(
                         }
                     }
 
-                    // ─── Проиграно ────────────────────────────────────────
                     if (playedItems.isNotEmpty()) {
                         item(key = "section_played") {
                             QueueSectionHeader(stringResource(R.string.queue_section_played))
@@ -264,9 +245,6 @@ fun PlayerQueueSheet(
     }
 }
 
-/**
- * Заголовок секции очереди: «Сейчас играет», «Далее», «Проиграно».
- */
 @Composable
 private fun QueueSectionHeader(text: String) {
     Text(
@@ -277,9 +255,6 @@ private fun QueueSectionHeader(text: String) {
     )
 }
 
-/**
- * Элемент очереди с поддержкой свайпа для удаления.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QueueTrackItem(
@@ -356,7 +331,6 @@ private fun QueueTrackItem(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Обложка трека
                 val context = LocalContext.current
                 val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
                 val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
@@ -399,7 +373,6 @@ private fun QueueTrackItem(
 
                 Spacer(Modifier.width(14.dp))
 
-                // Название и артист
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = track.title,
@@ -420,7 +393,6 @@ private fun QueueTrackItem(
                     )
                 }
 
-                // Длительность
                 if (track.durationMs > 0) {
                     val minutes = (track.durationMs / 1000) / 60
                     val seconds = (track.durationMs / 1000) % 60

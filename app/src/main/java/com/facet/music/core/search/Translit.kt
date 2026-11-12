@@ -2,7 +2,6 @@ package com.facet.music.core.search
 
 import java.util.Locale
 
-/** Простая транслитерация для второго поискового прохода. */
 object Translit {
 
     private val cyrToLat = mapOf(
@@ -52,7 +51,6 @@ object Translit {
         }
     }
 
-    /** Второй вариант запроса: кириллица → латиница и наоборот. */
     fun alternate(query: String): String? {
         val value = query.trim()
         if (value.length < 2) return null

@@ -23,11 +23,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * MediaController за интерфейсом [PlayerConnection]. Держит подключение
- * к MusicService, переподключается после смерти сервиса и отдаёт Player через
- * StateFlow — PlayerController не знает про MediaController и SessionToken.
- */
 @Singleton
 class MediaSessionPlayerConnection @Inject constructor(
     @ApplicationContext private val context: Context,

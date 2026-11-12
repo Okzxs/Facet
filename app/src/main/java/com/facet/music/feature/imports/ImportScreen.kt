@@ -67,11 +67,6 @@ import com.facet.music.R
 import com.facet.music.core.import.ImportError
 import com.facet.music.core.import.ImportService
 
-/**
- * Импорт из публичного профиля Spotify/SoundCloud и из текстового списка
- * треков. Экран собран из MD3-карточек: профиль, лайки SoundCloud и плейлисты
- * идут отдельными блоками, а не одной сплошной формой.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportScreen(
@@ -89,7 +84,6 @@ fun ImportScreen(
         viewModel.consumeMessage()
     }
 
-    // Итог импорта лайков: 0 — все треки уже были в избранном.
     val likesDone = state.likesImported
     val likesDoneText = likesDone?.let { count ->
         if (count > 0) {
@@ -201,8 +195,6 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
             }
         }
 
-        // Лайки SoundCloud: только для SoundCloud-ссылки или имени пользователя.
-        // Для Spotify этот блок не нужен и только путал.
         if (state.detectedService != ImportService.SPOTIFY) {
             item(key = "sc_likes") {
                 ImportCard(
@@ -401,7 +393,6 @@ private fun TextImportContent(state: ImportUiState, viewModel: ImportViewModel) 
     }
 }
 
-/** Карточка раздела: иконка, заголовок, пояснение и содержимое. */
 @Composable
 private fun ImportCard(
     icon: ImageVector,
@@ -488,7 +479,6 @@ private fun ProfilePlaylistRow(
     }
 }
 
-/** Текст ошибки лайков: пусто, приватно, HTTP-код API или сеть. */
 @Composable
 private fun likesErrorText(state: ImportUiState): String? = when (state.likesError) {
     LikesError.EMPTY -> stringResource(R.string.import_sc_likes_empty)
@@ -501,7 +491,6 @@ private fun likesErrorText(state: ImportUiState): String? = when (state.likesErr
     null -> null
 }
 
-/** Текст ошибки импорта: коды общие для профиля и плейлистов. */
 @Composable
 private fun importErrorText(error: ImportError): String = when (error) {
     ImportError.EMPTY_LINK -> stringResource(R.string.import_error_empty)
@@ -515,5 +504,4 @@ private fun importErrorText(error: ImportError): String = when (error) {
     else -> stringResource(R.string.import_error_network)
 }
 
-/** Сколько строк лайков показываем в превью. */
 private const val PREVIEW_TRACK_COUNT = 5

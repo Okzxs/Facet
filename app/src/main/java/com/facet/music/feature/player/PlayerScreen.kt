@@ -174,7 +174,6 @@ fun PlayerScreen(
     var showVariations by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // ─── Разрешение на геопозицию ────────────────────────────────────────
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var hasLocationPermission by remember {
@@ -189,14 +188,12 @@ fun PlayerScreen(
         permissionRequested = true
         hasLocationPermission = result.values.any { it } ||
             LocationPermissions.hasPermission(context)
-        // Лайк не теряем: без разрешения он сохранится без координат
         if (pendingLike) {
             pendingLike = false
             viewModel.toggleLike()
         }
     }
 
-    // Разрешение могли выдать или отозвать в системных настройках — обновляем статус
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -224,21 +221,13 @@ fun PlayerScreen(
         }
     }
 
-    // Текущий трек берём из PlayerController (он всегда актуален после play())
     val track = playerState.currentTrack ?: uiState.track
-    // Локальный файл уже лежит на диске — скачивать его нечего.
     val canDownload = track != null && track.source != Source.LOCAL
-    // Время остановки таймера сна — в формате локали устройства; пункт меню
-    // получает уже готовую строку, DateFormat в Compose не ресурс.
     val sleepTimerEndsAtText = sleepTimer?.let { timer ->
         DateFormat.getTimeFormat(context).format(Date(timer.endsAtMillis))
     }
 
-    // Скачивание невозможно (нет прав/404/HLS-ошибка) — сообщаем пользователю.
-    // Крестик живёт секунду, поэтому Snackbar запускаем в scope композиции,
-    // иначе смена состояния отменила бы его вместе с LaunchedEffect.
     val snackbarScope = rememberCoroutineScope()
-    // Тексты снекбара читаем здесь: внутри LaunchedEffect stringResource недоступен.
     val downloadFailedMessage = stringResource(R.string.player_download_failed)
     val findOnYouTubeLabel = stringResource(R.string.player_find_on_youtube)
     LaunchedEffect(downloadState, track?.id) {
@@ -246,7 +235,6 @@ fun PlayerScreen(
         if (error?.cause != DownloadState.Cause.FAILED || track == null) return@LaunchedEffect
 
         val isSoundCloud = track.source == Source.SOUNDCLOUD
-        // Точная причина из outputData воркера важнее общего текста по источнику.
         val workerMessage = DownloadMessages.friendly(error.message)
         snackbarScope.launch {
             val result = snackbarHostState.showSnackbar(
@@ -264,7 +252,6 @@ fun PlayerScreen(
         }
     }
 
-    // Резолвер не нашёл progressive-источник: воркер даже не создавался.
     LaunchedEffect(uiState.downloadError) {
         val message = uiState.downloadError ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(
@@ -274,21 +261,18 @@ fun PlayerScreen(
         viewModel.consumeDownloadError()
     }
 
-    // Гарантируем запрос текста при открытии экрана или смене трека
     LaunchedEffect(track?.id) {
         if (track != null && uiState.lyricsData == null && !uiState.isLyricsLoading) {
             viewModel.loadLyricsIfNeeded(track)
         }
     }
 
-    // ─── Тонированный фон и палитра по обложке (Palette) ────────────────
     val defaultSurface = MaterialTheme.colorScheme.surface
     val defaultPrimary = MaterialTheme.colorScheme.primary
     val defaultOnPrimary = MaterialTheme.colorScheme.onPrimary
     val defaultPrimaryContainer = MaterialTheme.colorScheme.primaryContainer
     val defaultOnPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
 
-    // Динамические цвета включены — палитра от обложки; выключены — акцент из темы
     val rawPlayerColors = rememberPlayerDynamicColors(
         artworkUrl = if (appSettings.dynamicCoverColors) track?.artworkUrl else null,
         defaultSurface = defaultSurface,
@@ -298,8 +282,6 @@ fun PlayerScreen(
         defaultOnPrimaryContainer = defaultOnPrimaryContainer,
     )
 
-    // Собственный акцент пользователя (RGB-пикер) подмешивается в палитру обложки,
-    // чтобы градиенты и подсветки плеера не конфликтовали с выбранной темой.
     val customAccent = appSettings.customAccentColor?.let { Color(it) }
     val playerColors = remember(rawPlayerColors, customAccent) {
         if (customAccent == null) {
@@ -309,8 +291,6 @@ fun PlayerScreen(
         }
     }
 
-    // Акцент плеера: цвет обложки, если включены динамические цвета, иначе — тема.
-    // Цвет анимируется, чтобы при смене трека фон и кнопки перетекали плавно.
     val dynamicColorsEnabled = appSettings.dynamicCoverColors
     val targetAccent = if (dynamicColorsEnabled) playerColors.primary else defaultPrimary
     val coverAccent by animateColorAsState(
@@ -321,23 +301,17 @@ fun PlayerScreen(
     val onCoverAccent = contrastContentColor(coverAccent)
     val themeBackground = MaterialTheme.colorScheme.background
 
-    // Единый источник позиции: кадры идут только пока трек играет (9.12б).
     val playbackClock = rememberPlaybackClock(
         positionMs = { viewModel.currentPositionMs() },
         isPlaying = playerState.isPlaying,
         playbackSpeed = playerState.playbackSpeed * playerState.variation.speed,
     )
 
-    // Кнопки-сквирклы под обложкой (скачать/лайк/дизлайк) живут в той же палитре,
-    // что фон и кнопка Play: при динамических цветах контейнер — оттенок обложки,
-    // иначе — контейнер темы. Цвета анимируются вместе с акцентом (420 мс),
-    // чтобы при смене трека кнопки перетекали, а не переключались рывком.
     val heroActionContainer by animateColorAsState(
         targetValue = if (dynamicColorsEnabled) playerColors.primaryContainer else defaultPrimaryContainer,
         animationSpec = tween(durationMillis = 420),
         label = "heroActionContainer",
     )
-    // Спокойное состояние: лёгкий тон обложки вместо серой подложки onSurface.
     val heroActionIdleContainer by animateColorAsState(
         targetValue = if (dynamicColorsEnabled) {
             coverAccent.copy(alpha = 0.14f)
@@ -348,8 +322,6 @@ fun PlayerScreen(
         label = "heroActionIdleContainer",
     )
 
-    // Фон: при включённых динамических цветах — заметная тонировка цветом обложки
-    // (28% сверху, 14% в середине), при выключенных — строго чистый background.
     val backgroundBrush = remember(dynamicColorsEnabled, coverAccent, themeBackground) {
         if (dynamicColorsEnabled) {
             Brush.verticalGradient(
@@ -364,8 +336,6 @@ fun PlayerScreen(
         }
     }
 
-    // Фон режима текста: градиент акцента палитры, проявляющийся на весь экран.
-    // Отдельная анимация нужна, потому что слой живёт в корне экрана, а не в hero-зоне.
     val lyricsBackdrop by animateFloatAsState(
         targetValue = if (isLyricsMode) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
@@ -376,35 +346,15 @@ fun PlayerScreen(
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
-    // ─── Свайп вниз для закрытия плеера ─────────────────────────────────
-    // Жест живёт на корневом Box (он оборачивает весь экран вместе с шапкой)
-    // и видит касание в Initial-проходе раньше LazyColumn/verticalScroll.
-    // Поэтому свайп вниз работает и поверх текста, а вверх жест уходит списку.
-    //
-    // Смещение и прогресс живут в PlayerSwipeState (AppNavGraph): их читают
-    // только graphicsLayer-блоки, поэтому drag и пружина не пересобирают
-    // тяжёлые панели с текстом и кнопками — анимация идёт на RenderThread.
     LaunchedEffect(Unit) {
         swipeState.reset()
     }
 
-    // Границы острова управления в координатах корня: касание из этой зоны
-    // не запускает закрытие — кнопки и слайдер должны работать как обычно.
     val controlIslandBounds = remember { BoundsHolder() }
-    // Границы обложки: свайп по ней переключает трек, а не закрывает плеер.
     val artworkBounds = remember { BoundsHolder() }
-    // Границы самого LazyColumn с текстом: только по нему решаем,
-    // скроллить текст или тянуть плеер (шапка и пустые зоны — всегда плеер).
     val lyricsListBounds = remember { BoundsHolder() }
-    // Состояние списка текста поднято сюда: по нему жест решает,
-    // тянуть плеер или отдать движение списку.
     val lyricsListState = rememberLazyListState()
 
-    // Обложка сжимается и уезжает вниз-влево к мини-плееру прямо во время
-    // перетаскивания. Корневой Box уже едет на смещении свайпа, поэтому здесь
-    // добавляем только дополнительный сдвиг к нижней панели. При закрытии
-    // обложку забирает shared-переход: ручной сдвиг сбрасываем, чтобы морф
-    // не начинался из двойной трансформации.
     val coverSwipeModifier = Modifier.graphicsLayer {
         val progress = if (swipeState.isDismissed) 0f else swipeState.progress
         if (progress > 0f) {
@@ -427,7 +377,6 @@ fun PlayerScreen(
         onBack()
     }
 
-    /** Отпускание пальца: выше порога (30%) или резкий вниз (>1200 px/s) — закрыть, иначе вернуть пружиной. */
     fun finishPlayerDrag(velocityY: Float = 0f) {
         val height = swipeState.screenHeightPx
         val threshold = height * DISMISS_THRESHOLD
@@ -444,18 +393,14 @@ fun PlayerScreen(
     } else {
         Modifier.pointerInput(Unit) {
             awaitEachGesture {
-                // Initial-проход: корень получает событие раньше списка текста,
-                // поэтому может забрать вертикальный жест себе.
                 val down = awaitFirstDown(
                     requireUnconsumed = false,
                     pass = PointerEventPass.Initial,
                 )
-                // Остров управления не участвует в закрытии.
                 val island = controlIslandBounds.value
                 if (island != null && island.contains(down.position)) {
                     return@awaitEachGesture
                 }
-                // Обложка отдана свайпу-переключению трека.
                 val artwork = artworkBounds.value
                 if (artwork != null && artwork.contains(down.position)) {
                     return@awaitEachGesture
@@ -483,10 +428,6 @@ fun PlayerScreen(
 
                         if (!dragStarted) {
                             if (abs(totalDy) < viewConfiguration.touchSlop) continue
-                            // Вертикаль принадлежит списку только если касание
-                            // началось внутри LazyColumn и текст уже проскроллен:
-                            // тогда вниз листаем текст, а не тянем шторку.
-                            // Шапка, обложка и пустые зоны всегда двигают плеер.
                             val inLyricsList =
                                 lyricsListBounds.value?.contains(down.position) == true
                             val lyricsAtTop = !lyricsListState.canScrollBackward
@@ -495,14 +436,10 @@ fun PlayerScreen(
                             }
                             dragStarted = true
                             swipeState.beginDrag()
-                            // Накопленный до slop путь тоже отдаём плееру,
-                            // чтобы он не «дёргался» после порога.
                             swipeState.dragTo(totalDy)
                         } else {
                             swipeState.dragTo(swipeState.offsetPx + dy)
                         }
-                        // Пока жест наш — гасим его в Initial, иначе LazyColumn
-                        // начнёт скроллиться параллельно со шторкой.
                         change.consume()
                     }
 
@@ -510,16 +447,12 @@ fun PlayerScreen(
                         finishPlayerDrag(velocityTracker.calculateVelocity().y)
                     }
                 } finally {
-                    // Отмена жеста не должна оставлять плеер висеть смещённым.
                     if (dragStarted && !swipeState.isDismissed) settlePlayer()
                 }
             }
         }
     }
 
-    // Панели (карточка трека и остров управления) при морфе рисуются в оверлее
-    // shared-перехода выше обложки. Оверлей не наследует сдвиг и прозрачность
-    // свайпа — повторяем их, чтобы панели не прыгали при закрытии жестом.
     val panelModifier = foregroundModifier.then(
         Modifier.graphicsLayer {
             if (isClosing) {
@@ -535,10 +468,6 @@ fun PlayerScreen(
             .onSizeChanged {
                 swipeState.onSizeChanged(it.width, it.height)
             }
-            // Плеер целиком едет за пальцем и тает: сквозь него видна вкладка,
-            // которая остаётся скомпонованной под оверлеем (см. AppNavGraph).
-            // Значения читаются внутри layer-блока — без рекомпозиции на кадр.
-            // ModulateAlpha: альфа не рендерит весь экран во внеэкранный буфер.
             .graphicsLayer {
                 compositingStrategy = CompositingStrategy.ModulateAlpha
                 translationY = swipeState.offsetPx
@@ -549,16 +478,12 @@ fun PlayerScreen(
                 scaleY = scale
                 transformOrigin = TransformOrigin(0.5f, 1f)
             }
-            // Чистый фон Material 3: без градиентов от обложки и цветных заливок.
             .background(backgroundBrush)
-            // Жест висит на корне и видит касание раньше скроллируемых детей.
             .then(swipeToDismissModifier),
     ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
-            // contentColorFor(Color.Transparent) возвращает Unspecified, и весь текст
-            // внутри плеера наследовал бы его как чёрный. Задаём явно.
             contentColor = MaterialTheme.colorScheme.onSurface,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
@@ -572,8 +497,6 @@ fun PlayerScreen(
                         }
                     },
                     title = {
-                        // Надпись «Сейчас играет» и артист: имя светится мягким
-                        // ореолом цвета обложки, чтобы шапка читалась и на тёмном фоне.
                         Column {
                             Text(
                                 text = stringResource(R.string.player_now_playing),
@@ -724,7 +647,6 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .padding(padding),
             ) {
-                    // ─── Hero-зона: обложка-задник + передний план (обложка/тексты) ──
                     ExpressiveHeroZone(
                         variant = PLAYER_LAYOUT_VARIANT,
                         title = track?.title ?: stringResource(R.string.player_no_track),
@@ -751,8 +673,6 @@ fun PlayerScreen(
                         playbackClock = playbackClock,
                         onNext = { viewModel.playNext() },
                         onPrevious = {
-                            // Spotify-правило: трек проигран дольше 15 с — свайп назад
-                            // перематывает его в начало, иначе переключает на предыдущий.
                             if (viewModel.currentPositionMs() > PREVIOUS_REWIND_MS) {
                                 viewModel.seekToMs(0)
                             } else {
@@ -769,26 +689,15 @@ fun PlayerScreen(
                         onToggleLike = { toggleLikeWithPermission() },
                         onToggleDislike = { viewModel.toggleDislike() },
                         onDownloadClick = { viewModel.toggleDownload() },
-                        // Подпись артиста под названием ведёт на его экран.
-                        // Без трека (плейсхолдер «—») она некликабельна.
                         onArtistClick = track?.let { current -> { onArtistClick(current) } },
-                        // Общий shared-element модификатор для морфа обложки
-                        // в мини-плеер при закрытии экрана. На время drag его
-                        // отключаем: SharedTransitionLayout тяжёлый для 120 Гц,
-                        // а обложку в этот момент двигает graphicsLayer.
                         coverModifier = if (swipeState.isDragging) Modifier else coverModifier,
-                        // Сжатие и сдвиг обложки прямо во время свайпа.
                         coverSwipeModifier = coverSwipeModifier,
-                        // Панель с текстом и кнопками при морфе идёт над обложкой.
                         panelModifier = panelModifier,
-                        // Hero занимает всё доступное место: остров управления
-                        // всегда прижат к низу, а обложка скроллится при нехватке высоты.
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
                     )
-    
-                    // ─── Подсказка про геопозицию для «Воспоминаний» ─────────────
+
                     if (!hasLocationPermission) {
                         LocationPermissionBanner(
                             actionLabel = if (permissionRequested) {
@@ -803,8 +712,7 @@ fun PlayerScreen(
                                 .padding(bottom = 6.dp),
                         )
                     }
-    
-                    // ─── Сообщение об ошибке (скрывается, как только плеер в STATE_READY) ──
+
                     val isPlayerReady = playerState.playbackState == androidx.media3.common.Player.STATE_READY
                     val error = if (isPlayerReady) null else (uiState.error ?: playerState.error)
 
@@ -816,8 +724,7 @@ fun PlayerScreen(
                             modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
                         )
                     }
-    
-                    // ─── Плавающий остров управления ─────────────────────────
+
                     PlayerControlIsland(
                         isPlaying = playerState.isPlaying,
                         isBuffering = isBuffering,
@@ -872,9 +779,6 @@ fun PlayerScreen(
         }
     }
 
-    // Шторка закрывается только мгновенным удалением из композиции (snap),
-    // без hide-анимации: анимированное скрытие во время выхода из плеера
-    // оставляло бы промежуточные кадры «полуплеера» без контролов.
     if (showTuning) {
         TuningDialog(
             selectedHz = playerState.tuningHz,
@@ -912,8 +816,6 @@ fun PlayerScreen(
         )
     }
 
-    // «Добавить в плейлист» из overflow-меню шапки. Шторка общая с поиском
-    // и медиатекой; после успеха закрываем её и показываем Snackbar плеера.
     val playlistTrack = track
     if (showAddToPlaylist && playlistTrack != null) {
         AddToPlaylistSheet(
@@ -931,8 +833,6 @@ fun PlayerScreen(
         )
     }
 
-    // Таймер сна: пресеты и отключение. Шторка живёт вне Scaffold — как
-    // и «Добавить в плейлист», она рисуется в отдельном окне.
     if (showSleepTimer) {
         SleepTimerSheet(
             state = sleepTimer,
@@ -961,10 +861,6 @@ fun PlayerScreen(
     }
 }
 
-/**
- * Ненавязчивая подсказка: без геопозиции лайк сохранится без места,
- * а «Воспоминания» не смогут привязать трек к точке на карте.
- */
 @Composable
 private fun LocationPermissionBanner(
     actionLabel: String,
@@ -1012,7 +908,6 @@ private fun LocationPermissionBanner(
     }
 }
 
-/** Снимок визуала трека — цель анимации при переключении. */
 internal data class TrackDisplay(
     val key: String?,
     val title: String,

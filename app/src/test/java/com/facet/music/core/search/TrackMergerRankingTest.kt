@@ -41,6 +41,56 @@ class TrackMergerRankingTest {
         assertEquals("first", merged.first().id)
     }
 
+    @Test
+    fun `присутствие в нескольких источниках повышает ранг`() {
+        val single = track("single", "Artist A", "Alpha", Source.YOUTUBE)
+        val dualSc = track("dual-sc", "Artist B", "Beta", Source.SOUNDCLOUD)
+        val dualYt = track("dual-yt", "Artist B", "Beta", Source.YOUTUBE)
+
+        val merged = TrackMerger.merge(
+            listOf(
+                listOf(single),
+                listOf(dualSc),
+                listOf(dualYt),
+            ),
+            query = "something",
+        )
+
+        assertEquals("dual-sc", merged.first().id)
+        assertEquals(2, merged.first().sourceCount)
+    }
+
+    @Test
+    fun `слово версии в запросе отменяет штраф за версию`() {
+        val plain = track("plain", "Artist", "Night Song", Source.SOUNDCLOUD)
+        val remix = track("remix", "Artist", "Day Song (Club Remix)", Source.YOUTUBE)
+
+        val withoutKeyword = TrackMerger.merge(
+            listOf(listOf(plain), listOf(remix)),
+            query = "Song",
+        )
+        assertEquals("plain", withoutKeyword.first().id)
+
+        val withKeyword = TrackMerger.merge(
+            listOf(listOf(plain), listOf(remix)),
+            query = "Day Song Remix",
+        )
+        assertEquals("remix", withKeyword.first().id)
+    }
+
+    @Test
+    fun `совпадение всех токенов запроса поднимает трек`() {
+        val partial = track("partial", "Artist", "Midnight", Source.SOUNDCLOUD)
+        val full = track("full", "Artist", "Midnight City", Source.YOUTUBE)
+
+        val merged = TrackMerger.merge(
+            listOf(listOf(partial), listOf(full)),
+            query = "Artist Midnight City",
+        )
+
+        assertEquals("full", merged.first().id)
+    }
+
     private fun track(id: String, artist: String, title: String, source: Source): Track =
         Track(
             id = id,

@@ -4,10 +4,6 @@ import kotlinx.serialization.Serializable
 import retrofit2.http.GET
 import retrofit2.http.Query
 
-/**
- * Минимальный клиент Last.fm: похожие артисты, топ-треки артиста и тега,
- * теги артиста. Ключ передаётся параметром, формат — всегда JSON.
- */
 interface LastFmApi {
 
     @GET("2.0/")

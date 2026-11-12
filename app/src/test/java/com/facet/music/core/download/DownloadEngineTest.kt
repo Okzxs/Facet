@@ -19,11 +19,6 @@ import java.net.ServerSocket
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Поведенческие тесты движка скачивания:
- * протухший URL (403) требует свежего резолва, а сбой не должен
- * уничтожать уже скачанный файл.
- */
 class DownloadEngineTest {
 
     private lateinit var server: TestHttpServer
@@ -170,7 +165,6 @@ class DownloadEngineTest {
 
         assertTrue(result.isSuccess)
         assertTrue(saved)
-        // MP3 теперь с ID3-тегами: полезная нагрузка идёт после тегов.
         val bytes = target.readBytes()
         assertEquals("ID3", String(bytes.copyOfRange(0, 3), Charsets.US_ASCII))
         assertArrayEquals(payload, bytes.copyOfRange(bytes.size - payload.size, bytes.size))
@@ -212,10 +206,6 @@ class DownloadEngineTest {
         )
     }
 
-    /**
-     * Минимальный HTTP-сервер для тестов: без com.sun.net.httpserver,
-     * который не входит в classpath Android-юнит-тестов.
-     */
     private class TestHttpServer {
         private data class Reply(val code: Int, val body: ByteArray)
 
@@ -243,7 +233,6 @@ class DownloadEngineTest {
                     serverSocket.accept().use { socket ->
                         val reader = socket.getInputStream().bufferedReader()
                         val requestLine = reader.readLine() ?: return@use
-                        // Дочитываем заголовки до пустой строки.
                         while (true) {
                             val line = reader.readLine() ?: break
                             if (line.isEmpty()) break

@@ -7,10 +7,6 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/**
- * ID3v2.3: заголовок с синхсайф-размером, текстовые фреймы в UTF-16 и APIC
- * с обложкой; повторная запись не плодит второй ID3-блок.
- */
 class Id3WriterTest {
 
     @get:Rule

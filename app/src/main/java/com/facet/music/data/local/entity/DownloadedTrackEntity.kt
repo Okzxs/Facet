@@ -5,12 +5,6 @@ import androidx.room.PrimaryKey
 import com.facet.music.data.model.DownloadedTrack
 import com.facet.music.data.model.Track
 
-/**
- * Сущность скачанного трека для таблицы downloaded_tracks в Room.
- *
- * Скачанный трек — один MP3/M4A/WEBM-файл во внутреннем хранилище приложения.
- * Обложка здесь только для UI — сам файл изображения не сохраняется.
- */
 @Entity(tableName = "downloaded_tracks")
 data class DownloadedTrackEntity(
     @PrimaryKey
@@ -19,9 +13,7 @@ data class DownloadedTrackEntity(
     val artist: String,
     val artworkUrl: String?,
     val durationMs: Long,
-    /** Локальный `file://` URL скачанного файла. */
     val mediaUrl: String,
-    /** MIME файла: AUDIO_MPEG, AUDIO_MP4 или AUDIO_WEBM. */
     val mimeType: String,
     val downloadedAt: Long = System.currentTimeMillis(),
     val artistUrl: String? = null,

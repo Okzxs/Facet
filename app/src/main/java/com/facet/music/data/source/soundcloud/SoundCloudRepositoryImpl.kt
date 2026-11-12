@@ -36,11 +36,6 @@ class SoundCloudRepositoryImpl @Inject constructor(
 
     private val tag = "SoundCloudRepo"
 
-    /**
-     * Поиск через api-v2: один запрос, сразу числовой id и permalink,
-     * поэтому следующий resolve идёт по /tracks/{id}. NewPipe — только
-     * при ошибке разбора JSON, не при сетевой ошибке.
-     */
     override suspend fun search(query: String, limit: Int): Result<List<Track>> =
         withContext(Dispatchers.IO) {
             runCatching { api.search(query, limit) }
@@ -117,11 +112,6 @@ class SoundCloudRepositoryImpl @Inject constructor(
                 .rethrowCancellation()
         }
 
-    /**
-     * Резолв потока: api-v2 → выбор транскодинга → подписанный URL.
-     * Progressive MP3 приоритетен, HLS допустим только для онлайн-плеера.
-     * NewPipe StreamInfo вызывается только если API вернул неразбираемый JSON.
-     */
     override suspend fun resolveStreamUrl(
         transcodingUrl: String,
         requireProgressive: Boolean,
@@ -182,8 +172,6 @@ class SoundCloudRepositoryImpl @Inject constructor(
         mimeType = if (isHls) MimeTypes.APPLICATION_M3U8 else MimeTypes.AUDIO_MPEG,
         expiresAtMs = StreamExpiry.fromUrl(url),
     )
-
-    // ─── NewPipe: запасной путь при ошибке разбора JSON ──────────────────────
 
     private suspend fun legacySearch(query: String, limit: Int): List<Track> {
         val service = NewPipe.getService(ServiceList.SoundCloud.serviceId)

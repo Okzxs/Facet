@@ -5,10 +5,6 @@ import com.facet.music.data.model.Track
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Сводный поиск: одинаковые треки из разных источников схлопываются в один,
- * счётчик источников растёт, приоритет — у полного потока, а не превью.
- */
 class TrackMergerTest {
 
     private fun track(

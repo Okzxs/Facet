@@ -15,7 +15,6 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.util.Locale
 
-/** Причина, по которой api-v2 не отдал поток. */
 internal enum class SoundCloudFailure {
     GEO_BLOCKED,
     SUBSCRIPTION_ONLY,
@@ -112,10 +111,6 @@ internal data class SoundCloudTrackDto(
     )
 }
 
-/**
- * Чистый разбор ответов api-v2.soundcloud.com. Отделён от сети, чтобы
- * выбор транскодинга и типизацию ошибок можно было проверить JVM-тестами.
- */
 internal object SoundCloudJson {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -142,7 +137,6 @@ internal object SoundCloudJson {
         }
     }
 
-    /** Пользователи SoundCloud для секции «Исполнители». */
     fun parseUsers(body: String): List<Artist> {
         val root = parseObject(body)
         val items = (root["collection"] as? kotlinx.serialization.json.JsonArray) ?: return emptyList()
@@ -171,19 +165,11 @@ internal object SoundCloudJson {
                 "SoundCloud не вернул URL потока",
             )
 
-    /**
-     * Progressive MP3 важнее HLS MP3, HLS MP3 — важнее HLS Opus/AAC.
-     * Зашифрованные протоколы и `snipped` отбрасываются всегда.
-     */
     fun selectTranscoding(
         track: SoundCloudTrackDto,
         requireProgressive: Boolean,
     ): SoundCloudTranscoding = selectTranscodings(track, requireProgressive).first()
 
-    /**
-     * Все подходящие транскодинги в порядке приоритета: если первый
-     * endpoint отвечает 404 (у SoundCloud бывает у abr_sq), пробуем следующий.
-     */
     fun selectTranscodings(
         track: SoundCloudTrackDto,
         requireProgressive: Boolean,

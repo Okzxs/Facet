@@ -17,11 +17,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
 
-/**
- * Новые релизы подписанных артистов: берём свежие альбомы (год текущий или
- * прошлый) и по одному треку из них. Если релизов нет — первая страница
- * треков канала. Не больше двух кандидатов на пачку.
- */
 @Singleton
 class FollowedArtistsSource @Inject constructor(
     private val followedArtistDao: FollowedArtistDao,

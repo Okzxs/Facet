@@ -46,13 +46,6 @@ import coil3.request.crossfade
 import com.facet.music.R
 import kotlin.math.abs
 
-/**
- * Заголовок секции коллекции — общий ритм для медиатеки, артиста и плейлиста.
- *
- * Справа допускается одно действие: иконка с подписью (например «Импорт»).
- * Заголовок занимает всё свободное место и обрезается, поэтому длинные
- * названия не выдавливают кнопку за экран.
- */
 @Composable
 fun SectionHeader(
     title: String,
@@ -96,13 +89,6 @@ fun SectionHeader(
     }
 }
 
-/**
- * Универсальное пустое состояние: squircle-плашка с иконкой, заголовок,
- * пояснение и необязательное действие.
- *
- * Один компонент на все экраны — раньше каждая вкладка рисовала свою копию
- * с чуть другими отступами и размерами шрифта.
- */
 @Composable
 fun EmptyState(
     icon: ImageVector,
@@ -163,14 +149,6 @@ fun EmptyState(
     }
 }
 
-/**
- * Крупная карточка-«чипс» коллекции: градиентная плашка с иконкой, названием,
- * подписью и стрелкой. Используется для «Любимых треков» в медиатеке.
- *
- * Цвета берутся из контейнерных ролей темы, поэтому акцент пользователя и
- * динамические цвета соблюдаются автоматически; текст красится в `on*Container`,
- * а не в `onSurface`, иначе на светлой плашке он бы терялся.
- */
 @Composable
 fun CollectionChipCard(
     title: String,
@@ -242,13 +220,6 @@ fun CollectionChipCard(
     }
 }
 
-/**
- * Обложка плейлиста: первая обложка трека либо тональный градиент от названия.
- *
- * Градиент детерминированный (хэш имени), поэтому у плейлиста без обложки
- * всегда один и тот же цвет — и не нужно хранить его в базе. Второй цвет
- * сдвинут по палитре контейнеров, чтобы соседние плитки различались.
- */
 @Composable
 fun PlaylistCover(
     name: String,
@@ -298,10 +269,6 @@ fun PlaylistCover(
     }
 }
 
-/**
- * Плитка плейлиста для сетки медиатеки: обложка, название и счётчик треков.
- * Нажатие открывает экран плейлиста.
- */
 @Composable
 fun PlaylistTile(
     playlistName: String,
@@ -338,12 +305,10 @@ fun PlaylistTile(
     }
 }
 
-/** Подпись «N треков» с плюрализацией — плитки не могут вызвать stringResource из Column. */
 @Composable
 private fun pluralTrackCount(count: Int): String =
     pluralStringResource(R.plurals.track_count, count, count)
 
-/** Сколько треков и плейлистов: общая подпись шапки коллекции. */
 @Composable
 fun CollectionSummary(trackCount: Int, playlistCount: Int): String {
     val tracks = pluralStringResource(R.plurals.track_count, trackCount, trackCount)

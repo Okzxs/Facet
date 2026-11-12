@@ -11,13 +11,6 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import javax.inject.Singleton
 
-/**
- * Источники с собственным поиском и потоком.
- *
- * Deezer остаётся справочником метаданных, Apple удалён. YouTube и SoundCloud
- * отдают полный поток, Spotify — только метаданные; для metadata-only
- * источников работает внешний матч [com.facet.music.core.source.PlaybackResolver].
- */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class MusicSourceModule {

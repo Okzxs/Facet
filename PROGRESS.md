@@ -1,8 +1,46 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 12.11.2026 (фиксы базового UX после фазы 9)
+## Последнее обновление: 12.11.2026 (Фазы 10–11 и релиз 1.1.0)
 
-## Фиксы базового UX (12.11.2026, коммит `7fa6162`)
+---
+
+## Релиз 1.1.0 (12.11.2026)
+
+- Версия в [`app/build.gradle.kts`](file:///mnt/data/MyMusic/app/build.gradle.kts) поднята до `versionCode = 6`, `versionName = "1.1.0"`; релизная сборка выполняется в GitHub Actions по тегу `v1.1.0`.
+- **Сводка ключевых изменений v1.1.0 (относительно 1.0.0):**
+  - **Новые таблицы и миграции Room (v14 → v19):** `MIGRATION_14_15` (очистка устаревших `streamUrl`/`previewSeconds` Deezer/Apple, удаление кэша поиска и аудио этих источников), `MIGRATION_15_16` (удаление `audio_cache`, создание `resolved_matches`), `MIGRATION_16_17` (`artist_cache` с TTL 6 ч, `followed_artists`, `artistUrl` во всех таблицах с треками), `MIGRATION_17_18` (`wave_impressions`, `wave_sessions`, `artist_blocklist`, `play_history.playedFraction`), `MIGRATION_18_19` (`mood`, `radioArtistKey`, `seedTracksJson` в `wave_sessions`).
+  - **Удалённые источники воспроизведения:** `AppleMusicProvider` и iTunes-поиск/импорт удалены полностью; `Deezer` оставлен только как справочник метаданных (новинки главной, треки альбома и импорт плейлистов). Треки из метаданных (`SPOTIFY`, `DEEZER`, старые строки `APPLE`) воспроизводятся полными версиями с YouTube/SoundCloud через `PlaybackResolver`.
+  - **Новые экраны и настройки:** переработанный экран артиста (`ArtistScreen` на YouTube/SoundCloud с топом-10, релизами, пагинацией по 5 и подписками), настроения волны (`WaveMood`: «Знакомое / Баланс / Открытия» в `AppSettings.waveMood`), холодный старт волны (выбор 3–5 артистов), настройка авто-продолжения после потери аудиофокуса (`AppSettings.resumeAfterFocusLoss`), раздел «Работа в фоне» (подсказка для Samsung и переход в системные настройки), мультивыбор источников в поиске (`AppSettings.searchSources`), debug long-press разбор скоринга волны.
+  - **Устройство «Моей волны» (`core/wave`):** движок `WaveEngine` собирает кандидатов из 6 `@IntoSet`-источников (`RelatedTracksSource`, `SimilarArtistsSource`, `FollowedArtistsSource`, `TagSource`, `SecondHopSource`, `FamiliarSource`) под общим `WaveNetworkGate` (≤ 4 параллельных запросов), применяет жёсткие фильтры (дизлайки, `artist_blocklist`, 14 дн показов, 7 дн прослушиваний, очередь, 60 с–12 мин, Go+/snipped, маркеры версий, 3 быстрых скипа < 30 с → автоблок артиста на 30 дней), скоринг (веса артиста/жанра/origin/novelty/семени/популярности + Gumbel) и переранжирование MMR (λ = 0.7) с квотами `WaveMood`, окнами разнообразия и реальной обратной связью по весам семян.
+
+---
+
+## Сессия 69: фаза 11 — удаление комментариев и консолидация документации (12.11.2026)
+
+- Токенизирующим скриптом (в `/home/souler/.gemini/antigravity/.../scratch/`, в репозиторий не включён) удалены все строчные (`//`), блочные (`/* */`, включая вложенные) и KDoc (`/** */`) комментарии в **254** из **302** файлов (`app/src/main/**/*.kt`, `app/src/test/**/*.kt`, `*.gradle.kts`) с сохранением строковых литералов, raw-строк, `${…}`-шаблонов, символьных литералов и директив (`@Suppress`, `@file:`).
+- В [`MusicService.kt`](file:///mnt/data/MyMusic/app/src/main/java/com/facet/music/core/player/MusicService.kt) встроенная подпись Java-метода `/* handleAudioFocus = */` удалена без изменения логики (`setAudioAttributes(audioAttributes, true)`).
+- Правило в [`AGENTS.md`](file:///mnt/data/MyMusic/AGENTS.md) заменено на запрет комментариев в коде; все критичные архитектурные пояснения (User-Agent и отмена `NewPipeDownloader`, запрет скачивания HLS, хранение `Source` по имени в Room, процессный синглтон `SimpleCache`, `ResolvingDataSource` + `customCacheKey`, отказ от `stop()` ради Now Bar, резолв SoundCloud `api-v2` и архитектура `WaveEngine`) зафиксированы в [`AGENTS.md`](file:///mnt/data/MyMusic/AGENTS.md).
+- Проверка после удаления комментариев: `./gradlew testDebugUnitTest` (65 suite / 389 тестов, 0 failures, 1 pre-existing skipped в `TextPlaylistParserTest`) и `./gradlew assembleDebug` — зелёные.
+
+---
+
+## Сессия 69: фаза 10 — тесты и исправление обнаруженных багов (12.11.2026)
+
+- В `testImplementation` добавлен `com.squareup.okhttp3:mockwebserver:4.12.0` (`SoundCloudApi` получил `internal constructor(..., apiBaseUrl)` для тестов).
+- Написаны/расширены JVM-тесты по всем 15 областям:
+  - [`PlaybackResolverTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/source/PlaybackResolverTest.kt), [`PlaybackLoadErrorPolicyTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/player/PlaybackLoadErrorPolicyTest.kt), [`TrackMatcherTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/source/TrackMatcherTest.kt);
+  - [`SoundCloudApiTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/data/source/soundcloud/SoundCloudApiTest.kt) (`MockWebServer`), [`RetryInterceptorTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/network/RetryInterceptorTest.kt);
+  - [`ArtistMergerTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/search/ArtistMergerTest.kt), [`TrackMergerRankingTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/search/TrackMergerRankingTest.kt), [`SettingsRepositoryImplTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/data/local/SettingsRepositoryImplTest.kt), [`SearchViewModelTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/feature/search/SearchViewModelTest.kt);
+  - [`PlayerControllerQueueTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/player/PlayerControllerQueueTest.kt), [`PlaybackSessionCoordinatorTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/player/PlaybackSessionCoordinatorTest.kt);
+  - [`WaveEngineTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/wave/WaveEngineTest.kt), [`TasteRepositoryTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/data/local/TasteRepositoryTest.kt), [`PlayerLyricsTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/feature/player/PlayerLyricsTest.kt), [`StringResourcesParityTest`](file:///mnt/data/MyMusic/app/src/test/java/com/facet/music/core/i18n/StringResourcesParityTest.kt).
+- **Найденные и исправленные реальные баги в коде:**
+  1. `PlayerController.playNext(track)` при наличии трека в очереди создавал дубликат вместо перемещения; теперь перемещает существующий элемент через `player.moveMediaItem(...)` (сохраняя консистентность индексов с ExoPlayer).
+  2. `PlaybackResolver` при `ResolveError.Network` у своего провайдера и `NoMatch` от внешнего фолбэка затирал сетевую ошибку ошибкой `NoMatch`; теперь сохраняет `Network`.
+- Итог проверки: **65 suite / 389 тестов, 0 failures** (1 pre-existing skipped в `TextPlaylistParserTest`), `assembleDebug` зелёный; `assembleRelease` локально не запускался по правилу 8 ГБ ОЗУ.
+
+---
+
+## Фиксы базового UX (12.11.2026, коммиты `7fa6162`, `796ae4f`)
 
 Live-тест фазы 9 дал 3 критических бага; причины найдены по коду, исправлены:
 

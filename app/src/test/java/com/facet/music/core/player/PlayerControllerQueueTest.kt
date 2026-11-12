@@ -7,7 +7,9 @@ import com.facet.music.core.source.PlaybackResolver
 import com.facet.music.core.source.ResolvedStream
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.QueueRepository
+import com.facet.music.data.repository.QueueSnapshot
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.testutil.MainDispatcherRule
 import io.mockk.Runs
@@ -17,8 +19,11 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -41,6 +46,8 @@ class PlayerControllerQueueTest {
     private lateinit var player: Player
     private lateinit var resolver: PlaybackResolver
     private lateinit var queueRepository: QueueRepository
+    private lateinit var settingsFlow: MutableStateFlow<AppSettings>
+    private lateinit var settingsRepository: SettingsRepository
     private lateinit var controller: PlayerController
     private val listenerSlot = slot<Player.Listener>()
     private val mediaItemsSlot = slot<List<MediaItem>>()
@@ -58,6 +65,10 @@ class PlayerControllerQueueTest {
         player = mockk(relaxed = true)
         resolver = mockk(relaxed = true)
         queueRepository = mockk(relaxed = true)
+        coEvery { queueRepository.load() } returns null
+        settingsFlow = MutableStateFlow(AppSettings())
+        settingsRepository = mockk(relaxed = true)
+        every { settingsRepository.settings } returns settingsFlow
         every { player.addListener(capture(listenerSlot)) } just Runs
         every { player.setMediaItems(capture(mediaItemsSlot), capture(startIndexSlot), capture(positionSlot)) } answers {
             items = mediaItemsSlot.captured
@@ -76,6 +87,16 @@ class PlayerControllerQueueTest {
         every { player.removeMediaItem(any()) } answers {
             val index = firstArg<Int>()
             if (index in items.indices) items = items.filterIndexed { i, _ -> i != index }
+        }
+        every { player.moveMediaItem(any(), any()) } answers {
+            val from = firstArg<Int>()
+            val to = secondArg<Int>()
+            if (from in items.indices && to in items.indices) {
+                val mutable = items.toMutableList()
+                val moved = mutable.removeAt(from)
+                mutable.add(to, moved)
+                items = mutable
+            }
         }
         every { player.replaceMediaItem(any(), any()) } answers {
             val index = firstArg<Int>()
@@ -143,7 +164,7 @@ class PlayerControllerQueueTest {
             connection = FakeConnection(player),
             playbackResolver = resolver,
             queueRepository = queueRepository,
-            settingsRepository = mockk(relaxed = true),
+            settingsRepository = settingsRepository,
         )
     }
 
@@ -313,6 +334,143 @@ class PlayerControllerQueueTest {
 
         assertEquals(2, controller.state.value.currentIndex)
         assertEquals("three", controller.state.value.currentTrack?.id)
+    }
+
+    @Test
+    fun `addToQueue appends new track and skips duplicates without stop`() = runTest {
+        controller.setQueueAndPlay(tracks, 0)
+
+        assertTrue(controller.addToQueue(track("four")))
+        assertFalse(controller.addToQueue(track("two")))
+        assertFalse(controller.addToQueue(track("")))
+
+        assertEquals(listOf("one", "two", "three", "four"), items.map { it.mediaId })
+        verify(exactly = 0) { player.stop() }
+    }
+
+    @Test
+    fun `playNext moves existing track after current in state and player without stop`() = runTest {
+        controller.setQueueAndPlay(tracks, 0)
+
+        assertTrue(controller.playNext(tracks[2]))
+
+        assertEquals(listOf("one", "three", "two"), controller.state.value.queue.map { it.id })
+        assertEquals(listOf("one", "three", "two"), items.map { it.mediaId })
+        verify { player.moveMediaItem(2, 1) }
+        verify(exactly = 0) { player.stop() }
+    }
+
+    @Test
+    fun `shuffle toggle on and off restores original queue and preserves position`() = runTest {
+        controller.setQueueAndPlay(tracks, 1)
+        position = 25_000L
+
+        controller.toggleShuffle()
+        assertTrue(controller.state.value.isShuffle)
+        assertEquals("two", controller.state.value.currentTrack?.id)
+
+        position = 30_000L
+        controller.toggleShuffle()
+        assertFalse(controller.state.value.isShuffle)
+        assertEquals(listOf("one", "two", "three"), controller.state.value.queue.map { it.id })
+        assertEquals(1, controller.state.value.currentIndex)
+        assertEquals(30_000L, positionSlot.captured)
+    }
+
+    @Test
+    fun `repeat cycles through OFF ALL ONE OFF and switching tracks never calls stop`() = runTest {
+        controller.setQueueAndPlay(tracks, 0)
+
+        controller.toggleRepeat()
+        verify { player.setRepeatMode(Player.REPEAT_MODE_ALL) }
+        controller.toggleRepeat()
+        verify { player.setRepeatMode(Player.REPEAT_MODE_ONE) }
+        controller.toggleRepeat()
+        verify { player.setRepeatMode(Player.REPEAT_MODE_OFF) }
+
+        controller.playNext()
+        controller.playTrackAt(2)
+        position = 500L
+        controller.playPrevious()
+
+        verify(exactly = 0) { player.stop() }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `pauseOrResume before controller connects restores queue from repository and plays`() = runTest {
+        val gate = CompletableDeferred<Player?>()
+        var delayedState = Player.STATE_IDLE
+        every { player.playbackState } answers { delayedState }
+        every { player.prepare() } answers { delayedState = Player.STATE_READY }
+        val delayedConnection = object : PlayerConnection {
+            private val flow = MutableStateFlow<Player?>(null)
+            override val player: StateFlow<Player?> = flow
+            override suspend fun connect(): Player? = gate.await()
+            override fun release() = Unit
+        }
+        val snapshot = QueueSnapshot(tracks = tracks, currentIndex = 1, positionMs = 45_000L)
+        val pendingQueueRepo = mockk<QueueRepository>(relaxed = true)
+        coEvery { pendingQueueRepo.load() } returns snapshot
+
+        val pendingController = PlayerController(
+            connection = delayedConnection,
+            playbackResolver = resolver,
+            queueRepository = pendingQueueRepo,
+            settingsRepository = settingsRepository,
+        )
+
+        pendingController.pauseOrResume()
+        gate.complete(player)
+        advanceUntilIdle()
+
+        assertEquals(listOf("one", "two", "three"), mediaItemsSlot.captured.map { it.mediaId })
+        assertEquals(1, startIndexSlot.captured)
+        assertEquals(45_000L, positionSlot.captured)
+        verify { player.prepare() }
+        verify { player.play() }
+    }
+
+    @Test
+    fun `resumeAfterFocusLoss plays only on AUDIO_FOCUS_LOSS with setting enabled within 15 minutes`() = runTest {
+        var clock = 1_000_000L
+        controller.nowMs = { clock }
+        controller.setQueueAndPlay(tracks, 0)
+        io.mockk.clearMocks(player, answers = false, recordedCalls = true)
+        every { player.isPlaying } returns false
+
+        listenerSlot.captured.onPlayWhenReadyChanged(
+            false,
+            Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST,
+        )
+        controller.resumeAfterFocusLoss()
+        verify(exactly = 0) { player.play() }
+
+        settingsFlow.value = AppSettings(resumeAfterFocusLoss = false)
+        listenerSlot.captured.onPlayWhenReadyChanged(
+            false,
+            Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+        )
+        clock += 5 * 60_000L
+        controller.resumeAfterFocusLoss()
+        verify(exactly = 0) { player.play() }
+
+        settingsFlow.value = AppSettings(resumeAfterFocusLoss = true)
+        listenerSlot.captured.onPlayWhenReadyChanged(
+            false,
+            Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+        )
+        clock += 15 * 60_000L + 1L
+        controller.resumeAfterFocusLoss()
+        verify(exactly = 0) { player.play() }
+
+        listenerSlot.captured.onPlayWhenReadyChanged(
+            false,
+            Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+        )
+        clock += 10 * 60_000L
+        controller.resumeAfterFocusLoss()
+        verify(exactly = 1) { player.play() }
     }
 
     private fun track(id: String) = Track(

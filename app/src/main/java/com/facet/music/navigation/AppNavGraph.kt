@@ -87,12 +87,8 @@ fun AppNavGraph() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
-    // Плеер — оверлей поверх NavHost, а не отдельный маршрут. Так вкладка
-    // остаётся скомпонованной под ним и реально проглядывает при свайпе вниз.
     var isPlayerOpen by rememberSaveable { mutableStateOf(false) }
 
-    // Плеер — оверлей поверх вкладки: если открыть его с клавиатурой в поиске,
-    // поле остаётся в фокусе и клавиатура висит над плеером. Гасим и фокус, и IME.
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     LaunchedEffect(isPlayerOpen) {
@@ -102,7 +98,6 @@ fun AppNavGraph() {
         }
     }
 
-    // Скрываем BottomBar на полноэкранных экранах (плеер, настройки, плейлист, артист).
     val showBottomBar by remember {
         derivedStateOf {
             val route = navBackStackEntry?.destination?.route
@@ -115,17 +110,11 @@ fun AppNavGraph() {
         }
     }
 
-    // На «Любимых» дока нет, но островок мини-плеера оставляем: экран —
-    // обычная коллекция, и уходить в полноэкранный плеер ради паузы неудобно.
     val isLikedTracksScreen =
         navBackStackEntry?.destination?.route == Screen.LikedTracks.route
 
-    // Выбранная вкладка пересчитывается только при смене back stack,
-    // а не на каждой рекомпозиции дока.
     val selectedRoute by remember {
         derivedStateOf {
-            // Импорт — детальный экран медиатеки: подсвечиваем вкладку «Библиотека»,
-            // иначе на нём не выбрана ни одна вкладка.
             val route = when (val current = navBackStackEntry?.destination?.route) {
                 Screen.Import.route -> Screen.Library.route
                 else -> current
@@ -135,38 +124,28 @@ fun AppNavGraph() {
         }
     }
 
-    // Общий PlayerViewModel для MiniPlayer и PlayerScreen (один и тот же экземпляр через Hilt)
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val playerState by playerViewModel.playerState.collectAsState()
     val currentTrack = playerState.currentTrack
 
-    // Последний трек переживает очистку currentTrack: мини-плеер успевает
-    // проиграть exit-анимацию и не исчезает рывком.
     var lastTrack by remember { mutableStateOf<Track?>(null) }
     LaunchedEffect(currentTrack) {
         if (currentTrack != null) lastTrack = currentTrack
     }
     val miniTrack = currentTrack ?: lastTrack
 
-    // Крестик мини-плеера скрывает островок сразу, но lastTrack остаётся:
-    // так exit-анимация доигрывает с обложкой, а не пустой плашкой.
     var isMiniPlayerDismissed by remember { mutableStateOf(false) }
     LaunchedEffect(currentTrack) {
         if (currentTrack != null) isMiniPlayerDismissed = false
     }
 
-    // Стабильные колбэки: не пересоздаются при рекомпозиции дока.
     val onTabSelect: (BottomNavItem) -> Unit = remember(navController) {
         { item ->
             val current = navController.currentDestination?.route
-            // Если вкладка уже лежит в стеке (например, из неё открыли импорт),
-            // сначала снимаем верхние экраны. Без этого restoreState возвращал
-            // сохранённый стек вместе с импортом — «Библиотека» не открывалась.
             val popped = current != item.screen.route &&
                 navController.popBackStack(item.screen.route, inclusive = false)
             if (!popped && current != item.screen.route) {
                 navController.navigate(item.screen.route) {
-                    // Избегаем накопления back stack
                     popUpTo(navController.graph.findStartDestination().id) {
                         saveState = true
                     }
@@ -183,12 +162,8 @@ fun AppNavGraph() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Состояние свайпа живёт здесь, а не в PlayerScreen: смещение читается
-    // внутри graphicsLayer без рекомпозиции на каждый кадр.
     val playerSwipe = remember { PlayerSwipeState(scope) }
 
-    // Видимость плеера держим в MutableTransitionState, чтобы управлять
-    // enter/exit-переходом снаружи AnimatedVisibility (в общем оверлее).
     val playerVisibleState = remember { MutableTransitionState(false) }
     SideEffect { playerVisibleState.targetState = isPlayerOpen }
 
@@ -198,7 +173,6 @@ fun AppNavGraph() {
         )
     }
 
-    // Трек знает точный канал; старые строки без ссылки открывают поиск по имени.
     fun openArtist(track: Track) {
         val url = track.artistUrl
         if (url != null && (track.source == Source.YOUTUBE || track.source == Source.SOUNDCLOUD)) {
@@ -210,38 +184,24 @@ fun AppNavGraph() {
         }
     }
 
-    // Открыть плеер и загрузить трек с очередью
     fun openPlayer(track: Track, queue: List<Track> = listOf(track)) {
-        // Прогреваем палитру обложки заранее — к открытию плеера цвет уже в кэше,
-        // поэтому фон не пересчитывается и не анимируется прямо во время перехода.
         scope.launch { prewarmPlayerPalette(context, track.artworkUrl) }
         playerViewModel.playTrackWithQueue(track, queue)
         isPlayerOpen = true
     }
 
-    // Измеренная высота навигационного бара (вместе с его navigationBarsPadding).
-    // От неё зависят позиция островка мини-плеера и нижний contentPadding вкладок.
-    // NavHost при этом остаётся во весь экран и НЕ меняет размер при показе/скрытии
-    // бара — отсюда и плавность перехода в плеер.
     val density = LocalDensity.current
     var navBarHeightPx by remember { mutableStateOf(0) }
     val navBarHeight = with(density) { navBarHeightPx.toDp() }
-    // На экране без дока островку нужен только системный нижний инсет,
-    // иначе он висел бы на высоте скрытой панели.
     val navigationBarInset = with(density) {
         WindowInsets.navigationBars.getBottom(density).toDp()
     }
 
-    // Островок показываем, когда есть трек и известна геометрия низа.
-    // На «Любимых» док скрыт, но островок остаётся — кроме момента, когда
-    // поверх открыт полноэкранный плеер: иначе мини-плеер торчит под ним.
     val showMiniPlayer = (showBottomBar || (isLikedTracksScreen && !isPlayerOpen)) &&
         miniTrack != null &&
         (navBarHeightPx > 0 || isLikedTracksScreen) &&
         !isMiniPlayerDismissed
 
-    // Резерв под островок в нижнем contentPadding вкладок. Анимируем, чтобы
-    // контент не прыгал в момент появления/исчезновения мини-плеера.
     val miniPlayerReserve by animateDpAsState(
         targetValue = if (showMiniPlayer) MiniPlayerIslandHeight + MiniPlayerGap else 0.dp,
         animationSpec = Motion.spatialDefault(),
@@ -249,8 +209,6 @@ fun AppNavGraph() {
     )
     val bottomDockHeight = navBarHeight + miniPlayerReserve
 
-    // На вкладках островок стоит над доком, на «Любимых» — над системной
-    // навигацией. Смена позиции анимируется вместе с уходом дока.
     val miniPlayerBottom by animateDpAsState(
         targetValue = if (showBottomBar) {
             navBarHeight + MiniPlayerGap
@@ -264,8 +222,6 @@ fun AppNavGraph() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // Непрозрачный фон под NavHost: во время перехода вкладок оба экрана
-            // полупрозрачны (fade), и без подложки проглядывало windowBackground.
             .background(MaterialTheme.colorScheme.background),
     ) {
         CompositionLocalProvider(LocalBottomDockHeight provides bottomDockHeight) {
@@ -283,8 +239,6 @@ fun AppNavGraph() {
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
                         onSettingsClick = { navController.navigate(Screen.Settings.route) },
                         onWaveClick = {
-                            // Переход как у вкладки: Home сохраняет состояние,
-                            // back возвращает на неё, а не залипает на Wave.
                             navController.navigate(Screen.Wave.route) {
                                 popUpTo(Screen.Home.route) { saveState = true }
                                 launchSingleTop = true
@@ -308,7 +262,6 @@ fun AppNavGraph() {
                         onImportClick = { navController.navigate(Screen.Import.route) },
                         onOpenSearch = {
                             navController.navigate(Screen.Search.route) {
-                                // Вкладки сохраняем: поиск открывается поверх стартового графа
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }
@@ -327,8 +280,6 @@ fun AppNavGraph() {
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
                 }
-                // Любимые треки — отдельный экран коллекции: в медиатеке от них
-                // остался только крупный чипс.
                 composable(Screen.Import.route) {
                     com.facet.music.feature.imports.ImportScreen(
                         onBack = { navController.popBackStack() },
@@ -351,13 +302,9 @@ fun AppNavGraph() {
                         onArtistClick = { track -> openArtist(track) },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
-                        // Док на экране скрыт, но островок мини-плеера занимает
-                        // место — список не должен уходить под него.
                         bottomInset = miniPlayerReserve,
                     )
                 }
-                // Экран плейлиста — отдельный маршрут с id. Нижний док скрыт:
-                // это детальный экран, как настройки; back возвращает в медиатеку.
                 composable(
                     route = Screen.Playlist.route,
                     arguments = listOf(
@@ -372,7 +319,6 @@ fun AppNavGraph() {
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
                     )
                 }
-                // Экран артиста: имя в пути, нижний док скрыт как у деталей.
                 composable(
                     route = Screen.Artist.route,
                     arguments = listOf(
@@ -425,9 +371,6 @@ fun AppNavGraph() {
             }
         }
 
-        // Навигационный бар — полноценная панель во всю ширину у нижней кромки.
-        // Живёт отдельно от мини-плеера; появление/скрытие анимируется здесь
-        // и НЕ влияет на размер NavHost — в этом суть фикса «25-го кадра».
         AnimatedVisibility(
             visible = showBottomBar,
             enter = slideInVertically(
@@ -442,22 +385,15 @@ fun AppNavGraph() {
                 items = bottomNavItems,
                 selectedRoute = selectedRoute,
                 onSelect = onTabSelect,
-                // Меряем реальную высоту бара: от неё зависят позиция островка
-                // и нижний отступ контента вкладок.
                 modifier = Modifier.onSizeChanged { size -> navBarHeightPx = size.height },
             )
         }
 
-        // Общий SharedTransitionLayout для морфа обложки между мини-плеером
-        // и полноэкранным плеером. Слой прозрачный: NavHost и бар остаются
-        // под ним, а обложка летит в общем оверлее.
         SharedTransitionLayout(
             modifier = Modifier.fillMaxSize(),
         ) {
             val sharedScope = this
             Box(modifier = Modifier.fillMaxSize()) {
-                // Мини-плеер: мягкое проявление без слайда и сильного масштаба —
-                // иначе вместе с морфом обложки получается двойная трансформация.
                 AnimatedVisibility(
                     visible = showMiniPlayer,
                     enter = fadeIn(animationSpec = Motion.effectsDefault()) + scaleIn(
@@ -475,7 +411,6 @@ fun AppNavGraph() {
                         .padding(
                             start = MiniPlayerHorizontalMargin,
                             end = MiniPlayerHorizontalMargin,
-                            // 12dp воздуха между островком и низом экрана/доком.
                             bottom = miniPlayerBottom,
                         ),
                 ) {
@@ -484,7 +419,6 @@ fun AppNavGraph() {
                         Modifier.sharedElement(
                             rememberSharedContentState(PlayerCoverSharedKey),
                             animatedVisibilityScope = animatedScope,
-                            // Морф обложки — пространственная пружина spatial default (9.6).
                             boundsTransform = { _, _ -> Motion.spatialDefault<Rect>() },
                         )
                     }
@@ -497,8 +431,6 @@ fun AppNavGraph() {
                             onPlayPauseClick = { playerViewModel.togglePlayPause() },
                             onNext = { playerViewModel.playNext() },
                             onPrevious = { playerViewModel.playPrevious(force = true) },
-                            // lastTrack не трогаем: exit-анимация должна доиграть
-                            // с обложкой, а не пустой плашкой.
                             onCloseClick = {
                                 isMiniPlayerDismissed = true
                                 playerViewModel.clearQueue()
@@ -509,12 +441,6 @@ fun AppNavGraph() {
                     }
                 }
 
-                // Плеер — верхний оверлей. NavHost с вкладкой остаётся под ним живым,
-                // поэтому при свайпе вниз сквозь тающий плеер видна именно вкладка.
-                //
-                // Экран только проявляется/тает: единственная трансформация при
-                // открытии — морф обложки. Раньше scaleIn/scaleOut накладывались
-                // на полёт обложки, и картинка «ехала» дважды — отсюда кривой морф.
                 val playerEnter = fadeIn(
                     animationSpec = tween(
                         durationMillis = Motion.EnterMillis,
@@ -529,11 +455,7 @@ fun AppNavGraph() {
                 )
                 AnimatedVisibility(
                     visibleState = playerVisibleState,
-                    // Вход без полноэкранного слайда: экран мягко проявляется,
-                    // а обложка через sharedElement летит из мини-плеера.
                     enter = playerEnter,
-                    // Фон экрана мягко сжимается и тает, а обложка через
-                    // sharedElement перелетает в мини-плеер.
                     exit = playerExit,
                     modifier = Modifier.fillMaxSize(),
                 ) {
@@ -542,14 +464,9 @@ fun AppNavGraph() {
                         Modifier.sharedElement(
                             rememberSharedContentState(PlayerCoverSharedKey),
                             animatedVisibilityScope = animatedScope,
-                            // Морф обложки — пространственная пружина spatial default (9.6).
                             boundsTransform = { _, _ -> Motion.spatialDefault<Rect>() },
                         )
                     }
-                    // Панели с текстом и кнопками рисуются в оверлее shared-перехода
-                    // с zIndex выше обложки: морф проходит под ними, а не поверх.
-                    // Вне enter/exit модификатор не активен, чтобы панели не
-                    // перекрывали снекбар и мини-плеер.
                     val foregroundModifier = with(sharedScope) {
                         Modifier
                             .renderInSharedTransitionScopeOverlay(
@@ -570,7 +487,6 @@ fun AppNavGraph() {
                             playerViewModel.findOnYouTube(track)
                             isPlayerOpen = false
                             navController.navigate(Screen.Search.route) {
-                                // Уходим из плеера в поиск, сохраняя состояние вкладок.
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }
@@ -579,8 +495,6 @@ fun AppNavGraph() {
                             }
                         },
                         onArtistClick = { track ->
-                            // Плеер — оверлей: закрываем его и открываем экран артиста.
-                            // Воспроизведение не прерывается, PlayerController общий.
                             isPlayerOpen = false
                             openArtist(track)
                         },
@@ -595,9 +509,6 @@ fun AppNavGraph() {
         }
     }
 
-    // Системный «назад» закрывает плеер, не трогая back stack вкладок.
-    // Predictive back: прогресс жеста тянет тот же offsetPx и масштаб, что и свайп,
-    // отпустил раньше порога — плеер пружиной возвращается на место.
     PredictiveBackHandler(enabled = isPlayerOpen) { progressFlow ->
         playerSwipe.beginDrag()
         try {
@@ -608,8 +519,6 @@ fun AppNavGraph() {
                 }
             }
         } finally {
-            // Блок выполняется и при отмене жеста, и после коммита back:
-            // плеер либо закрывается за порогом, либо пружиной возвращается.
             if (!playerSwipe.isDismissed) {
                 val height = playerSwipe.screenHeightPx
                 val passed = playerSwipe.offsetPx > height * DISMISS_THRESHOLD
@@ -624,21 +533,13 @@ fun AppNavGraph() {
     }
 }
 
-/** Общий ключ обложки для морфа между полноэкранным и мини-плеером. */
 private const val PlayerCoverSharedKey = "player-cover"
 
-/**
- * Индекс вкладки в нижнем доке или -1 для полноэкранных маршрутов.
- */
 private fun NavBackStackEntry.tabIndex(): Int =
     bottomNavItems.indexOfFirst { item ->
         destination.hierarchy.any { it.route == item.screen.route }
     }
 
-/**
- * Направление перехода между вкладками: +1 — к большим индексам (вправо),
- * -1 — к меньшим, 0 — переход не между вкладками.
- */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(): Int {
     val from = initialState.tabIndex()
     val to = targetState.tabIndex()
@@ -646,9 +547,6 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(): In
     return if (to > from) 1 else -1
 }
 
-/**
- * Вход вкладки: выезжает с той стороны, куда движется пользователь.
- */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition(): EnterTransition {
     val direction = tabDirection()
     if (direction == 0) {
@@ -662,9 +560,6 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
     )
 }
 
-/**
- * Выход вкладки: уезжает в сторону, противоположную входу новой.
- */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(): ExitTransition {
     val direction = tabDirection()
     if (direction == 0) {

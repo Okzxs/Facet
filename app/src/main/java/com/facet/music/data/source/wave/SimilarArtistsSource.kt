@@ -17,11 +17,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
 
-/**
- * Похожие артисты Last.fm, выбранные softmax-выборкой из вкуса. Запросы
- * похожих и топ-треков идут параллельно; для каждого артиста берём случайную
- * страницу и 1–2 трека, первые найденные полные потоки резолвим в YouTube.
- */
 @Singleton
 class SimilarArtistsSource @Inject constructor(
     private val lastFmRepository: LastFmRepository,

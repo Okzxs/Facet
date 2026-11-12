@@ -36,13 +36,6 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * YouTube через NewPipe Extractor.
- *
- * NewPipe отдаёт аудио из adaptiveFormats как `PROGRESSIVE_HTTP`, если это
- * обычное видео (не live/OTF): URL ведёт на цельный M4A или WEBM_OPUS-файл,
- * поэтому его можно скачать одним запросом и играть без HLS.
- */
 @Singleton
 class YouTubeRepositoryImpl @Inject constructor(
     private val newPipeDownloader: NewPipeDownloader,
@@ -267,10 +260,6 @@ class YouTubeRepositoryImpl @Inject constructor(
             }.rethrowCancellation()
         }
 
-    /**
-     * Ищет progressive-аудио: сначала M4A (AAC), затем WEBM_OPUS.
-     * HLS/DASH не используем: из сегментов нельзя собрать один аудиофайл.
-     */
     override suspend fun resolveStreamUrl(videoUrl: String): Result<AudioStreamResult> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -294,10 +283,6 @@ class YouTubeRepositoryImpl @Inject constructor(
                         stream.format.isSupportedAudio()
                 }
 
-                // M4A (AAC) — максимально совместимый вариант для Android.
-                // Качество из настроек: берём поток, ближайший к выбранному
-                // битрейту (YouTube отдаёт фиксированный набор), при равенстве
-                // предпочитаем более высокий.
                 val preferredKbps = runCatching {
                     settingsRepository.settings.first().downloadQualityKbps
                 }.getOrDefault(320)
@@ -310,7 +295,6 @@ class YouTubeRepositoryImpl @Inject constructor(
                         ),
                     )
                     ?: m4aCandidates.maxByOrNull { it.averageBitrate }
-                // Запасной вариант — Opus в WebM.
                 val opus = progressive
                     .filter { it.format == MediaFormat.WEBMA_OPUS }
                     .maxByOrNull { it.averageBitrate }
@@ -376,16 +360,13 @@ class YouTubeRepositoryImpl @Inject constructor(
     }
 
     companion object {
-        /** Сколько музыкальных треков достаточно, чтобы не добирать videos. */
         private const val VIDEO_FALLBACK_THRESHOLD = 10
 
-        /** Текст ошибки, когда YouTube не отдал одиночный progressive-поток. */
         const val ERROR_PROGRESSIVE_UNAVAILABLE =
             "YouTube не отдал progressive-аудио для этого трека"
 
         private val URL_REGEX = Regex("""https?://\S+""")
 
-        /** Убирает ссылки (в том числе подписанные) из текста ошибки. */
         fun redact(error: Throwable): String =
             (error.message ?: error.javaClass.simpleName).replace(URL_REGEX, "<url>")
     }

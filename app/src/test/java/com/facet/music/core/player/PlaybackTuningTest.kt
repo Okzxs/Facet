@@ -4,10 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Детюн и вариации: коэффициенты питча считаются по формуле 2^(cents / 1200),
- * 440 Гц — точка отсчёта, октава — 1200 центов.
- */
 class PlaybackTuningTest {
 
     @Test

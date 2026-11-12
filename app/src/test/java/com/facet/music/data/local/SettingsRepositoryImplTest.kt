@@ -13,10 +13,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/**
- * Недавние акцентные цвета: порядок LIFO, дедупликация, обрезка до пяти
- * и сохранение в SharedPreferences между созданиями репозитория.
- */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class SettingsRepositoryImplTest {
@@ -103,5 +99,45 @@ class SettingsRepositoryImplTest {
             setOf(ServiceType.SOUNDCLOUD, ServiceType.YOUTUBE),
             reloaded.settings.first().searchSources,
         )
+    }
+
+    @Test
+    fun `migrates legacy single search source when search_sources is absent`() = runTest {
+        context.getSharedPreferences("facet_settings", Context.MODE_PRIVATE)
+            .edit()
+            .putString("search_service", ServiceType.SOUNDCLOUD.name)
+            .putBoolean("search_all_sources", false)
+            .commit()
+
+        val repository = SettingsRepositoryImpl(context)
+
+        assertEquals(setOf(ServiceType.SOUNDCLOUD), repository.settings.first().searchSources)
+    }
+
+    @Test
+    fun `migrates legacy all sources flag when enabled`() = runTest {
+        context.getSharedPreferences("facet_settings", Context.MODE_PRIVATE)
+            .edit()
+            .putString("search_service", ServiceType.SOUNDCLOUD.name)
+            .putBoolean("search_all_sources", true)
+            .commit()
+
+        val repository = SettingsRepositoryImpl(context)
+
+        assertEquals(ServiceType.entries.toSet(), repository.settings.first().searchSources)
+    }
+
+    @Test
+    fun `empty or unknown search sources fall back to all`() = runTest {
+        context.getSharedPreferences("facet_settings", Context.MODE_PRIVATE)
+            .edit()
+            .putString("search_sources", "UNKNOWN,INVALID")
+            .commit()
+
+        val repository = SettingsRepositoryImpl(context)
+        assertEquals(ServiceType.entries.toSet(), repository.settings.first().searchSources)
+
+        repository.setSearchSources(emptySet())
+        assertEquals(ServiceType.entries.toSet(), repository.settings.first().searchSources)
     }
 }

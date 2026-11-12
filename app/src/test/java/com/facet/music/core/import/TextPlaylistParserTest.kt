@@ -7,10 +7,6 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
 
-/**
- * Разбор текстового списка: «Artist - Title», строка без дефиса идёт в поиск
- * целиком, пустые строки и повторы отбрасываются.
- */
 class TextPlaylistParserTest {
 
     @Test
@@ -35,11 +31,11 @@ class TextPlaylistParserTest {
     fun `empty lines and duplicates are skipped`() {
         val parsed = TextPlaylistParser.parse(
             """
-            
+
             ONDA ANDAR - credits song
             onda andar - CREDITS SONG
             METAMORPHOSIS
-            
+
             """.trimIndent(),
         )
 

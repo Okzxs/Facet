@@ -10,10 +10,6 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Last.fm реализация. Ключ берётся из BuildConfig.LASTFM_API_KEY
- * (gradle property или переменная окружения LASTFM_API_KEY).
- */
 @Singleton
 class LastFmRepositoryImpl @Inject constructor(
     private val api: LastFmApi,

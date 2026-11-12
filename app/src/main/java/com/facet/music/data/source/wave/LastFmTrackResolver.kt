@@ -11,11 +11,6 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Превращает метаданные Last.fm в играбельный трек. Сначала ищет полный поток
- * на YouTube и проверяет совпадение через [TrackMatcher]; если не нашлось,
- * оставляет metadata-only трек — PlaybackResolver дотянет его при воспроизведении.
- */
 @Singleton
 class LastFmTrackResolver @Inject constructor(
     private val youTubeRepository: YouTubeRepository,

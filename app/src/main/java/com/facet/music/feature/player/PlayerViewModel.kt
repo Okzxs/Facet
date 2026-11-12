@@ -38,10 +38,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-/**
- * ViewModel экрана плеера.
- * Управляет воспроизведением, очередью, текстами песен и избранным.
- */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val soundCloudRepository: SoundCloudRepository,
@@ -59,10 +55,7 @@ class PlayerViewModel @Inject constructor(
 
     private val tag = "PlayerViewModel"
 
-    // Доступные скорости воспроизведения (по референсу MD3 плеера)
     val availableSpeeds = listOf(1.0f, 1.25f, 1.5f, 2.0f, 0.5f)
-
-    // ─── UI-состояние ─────────────────────────────────────────────────────────
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
@@ -73,10 +66,8 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /** Состояние плеера (isPlaying, currentTrack, playbackSpeed, queue, shuffle, repeat) */
     val playerState: StateFlow<PlayerState> = playerController.state
 
-    /** Настройки оформления: флаг динамических цветов обложки и акцент. */
     val appSettings: StateFlow<AppSettings> = settingsRepository.settings
         .stateIn(
             scope = viewModelScope,
@@ -84,7 +75,6 @@ class PlayerViewModel @Inject constructor(
             initialValue = AppSettings(),
         )
 
-    /** Флаг буферизации ExoPlayer */
     val isBuffering: StateFlow<Boolean> = playerController.state
         .map { it.isBuffering }
         .distinctUntilChanged()
@@ -94,7 +84,6 @@ class PlayerViewModel @Inject constructor(
             initialValue = false,
         )
 
-    /** Наблюдение за состоянием лайка текущего трека из БД Room */
     @OptIn(ExperimentalCoroutinesApi::class)
     val isLiked: StateFlow<Boolean> = playerController.state
         .map { it.currentTrack?.id ?: _uiState.value.track?.id }
@@ -112,7 +101,6 @@ class PlayerViewModel @Inject constructor(
             initialValue = false,
         )
 
-    /** Наблюдение за дизлайком текущего трека из БД Room. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val isDisliked: StateFlow<Boolean> = playerController.state
         .map { it.currentTrack?.id ?: _uiState.value.track?.id }
@@ -130,13 +118,6 @@ class PlayerViewModel @Inject constructor(
             initialValue = false,
         )
 
-    /**
-     * Состояние скачивания текущего трека.
-     *
-     * Ошибка/отмена показывается крестиком ровно секунду, затем UI снова
-     * предлагает скачать трек. Если за это время начнётся новая попытка,
-     * transformLatest отменит таймер и покажет её прогресс.
-     */
     @OptIn(ExperimentalCoroutinesApi::class)
     val downloadState: StateFlow<DownloadState> = playerController.state
         .map { it.currentTrack?.id ?: _uiState.value.track?.id }
@@ -180,13 +161,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Реакция на смену текущего трека: сброс позиции и ошибок + загрузка текста.
-     *
-     * Текст грузится отдельным потоком через flatMapLatest: раньше suspend-вызов
-     * loadLyrics жил внутри collect и блокировал обработку следующей смены трека,
-     * пока LRCLIB отвечал. Теперь старый запрос отменяется при переключении.
-     */
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun observeCurrentTrack() {
         viewModelScope.launch {
@@ -214,20 +188,12 @@ class PlayerViewModel @Inject constructor(
                 .map { it.currentTrack }
                 .distinctUntilChanged()
                 .flatMapLatest { track ->
-                    // Эмиссий нет: поток нужен только как отменяемая единица работы.
                     flow<Unit> { if (track != null) loadLyrics(track) }
                 }
                 .collect()
         }
     }
 
-    // ─── Публичные методы ─────────────────────────────────────────────────────
-
-    /**
-     * Переключить статус избранного (лайк) для текущего трека.
-     * При постановке лайка сохраняем последнюю геопозицию и текущий сезон —
-     * они питают секцию «Воспоминания».
-     */
     fun toggleLike() {
         val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
         viewModelScope.launch {
@@ -239,11 +205,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Переключить дизлайк текущего трека.
-     * Дизлайк автоматически снимает лайк: трек не должен быть
-     * одновременно в избранном и в списке исключённых.
-     */
     fun toggleDislike() {
         val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
         viewModelScope.launch {
@@ -288,7 +249,6 @@ class PlayerViewModel @Inject constructor(
     }
 
 
-    /** «Не рекомендовать исполнителя» из меню плеера. */
     fun blockCurrentArtist() {
         val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
         viewModelScope.launch {
@@ -309,11 +269,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Кнопка скачивания в плеере.
-     * Не скачан / ошибка → ставим в очередь, в процессе → отменяем,
-     * уже скачан → ничего не делаем (файл остаётся офлайн).
-     */
     fun toggleDownload() {
         val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
         when (downloadState.value) {
@@ -329,15 +284,10 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /** Snackbar показан — сбрасываем сообщение, чтобы оно не повторялось. */
     fun consumeDownloadError() {
         _uiState.update { it.copy(downloadError = null) }
     }
 
-    /**
-     * Умный редирект: отправить в поиск запрос «Артист - Название»
-     * с уже выбранным YouTube. Навигацию выполняет AppNavGraph.
-     */
     fun findOnYouTube(track: Track) {
         val query = listOf(track.artist.trim(), track.title.trim())
             .filter { it.isNotBlank() }
@@ -347,9 +297,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Запустить трек в контексте списка-источника (очереди).
-     */
     fun playTrackWithQueue(
         track: Track,
         queue: List<Track>,
@@ -375,9 +322,6 @@ class PlayerViewModel @Inject constructor(
             loadLyrics(track)
         }
 
-        // Ручной запуск из поиска/медиатеки завершает текущую волну.
-        // Радио от трека (resetWave = false), наоборот, оставляет сессию живой,
-        // чтобы PlaybackSessionCoordinator подкачивал следующие пачки.
         if (resetWave) {
             viewModelScope.launch {
                 waveRepository.reset()
@@ -387,13 +331,8 @@ class PlayerViewModel @Inject constructor(
         playerController.setQueueAndPlay(targetQueue, startIndex, origin)
     }
 
-    /** Полностью закрыть плеер: стоп, пустая очередь, очистка сохранённой. */
     fun clearQueue() = playerController.clearQueue()
 
-    /**
-     * Радио от трека: строим сессию волны на похожих артистах и сразу играем
-     * первую пачку. Дальше очередь пополняется через [observeWaveRefill].
-     */
     fun startWaveFromTrack(track: Track) {
         if (_uiState.value.isRadioLoading) return
         _uiState.update { it.copy(isRadioLoading = true) }
@@ -403,8 +342,6 @@ class PlayerViewModel @Inject constructor(
             _uiState.update { it.copy(isRadioLoading = false) }
             result
                 .onSuccess { batch ->
-                    // Первым играет сам трек-сид: волна подхватывает похожие
-                    // следом, а не начинает с чужого трека.
                     val related = batch.tracks.filter { it.id != track.id }
                     playTrackWithQueue(
                         track = track,
@@ -419,7 +356,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /** «Волна по артисту»: фиксированные семена артиста. */
     fun startWaveFromArtist(artist: String) {
         if (artist.isBlank() || _uiState.value.isRadioLoading) return
         _uiState.update { it.copy(isRadioLoading = true) }
@@ -442,9 +378,6 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Загрузить трек как одиночный элемент (обратная совместимость).
-     */
     fun loadAndPlay(track: Track) {
         playTrackWithQueue(track, listOf(track))
     }
@@ -453,39 +386,27 @@ class PlayerViewModel @Inject constructor(
         playerController.playNext()
     }
 
-    /** Поставить трек следующим в очереди; false — трек уже играет. */
     fun playNext(track: Track): Boolean = playerController.playNext(track)
 
-    /** Дописать трек в очередь; false — он уже там. */
     fun addToQueue(track: Track): Boolean = playerController.addToQueue(track)
-
-    // ─── Таймер сна ───────────────────────────────────────────────────────────
 
     private val _sleepTimer = MutableStateFlow<SleepTimerState?>(null)
 
-    /** Активный таймер сна или null. */
     val sleepTimer: StateFlow<SleepTimerState?> = _sleepTimer.asStateFlow()
 
     private var sleepTimerJob: Job? = null
 
-    /**
-     * Запустить таймер сна: через [minutes] минут воспроизведение встанет
-     * на паузу. Повторный выбор заменяет прежний таймер, а не суммируется.
-     */
     fun startSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
         val endsAt = sleepTimerEndTime(System.currentTimeMillis(), minutes)
         _sleepTimer.value = SleepTimerState(minutes = minutes, endsAtMillis = endsAt)
         sleepTimerJob = viewModelScope.launch {
-            // Точная задержка, а не округлённые минуты: иначе пауза приходит
-            // на несколько секунд позже выбранного времени.
             delay((endsAt - System.currentTimeMillis()).coerceAtLeast(0L))
             playerController.pause()
             _sleepTimer.value = null
         }
     }
 
-    /** Выключить таймер сна, не трогая воспроизведение. */
     fun cancelSleepTimer() {
         sleepTimerJob?.cancel()
         sleepTimerJob = null
@@ -564,14 +485,11 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun togglePlayPause() {
-        // Сразу убираем сообщение об ошибке из UI; контроллер при необходимости повторит запуск
         _uiState.update { it.copy(error = null) }
         playerController.pauseOrResume()
     }
 
     fun seekTo(fraction: Float) {
-        // ExoPlayer может ещё не отдать duration (HLS готовится): тогда молча
-        // теряли seek и слайдер «отпружинивал» назад. Фолбэк — длительность трека.
         val duration = playerController.durationMs().takeIf { it > 0 }
             ?: playerState.value.currentTrack?.durationMs?.takeIf { it > 0 }
             ?: playerState.value.queue.getOrNull(playerState.value.currentIndex)?.durationMs
@@ -593,17 +511,14 @@ class PlayerViewModel @Inject constructor(
         playerController.setPlaybackSpeed(nextSpeed)
     }
 
-    /** Детюн: сдвиг строя через PlaybackParameters, 440 Гц — стандарт. */
     fun setTuning(frequencyHz: Int) {
         playerController.setTuning(frequencyHz)
     }
 
-    /** Вариация трека: Speed Up, Slowed, Nightcore. */
     fun setVariation(variation: PlaybackVariation) {
         playerController.setVariation(variation)
     }
 
-    /** Текущая позиция [0..1] для слайдера. */
     fun currentFraction(): Float {
         val duration = playerController.durationMs()
         return if (duration > 0) playerController.currentPositionMs().toFloat() / duration else 0f
@@ -616,19 +531,14 @@ class PlayerViewModel @Inject constructor(
     fun bufferedFraction(): Float = playerController.bufferedFraction()
 
     private companion object {
-        /** Размер первой пачки радио от трека. */
         const val RADIO_BATCH = 20
 
-        /** Сколько держать крестик ошибки/отмены перед возвратом иконки скачивания. */
         const val ERROR_ICON_DURATION_MS = 1_000L
 
         const val LYRICS_CACHE_SIZE = 20
     }
 }
 
-/**
- * UI-состояние экрана плеера (ошибки, загрузка URL, тексты, позиция).
- */
 data class PlayerUiState(
     val track: Track? = null,
     val positionMs: Long = 0L,
@@ -638,7 +548,6 @@ data class PlayerUiState(
     val isLyricsLoading: Boolean = false,
     val lyricsError: UiError? = null,
     val downloadError: String? = null,
-    /** Идёт сборка первой пачки радио от трека. */
     val isRadioLoading: Boolean = false,
 )
 

@@ -14,10 +14,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-/**
- * Регрессия Б6/5.3: отмена корутины во время зависшего запроса должна
- * отменять OkHttp Call, а не ждать readTimeout.
- */
 class NewPipeDownloaderCancellationTest {
 
     @Test

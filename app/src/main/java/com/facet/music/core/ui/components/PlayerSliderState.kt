@@ -1,6 +1,5 @@
 package com.facet.music.core.ui.components
 
-/** Общая модель preview для дорожки и таймкода. Stop сохраняет значение до finish. */
 data class PlayerSliderState(
     val preview: Float? = null,
     val dragging: Boolean = false,
@@ -12,6 +11,5 @@ data class PlayerSliderState(
     fun display(playback: Float) = preview ?: playback
 }
 
-/** Координаты относительно самой дорожки, без дополнительных отступов thumb. */
 internal fun trackX(fraction: Float, width: Float, rtl: Boolean): Float =
     width * if (rtl) 1f - fraction.coerceIn(0f, 1f) else fraction.coerceIn(0f, 1f)

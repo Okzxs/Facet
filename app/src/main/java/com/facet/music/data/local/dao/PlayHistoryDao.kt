@@ -8,10 +8,6 @@ import androidx.room.Transaction
 import com.facet.music.data.local.entity.PlayHistoryEntity
 import kotlinx.coroutines.flow.Flow
 
-/**
- * DAO для работы с историей воспроизведения (таблица play_history).
- * Хранит последние 50 записей.
- */
 @Dao
 interface PlayHistoryDao {
 

@@ -48,17 +48,6 @@ import okhttp3.Request
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Вход в Spotify по OAuth 2.0 + PKCE.
- *
- * Почему PKCE, а не Client Credentials: пользовательский вход даёт доступ
- * к его плейлистам, а `client_secret` в мобильном приложении хранить нельзя —
- * его можно вытащить из APK. Секрет остаётся опциональным и нужен только
- * для поиска без входа.
- *
- * Код на токены меняется в области процесса, а не Activity: пересоздание
- * экрана (язык, тема, поворот) не должно запускать обмен повторно.
- */
 @Singleton
 class SpotifyAuthRepositoryImpl @Inject constructor(
     @ApplicationContext context: Context,
@@ -70,18 +59,13 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
 
     private val appContext = context.applicationContext
 
-    // Старый открытый файл: нужен только как источник одноразовой миграции.
     private val legacyPrefs: SharedPreferences =
         appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val secureStore by lazy { SecureStore(appContext) }
 
-    // Обновление токена одно на всё приложение: параллельные запросы
-    // не должны одновременно дёргать refresh и затирать результат.
     private val tokenMutex = Mutex()
 
-    // Обмен кода сериализован: повторный deep link не должен отправлять
-    // тот же одноразовый код второй раз.
     private val completionMutex = Mutex()
     private var lastCompletedCode: String? = null
 
@@ -93,8 +77,6 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
     )
     override val authState: StateFlow<SpotifyAuthState> = _authState.asStateFlow()
 
-    // Пока миграция не завершена, suspend-методы не читают шифрованные ключи:
-    // иначе старые токены на миг выглядели бы отсутствующими.
     private val migrated = CompletableDeferred<Unit>()
 
     init {
@@ -144,7 +126,6 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
             val parsed = Uri.parse(uri)
             val code = parsed.getQueryParameter("code")
             completionMutex.withLock {
-                // Тот же код уже обменян: молча выходим, без второго тоста.
                 if (code != null && code == lastCompletedCode) {
                     return@withLock Result.success(Unit)
                 }
@@ -188,7 +169,6 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
             .build()
         val tokenBody = postForm(SPOTIFY_TOKEN_URL, form)
         saveTokens(tokenBody)
-        // Профиль нужен карточке настроек: имя и аватар.
         runCatching { loadProfile() }.onFailure { error ->
             Log.w(TAG, "Профиль Spotify не загрузился: ${error.message}")
         }
@@ -235,13 +215,11 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
         withContext(Dispatchers.IO) {
             migrated.await()
             AUTH_KEYS.forEach(secureStore::remove)
-            // Открытые ключи прошлых версий тоже не должны пережить выход.
             legacyPrefs.edit().clear().apply()
             _authState.value = SpotifyAuthState()
         }
     }
 
-    /** Токен ещё жив с запасом в минуту — не тратим запрос на обновление. */
     private fun isFresh(): Boolean =
         System.currentTimeMillis() < secureStore.getLong(KEY_EXPIRES_AT) - TOKEN_MARGIN_MS
 
@@ -258,7 +236,6 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
         return secureStore.getString(KEY_ACCESS)
     }
 
-    /** Разбор ответа token endpoint: access, refresh и срок жизни. */
     private fun saveTokens(body: String) {
         val root = json.parseToJsonElement(body).jsonObject
         val access = root["access_token"]?.jsonPrimitive?.contentOrNull
@@ -273,8 +250,6 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
         check(secureStore.putLong(KEY_EXPIRES_AT, System.currentTimeMillis() + expiresIn * 1000L)) {
             "Не удалось сохранить срок токена"
         }
-        // При обновлении Spotify может не прислать refresh_token —
-        // тогда остаётся прежний.
         if (refresh != null) {
             check(secureStore.putString(KEY_REFRESH, refresh)) {
                 "Не удалось сохранить refresh_token"
@@ -334,7 +309,6 @@ class SpotifyAuthRepositoryImpl @Inject constructor(
         )
     }
 
-    /** Быстрая проверка без расшифровки: есть ли вообще сохранённая сессия. */
     private fun hasStoredSession(): Boolean =
         secureStore.contains(KEY_REFRESH) || secureStore.contains(KEY_ACCESS) ||
             legacyPrefs.contains(KEY_REFRESH) || legacyPrefs.contains(KEY_ACCESS)

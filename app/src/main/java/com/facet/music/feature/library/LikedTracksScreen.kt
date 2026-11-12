@@ -68,13 +68,6 @@ import com.facet.music.core.ui.components.TrackDownloadButton
 import com.facet.music.data.model.Track
 import kotlinx.coroutines.launch
 
-/**
- * Экран «Любимые треки»: отдельная коллекция лайков, открывается из чипса
- * медиатеки. Внутри — градиентная шапка, быстрые действия и список.
- *
- * Данные берёт тот же [LibraryViewModel], что и медиатека: лайки, состояния
- * скачивания и удаление лайка уже живут там, дублировать репозитории незачем.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LikedTracksScreen(
@@ -84,7 +77,6 @@ fun LikedTracksScreen(
     onArtistClick: (Track) -> Unit,
     onPlayNext: (Track) -> Boolean,
     onAddToQueue: (Track) -> Boolean,
-    /** Запас под островок мини-плеера: док здесь скрыт, но островок виден. */
     bottomInset: Dp = 0.dp,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
@@ -198,8 +190,6 @@ fun LikedTracksScreen(
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.library_play_all))
                         }
-                        // Перемешать — иконка без подписи: подпись не влезает
-                        // в половину ширины и переносилась на вторую строку.
                         FilledTonalIconButton(
                             onClick = {
                                 val shuffled = likedTracks.shuffled()
@@ -281,10 +271,6 @@ fun LikedTracksScreen(
     }
 }
 
-/**
- * Шапка любимых треков: крупная градиентная плитка с сердцем (как обложка
- * коллекции), под ней — количество и суммарная длительность.
- */
 @Composable
 private fun LikedHero(tracks: List<Track>) {
     val start = MaterialTheme.colorScheme.primaryContainer
@@ -335,7 +321,6 @@ private fun LikedHero(tracks: List<Track>) {
     }
 }
 
-/** Суммарная длительность коллекции в шапке: «1 ч 5 мин» или «42 мин». */
 @Composable
 private fun formatLikedDuration(ms: Long): String {
     val totalMinutes = ms / 60_000L

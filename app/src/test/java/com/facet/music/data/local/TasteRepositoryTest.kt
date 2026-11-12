@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.facet.music.core.wave.Clock
+import com.facet.music.data.local.entity.ArtistWeightEntity
 import com.facet.music.data.local.entity.GenreWeightEntity
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
@@ -114,6 +115,28 @@ class TasteRepositoryTest {
 
         val top = repository.getTopGenres(5)
         assertEquals(listOf("fresh", "old"), top.map { it.value })
+    }
+
+    @Test
+    fun `wave skip and normal skip apply distinct negative deltas`() = runBlocking {
+        repository.onSkip(track("Artist Wave", "Electronic"), playedMs = 10_000L, context = TasteContext.WAVE)
+        repository.onSkip(track("Artist Normal", "Jazz"), playedMs = 10_000L, context = TasteContext.NORMAL)
+
+        assertEquals(-1.0, database.tasteDao().getArtistWeight("artist wave") ?: 0.0, 0.0001)
+        assertEquals(-1.0, database.tasteDao().getGenreWeight("electronic") ?: 0.0, 0.0001)
+        assertEquals(-0.3, database.tasteDao().getArtistWeight("artist normal") ?: 0.0, 0.0001)
+        assertEquals(-0.3, database.tasteDao().getGenreWeight("jazz") ?: 0.0, 0.0001)
+    }
+
+    @Test
+    fun `artist weight decays to quarter after sixty days`() = runBlocking {
+        database.tasteDao().upsertArtistWeight(
+            ArtistWeightEntity(artist = "daft punk", weight = 8.0, updatedAt = now - 60L * 86_400_000L),
+        )
+
+        val top = repository.getTopArtists(5)
+        assertEquals("daft punk", top.single().value)
+        assertEquals(2.0, top.single().weight, 0.0001)
     }
 
     private val sampleTrack = track(artist = "Artist", genre = "Rock")

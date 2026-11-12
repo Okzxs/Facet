@@ -10,7 +10,6 @@ import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import kotlinx.serialization.json.Json
 
-/** MediaItem с сериализованным Track в extras: сервис восстанавливает очередь сам. */
 object TrackMediaItem {
 
     private const val KEY_TRACK = "facet.track"

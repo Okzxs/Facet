@@ -21,12 +21,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * Экран плейлиста: имя, треки и удаление трека.
- *
- * Аргумент маршрута приходит через [SavedStateHandle] — экран открывается
- * из медиатеки и переживает пересоздание процесса без потери id.
- */
 @HiltViewModel
 class PlaylistViewModel @Inject constructor(
     private val repository: PlaylistRepository,
@@ -52,7 +46,6 @@ class PlaylistViewModel @Inject constructor(
             initialValue = emptyList(),
         )
 
-    /** Id играющего трека — строка подсвечивается и показывает эквалайзер. */
     val currentTrackId: StateFlow<String?> = playerController.state
         .map { it.currentTrack?.id }
         .distinctUntilChanged()
@@ -71,11 +64,9 @@ class PlaylistViewModel @Inject constructor(
             initialValue = false,
         )
 
-    /** Ошибка удаления — UI переводит флаг в локализованный Snackbar. */
     private val _failed = MutableStateFlow(false)
     val failed: StateFlow<Boolean> = _failed.asStateFlow()
 
-    /** Плейлист удалён: экран закрывается, возвращаться в него некуда. */
     private val _deleted = MutableStateFlow(false)
     val deleted: StateFlow<Boolean> = _deleted.asStateFlow()
 
@@ -90,7 +81,6 @@ class PlaylistViewModel @Inject constructor(
         }
     }
 
-    /** Удаление плейлиста вместе с треками (каскад внешнего ключа). */
     fun deletePlaylist() {
         viewModelScope.launch {
             runCatching { repository.deletePlaylist(playlistId) }

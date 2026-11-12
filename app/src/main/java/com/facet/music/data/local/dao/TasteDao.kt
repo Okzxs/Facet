@@ -9,9 +9,6 @@ import com.facet.music.data.local.entity.ArtistWeightEntity
 import com.facet.music.data.local.entity.GenreWeightEntity
 import com.facet.music.data.local.entity.UserPreferenceEntity
 
-/**
- * DAO вкусовых весов и пользовательских предпочтений волны.
- */
 @Dao
 interface TasteDao {
 
@@ -21,7 +18,6 @@ interface TasteDao {
     @Query("SELECT * FROM artist_weights WHERE weight > 0 ORDER BY weight DESC, updatedAt DESC LIMIT :limit")
     suspend fun getTopArtists(limit: Int): List<ArtistWeightEntity>
 
-    /** Сырые веса для сортировки по затухающему значению в Kotlin. */
     @Query("SELECT * FROM genre_weights ORDER BY weight DESC LIMIT :limit")
     suspend fun getGenresRaw(limit: Int): List<GenreWeightEntity>
 
@@ -75,7 +71,6 @@ interface TasteDao {
     suspend fun clearArtistWeights()
 }
 
-/** Полураспад вкуса — 30 дней. */
 fun decayedWeight(weight: Double, updatedAt: Long, now: Long): Double {
     val ageDays = ((now - updatedAt).coerceAtLeast(0L) / 86_400_000.0)
     return weight * Math.pow(0.5, ageDays / 30.0)

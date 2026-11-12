@@ -75,7 +75,6 @@ class SearchViewModelExternalRequestTest {
         events.requestSearch(query = "Artist - Title", service = ServiceType.YOUTUBE)
         createViewModel(events)
 
-        // Имитируем повторное открытие экрана: replay-событие уже погашено.
         createViewModel(events)
 
         coVerify(exactly = 1) { youTubeRepository.searchPage("Artist - Title", any(), null) }

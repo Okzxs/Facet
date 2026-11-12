@@ -1,6 +1,5 @@
 package com.facet.music.core.search
 
-/** Веса ранжирования поисковой выдачи. */
 object SearchConfig {
     const val EXACT_ARTIST_BOOST = 3.0
     const val ALL_TOKENS_BOOST = 2.0

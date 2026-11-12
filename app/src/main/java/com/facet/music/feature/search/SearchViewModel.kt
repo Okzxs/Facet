@@ -56,16 +56,13 @@ data class SearchUiState(
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val error: String? = null,
-    /** Выбранные источники; всегда хотя бы один. */
     val selectedSources: Set<ServiceType> = ServiceType.entries.toSet(),
     val recentQueries: List<String> = emptyList(),
     val isOffline: Boolean = false,
-    /** Подсказка «нужен хотя бы один источник». */
     val sourceHint: String? = null,
     val suggestions: List<String> = emptyList(),
 )
 
-/** Запрос: набор источников входит в ключ, чтобы смена набора перезапускала поиск. */
 private data class SearchRequest(
     val query: String,
     val sources: Set<ServiceType>,
@@ -361,10 +358,6 @@ class SearchViewModel @Inject constructor(
         performSourcesSearch(request)
     }
 
-    /**
-     * Треки и артисты ищутся параллельно: каждый источник отдаёт две задачи,
-     * результаты приходят через channelFlow по мере готовности.
-     */
     private suspend fun performSourcesSearch(request: SearchRequest) {
         val groups = LinkedHashMap<ServiceType, List<Track>>()
         val artistGroups = LinkedHashMap<ServiceType, List<Artist>>()

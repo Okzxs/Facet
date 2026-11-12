@@ -6,13 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
-/**
- * PKCE и сборка URL авторизации Spotify.
- *
- * Вектор из RFC 7636 (приложение B): verifier "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
- * даёт challenge "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM". Если он ломается,
- * Spotify отклонит вход на обмене кода — поэтому проверяем именно эталон.
- */
 class SpotifyPkceTest {
 
     @Test
@@ -55,7 +48,6 @@ class SpotifyPkceTest {
         assertTrue(url.contains("code_challenge_method=S256"))
         assertTrue(url.contains("code_challenge=challenge"))
         assertTrue(url.contains("state=state"))
-        // Redirect URI с двоеточием и слэшами обязан быть закодирован.
         assertTrue(url.contains("redirect_uri=facet%3A%2F%2Fspotify-auth"))
         assertTrue(!url.contains("client_secret"))
     }

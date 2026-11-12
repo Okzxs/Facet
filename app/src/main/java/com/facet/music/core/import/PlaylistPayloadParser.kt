@@ -11,21 +11,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
-/**
- * Разбор JSON плейлистов Deezer.
- *
- * Вынесен из загрузчика в чистые функции: их можно проверить обычными
- * JVM-тестами без сети и без Android. Ошибки бросаются исключением — сетевой
- * слой загрузчика превращает их в [PlaylistImportResult.Failure].
- */
 object PlaylistPayloadParser {
 
-    /**
-     * `https://api.deezer.com/playlist/{id}`: название и `tracks.data`.
-     *
-     * Deezer отвечает `200` и с объектом `error` для несуществующего плейлиста,
-     * поэтому ошибку проверяем до разбора треков.
-     */
     fun deezerPlaylist(body: String, json: Json = Json): ImportedPlaylist {
         val root = json.parseToJsonElement(body).jsonObject
         root["error"]?.let { element ->
@@ -67,7 +54,6 @@ object PlaylistPayloadParser {
             title = title,
             artist = artist.ifBlank { UNKNOWN_ARTIST },
             artworkUrl = artwork,
-            // Deezer — только метаданные: полную версию ищет StreamResolver на YouTube.
             streamUrl = null,
             durationMs = (item["duration"]?.jsonPrimitive?.intOrNull ?: 0) * 1000L,
             genre = null,

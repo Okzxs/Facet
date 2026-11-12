@@ -7,11 +7,6 @@ import com.facet.music.data.model.SeasonMemory
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 
-/**
- * Сущность лайкнутого трека для таблицы liked_tracks в Room.
- * Индексы по сезону и дате лайка: «Воспоминания» и история
- * выбирают по ним, полный перебор таблицы не нужен.
- */
 @Entity(
     tableName = "liked_tracks",
     indices = [Index("season"), Index("likedAt")],
@@ -27,13 +22,9 @@ data class LikedTrackEntity(
     val genre: String?,
     val transcodingUrl: String?,
     val likedAt: Long = System.currentTimeMillis(),
-    /** Широта на момент лайка (null, если нет разрешения или геопозиция недоступна). */
     val latitude: Double? = null,
-    /** Долгота на момент лайка. */
     val longitude: Double? = null,
-    /** Сезон лайка: Winter / Spring / Summer / Autumn. */
     val season: String? = null,
-    /** URL канала исполнителя для перехода на экран артиста. */
     val artistUrl: String? = null,
 )
 

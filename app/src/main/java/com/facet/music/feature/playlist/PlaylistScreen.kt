@@ -68,14 +68,6 @@ import com.facet.music.core.ui.components.TrackCard
 import com.facet.music.data.model.Track
 import kotlinx.coroutines.launch
 
-/**
- * Экран одного плейлиста: шапка с обложкой и названием, быстрые действия,
- * треки в порядке добавления и удаление трека.
- *
- * Шапка повторяет ритм медиатеки и любимых треков — обложка слева, крупное
- * название справа; ниже те же кнопки «Слушать всё»/«Перемешать».
- * Экран полноэкранный: нижний док скрыт навграфом.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistScreen(
@@ -98,18 +90,14 @@ fun PlaylistScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    // Один автопрокрут при открытии, а не на каждую смену трека.
     var scrolledToCurrent by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    // Плейлист удалён — возвращаемся в медиатеку, экрана больше нет.
     LaunchedEffect(deleted) {
         if (deleted) onBack()
     }
 
-    // Открыли плейлист с играющим треком — сразу показываем его строку,
-    // как это делает шторка очереди. Шапка и кнопки занимают первый элемент.
     LaunchedEffect(currentTrackId, tracks) {
         if (scrolledToCurrent) return@LaunchedEffect
         val index = tracks.indexOfFirst { it.id == currentTrackId }
@@ -119,7 +107,6 @@ fun PlaylistScreen(
         }
     }
 
-    // Очередь живёт в плеере: подтверждение действий — Snackbar.
     val handlePlayNext: (Track) -> Unit = { track ->
         if (onPlayNext(track)) {
             scope.launch {
@@ -169,7 +156,6 @@ fun PlaylistScreen(
                         )
                     }
                 },
-                // Имя крупно показано в шапке — в топбаре не дублируем его.
                 title = {
                     Text(
                         text = stringResource(R.string.playlist_title),
@@ -300,10 +286,6 @@ fun PlaylistScreen(
     }
 }
 
-/**
- * Шапка плейлиста: обложка, название и счётчик. Кнопки повторяют ритм
- * «Любимых треков», поэтому коллекции выглядят одинаково.
- */
 @Composable
 private fun PlaylistHeader(
     name: String,
@@ -359,8 +341,6 @@ private fun PlaylistHeader(
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.library_play_all))
             }
-            // Перемешать — иконка без подписи: подпись не влезает
-            // в половину ширины и переносилась на вторую строку.
             FilledTonalIconButton(
                 onClick = onShuffle,
                 enabled = canPlay,
@@ -377,5 +357,4 @@ private fun PlaylistHeader(
     }
 }
 
-/** Шапка плейлиста и ряд кнопок занимают первые два элемента списка. */
 private const val PLAYLIST_LIST_HEADER_ITEMS = 1

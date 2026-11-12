@@ -49,23 +49,16 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var settingsRepository: SettingsRepository
 
-    /** Вход Spotify: deep link возвращается из браузера в это же Activity. */
     @Inject
     lateinit var spotifyAuthRepository: SpotifyAuthRepository
 
     @Inject
     lateinit var analyticsTracker: AnalyticsTracker
 
-    /** Обмен OAuth-кода переживает пересоздание Activity. */
     @Inject
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
-    /**
-     * Язык, с которым Activity уже создана. Читается синхронно из настроек:
-     * `attachBaseContext` выполняется раньше `onCreate`, когда Hilt ещё
-     * не отдал репозиторий.
-     */
     private var appliedLanguage: String = AppLocale.LANGUAGE_SYSTEM
 
     override fun attachBaseContext(newBase: Context) {
@@ -76,36 +69,23 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // Считаем только холодный старт: пересоздание Activity при смене языка
-        // или темы не должно раздувать статистику запусков.
         if (savedInstanceState == null) {
             analyticsTracker.track(AnalyticsEvents.APP_OPEN)
-            // Холодный старт по ссылке из браузера: сразу завершаем вход.
-            // При recreate() intent уже обработан и очищен — второй раз не идём.
             handleSpotifyRedirect(intent)
         }
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
-            // До первого чтения настроек нельзя решать, показывать ли онбординг:
-            // иначе он мигал бы на каждом холодном старте уже пройденного экрана.
             var settingsLoaded by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) {
                 settingsRepository.settings.first()
                 settingsLoaded = true
             }
-            // Смена языка пересоздаёт Activity: attachBaseContext заново
-            // обернёт контекст нужной локалью, и все строки перечитаются.
             LaunchedEffect(settings.appLanguage) {
                 if (settings.appLanguage != appliedLanguage) {
                     appliedLanguage = settings.appLanguage
                     recreate()
                 }
             }
-            // Android 12+ использует Dynamic Color системы, пока пользователь
-            // не задал собственный акцент в настройках (он работает на всех версиях).
-            // Ручная палитра из настроек применяется только на старых версиях.
-            // Акцент включается в настройках: пока выключен, тема берёт цвета обоев
-            // (Dynamic Color), а собственный цвет и legacy-палитра игнорируются.
             val accentOverride = if (
                 settings.accentEnabled && Build.VERSION.SDK_INT < Build.VERSION_CODES.S
             ) {
@@ -125,8 +105,6 @@ class MainActivity : ComponentActivity() {
                 customAccentColor = customAccentOverride,
             ) {
                 val context = LocalContext.current
-                // Результат входа приходит из repository отдельным событием:
-                // тост не зависит от того, жива ли Activity в момент обмена.
                 LaunchedEffect(Unit) {
                     spotifyAuthRepository.events.collect { event ->
                         val message = when (event) {
@@ -136,8 +114,6 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     }
                 }
-                // Уведомление медиасессии на Android 13+ требует разрешения.
-                // Спрашиваем один раз — после онбординга, когда экран уже понятен.
                 val notificationPermission = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission(),
                 ) { }
@@ -153,7 +129,6 @@ class MainActivity : ComponentActivity() {
                 }
 
                 when {
-                    // Пока настройки читаются с диска — только фон, без прыжков UI.
                     !settingsLoaded -> Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -168,27 +143,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Activity уже запущена (launchMode=singleTop): браузер возвращает
-     * пользователя новым intent'ом, а не новым экземпляром.
-     */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleSpotifyRedirect(intent)
     }
 
-    /**
-     * Обмен кода на токены. Deep link читается один раз и сразу стирается
-     * из intent: recreate() не должен запускать обмен повторно.
-     */
     private fun handleSpotifyRedirect(intent: Intent?) {
         val data = intent?.dataString ?: return
         if (!spotifyAuthRepository.isRedirect(data)) return
         intent.data = null
         setIntent(intent)
-        // Обмен живёт в области процесса: закрытие или пересоздание экрана
-        // не отменяет запрос, а результат придёт событием в UI.
         applicationScope.launch {
             spotifyAuthRepository.completeAuthorization(data)
         }

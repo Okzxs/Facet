@@ -144,26 +144,16 @@ import kotlinx.coroutines.launch
 import java.util.Date
 import kotlin.math.abs
 
-/**
- * Вариант компоновки hero-зоны (для сравнения на устройстве, поменяй цифру и пересобери):
- * 1 — «Редакция»: обложка по центру, стеклянная карточка с огромным названием свисает с её нижнего края;
- * 2 — «Смещение»: обложка свисает за правый край экрана, карточка с названием — слева;
- * 3 — «На обложке»: название лежит прямо на обложке в матово-стеклянной плашке.
- */
 internal const val PLAYER_LAYOUT_VARIANT = 1
 
-/** Свайп по обложке: порог переключения трека — 30% высоты, скорость — 1000 px/s. */
 internal const val SWITCH_SHARE = 0.30f
 
 internal const val SWITCH_VELOCITY_PX_S = 1000f
 
-/** Доля высоты, после которой показывается HUD направления переключения. */
 internal const val SWIPE_PREVIEW_SHARE = 0.15f
 
-/** После стольких миллисекунд прослушивания свайп «назад» перематывает трек в начало. */
 internal const val PREVIOUS_REWIND_MS = 15_000L
 
-/** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
     val widthFraction: Float,
     val alignment: Alignment,
@@ -179,10 +169,6 @@ private fun heroStyle(variant: Int): HeroStyle = when (variant) {
     else -> HeroStyle(0.88f, Alignment.TopCenter, 6.dp, 0.dp, 46.dp, false)
 }
 
-/**
- * Hero-зона плеера: обложка, название и артист. Смена трека анимируется
- * мягким fade + slide, тексты и обложка меняются одним блоком.
- */
 @Composable
 internal fun ExpressiveHeroZone(
     variant: Int,
@@ -201,7 +187,6 @@ internal fun ExpressiveHeroZone(
     lyricsError: String?,
     lyricsListState: LazyListState,
     palette: PlayerDynamicColors,
-    // Цвета кнопок под обложкой: акцент обложки/темы, его контейнер и подложка покоя.
     actionAccent: Color,
     actionContainer: Color,
     actionIdleContainer: Color,
@@ -221,7 +206,6 @@ internal fun ExpressiveHeroZone(
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
-    /** Тап по имени артиста; null — подпись не кликабельна. */
     onArtistClick: (() -> Unit)? = null,
     coverModifier: Modifier = Modifier,
     coverSwipeModifier: Modifier = Modifier,
@@ -234,11 +218,6 @@ internal fun ExpressiveHeroZone(
         TrackDisplay(trackKey, title, artist, artworkUrl)
     }
 
-    // Переключение трека вертикальным свайпом с прямой манипуляцией:
-    // обложка едет за пальцем, соседи выезжают сверху/снизу, порог — 30% высоты
-    // или скорость 1000 px/s, отпускание — пружина spatial.
-    // Вверх — следующий трек, вниз — предыдущий (с правилом 15 секунд на стороне
-    // колбэка: прослушанный трек перематывается в начало, свежий — переключается).
     val haptics = LocalHapticFeedback.current
     val heroScope = rememberCoroutineScope()
     var swipeDirection by remember(trackKey) { mutableIntStateOf(0) }
@@ -308,8 +287,6 @@ internal fun ExpressiveHeroZone(
                                     .clip(artworkShape)
                                     .then(coverSwipeModifier)
                                     .onGloballyPositioned {
-                                        // Во время закрытия обложка едет/сжимается:
-                                        // не дёргаем границы на каждый кадр.
                                         if (!isDismissDragging) {
                                             onArtworkBoundsChanged(it.boundsInRoot())
                                         }
@@ -387,7 +364,6 @@ internal fun ExpressiveHeroZone(
                                 DisposableEffect(trackKey) {
                                     onDispose { onArtworkBoundsChanged(null) }
                                 }
-                                // Соседний трек снизу (следующий): выезжает за пальцем вверх.
                                 if (nextArtworkUrl != null) {
                                     Box(
                                         modifier = Modifier
@@ -412,7 +388,6 @@ internal fun ExpressiveHeroZone(
                                         }
                                     }
                                 }
-                                // Соседний трек сверху (предыдущий).
                                 if (previousArtworkUrl != null) {
                                     Box(
                                         modifier = Modifier
@@ -441,8 +416,6 @@ internal fun ExpressiveHeroZone(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .graphicsLayer { translationY = dragY }
-                                        // Морф в мини-плеер — только на актуальном треке:
-                                        // уходящий кадр не должен дублировать shared-element.
                                         .then(if (state.key == trackKey) coverModifier else Modifier),
                                     shape = artworkShape,
                                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -455,7 +428,6 @@ internal fun ExpressiveHeroZone(
                                         placeholderPainter = placeholderPainter,
                                     )
                                 }
-                                // HUD переключения: какой трек сейчас будет запущен.
                                 Crossfade(
                                     targetState = swipeDirection,
                                     modifier = Modifier.align(Alignment.Center),
@@ -515,7 +487,6 @@ internal fun ExpressiveHeroZone(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(4.dp))
-                            // Имя артиста — точка входа на его экран.
                             val artistClick = onArtistClick
                             val artistModifier = if (artistClick != null) {
                                 Modifier
@@ -582,10 +553,6 @@ internal fun ExpressiveHeroZone(
     }
 }
 
-/**
- * Передний план режима обложки: прозрачный «слот» под обложку (сама обложка — в заднем слое),
- * под ним — стеклянная карточка с Display-названием и артистом.
- */
 @Composable
 private fun CoverForeground(
     style: HeroStyle,
@@ -611,7 +578,6 @@ private fun CoverForeground(
     ) {
         Spacer(Modifier.height(style.topPadding))
 
-        // Слот под обложку: точно совпадает с задним слоем
         Spacer(
             modifier = Modifier
                 .fillMaxWidth(style.widthFraction)
@@ -619,7 +585,6 @@ private fun CoverForeground(
         )
 
         if (style.titleOnArtwork) {
-            // Вариант 3: название уже на обложке — снизу только артист и лайк
             Spacer(Modifier.height(14.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -634,8 +599,6 @@ private fun CoverForeground(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(12.dp))
-                // Слот скачивания сохраняет ширину даже для локального трека:
-                // иначе лайк и дизлайк прыгают между разными композициями.
                 if (canDownload) {
                     DownloadSquircle(
                         state = downloadState,
@@ -678,12 +641,10 @@ private fun CoverForeground(
             )
         }
 
-        // Гарантированный воздух между карточкой и островом управления
         Spacer(Modifier.height(24.dp))
     }
 }
 
-/** Матово-стеклянная карточка трека с огромной Display-типографикой. */
 @Composable
 private fun TrackGlassCard(
     title: String,
@@ -708,19 +669,15 @@ private fun TrackGlassCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
     ) {
         Column(modifier = Modifier.padding(26.dp)) {
-            // Крупная, но спокойная типографика: 30sp SemiBold вместо 40sp ExtraBold
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineMedium,
-                // Явный цвет: contentColorFor полупрозрачной «стеклянной» карточки
-                // давал чёрный текст на тёмном фоне при светлых обложках.
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(18.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Акцентная полоска-градиент под названием
                 Box(
                     modifier = Modifier
                         .width(26.dp)
@@ -742,8 +699,6 @@ private fun TrackGlassCard(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(12.dp))
-                // Резерв под кнопку скачивания: без него ряд действий «прыгает»
-                // у локальных треков, которые уже лежат на диске.
                 if (canDownload) {
                     DownloadSquircle(
                         state = downloadState,
@@ -780,7 +735,6 @@ internal fun ArtworkImage(
 ) {
     val context = LocalContext.current
     if (!artworkUrl.isNullOrBlank()) {
-        // Сначала пробуем увеличенную обложку, при ошибке — исходную.
         var useOriginal by remember(artworkUrl) { mutableStateOf(false) }
         val targetUrl = if (useOriginal) {
             artworkUrl
@@ -800,7 +754,6 @@ internal fun ArtworkImage(
             contentScale = ContentScale.Crop,
             placeholder = placeholderPainter,
             error = notePainter,
-            // maxres/500×500 есть не у всех треков: откатываемся на исходный URL.
             onError = { useOriginal = true },
             modifier = Modifier
                 .fillMaxSize()
@@ -821,7 +774,6 @@ internal fun ArtworkImage(
     }
 }
 
-/** Название источника для строки «Источник» под артистом. */
 private fun sourceLabel(source: Source): String = when (source) {
     Source.SOUNDCLOUD -> "SoundCloud"
     Source.YOUTUBE -> "YouTube"

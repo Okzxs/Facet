@@ -72,29 +72,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-/** Высота островка мини-плеера без внешних отступов. */
 internal val MiniPlayerIslandHeight = 64.dp
 
-/** Боковые отступы островка от краёв экрана. */
 internal val MiniPlayerHorizontalMargin = 16.dp
 
-/** Зазор между островком и верхней кромкой навигационного бара. */
 internal val MiniPlayerGap = 12.dp
 
-/** Доля ширины островка, после которой свайп переключает трек. */
 private const val SwipeThresholdFraction = 0.3f
 
-/** Скорость свайпа (px/s), при которой трек переключается без набора дистанции. */
 private const val SwipeVelocityThreshold = 1000f
 
-/**
- * Направление переключения по свайпу: +1 — следующий, -1 — предыдущий,
- * 0 — недостаточно дистанции и скорости, контент возвращается на место.
- *
- * Порог дистанции — 30% ширины островка, альтернативно — скорость больше
- * 1000 px/s в сторону свайпа. Функция чистая, чтобы пороги тестировались
- * отдельно от Compose-жеста.
- */
 internal fun swipeTrackDirection(offsetPx: Float, widthPx: Float, velocityX: Float): Int {
     if (widthPx <= 0f) return 0
     val threshold = widthPx * SwipeThresholdFraction
@@ -105,19 +92,6 @@ internal fun swipeTrackDirection(offsetPx: Float, widthPx: Float, velocityX: Flo
     }
 }
 
-/**
- * Плавающий мини-плеер: отдельный островок над навигационным баром.
- *
- * Высота 64dp, обложка 48dp, скругление 30dp и тень 8dp. Внизу — полоска
- * прогресса 2dp с отступом 24dp, чтобы она не выходила за скругление.
- *
- * Горизонтальный свайп переключает треки как в SoundCloud: влево — следующий
- * ([onNext]), вправо — предыдущий ([onPrevious]). Порог — 30% ширины островка
- * или скорость больше 1000 px/s. Обложка и текст следуют за пальцем, после
- * отпускания пружинно возвращаются на место.
- *
- * Короткий тап по островку раскрывает полноэкранный плеер.
- */
 @Composable
 internal fun FloatingMiniPlayer(
     track: Track,
@@ -154,9 +128,6 @@ internal fun FloatingMiniPlayer(
     val nextLabel = stringResource(R.string.common_next_cd)
     val previousLabel = stringResource(R.string.common_previous_cd)
 
-    // Смещение контента при свайпе живёт в draw-state: graphicsLayer читает его
-    // без рекомпозиции. DraggableState применяет дельты синхронно, без запуска
-    // корутины на каждое событие; пружинный возврат — одна корутина на жест.
     val offsetState = remember { mutableFloatStateOf(0f) }
     val widthState = remember { mutableFloatStateOf(0f) }
     val settle = remember { Animatable(0f) }
@@ -214,7 +185,6 @@ internal fun FloatingMiniPlayer(
                 .padding(horizontal = 14.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Обложка и подписи едут за пальцем; кнопка Play остаётся на месте.
             Row(
                 modifier = Modifier
                     .weight(1f)
@@ -290,8 +260,6 @@ internal fun FloatingMiniPlayer(
 
             Spacer(Modifier.width(8.dp))
 
-            // Визуально 40dp, зона касания 48dp. Во время буферизации — индикатор
-            // загрузки, повторные нажатия игнорируются.
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -337,8 +305,6 @@ internal fun FloatingMiniPlayer(
 
             Spacer(Modifier.width(2.dp))
 
-            // Крестик закрывает плеер целиком: стоп, пустая очередь, скрытие
-            // островка. Зона касания 48dp, иконка 20dp.
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -355,7 +321,6 @@ internal fun FloatingMiniPlayer(
             }
         }
 
-        // Тонкий прогресс внизу островка: inset 24dp держит его внутри скругления.
         MiniPlayerProgressBar(
             fraction = { latestFraction.value() },
             isPlaying = isPlaying,
@@ -368,10 +333,6 @@ internal fun FloatingMiniPlayer(
     }
 }
 
-/**
- * Полоска прогресса: значение читается в drawBehind, кадровый тик инвалидирует
- * только отрисовку (не рекомпозицию). На паузе цикл не крутится — лишних кадров нет.
- */
 @Composable
 private fun MiniPlayerProgressBar(
     fraction: () -> Float,

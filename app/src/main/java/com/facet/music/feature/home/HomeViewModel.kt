@@ -52,11 +52,8 @@ data class HomeUiState(
     val memories: List<SeasonMemory> = emptyList(),
     val memorySeason: String = SeasonProvider.currentSeason(),
     val genreSections: List<GenreSection> = emptyList(),
-    /** Чарты SoundCloud для блока «Чарты». */
     val charts: List<Track> = emptyList(),
-    /** Новинки лейблов Deezer для блока «Недавние релизы». */
     val newReleases: List<DeezerRelease> = emptyList(),
-    /** Идёт загрузка чартов и новинок — показываем скелетоны. */
     val isExtrasLoading: Boolean = true,
 )
 
@@ -101,18 +98,11 @@ class HomeViewModel @Inject constructor(
         loadHomeExtras()
     }
 
-    // ─── Блоки главной: чарты и новинки ──────────────────────────────────
-
-    /** Событие «открыть плеер»: навигация — забота экрана, не ViewModel. */
     private val _openPlayer = kotlinx.coroutines.flow.MutableSharedFlow<Pair<Track, List<Track>>>(
         extraBufferCapacity = 1,
     )
     val openPlayer: SharedFlow<Pair<Track, List<Track>>> = _openPlayer.asSharedFlow()
 
-    /**
-     * Чарты SoundCloud и новинки Deezer. Ошибки не рушат главную: блок просто
-     * не показывается, если данных нет.
-     */
     fun loadHomeExtras(forceRefresh: Boolean = false) {
         viewModelScope.launch {
             _uiState.update {
@@ -137,7 +127,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Новинка — это альбом: треки грузим при нажатии и отдаём в плеер. */
     fun playRelease(release: DeezerRelease) {
         viewModelScope.launch {
             val tracks = deezerMetadataClient.fetchAlbumTracks(release.id).getOrNull().orEmpty()
@@ -145,9 +134,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Локальные данные Room: история, лайки, воспоминания и жанровые подборки.
-     */
     private fun observeLocalData() {
         viewModelScope.launch {
             likedTracksRepository.getSeasonMemories(memorySeason).collect { memories ->
@@ -184,11 +170,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Персональные рекомендации: артисты из лайков и истории.
-     * Повторная загрузка — только по Pull-to-refresh, чтобы лента не менялась
-     * после каждого прослушивания.
-     */
     private fun updateRecommendations(forceRefresh: Boolean = false) {
         if (!forceRefresh && recommendationsLoaded) return
 
@@ -214,14 +195,10 @@ class HomeViewModel @Inject constructor(
             }
 
             try {
-                // Снимок персональных данных на момент запуска: лента не должна
-                // меняться, пока пользователь слушает или лайкает треки.
                 val liked = _uiState.value.likedTracks
                 val history = _uiState.value.recentTracks
                 val recentlyShownIds = loadRecentlyShownIds()
                 val dislikedTrackIds = loadDislikedTrackIds()
-                // Лента не должна «открывать» то, что уже лайкнуто, слушалось
-                // или лежит офлайн: знакомые треки не занимают слоты новизны.
                 val excludedTrackIds = buildSet {
                     liked.forEach { add(it.id) }
                     history.forEach { add(it.id) }
@@ -310,8 +287,6 @@ class HomeViewModel @Inject constructor(
             return@coroutineScope Result.success(relatedSelection)
         }
 
-        // Холодный старт: лайков и истории нет, related-сидов тоже.
-        // Чарты SoundCloud — единственный источник без персонализации.
         if (!hasPersonalData) {
             return@coroutineScope loadChartRecommendations(
                 recentlyShownIds = recentlyShownIds,
@@ -348,10 +323,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Запрашивает related-выдачу для 4–6 сид-треков. Ошибка одного источника
-     * не ломает всю ленту: остальные сиды и fallback продолжают работать.
-     */
     private suspend fun loadRelatedCandidates(
         seeds: List<TrackSeed>,
         recentlyShownIds: Set<String>,
@@ -390,8 +361,6 @@ class HomeViewModel @Inject constructor(
         val candidates = results
             .flatMap { result -> result.getOrElse { emptyList() } }
             .asSequence()
-            // Не рекомендуем сам сид и то, что уже показывали за последние 24 часа.
-            // Артиста здесь не проверяем: related-выдача специально приводит новых.
             .filter { track -> track.id !in seedIds && track.isEligible(recentlyShownIds, excludedTrackIds) }
             .distinctBy { it.id }
             .toList()
@@ -414,10 +383,6 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    /**
-     * Точечный fallback по топ-артистам. Принимаем только треки, у которых
-     * поле `artist` строго совпало с сид-артистом.
-     */
     private suspend fun loadFallbackCandidates(
         queries: List<RecommendationQuery>,
         recentlyShownIds: Set<String>,
@@ -468,12 +433,6 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    /**
-     * Холодный старт: лайков и истории нет. Вместо глобального запроса
-     * «popular songs» берём чарт SoundCloud — он хотя бы музыкальный,
-     * а не случайная выдача YouTube. Если чарт недоступен — последний
-     * фолбэк на YouTube-поиск.
-     */
     private suspend fun loadChartRecommendations(
         recentlyShownIds: Set<String>,
         dislikedTrackIds: Set<String>,
@@ -502,10 +461,6 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    /**
-     * Последний фолбэк холодного старта — YouTube-поиск.
-     * Глобальный запрос разрешён только когда нет ни лайков, ни истории.
-     */
     private suspend fun loadPopularRecommendations(
         recentlyShownIds: Set<String>,
         dislikedTrackIds: Set<String>,
@@ -548,9 +503,6 @@ class HomeViewModel @Inject constructor(
         durationMs in MUSIC_MIN_DURATION_MS..MUSIC_MAX_DURATION_MS &&
         isStudioOriginal()
 
-    /**
-     * Отсекаем переводы, каверы, ремиксы, live-версии и прочие нестудийные записи.
-     */
     private fun Track.isStudioOriginal(): Boolean {
         if (title.isBlank() || title.none { it.isLetter() }) return false
 
@@ -559,7 +511,6 @@ class HomeViewModel @Inject constructor(
         return !NON_STUDIO_WORDS.containsMatchIn(text)
     }
 
-    /** Дизлайки пользователя: их треки не должны попадать в рекомендации. */
     private suspend fun loadDislikedTrackIds(): Set<String> =
         runCatching {
             dislikedTrackDao.getAll().mapTo(HashSet()) { it.trackId }
@@ -569,7 +520,6 @@ class HomeViewModel @Inject constructor(
             }
             .getOrDefault(emptySet())
 
-    /** Скачанные треки: не предлагаем то, что уже лежит офлайн. */
     private suspend fun loadDownloadedIds(): Set<String> =
         runCatching { downloadRepository.observeDownloadedIds().first() }
             .rethrowCancellation()
@@ -607,7 +557,6 @@ class HomeViewModel @Inject constructor(
             }
     }
 
-    /** Принудительное обновление для Pull-to-refresh. */
     fun refresh() {
         updateRecommendations(forceRefresh = true)
         loadHomeExtras(forceRefresh = true)

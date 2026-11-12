@@ -240,7 +240,7 @@ com.facet.music
 - При падении сборки: **самостоятельно** исправлять файлы и пересобирать (до 2 попыток на одну ошибку), не спрашивая пользователя
 - В НАЧАЛЕ сессии: сверить PROGRESS.md с фактическим кодом и дополнить, если он устарел
 - Если обновление PROGRESS.md не удалось или зациклилось — НЕ повторять, пропустить: доки обновятся в начале следующей сессии
-- Комментарии в коде **отсутствуют**: правило «только на русском» заменено в сессии 69 рефакторинга — финальная фаза удаляет все комментарии из Kotlin-кода
+- Комментарии в коде не пишутся; поясняющие решения фиксируются в AGENTS.md и CHANGELOG.md
 - Все служебные файлы (`MEMORY.md`, `PROGRESS.md` и т.д.) и документация пишутся **строго на русском языке**
 - Не трогать UI-компоненты при изменении бизнес-логики
 
@@ -409,3 +409,62 @@ data class Track(
 - **HLS-only SoundCloud.** NewPipe `StreamInfo.getInfo` падает на треках без progressive MP3 (`Could not get any stream`). Для онлайн-плеера добавлен фолбэк `resolveHlsViaApi`: `api-v2/resolve` → `media.transcodings` → HLS-endpoint → подписанный `url`; выбирается максимальный пресет (`aac_160k` → `aac_96k` → `abr_sq`), MIME `application/x-mpegURL`. Для скачивания (`requireProgressive = true`) HLS по-прежнему запрещён. Проверено live: `type london` (onda andar) играет, лог `isHls=true`, `preset="aac_96k"`.
 - **Мини-плеер на «Любимых».** `AppNavGraph` показывает островок и при скрытом доке: `isLikedTracksScreen` добавляется в условие `showMiniPlayer`; позиция островка считается от `WindowInsets.navigationBars`, а не от высоты скрытого дока (`miniPlayerBottom` анимируется). `LikedTracksScreen(bottomInset = miniPlayerReserve)` увеличивает нижний `contentPadding`, чтобы последний трек не уходил под островок. Настройки/плейлист/артист по-прежнему без мини-плеера.
 - **Релиз.** `versionCode = 5`, `versionName = "1.0.0"`. Смена versionCode нужна, чтобы установить обновление поверх предыдущей сборки и обновить иконку в лончере. 43 suite / 281 тест, 0 failures; EN/RU по 395 ключей. На тестовом SM-A266B тема иконок Samsung подменяла Facet зелёным сгенерированным значком; для проверки `current_sec_appicon_theme_package` сброшен, иконка стала фиолетовой.
+
+---
+
+## Ключевые архитектурные инварианты (Фаза 11 — вместо комментариев в коде)
+
+### Сеть и NewPipe (`NewPipeDownloader.kt`)
+- **Браузерный User-Agent:** NewPipe сам не выполняет HTTP-запросы; если в `request.headers()` нет `User-Agent`, подставляется десктопный `CHROME_USER_AGENT`. Заголовки от NewPipe имеют приоритет, причём первое значение заголовка ставится через `header()`, а остальные через `addHeader()` — дублирование `User-Agent` часть сервисов трактует как бота.
+- **Анти-бот и отмена:** HTTP `429` в `NewPipeDownloader` превращается в `ReCaptchaException` (NewPipe ожидает именно его). Поскольку NewPipe вызывает `execute()` синхронно на текущем потоке, активные `Call` привязываются к корутине через `ThreadLocal<CancellationScope>` и отменяются в `withCancellation` (`runInterruptible(Dispatchers.IO)` + `invokeOnCompletion(onCancelling = true)`), закрывая гонку между регистрацией и `call.execute()`.
+
+### Скачивание и HLS (`DownloadSourceResolver.kt`)
+- **Почему HLS не скачивается:** `DownloadSourceResolver` вызывает `PlaybackResolver.resolve(track, requireProgressive = true)`. Плейлист/сегменты HLS (`.m3u8`/`.ts`) нельзя сохранить одним локальным файлом MP3/M4A без ремуксинга, поэтому скачивание допускает только progressive-поток. Зато поиск матчей, Room-кэш матчей и локальный резолв едины с плеером.
+
+### Хранение `Source` в БД (`Track.kt`, сущности Room и мапперы)
+- **Почему `Source` хранится по имени:** во всех таблицах Room (`liked_tracks`, `play_history`, `playlist_tracks`, `queue`, `resolved_matches`, `wave_impressions`) и мапперах `Source` сериализуется как `source.name` и читается через `Source.valueOf(...)`, а не по `ordinal`. Значения `Source.DEEZER` и `Source.APPLE` (относятся к `Source.isMetadataOnly` наравне со `SPOTIFY`) намеренно сохранены в enum только для чтения старых строк БД без поломки существующих записей и миграций.
+
+### Media3-кэш, `ResolvingDataSource`, `customCacheKey` и переключения без `stop()`
+- **Один `SimpleCache` на процесс (`PlaybackCache.kt`):** Media3 блокирует каталог кэша и запрещает создавать второй `SimpleCache` на ту же папку (`cacheDir/media3_cache_v2`, 1 ГБ LRU + `StandaloneDatabaseProvider`), поэтому `PlaybackCache` является `@Singleton`. Ключом кэша выступает не протухающий URL, а `track.id` — закэшированные чанки переживают обновление подписанных ссылок. `warmUp()` открывает базу кэша вне main-потока.
+- **`ResolvingDataSource` и `customCacheKey` (`PlaybackDataSourceFactory.kt`, `PlaybackDataSpecResolver.kt`, `TrackMediaItem.kt`, `PlaybackLoadErrorPolicy.kt`):**
+  - `TrackMediaItem.create` задаёт элементу `mediaId = track.id`, стабильный URI `facet://track/{encoded id}`, `setCustomCacheKey(track.id)` и сериализованный `Track` в `MediaMetadata.extras` (чтобы сервис мог сам восстанавливать трек).
+  - Цепочка чтения Media3: `CacheDataSource` (`FLAG_IGNORE_CACHE_ON_ERROR`) → `ResolvingDataSource` (`PlaybackDataSpecResolver` резолвит `facet://track/{id}` через `PlaybackResolver.resolveById` под `runBlocking` + `withTimeout(20_000)` только на потоке загрузчика) → `OkHttpDataSource` (`@MediaClient`).
+  - `PlaybackCacheKeyFactory` для `facet://`-URI возвращает `trackId`, а для сегментов HLS — URL до `?` (стабильный ключ без подписанных query-параметров).
+  - `PlaybackLoadErrorPolicy` на HTTP `401/403/404/410` вызывает `PlaybackCache.remove(trackId)` (в том числе при возможной смене MIME между HLS и progressive) и `PlaybackResolver.invalidate(trackId)` до `MAX_INVALIDATIONS = 2` раз с задержкой `250 мс`, сохраняя текущую позицию.
+- **Почему нельзя вызывать `stop()` при переключениях (`MusicService.kt`, `PlayerController.kt`):** ExoPlayer владеет всей очередью; переходы (`playTrackAt`, `seekToNextMediaItem`, `seekToPreviousMediaItem`, смена повтора/шафла) выполняются без `pause()`/`stop()`. Вызов `stop()` разрушает активную медиасессию, вызывает мерцание/исчезновение **Samsung Now Bar** и пересоздание системного уведомления.
+
+### Резолв SoundCloud (`SoundCloudApi.kt`, `SoundCloudJson.kt`, `SoundCloudClientIdProvider.kt`)
+- **Порядок запросов (`api-v2`):** если у трека уже известен числовой `externalId` (приходит из поиска/волны и кэшируется в памяти `idCache`), запрашивается сразу `GET /tracks/{id}` (при `404` — откат к `/resolve?url=`); иначе сначала `/resolve?url=`. NewPipe `StreamInfo` остаётся только резервным путём при ошибке парсинга JSON (`SoundCloudFailure.PARSE`), а не при сетевой ошибке.
+- **Выбор транскодинга (`SoundCloudJson.selectTranscodings`):**
+  1. Проверка `isGeoBlocked` (`policy == "BLOCK"`) → `GEO_BLOCKED`.
+  2. Фильтрация: отбрасываются `snipped`, зашифрованные (`ctr`/`cbc-encrypted-hls`) и пустые URL. Если пригодных не осталось, при `snipped` или `isSubscriptionOnly` (`policy == "SNIP"` / `SUB_HIGH_TIER`) выбрасывается `SUBSCRIPTION_ONLY` (30-секундные обрезки Go+ не воспроизводятся).
+  3. Приоритет форматов: `progressive audio/mpeg` → (если `!requireProgressive`) `HLS audio/mpeg` → `HLS Opus/AAC` с сортировкой по убыванию качества (`hq` > `sq`).
+  4. Подпись запроса транскодинга (`transcodingUrl`): добавляются `client_id` и `track_authorization` (если есть у трека и отсутствует в URL). Если первый endpoint отвечает `404` (часто у `abr_sq`), `SoundCloudApi` перебирает следующий транскодинг.
+- **`client_id` и сброс (`SoundCloudClientIdProvider.kt`):** Single-flight под `Mutex`: память → DataStore `soundcloud_client` (TTL 24 ч) → парсинг JS-бандлов `soundcloud.com` → `SoundcloudParsingHelper.clientId()` из NewPipe (используется последним, так как его статический кэш нельзя сбросить). При `401/403` (а также `404` на первой попытке `api-v2`) вызывается `clientIds.invalidate()` (очищает память и DataStore) и выполняется ровно одна повторная попытка.
+
+### Архитектура и параметры движка «Моей волны» (`core/wave`, `data/source/wave`, `TasteRepositoryImpl`)
+- **Источники кандидатов (`CandidateSource`, `@IntoSet` в `WaveBindingModule`):**
+  - `RelatedTracksSource` (`RELATED`, `prior = 1.0`) — related SoundCloud/YouTube от треков-семян (`relatedSeedMin..Max = 3..5`, окно `seedWindowDays = 60`, полураспад свежести `seedHalfLifeDays = 21.0`, штраф за прошлые 3 сессии `previousSessionSeedPenalty = 0.2`).
+  - `SimilarArtistsSource` (`SIMILAR_ARTIST`, `prior = 0.8`) — выбор 3–4 семян-артистов через softmax с `softmaxTemperature = 0.7`, запрос Last.fm (`similarArtistLimit = 30`), выбор `6..8` артистов × `1..2` топ-трека, резолв в YouTube через `TrackMatcher`.
+  - `FollowedArtistsSource` (`FOLLOWED`, `prior = 0.8`) — свежие релизы подписок за `followedFreshDays = 60` дней, не более `followedMaxPerBatch = 2` на пачку.
+  - `TagSource` (`TAG`, `prior = 0.6`, `exploration = true`) — `1..2` жанров профиля, `tag.getTopTracks` до `tagPageMax = 5` страниц.
+  - `SecondHopSource` (`SECOND_HOP`, `prior = 0.5`, `exploration = true`) — 1–2 похожих артиста второго порядка (`2..3` результата).
+  - `FamiliarSource` (`FAMILIAR`, `prior = 0.4`) — знакомые треки из истории/лайков.
+  - Все сетевые вызовы источников ограничены общим `WaveNetworkGate(maxConcurrent = 4)`, `requestTimeoutMs = 2_500`, общим таймаутом кандидата `candidateTimeoutMs = 15_000`; ошибка или таймаут отдельного источника не валят волну.
+- **Жёсткие фильтры (`WaveEngine.filterCandidates`):**
+  - Дизлайки (`dislikedTrackIds` / `dislikedTrackKeys`), блоклист артистов (`artist_blocklist`), текущая очередь (`queueTrackIds` / `queueTrackKeys`), уже показанные в текущей сессии и повторы внутри сессии, `isSubscriptionOnly` (Go+/snipped).
+  - 3 быстрых скипа (`< 30 с`) одного артиста за `autoBlockWindowDays = 30` дней → автоматический блок артиста в `artist_blocklist` на `autoBlockDurationDays = 30` дней (`AUTO_SKIPS`).
+  - Окна повторов: для обычных треков `impressionBlockDays = 14`, `playedBlockDays = 7`; для `FAMILIAR` — не прослушан минимум `familiarMinUnplayedDays = 21` день и не показан минимум `familiarMinUnshownDays = 30` дней.
+  - Длительность: `60_000 мс .. 720_000 мс` (1–12 мин), если `durationMs > 0`.
+  - Маркеры версий в названии (`full album`, `1 hour`, `mix 20xx`, `8d`, `nightcore`, `sped up`, `slowed`, `karaoke`, `instrumental`, `cover`) отсекаются, если маркер не присутствует среди лайкнутых пользователем (`likedMarkers`).
+- **Скоринг и сборка пачки (`WaveEngine.score`, `assemble`, `WaveConfig`):**
+  - Базовая оценка: `0.30 * artistAffinity + 0.15 * genreAffinity + 0.20 * origin.prior + 0.20 * novelty + 0.10 * seedWeight + 0.05 * popularity - penalty + Gumbel(0, 0.15)`. Для слота разведки к `novelty` добавляется `newArtistBonus = 0.3` при неизвестном артисте; штраф за частые показы артиста за последние `penaltyWindowDays = 3` дня — `0.2` за показ, максимум `0.6`.
+  - Переранжирование MMR с `mmrLambda = 0.7` (сходство: тот же артист `1.0`, то же семя `0.5`, тот же жанр `0.3`).
+  - Первый трек сессии: только `RELATED` с приоритетом знакомого по вкусу артиста (`FIRST_TRACK_AFFINITY_BONUS = 0.25`), никогда `FAMILIAR`.
+  - Квоты по `WaveMood`: `FAMILIAR` (`familiarShare = 0.15`, `explorationShare = 0.10`), `BALANCE` (`0.08`, `0.20`), `DISCOVERY` (`0.03`, `0.35`). Два `FAMILIAR` подряд запрещены. В режиме радио `FAMILIAR = 0`, доля целевого артиста ≤ `25 %` (`RADIO_ARTIST_SHARE`) и не чаще 1 трека на окно `RADIO_ARTIST_WINDOW = 4`.
+  - Ограничения разнообразия: один артист не чаще 1 раза в окне `artistWindow = 5`, максимум `artistMaxPerTwenty = 2` на скользящие 20 треков; максимум `seedRunMax = 3` треков одного семени подряд.
+  - Размеры пачек: `startBatchSize = 20`, `refillBatchSize = 10` (дозапрос `PlaybackSessionCoordinator` при остатке < 5 треков, `maxBatchSize = 30`, 3 попытки 2/5/15 с). При нехватке — одна повторная загрузка кандидатов с новым `RETRY_SEED_STEP`, затем короткая пачка без добивки лайками/историей.
+- **Профиль вкуса и обратная связь в реальном времени (`TasteRepositoryImpl`, `WaveRepositoryImpl`, `PlaybackSessionCoordinator`):**
+  - Затухание весов вкуса: `0.5^(дни / 30)` при чтении и записи; дельты: лайк `+3.0`, дослушал (`FINISHED`) `+1.0`, скип в волне `-1.0`, скип в обычных плейлистах `-0.3`, дизлайк `-4.0` (топ-200 записей).
+  - История прослушиваний пишется только при `>= 30 с` (или `>= 50 %` длительности); `SHOWN` пишется при реальной смене трека, исход (`PLAYED`/`SKIPPED`/`FINISHED`) — при уходе.
+  - Веса семян в активной сессии: `SKIPPED` < 30 с (`FAST_SKIP_MS`) → вес семени `×0.5` (2 быстрых скипа отключают семя, 3 быстрых скипа подряд заменяют оставшуюся очередь новой пачкой), `FINISHED` → `×1.3`, лайк → `×2.0` + добавление трека в `seedTracks` с весом `2.0`, дизлайк → блокировка артиста в `artist_blocklist` и удаление его будущих треков из очереди. Сессии (до 10) и показы (очистка старше 90 дней раз в сутки) сохраняются в Room.

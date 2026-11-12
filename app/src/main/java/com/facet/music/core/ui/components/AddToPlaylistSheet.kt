@@ -54,15 +54,6 @@ import com.facet.music.data.model.Playlist
 import com.facet.music.data.model.Track
 import com.facet.music.feature.playlist.AddToPlaylistViewModel
 
-/**
- * Шторка «Добавить в плейлист» — общая для плеера, поиска и медиатеки.
- *
- * Состояние (список плейлистов, операции, ошибка) живёт в
- * [AddToPlaylistViewModel], поэтому вызывающему экрану достаточно передать
- * трек и колбэк успеха: Snackbar «Добавлено в …» показывает он сам, своим
- * `SnackbarHostState`. После успешного добавления шторка закрывается через
- * [onDismiss]-совместимый [onAdded].
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddToPlaylistSheet(
@@ -76,7 +67,6 @@ fun AddToPlaylistSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showCreateDialog by remember { mutableStateOf(false) }
 
-    // Колбэк может смениться при рекомпозиции родителя — держим актуальный.
     val currentOnAdded by rememberUpdatedState(onAdded)
     LaunchedEffect(viewModel) {
         viewModel.added.collect { playlistName -> currentOnAdded(playlistName) }
@@ -180,7 +170,6 @@ fun AddToPlaylistSheet(
     }
 }
 
-/** Строка плейлиста: иконка, название и число треков. */
 @Composable
 private fun PlaylistRow(
     playlist: Playlist,
@@ -227,7 +216,6 @@ private fun PlaylistRow(
     )
 }
 
-/** Диалог создания плейлиста с именем по умолчанию. */
 @Composable
 private fun CreatePlaylistDialog(
     defaultName: String,

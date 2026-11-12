@@ -39,35 +39,14 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
-/** Полный оборот фазы волны (радианы). */
 private const val TWO_PI = 6.283185307179586
 
-/**
- * Высота холста дорожки. Волна с амплитудой 9dp и обводкой 3dp занимает ~21dp,
- * плюс запас под круглый бегунок, который едет по гребню.
- */
 private val TRACK_HEIGHT = 38.dp
 
-/**
- * Ширина прозрачного thumb-слота Material3: задаёт отступ дорожки от краёв
- * и минимальную зону касания. Видимый бегунок рисуется в слоте `track`.
- */
 private val THUMB_SIZE = 20.dp
 
-/** Finish идёт через тот же FIFO, что Stop/Cancel: без гонки отдельных coroutine. */
 private object SliderFinishInteraction : Interaction
 
-/**
- * Таймлайн плеера: штатный Material3 [Slider] отвечает за жесты, drag-cancel,
- * клавиатуру, semantics и RTL, а отрисовка живёт в слоте `track`.
- *
- * Визуал — волна Phase B: плавная синусоида с длиной 44dp и сужением к краям.
- * Непропетанная часть — серая волна, буфер чуть плотнее, пропетанная — волна
- * в акценте. Круглый бегунок едет по гребню этой же волны. Амплитуда постоянна
- * и не зависит от звука: волна «дышит» только математической синусоидой от
- * времени. На паузе волна за 500 мс выпрямляется, фаза замирает на текущем
- * значении.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpressivePlayerSlider(
@@ -96,17 +75,14 @@ fun ExpressivePlayerSlider(
         }
     }
 
-    // Пауза: волна плавно выпрямляется, как в Phase B
     val amplitude by animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0f,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "waveAmplitude",
     )
 
-    // Бегущая фаза синусоиды: на паузе замирает на текущем значении
     val wavePhase = rememberPlaybackPhase(active = isPlaying, periodMs = 1600)
 
-    // Пружина бегунка при захвате
     val dragged by interactionSource.collectIsDraggedAsState()
     val bounce by animateFloatAsState(
         targetValue = if (dragged) 1f else 0f,
@@ -129,8 +105,6 @@ fun ExpressivePlayerSlider(
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         colors = colors,
-        // Бегунок невидимый: он держит ширину дорожки и зону касания,
-        // а рисуется поверх волны в её же координатах.
         thumb = { Spacer(Modifier.size(THUMB_SIZE)) },
         track = { state ->
             Canvas(
@@ -138,7 +112,6 @@ fun ExpressivePlayerSlider(
                     .fillMaxWidth()
                     .height(TRACK_HEIGHT),
             ) {
-                // Позиция, буфер и амплитуда читаются в фазе отрисовки — без рекомпозиций.
                 val fraction = state.value.coerceIn(0f, 1f)
                 val buffer = bufferedFraction.coerceIn(0f, 1f)
                 val waveHeight = amplitude.coerceIn(0f, 1f)
@@ -150,7 +123,6 @@ fun ExpressivePlayerSlider(
                 val progressX = trackX(fraction, span, rtl)
                 val bufferX = trackX(buffer, span, rtl)
 
-                // Постоянная амплитуда: волна живёт только за счёт фазы синусоиды.
                 val amp = 9.dp.toPx() * waveHeight
                 val phase = wavePhase.value.toDouble()
                 val wavelength = 44.dp.toPx().toDouble()
@@ -159,7 +131,6 @@ fun ExpressivePlayerSlider(
                 val inactive = if (enabled) trackColor else trackColor.copy(alpha = 0.12f)
                 val active = if (enabled) activeColor else activeColor.copy(alpha = 0.38f)
 
-                // Синусоида с сужением к краям — волна живёт в центре дорожки
                 val wave = Path()
                 wave.moveTo(startX, centerY)
                 val steps = 96
@@ -171,15 +142,12 @@ fun ExpressivePlayerSlider(
                     wave.lineTo(x, centerY - (amp * taper * sin(angle)).toFloat())
                 }
 
-                // Бегунок едет по гребню волны: та же формула в его X-координате
                 val thumbU = fraction.toDouble()
                 val thumbAngle = TWO_PI * (spanD * thumbU / wavelength) + phase
                 val thumbY = centerY - (amp * sin(PI * thumbU) * sin(thumbAngle)).toFloat()
 
-                // Тусклая волна — вся длительность трека
                 drawPath(wave, inactive, style = Stroke(width = stroke, cap = StrokeCap.Round))
 
-                // Зона буферизации — та же волна, чуть плотнее
                 if (buffer > 0.01f) {
                     clipRect(
                         left = min(startX, bufferX),
@@ -193,7 +161,6 @@ fun ExpressivePlayerSlider(
                     }
                 }
 
-                // Пропетанная часть — волна в акценте
                 if (fraction > 0f) {
                     clipRect(
                         left = min(startX, progressX),
@@ -203,7 +170,6 @@ fun ExpressivePlayerSlider(
                     }
                 }
 
-                // Ореол под бегунком — раскрывается вместе с пружиной
                 if (bounce > 0.02f) {
                     drawCircle(
                         color = active.copy(alpha = (0.22f * bounce).coerceIn(0f, 1f)),
@@ -212,7 +178,6 @@ fun ExpressivePlayerSlider(
                     )
                 }
 
-                // Круглый бегунок на гребне волны
                 drawCircle(
                     color = thumbColor,
                     radius = 5.dp.toPx() * (1f + 0.4f * bounce.coerceIn(-0.3f, 1.4f)),

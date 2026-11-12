@@ -16,7 +16,6 @@ fun wcagContrast(first: Color, second: Color): Double {
     return (lighter + 0.05) / (darker + 0.05)
 }
 
-/** Чёрный/белый по максимальному контрасту WCAG без подстройки фона (для анимируемых цветов). */
 fun contrastContentColor(background: Color): Color =
     if (wcagContrast(background, Color.White) >= wcagContrast(background, Color.Black)) {
         Color.White
@@ -24,13 +23,6 @@ fun contrastContentColor(background: Color): Color =
         Color.Black
     }
 
-/**
- * Контрастная пара к фону: чёрный или белый по максимальному контрасту WCAG.
- * Точка равенства контрастов — luminance ≈ 0.18, а не 0.5.
- * Если ни один вариант не даёт 4.5:1, фон затемняется/осветляется по тону HCT
- * до достижения порога; оттенок и хрома сохраняются.
- * Возвращает (фон, контент).
- */
 fun bestContentColor(background: Color): Pair<Color, Color> {
     val lum = background.luminance()
     val whiteContrast = 1.05 / (lum + 0.05)

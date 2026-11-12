@@ -14,7 +14,6 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Лайк из UI и из кнопки медиа-уведомления использует одну и ту же логику. */
 @Singleton
 class TrackLikeManager @Inject constructor(
     private val likedTracksRepository: LikedTracksRepository,
@@ -51,7 +50,6 @@ class TrackLikeManager @Inject constructor(
     }
 }
 
-/** Кнопка лайка в системной медиа-сессии. */
 object PlaybackSessionCommands {
 
     val LIKE = androidx.media3.session.SessionCommand(

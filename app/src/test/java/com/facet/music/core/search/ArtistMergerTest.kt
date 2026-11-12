@@ -3,6 +3,7 @@ package com.facet.music.core.search
 import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Source
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -72,6 +73,31 @@ class ArtistMergerTest {
 
         assertEquals("Odesza", ArtistMerger.bestMatch("odesza", artists)?.name)
         assertEquals("Odesza", ArtistMerger.bestMatch("ode", artists)?.name)
+        assertNull(ArtistMerger.bestMatch("od", artists))
+        assertEquals("Odesza", ArtistMerger.bestMatch("odeszaa", artists)?.name)
+        assertNull(ArtistMerger.bestMatch("metallica", artists))
         assertTrue(ArtistMerger.jaroWinkler("odesza", "odeszaa") > 0.9)
+    }
+
+    @Test
+    fun `слияние объединяет суффиксы Topic Official VEVO и сортирует по подписчикам`() {
+        val merged = ArtistMerger.merge(
+            listOf(
+                listOf(
+                    artist("Daft Punk - Topic", Source.YOUTUBE, avatar = "yt-avatar", subscribers = 500),
+                    artist("Daft Punk Cover Band", Source.YOUTUBE, subscribers = 10_000, verified = true),
+                ),
+                listOf(
+                    artist("Daft Punk Official", Source.SOUNDCLOUD, avatar = "sc-avatar", subscribers = 2_000, verified = true),
+                ),
+            ),
+            query = "Daft Punk",
+        )
+
+        assertEquals(2, merged.size)
+        val main = merged.first()
+        assertEquals("yt-avatar", main.avatarUrl)
+        assertEquals(2_000L, main.subscriberCount)
+        assertTrue(main.isVerified)
     }
 }

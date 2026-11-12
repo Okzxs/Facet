@@ -1,11 +1,5 @@
 package com.facet.music.core.import
 
-/**
- * Разбор ссылки на публичный профиль Spotify или SoundCloud.
- *
- * Возвращает сервис и идентификатор: для Spotify — user id, для SoundCloud —
- * канонический URL профиля. Ссылки на треки/плейлисты сюда не подходят.
- */
 object ProfileLinkParser {
 
     data class ParsedProfile(
@@ -30,7 +24,6 @@ object ProfileLinkParser {
         }
     }
 
-    /** `open.spotify.com/user/<id>` — id идёт сразу после сегмента `user`. */
     private fun parseSpotify(segments: List<String>): ParsedProfile? {
         val index = segments.indexOfFirst { it.equals("user", ignoreCase = true) }
         if (index < 0) return null
@@ -38,13 +31,10 @@ object ProfileLinkParser {
         return ParsedProfile(ImportService.SPOTIFY, id)
     }
 
-    /** `soundcloud.com/<user>` — профиль, а не трек и не сет. */
     private fun parseSoundCloud(host: String, segments: List<String>): ParsedProfile? {
         if (segments.isEmpty()) return null
         val user = segments.first()
         if (user.equals("you", true) || user.equals("discover", true)) return null
-        // Ссылки на вкладки профиля (`/likes`, `/tracks`, …) тоже ведут на профиль:
-        // люди копируют адрес прямо из открытой вкладки «Лайки».
         val isProfileTab = segments.size == 1 ||
             (segments.size == 2 && segments[1].lowercase() in PROFILE_TABS)
         if (!isProfileTab) return null
@@ -60,6 +50,5 @@ object ProfileLinkParser {
 
     private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
 
-    /** Вкладки профиля SoundCloud, которые не превращают ссылку в трек/сет. */
     private val PROFILE_TABS = setOf("likes", "tracks", "albums", "playlists", "reposts")
 }

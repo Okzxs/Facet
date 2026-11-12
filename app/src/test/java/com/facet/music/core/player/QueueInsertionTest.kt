@@ -5,7 +5,6 @@ import com.facet.music.data.model.Track
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Чистая логика «играть следующим»: вставка и перенос трека в очереди. */
 class QueueInsertionTest {
 
     private val queue = listOf(track("one"), track("two"), track("three"))

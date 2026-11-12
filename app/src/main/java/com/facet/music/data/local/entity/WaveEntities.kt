@@ -5,7 +5,6 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/** Показ трека в волне и его дальнейшая судьба. */
 @Entity(
     tableName = "wave_impressions",
     indices = [
@@ -28,7 +27,6 @@ data class WaveImpressionEntity(
     val playedMs: Long = 0L,
 )
 
-/** Сессия волны: нужна для памяти семян и чистки старых показов. */
 @Entity(tableName = "wave_sessions")
 data class WaveSessionEntity(
     @PrimaryKey
@@ -47,7 +45,6 @@ data class WaveSessionEntity(
     val seedTracksJson: String? = null,
 )
 
-/** Ручная или автоматическая блокировка исполнителя. */
 @Entity(tableName = "artist_blocklist")
 data class ArtistBlocklistEntity(
     @PrimaryKey

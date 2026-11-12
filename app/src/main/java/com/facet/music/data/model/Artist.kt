@@ -2,7 +2,6 @@ package com.facet.music.data.model
 
 import kotlinx.serialization.Serializable
 
-/** Артист/канал из поиска источника. */
 @Serializable
 data class Artist(
     val id: String,

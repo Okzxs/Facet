@@ -12,24 +12,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/**
- * Состояние свайпа полноэкранного плеера, поднятое в AppNavGraph.
- *
- * Нужно, чтобы смещение обложки можно было читать внутри
- * `graphicsLayer { }` в навигационном графе и в плеере без рекомпозиции:
- * анимация обновляет только слой на RenderThread, а не пересобирает
- * тяжёлые панели с текстом и кнопками.
- *
- * Смещение — обычный [mutableFloatStateOf], а не [androidx.compose.animation.core.Animatable]:
- * `snapTo` у Animatable — suspend-функция, а вызывать её из `awaitEachGesture`
- * нельзя (restricted suspend scope). Пружина после отпускания запускается
- * отдельной корутиной и пишет в то же состояние; повторный захват пальцем
- * отменяет её через [settleJob].
- */
 @Stable
 class PlayerSwipeState(private val scope: CoroutineScope) {
 
-    /** Смещение плеера вниз в пикселях. */
     var offsetPx by mutableFloatStateOf(0f)
         private set
 
@@ -42,10 +27,8 @@ class PlayerSwipeState(private val scope: CoroutineScope) {
     var screenWidthPx by mutableFloatStateOf(0f)
         private set
 
-    /** Пружина возврата на место; отменяется новым касанием. */
     private var settleJob: Job? = null
 
-    /** Доля высоты экрана, на которую уехал плеер. Читать только в layer-блоках. */
     val progress: Float
         get() {
             val height = screenHeightPx
@@ -66,13 +49,11 @@ class PlayerSwipeState(private val scope: CoroutineScope) {
         isDragging = true
     }
 
-    /** Вызывается прямо из жеста: без suspend, иначе не пройдёт restricted scope. */
     fun dragTo(px: Float) {
         val height = screenHeightPx
         offsetPx = if (height > 0f) px.coerceIn(0f, height) else px.coerceAtLeast(0f)
     }
 
-    /** Отпускание ниже порога: пружиной возвращаем плеер на место. */
     fun settle(velocity: Float = 0f) {
         isDragging = false
         settleJob?.cancel()
@@ -96,7 +77,6 @@ class PlayerSwipeState(private val scope: CoroutineScope) {
         }
     }
 
-    /** Порог пройден: экран закрывается, ручной свайп дальше не нужен. */
     fun dismiss() {
         if (isDismissed) return
         settleJob?.cancel()
@@ -104,7 +84,6 @@ class PlayerSwipeState(private val scope: CoroutineScope) {
         isDismissed = true
     }
 
-    /** Новое открытие плеера: прежний свайп не должен переезжать в новый сеанс. */
     fun reset() {
         settleJob?.cancel()
         isDragging = false

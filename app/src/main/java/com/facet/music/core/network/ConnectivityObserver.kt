@@ -11,10 +11,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Единый источник правды о сети. Callback не даёт экрану показывать шторм
- * ошибок, когда интернет просто пропал; UI показывает офлайн-баннер.
- */
 @Singleton
 class ConnectivityObserver @Inject constructor(
     @ApplicationContext context: Context,

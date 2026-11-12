@@ -11,10 +11,6 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Единственный на процесс кэш Media3. Файлы переживают протухание подписанных
- * ссылок: ключ элемента — id трека, а не URL.
- */
 @UnstableApi
 @Singleton
 class PlaybackCache @Inject constructor(
@@ -33,14 +29,12 @@ class PlaybackCache @Inject constructor(
 
     fun sizeBytes(): Long = cache.cacheSpace
 
-    /** Открыть SimpleCache заранее, чтобы первый кадр не читал базу на main. */
     fun warmUp() {
         cache
     }
 
     fun keyCount(): Int = cache.keys.size
 
-    /** Есть ли в кэше хоть один байт трека — нужен для офлайн-фолбэка. */
     fun hasData(trackId: String): Boolean =
         cache.getCachedLength(trackId, 0L, C.LENGTH_UNSET.toLong()) > 0L
 
@@ -48,7 +42,6 @@ class PlaybackCache @Inject constructor(
         cache.keys.toList().forEach(cache::removeResource)
     }
 
-    /** Удалить закэшированный поток трека: MIME мог смениться (HLS ↔ progressive). */
     fun remove(trackId: String) {
         runCatching { cache.removeResource(trackId) }
     }

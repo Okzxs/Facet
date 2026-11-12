@@ -4,10 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/**
- * Ссылка на профиль: Spotify (`/user/<id>`) и SoundCloud (`/<user>`).
- * Плейлисты и треки профилями не считаются.
- */
 class ProfileLinkParserTest {
 
     @Test

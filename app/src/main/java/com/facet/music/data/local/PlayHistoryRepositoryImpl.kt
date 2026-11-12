@@ -14,10 +14,6 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Реализация репозитория истории воспроизведения на базе Room.
- * Автоматически актуализирует статус liked у треков через связку с LikedTracksDao.
- */
 @Singleton
 class PlayHistoryRepositoryImpl @Inject constructor(
     private val playHistoryDao: PlayHistoryDao,

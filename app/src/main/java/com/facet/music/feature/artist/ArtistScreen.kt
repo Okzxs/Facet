@@ -93,13 +93,6 @@ private const val POPULAR_LIMIT = 10
 private const val RELEASE_CARD_SIZE = 160
 private const val ARTIST_BUBBLE_SIZE = 96
 
-/**
- * Экран артиста YouTube/SoundCloud: сворачивающаяся шапка, популярное,
- * релизы, все треки с пагинацией, плейлисты и похожие исполнители.
- *
- * Экран полноэкранный (док скрыт навграфом), поэтому шапка уходит под
- * статус-бар, а LargeTopAppBar прозрачен и сворачивается по прокрутке.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArtistScreen(

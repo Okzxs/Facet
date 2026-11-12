@@ -7,8 +7,10 @@ import com.facet.music.data.model.Track
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlayHistoryRepository
 import com.facet.music.data.repository.RecentlyShownRepository
+import com.facet.music.data.repository.SoundCloudChartsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
+import com.facet.music.data.source.external.DeezerMetadataClient
 import com.facet.music.testutil.MainDispatcherRule
 import io.mockk.Runs
 import io.mockk.coEvery
@@ -23,10 +25,6 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.random.Random
 
-/**
- * Группировка «Твои жанры» живёт в HomeViewModel
- * (отдельного CollectionsViewModel в проекте нет).
- */
 class HomeViewModelGenreTest {
 
     @get:Rule
@@ -64,17 +62,26 @@ class HomeViewModelGenreTest {
         } just Runs
         coEvery { dislikedTrackDao.getAll() } returns emptyList()
 
+        val chartsRepository = mockk<SoundCloudChartsRepository>(relaxed = true).also {
+            coEvery { it.getTop50(any()) } returns Result.success(emptyList())
+            coEvery { it.getNewAndHot(any()) } returns Result.success(emptyList())
+        }
+        val deezerMetadataClient = mockk<DeezerMetadataClient>(relaxed = true).also {
+            coEvery { it.fetchNewReleases(any()) } returns Result.success(emptyList())
+            coEvery { it.fetchAlbumTracks(any()) } returns Result.success(emptyList())
+        }
+
         viewModel = HomeViewModel(
             youtubeRepository = youtubeRepository,
             soundCloudRepository = soundCloudRepository,
-            chartsRepository = mockk(relaxed = true),
+            chartsRepository = chartsRepository,
             downloadRepository = mockk(relaxed = true),
             likedTracksRepository = likedTracksRepository,
             playHistoryRepository = playHistoryRepository,
             recentlyShownRepository = recentlyShownRepository,
             dislikedTrackDao = dislikedTrackDao,
             recommendationPlanner = recommendationPlanner,
-            deezerMetadataClient = mockk(relaxed = true),
+            deezerMetadataClient = deezerMetadataClient,
         )
     }
 

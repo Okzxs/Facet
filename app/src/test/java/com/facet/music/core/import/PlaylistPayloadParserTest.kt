@@ -7,9 +7,6 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Разбор JSON Deezer: проверяем поля доменной модели без сети.
- */
 class PlaylistPayloadParserTest {
 
     @Test
@@ -41,7 +38,6 @@ class PlaylistPayloadParserTest {
 
         assertEquals("Плейлист Deezer", playlist.name)
         assertEquals(1, playlist.tracks.size)
-        // Превью нет — трек играет через YouTube-матч, а не как превью.
         assertNull(playlist.tracks.single().streamUrl)
         assertNull(playlist.tracks.single().previewSeconds)
     }

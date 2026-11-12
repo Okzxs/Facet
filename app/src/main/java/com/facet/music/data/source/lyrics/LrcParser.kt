@@ -4,10 +4,6 @@ import com.facet.music.data.model.LyricLine
 import com.facet.music.data.model.LyricsResult
 import java.util.regex.Pattern
 
-/**
- * Парсер LRC-формата (совместим со спекой и референсом exteraless).
- * Поддерживает [mm:ss.xx], [mm:ss.xxx], [offset:+-xxx] и караоке-теги.
- */
 object LrcParser {
 
     private val TIME_PATTERN = Pattern.compile("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?]")

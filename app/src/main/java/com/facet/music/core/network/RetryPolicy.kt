@@ -4,10 +4,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
 
-/**
- * Правила повторов для JSON-API: 429/503 — до двух раз, прочие 5xx — один,
- * только идемпотентные GET. Задержка из Retry-After ограничена 10 секундами.
- */
 internal object RetryPolicy {
 
     const val MAX_RETRY_AFTER_MS = 10_000L
@@ -27,7 +23,6 @@ internal object RetryPolicy {
     ): Long = parseRetryAfter(retryAfter, nowMs)
         ?: (BASE_DELAY_MS shl attempt.coerceIn(0, 4)) + jitter
 
-    /** Retry-After — секунды или HTTP-дата; результат не больше 10 секунд. */
     fun parseRetryAfter(value: String?, nowMs: Long = System.currentTimeMillis()): Long? {
         val raw = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val seconds = raw.toLongOrNull()

@@ -10,10 +10,6 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 
-/**
- * Обложка для Now Bar/шторки: CacheBitmapLoader не перезагружает картинку
- * на каждом обновлении, а размер ограничивается 512 px.
- */
 @UnstableApi
 class ArtworkBitmapLoader(context: Context) : BitmapLoader {
 

@@ -13,14 +13,6 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Плейлисты поверх Room.
- *
- * Entity ↔ доменная модель маппится здесь: UI и ViewModel не знают про Room.
- * Трек из плейлиста собирается из денормализованных колонок, поэтому список
- * открывается без сети; `streamUrl` пуст — поток резолвит плеер по источнику
- * и `transcodingUrl`, как и для обычного поиска.
- */
 @Singleton
 class PlaylistRepositoryImpl @Inject constructor(
     private val dao: PlaylistDao,
@@ -59,7 +51,6 @@ class PlaylistRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deletePlaylist(playlistId: Long) {
-        // Строки playlist_tracks удаляет каскад внешнего ключа.
         dao.deletePlaylist(playlistId)
     }
 
@@ -76,11 +67,6 @@ private fun PlaylistWithCount.toPlaylist(): Playlist = Playlist(
     coverUrl = coverUrl,
 )
 
-/**
- * Собирает доменный трек из строки плейлиста.
- * Неизвестное имя источника (старая запись) не должно ронять экран — считаем
- * такой трек локальным и просто не даём ему зарезолвиться.
- */
 private fun PlaylistTrackEntity.toTrack(): Track = Track(
     id = trackId,
     source = runCatching { Source.valueOf(source) }.getOrDefault(Source.LOCAL),

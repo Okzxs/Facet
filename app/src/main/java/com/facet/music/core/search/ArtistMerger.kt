@@ -4,7 +4,6 @@ import com.facet.music.data.model.Artist
 import java.text.Normalizer
 import java.util.Locale
 
-/** Нормализация имён и Jaro-Winkler для поиска артистов. */
 object ArtistMerger {
 
     private val MARKS = Regex("\\p{Mn}+")
@@ -34,10 +33,6 @@ object ArtistMerger {
     fun tokens(value: String): List<String> =
         normalize(value).split(' ').filter { it.isNotBlank() }
 
-    /**
-     * Слияние артистов по нормализованному имени. Аватар — сначала YouTube
-     * Music, затем SoundCloud; verified и подписчики объединяются.
-     */
     fun merge(groups: List<List<Artist>>, query: String): List<Artist> {
         val buckets = LinkedHashMap<String, MutableList<Artist>>()
         groups.forEach { artists ->
@@ -63,7 +58,6 @@ object ArtistMerger {
         )
     }
 
-    /** Лучший артист для «запроса-артиста»: точное имя, префикс или JW. */
     fun bestMatch(query: String, artists: List<Artist>): Artist? {
         val normalized = normalize(query)
         if (normalized.length < 2) return null

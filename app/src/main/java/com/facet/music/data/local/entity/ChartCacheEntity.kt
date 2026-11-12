@@ -4,9 +4,6 @@ import androidx.room.Entity
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 
-/**
- * Сущность кэша чартов SoundCloud ("New & hot", "Top 10") в Room.
- */
 @Entity(
     tableName = "chart_cache",
     primaryKeys = ["chartType", "id"],

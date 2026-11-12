@@ -10,11 +10,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
 
-/**
- * Знакомое, но давно не звучавшее: только треки, которых не было 21 день
- * и которые не показывались в волне 30 дней. Не больше 10% пачки, ядро
- * ограничивает слоты.
- */
 @Singleton
 class FamiliarSource @Inject constructor(
     private val clock: Clock,

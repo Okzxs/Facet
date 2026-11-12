@@ -35,7 +35,6 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
         private const val URL_NEW_AND_HOT = "https://soundcloud.com/charts/new"
         private const val URL_TOP_50 = "https://soundcloud.com/charts/top"
 
-        // TTL обновления 30 минут
         private const val CACHE_TTL_MS = 30 * 60 * 1000L
     }
 
@@ -72,7 +71,6 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
         val lastCached = chartCacheDao.getLastCachedTime(chartType)
         val isCacheValid = lastCached != null && (now - lastCached < CACHE_TTL_MS)
 
-        // 1. Если кэш свежий и принудительное обновление не запрошено — отдаём из БД
         if (isCacheValid && !forceRefresh) {
             val cachedTracks = chartCacheDao.getTracksByChartSync(chartType).map { it.toTrack() }
             if (cachedTracks.isNotEmpty()) {
@@ -81,7 +79,6 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
             }
         }
 
-        // 2. Иначе загружаем из NewPipe
         runCatching {
             val service = NewPipe.getService(ServiceList.SoundCloud.serviceId)
             val kioskInfo = newPipeDownloader.withCancellation {
@@ -94,7 +91,6 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
             ).map { it.toDomain() }
 
             if (tracks.isNotEmpty()) {
-                // Сохраняем в кэш Room
                 val entities = tracks.mapIndexed { index, track ->
                     track.toChartEntity(
                         chartType = chartType,
@@ -108,10 +104,8 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
 
             tracks
         }.recoverCatching { error ->
-            // Отмена корутины не должна превращаться в «офлайн-фолбэк»
             if (error is CancellationException) throw error
             Log.w(tag, "[$chartType] Ошибка сетевого запроса к NewPipe: ${error.message}")
-            // Если сеть отвалилась — фолбэк на старый кэш из Room (офлайн режим)
             val staleCache = chartCacheDao.getTracksByChartSync(chartType).map { it.toTrack() }
             if (staleCache.isNotEmpty()) {
                 Log.d(tag, "[$chartType] Фолбэк на устаревший кэш Room: ${staleCache.size} треков")
@@ -122,12 +116,6 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
         }
     }
 
-    /**
-     * Базовый фильтр мусора в чартах: треки короче 30 секунд и явные нули прослушиваний.
-     * Если SoundCloud не вернул метаданные (viewCount == 0 у всех элементов), фильтр
-     * по прослушиваниям не применяется. Если после фильтрации не осталось треков —
-     * возвращаем исходный список, чтобы не показывать пустую секцию.
-     */
     private fun filterJunk(items: List<StreamInfoItem>): List<StreamInfoItem> {
         val hasViewData = items.any { it.viewCount > 0 }
         val filtered = items.filter { item ->

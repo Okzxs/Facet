@@ -8,7 +8,6 @@ import com.facet.music.data.repository.SoundCloudRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** SoundCloud как полноценный источник потока (progressive или HLS). */
 @Singleton
 class SoundCloudPlayableSource @Inject constructor(
     private val repository: SoundCloudRepository,

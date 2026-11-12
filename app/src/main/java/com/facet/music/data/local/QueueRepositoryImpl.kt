@@ -13,12 +13,6 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Очередь в Room. Источник хранится строкой: `valueOf` переживает обфускацию,
- * а битое значение не должно ронять восстановление — такие строки пропускаем.
- * Позиция текущего трека — небольшое число в SharedPreferences: держать его
- * отдельной таблицей ради одного int смысла нет.
- */
 @Singleton
 class QueueRepositoryImpl @Inject constructor(
     private val queueDao: QueueDao,
@@ -95,7 +89,6 @@ class QueueRepositoryImpl @Inject constructor(
     }
 
     private companion object {
-        /** Позиция текущего трека: одно число, отдельная таблица не нужна. */
         const val PREFS_NAME = "queue_state"
         const val KEY_INDEX = "current_index"
         const val KEY_POSITION = "position_ms"

@@ -16,10 +16,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
 
-/**
- * Находки по жанрам/тегам: tag.getTopTracks со случайной страницы.
- * Если жанров в профиле нет, теги берутся у артистов-семян.
- */
 @Singleton
 class TagSource @Inject constructor(
     private val lastFmRepository: LastFmRepository,

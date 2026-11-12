@@ -12,10 +12,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
 
-/**
- * Разведка второго шага: похожие на похожих. Артисты, которых нет ни в
- * профиле вкуса, ни в истории, дают шанс выйти за пределы привычного круга.
- */
 @Singleton
 class SecondHopSource @Inject constructor(
     private val lastFmRepository: LastFmRepository,

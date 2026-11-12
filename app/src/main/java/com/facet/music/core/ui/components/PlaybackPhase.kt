@@ -9,14 +9,6 @@ import androidx.compose.runtime.withFrameNanos
 
 private const val TWO_PI_F = 6.2831855f
 
-/**
- * Непрерывная фаза волны (0..2π), привязанная к кадрам, а не к анимации Compose.
- *
- * Пока [active] — фаза растёт по реальному времени кадра; на паузе замирает
- * на текущем значении. Условный `rememberInfiniteTransition` так не умеет:
- * при выключении он уничтожается и фаза скачком возвращается к нулю — из-за
- * этого бегунок волнового слайдера дёргался в момент паузы.
- */
 @Composable
 internal fun rememberPlaybackPhase(active: Boolean, periodMs: Int): State<Float> {
     val phase = remember { mutableFloatStateOf(0f) }

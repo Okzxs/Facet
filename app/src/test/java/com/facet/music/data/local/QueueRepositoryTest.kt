@@ -17,10 +17,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/**
- * Очередь на настоящем Room в памяти: маппинг entity ↔ Track, перезапись
- * целиком и восстановление позиции текущего трека.
- */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class QueueRepositoryTest {

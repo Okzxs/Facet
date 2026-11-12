@@ -8,9 +8,6 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Реализация памяти показанных рекомендаций на базе Room.
- */
 @Singleton
 class RecentlyShownRepositoryImpl @Inject constructor(
     private val recentlyShownDao: RecentlyShownDao,

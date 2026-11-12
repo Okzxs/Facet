@@ -2,7 +2,6 @@ package com.facet.music.data.model
 
 import kotlinx.serialization.Serializable
 
-/** Полная шапка канала: имя, аватары, баннер и статистика. */
 @Serializable
 data class ArtistProfile(
     val source: Source,
@@ -27,7 +26,6 @@ data class ArtistProfile(
     )
 }
 
-/** Альбом или сингл артиста. */
 @Serializable
 data class ArtistRelease(
     val id: String,
@@ -39,7 +37,6 @@ data class ArtistRelease(
     val isAlbum: Boolean = true,
 )
 
-/** Плейлист артиста. */
 @Serializable
 data class ArtistPlaylist(
     val id: String,
@@ -49,7 +46,6 @@ data class ArtistPlaylist(
     val trackCount: Int = 0,
 )
 
-/** Первая страница экрана артиста; [nextPage] — токен «Всех треков». */
 @Serializable
 data class ArtistPage(
     val profile: ArtistProfile,

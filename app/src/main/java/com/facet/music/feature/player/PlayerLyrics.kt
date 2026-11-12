@@ -180,7 +180,6 @@ internal fun LyricsListView(
     var recenterNonce by remember { mutableIntStateOf(0) }
     var hasCentered by remember { mutableStateOf(false) }
 
-    // Смена трека: список и центрирование не должны тянуться из прошлого трека.
     LaunchedEffect(lyrics) {
         hasCentered = false
         userPaused = false
@@ -206,8 +205,6 @@ internal fun LyricsListView(
 
     LaunchedEffect(currentIndex, userPaused, recenterNonce, viewportHeightPx) {
         if (currentIndex < 0 || viewportHeightPx <= 0 || userPaused) return@LaunchedEffect
-        // Активная строка — ровно по центру: offset «полвьюпорта минус полстроки».
-        // animateScrollToItem сам доводит до цели, накопительной ошибки нет.
         val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == currentIndex }
         val scrollOffset = -(viewportHeightPx / 2 - (info?.size ?: barSlotPx) / 2)
         if (!hasCentered) {
@@ -456,10 +453,6 @@ private fun LyricLineItem(
     }
 }
 
-/**
- * Чистый экран текстов поверх «утопленной» размытой обложки:
- * без стеклянных панелей — только парящая шапка трека и строки, растворяющиеся в фоне.
- */
 @Composable
 internal fun LyricsForeground(
     title: String,
@@ -488,7 +481,6 @@ internal fun LyricsForeground(
     ) {
         Spacer(Modifier.height(8.dp))
 
-        // Парящая шапка: миниатюра и подпись без подложки
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -526,9 +518,6 @@ internal fun LyricsForeground(
 
         Spacer(Modifier.height(6.dp))
 
-        // Строки скользят под мягкими градиентными масками, не упираясь в контролы.
-        // Маски — это DstIn-затухание самого контента, а не серая плёнка surface:
-        // на светлой обложке цветная подложка давала видимый прямоугольник.
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -548,7 +537,6 @@ internal fun LyricsForeground(
             )
         }
 
-        // Воздух до острова управления: тексты не налезают на язычок и волну
         Spacer(Modifier.height(16.dp))
     }
 }

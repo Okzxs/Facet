@@ -27,21 +27,12 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Имена событий; другие данные на сервер не уходят. */
 object AnalyticsEvents {
     const val APP_OPEN = "app_open"
     const val TRACK_PLAY = "track_play"
     const val WAVE_SUMMARY = "wave_summary"
 }
 
-/**
- * Анонимная статистика использования.
- *
- * Согласие выключено по умолчанию и хранится в настройках. На сервер уходят
- * только название события, случайный идентификатор установки и версия
- * приложения — без аккаунта, треков, поисковых запросов и геолокации.
- * События копятся в памяти и отправляются пакетом.
- */
 @Singleton
 class AnalyticsTracker @Inject constructor(
     @ApplicationContext context: Context,
@@ -66,8 +57,6 @@ class AnalyticsTracker @Inject constructor(
     private var flushJob: Job? = null
 
     init {
-        // Отписка от статистики должна не только запрещать новые события,
-        // но и выбрасывать уже накопленные, ещё не отправленные.
         scope.launch {
             settingsRepository.settings.collect { settings ->
                 enabled = settings.analyticsEnabled
@@ -78,25 +67,19 @@ class AnalyticsTracker @Inject constructor(
         }
     }
 
-    /** Случайный id установки: генерируется один раз, к личности не привязан. */
     private val installId: String by lazy {
         prefs.getString(KEY_INSTALL_ID, null) ?: UUID.randomUUID().toString().also { id ->
             prefs.edit().putString(KEY_INSTALL_ID, id).apply()
         }
     }
 
-    /** Добавить событие в очередь; при выключенном согласии ничего не делает. */
     fun track(event: String) {
         if (event.isBlank()) return
         scope.launch {
-            // Согласие читаем из настроек, а не только из кэша: так событие
-            // не проскочит в момент выключения статистики. На холодном старте
-            // это заодно дожидается первого значения и не теряет app_open.
             val allowed = settingsRepository.settings.first().analyticsEnabled
             enabled = allowed
             if (!allowed) return@launch
             val shouldFlush = queueMutex.withLock {
-                // Ограничиваем очередь: при долгом отсутствии сети не растим память.
                 if (queue.size >= MAX_QUEUE) queue.removeFirst()
                 queue.addLast(event)
                 queue.size >= BATCH_SIZE
@@ -109,7 +92,6 @@ class AnalyticsTracker @Inject constructor(
         }
     }
 
-    /** Отправить накопленное сейчас (например, при выходе из приложения). */
     fun flushAsync() {
         scope.launch { flush() }
     }
@@ -167,7 +149,6 @@ class AnalyticsTracker @Inject constructor(
         if (sent) {
             Log.d(tag, "Отправлено событий: ${batch.size}")
         } else {
-            // Сеть пропала — вернём пачку в начало, чтобы не потерять события.
             queueMutex.withLock {
                 batch.asReversed().forEach { event ->
                     if (queue.size < MAX_QUEUE) queue.addFirst(event)
@@ -185,8 +166,6 @@ class AnalyticsTracker @Inject constructor(
 
         const val EVENTS_URL = "https://fybzqjosijpdvbhckkxu.supabase.co/rest/v1/events"
 
-        // Publishable-ключ Supabase: рассчитан на клиент, доступ ограничен RLS
-        // (только вставка событий, чтение закрыто).
         const val API_KEY = "sb_publishable_8IXOORUEvtiZnQ23Efmvbw_tg8IX31p"
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }

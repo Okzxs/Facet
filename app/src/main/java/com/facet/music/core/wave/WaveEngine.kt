@@ -16,10 +16,6 @@ import kotlin.math.log10
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
-/**
- * Ядро «Моей волны»: собирает кандидатов из источников, режет недопустимое,
- * считает оценку, переранжирует MMR и отдаёт пачку. Никаких Android-зависимостей.
- */
 class WaveEngine(
     private val sources: Set<CandidateSource>,
     private val tasteProfileProvider: TasteProfileProvider,

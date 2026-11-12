@@ -10,12 +10,6 @@ import okhttp3.Request
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Лёгкая проверка доступности: HEAD на корень сервиса. Полноценный поиск
- * для статусов больше не нужен — он тратит трафик и нагружает API.
- * Любой ответ ниже 500 считается признаком живого сервиса: 401/403/405
- * означают, что сеть и сервер работают.
- */
 @Singleton
 class ServiceProbe @Inject constructor(
     @ApiClient private val client: OkHttpClient,

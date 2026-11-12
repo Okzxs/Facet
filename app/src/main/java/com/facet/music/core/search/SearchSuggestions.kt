@@ -14,10 +14,6 @@ import org.schabi.newpipe.extractor.ServiceList
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Подсказки под полем поиска: удалённые suggestion API YouTube/SoundCloud
- * плюс локальные совпадения из истории и лайков.
- */
 @Singleton
 class SearchSuggestions @Inject constructor(
     private val newPipeDownloader: NewPipeDownloader,

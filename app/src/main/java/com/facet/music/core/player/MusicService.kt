@@ -29,10 +29,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-/**
- * Foreground-сервис воспроизведения. ExoPlayer владеет очередью, поэтому
- * переходы между треками и повтор идут без stop()/пересоздания уведомления.
- */
 @UnstableApi
 @AndroidEntryPoint
 class MusicService : MediaSessionService() {
@@ -93,7 +89,7 @@ class MusicService : MediaSessionService() {
 
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()

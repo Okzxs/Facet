@@ -4,10 +4,6 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/**
- * Накопленный вес жанра по feedback-событиям волны.
- * Индекс по weight: вкусовые подборки сортируют жанры по весу.
- */
 @Entity(
     tableName = "genre_weights",
     indices = [Index("weight")],
@@ -19,9 +15,6 @@ data class GenreWeightEntity(
     val updatedAt: Long,
 )
 
-/**
- * Накопленный вес артиста по feedback-событиям волны.
- */
 @Entity(tableName = "artist_weights")
 data class ArtistWeightEntity(
     @PrimaryKey
@@ -30,9 +23,6 @@ data class ArtistWeightEntity(
     val updatedAt: Long,
 )
 
-/**
- * Простые пользовательские предпочтения волны (например, pref_ru_language).
- */
 @Entity(tableName = "user_preferences")
 data class UserPreferenceEntity(
     @PrimaryKey

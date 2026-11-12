@@ -18,41 +18,20 @@ import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Ответ SoundCloud по лайкам: сами треки и заявленное профилем количество.
- * `likesCount == -1`, если профиль не сообщил счётчик.
- */
 data class SoundCloudLikesResult(
     val tracks: List<Track>,
     val likesCount: Int,
-    /** id трека → момент лайка в SoundCloud (0, если API не сообщил). */
     val likeTimes: Map<String, Long> = emptyMap(),
 )
 
-/**
- * HTTP-ошибка api-v2. Код нужен UI: 401/403 — закрытый доступ,
- * остальные — общая ошибка API.
- */
 class SoundCloudApiException(
     val code: Int,
     body: String,
 ) : IOException("SoundCloud HTTP $code: ${body.take(160)}")
 
-/**
- * Профиль резолвится, но лайки не отдаются (401/403): скорее всего,
- * профиль закрыт или скрыл лайки. Отдельный тип нужен для honest-текста.
- */
 class SoundCloudLikesPrivateException :
     IOException("SoundCloud likes are hidden for this profile")
 
-/**
- * Лайки SoundCloud через внутренний API `api-v2.soundcloud.com`.
- *
- * Официальный API требует приложения и подписки, а api-v2 работает с публичным
- * `client_id`, который NewPipe добывает сам ([SoundcloudParsingHelper.clientId]).
- * Публичный профиль отдаёт треки через `/users/{id}/track_likes`; закрытый —
- * ошибку 401/403, и это честно показывается в UI.
- */
 @Singleton
 class SoundCloudLikesProvider @Inject constructor(
     @ApiClient private val client: OkHttpClient,
@@ -75,7 +54,6 @@ class SoundCloudLikesProvider @Inject constructor(
                 val body = try {
                     get(next, clientId)
                 } catch (e: SoundCloudApiException) {
-                    // Профиль уже разрешён, значит 401/403 здесь — это скрытые лайки.
                     if (e.code == 401 || e.code == 403) throw SoundCloudLikesPrivateException()
                     throw e
                 }
@@ -95,7 +73,6 @@ class SoundCloudLikesProvider @Inject constructor(
 
     private data class Profile(val userId: Long, val likesCount: Int)
 
-    /** `/resolve` превращает `soundcloud.com/user` в numeric id и счётчик лайков. */
     private fun resolveProfile(profileUrl: String, clientId: String): Profile {
         val normalized = normalize(profileUrl)
         val url = "$API/resolve?url=${encode(normalized)}&client_id=$clientId"
@@ -103,12 +80,10 @@ class SoundCloudLikesProvider @Inject constructor(
         val root = json.parseToJsonElement(body).jsonObject
         val id = root["id"]?.jsonPrimitive?.longOrNull
             ?: error("Профиль SoundCloud не найден")
-        // likes_count есть не у всех профилей: -1 — «неизвестно».
         val likes = root["likes_count"]?.jsonPrimitive?.intOrNull ?: -1
         return Profile(userId = id, likesCount = likes)
     }
 
-    /** Принимает полный URL, `soundcloud.com/user` и просто `user`. */
     private fun normalize(value: String): String {
         val trimmed = value.trim().trimEnd('/')
         return when {
@@ -143,7 +118,6 @@ class SoundCloudLikesProvider @Inject constructor(
     private companion object {
         const val API = "https://api-v2.soundcloud.com"
         const val PAGE_SIZE = 50
-        /** Потолок на случай бесконечной пагинации; 229 лайков проходят целиком. */
         const val MAX_LIKES = 5000
     }
 }

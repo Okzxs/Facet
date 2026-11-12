@@ -7,10 +7,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/**
- * Контраст пар ролей HCT-схемы: 24 оттенка (шаг 15°) × светлая/тёмная тема.
- * Каждая пара обязана давать не меньше 4.5:1 по WCAG.
- */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class ColorContrastTest {

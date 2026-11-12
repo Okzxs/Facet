@@ -9,11 +9,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/**
- * Регрессия «бордового акцента»: чёрный, белый и серый имеют в HSL оттенок 0
- * (красный), и принудительная насыщенность ролей красила такой акцент в бордовый.
- * Ахроматический seed обязан давать строго монохромную палитру.
- */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class AccentSchemeTest {
@@ -38,8 +33,6 @@ class AccentSchemeTest {
 
     @Test
     fun `black and white accents give the same monochrome scheme`() {
-        // HCT Monochrome ignores seed tone: чёрный и белый seed дают одну и ту же
-        // нейтральную палитру (тональности ролей фиксированы, хрома нулевая).
         val black = accentColorScheme(Color.Black, darkTheme = false).primary
         val white = accentColorScheme(Color.White, darkTheme = false).primary
         assertEquals(black.red.toDouble(), white.red.toDouble(), 0.01)
@@ -55,10 +48,8 @@ class AccentSchemeTest {
 
     @Test
     fun `monochrome primary stays readable in both themes`() {
-        // Светлая тема: primary достаточно тёмный под белый onPrimary.
         val light = accentColorScheme(Color.Black, darkTheme = false)
         assertTrue(light.primary.red < 0.6f)
-        // Тёмная тема: primary достаточно светлый под тёмный onPrimary.
         val dark = accentColorScheme(Color.White, darkTheme = true)
         assertTrue(dark.primary.red > 0.5f)
     }

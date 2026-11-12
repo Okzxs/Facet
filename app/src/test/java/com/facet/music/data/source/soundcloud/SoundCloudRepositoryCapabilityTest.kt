@@ -7,10 +7,6 @@ import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Регрессия: SoundCloud умеет отдавать progressive MP3, поэтому резолвер
- * должен пробовать его первым, а не сразу искать трек на YouTube.
- */
 class SoundCloudRepositoryCapabilityTest {
 
     @Test

@@ -16,7 +16,6 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Результат лёгкого резолва SoundCloud. */
 internal data class SoundCloudStream(
     val url: String,
     val isHls: Boolean,
@@ -24,25 +23,23 @@ internal data class SoundCloudStream(
     val externalId: String,
 )
 
-/** Одна страница поиска SoundCloud: токен — следующее смещение. */
 internal data class SoundCloudSearchPage(
     val tracks: List<Track>,
     val nextToken: String?,
 )
 
-/**
- * SoundCloud api-v2 без NewPipe StreamInfo.
- *
- * Основной путь — один-два запроса: `/tracks/{id}` (или `/resolve` для
- * неизвестного id) → выбор транскодинга → подписанный URL. Поиск и related
- * тоже идут через API: так результатах сразу есть числовой id и permalink.
- * NewPipe остаётся запасным путём только при ошибке разбора JSON.
- */
 @Singleton
-class SoundCloudApi @Inject constructor(
-    @ApiClient private val client: OkHttpClient,
+class SoundCloudApi internal constructor(
+    private val client: OkHttpClient,
     private val clientIds: SoundCloudClientIdProvider,
+    private val apiBaseUrl: String,
 ) {
+
+    @Inject
+    constructor(
+        @ApiClient client: OkHttpClient,
+        clientIds: SoundCloudClientIdProvider,
+    ) : this(client, clientIds, API)
 
     private val tag = "SoundCloudApi"
 
@@ -60,7 +57,7 @@ class SoundCloudApi @Inject constructor(
     ): SoundCloudSearchPage {
         val safeLimit = limit.coerceIn(1, MAX_LIMIT)
         val url = buildString {
-            append(API)
+            append(apiBaseUrl)
             append("/search/tracks?q=")
             append(encode(query))
             append("&limit=")
@@ -79,12 +76,13 @@ class SoundCloudApi @Inject constructor(
     }
 
     suspend fun searchUsers(query: String, limit: Int): List<Artist> {
-        val url = "$API/search/users?q=${encode(query)}&limit=${limit.coerceIn(1, MAX_LIMIT)}"
+        val url = "$apiBaseUrl/search/users?q=${encode(query)}&limit=${limit.coerceIn(1, MAX_LIMIT)}"
         return SoundCloudJson.parseUsers(apiGet(url)).take(limit)
     }
 
-    suspend fun userTracks(userUrl: String, limit: Int): List<Track> {        val userId = resolveUserId(userUrl)
-        val url = "$API/users/$userId/tracks?limit=${limit.coerceIn(1, MAX_LIMIT)}"
+    suspend fun userTracks(userUrl: String, limit: Int): List<Track> {
+        val userId = resolveUserId(userUrl)
+        val url = "$apiBaseUrl/users/$userId/tracks?limit=${limit.coerceIn(1, MAX_LIMIT)}"
         return SoundCloudJson.parseCollection(apiGet(url))
             .filterNot { it.isGeoBlocked }
             .sortedByDescending { it.playbackCount }
@@ -96,7 +94,7 @@ class SoundCloudApi @Inject constructor(
     }
 
     private suspend fun resolveUserId(userUrl: String): String {
-        val body = apiGet("$API/resolve?url=${encode(userUrl)}")
+        val body = apiGet("$apiBaseUrl/resolve?url=${encode(userUrl)}")
         val root = SoundCloudJson.parseObject(body)
         return (root["id"] as? kotlinx.serialization.json.JsonPrimitive)
             ?.contentOrNull
@@ -109,7 +107,7 @@ class SoundCloudApi @Inject constructor(
 
     suspend fun related(pageUrl: String, limit: Int): List<Track> {
         val id = knownId(pageUrl) ?: resolveTrack(pageUrl).id
-        val url = "$API/tracks/$id/related?limit=${limit.coerceIn(1, MAX_LIMIT)}"
+        val url = "$apiBaseUrl/tracks/$id/related?limit=${limit.coerceIn(1, MAX_LIMIT)}"
         return SoundCloudJson.parseCollection(apiGet(url))
             .filterNot { it.isGeoBlocked }
             .map { dto ->
@@ -125,7 +123,7 @@ class SoundCloudApi @Inject constructor(
     ): SoundCloudStream {
         val dto = if (!numericId.isNullOrBlank()) {
             try {
-                parseTrackRequest("$API/tracks/$numericId")
+                parseTrackRequest("$apiBaseUrl/tracks/$numericId")
             } catch (e: SoundCloudException) {
                 if (e.code == 404) resolveTrack(pageUrl) else throw e
             }
@@ -172,7 +170,6 @@ class SoundCloudApi @Inject constructor(
         return stream
     }
 
-    /** id уже известен из поиска/волны — пропускаем /resolve. */
     private fun knownId(pageUrl: String): String? = idCache[pageUrl]
 
     private fun rememberId(pageUrl: String, id: String) {
@@ -181,16 +178,12 @@ class SoundCloudApi @Inject constructor(
 
     private suspend fun resolveTrack(pageUrl: String): SoundCloudTrackDto =
         resolveMutex.withLock {
-            parseTrackRequest("$API/resolve?url=${encode(pageUrl)}")
+            parseTrackRequest("$apiBaseUrl/resolve?url=${encode(pageUrl)}")
         }
 
     private suspend fun parseTrackRequest(url: String): SoundCloudTrackDto =
         SoundCloudJson.parseTrack(apiGet(url))
 
-    /**
-     * GET с client_id. На 401/403 один раз сбрасывает кэш client_id и
-     * повторяет запрос; CancellationException не перехватывается.
-     */
     private suspend fun apiGet(url: String): String = withClientId { clientId ->
         apiGetEndpoint(appendClientId(url, clientId))
     }
@@ -213,8 +206,6 @@ class SoundCloudApi @Inject constructor(
                 attempt++
                 clientIds.invalidate()
             } catch (e: SoundCloudException) {
-                // 404 на api-v2 часто означает протухший client_id, а не удалённый
-                // трек: после сброса кэша делаем одну повторную попытку.
                 if (e.code == 404 && attempt == 0) {
                     attempt++
                     clientIds.invalidate()

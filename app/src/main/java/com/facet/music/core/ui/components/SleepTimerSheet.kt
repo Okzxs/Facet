@@ -37,14 +37,6 @@ import com.facet.music.core.player.SleepTimerState
 import com.facet.music.core.player.sleepTimerRemainingMinutes
 import java.util.Date
 
-/**
- * Шторка таймера сна: пресеты 15/30/60 минут и отключение.
- *
- * Если таймер уже идёт, сверху показано время остановки и остаток минут —
- * по мотивам Riff («Sleep timer — Off, 15/30/45/60, End of track») и Dotify
- * (`player.timer.stops_at`). Стиль — как у шторки плеера: тот же ModalBottomSheet
- * и `surfaceContainerLow`.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SleepTimerSheet(
@@ -55,7 +47,6 @@ fun SleepTimerSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
-    // Время остановки — в формате локали устройства (12/24 часа решает система).
     val endsAtText = remember(state?.endsAtMillis) {
         state?.let { DateFormat.getTimeFormat(context).format(Date(it.endsAtMillis)) }
     }

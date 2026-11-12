@@ -1,6 +1,5 @@
 package com.facet.music.core.network
 
-/** Срок жизни подписанной ссылки из query-параметра expire/expires. */
 object StreamExpiry {
 
     private val EXPIRES = Regex("""[?&](?:expire|expires)=(\d+)""", RegexOption.IGNORE_CASE)

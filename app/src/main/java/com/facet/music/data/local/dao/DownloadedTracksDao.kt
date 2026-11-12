@@ -7,9 +7,6 @@ import androidx.room.Query
 import com.facet.music.data.local.entity.DownloadedTrackEntity
 import kotlinx.coroutines.flow.Flow
 
-/**
- * DAO для работы со скачанными треками (таблица downloaded_tracks).
- */
 @Dao
 interface DownloadedTracksDao {
 

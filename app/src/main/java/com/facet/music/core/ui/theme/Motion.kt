@@ -10,17 +10,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 
-/**
- * Токены движения Material 3 Expressive.
- *
- * Пространственные анимации (смещение, масштаб, форма) идут пружинами spatial,
- * эффекты (цвет, альфа) — пружинами effects или короткими tween. Кривые
- * Emphasized заменяют FastOutSlowInEasing во всех переходах приложения.
- *
- * Пружины доступны и вне @Composable (жесты, состояние свайпа) через [Motion],
- * и внутри композиции через [spatialDefault]/[effectsDefault] — последние
- * читают активную [MaterialTheme.motionScheme].
- */
 object Motion {
     val Emphasized = CubicBezierEasing(0.2f, 0f, 0f, 1f)
     val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)

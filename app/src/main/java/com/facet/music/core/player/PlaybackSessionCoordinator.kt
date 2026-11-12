@@ -25,10 +25,6 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Фоновая логика сессии, которая не должна умирать вместе с Activity:
- * история, вкусы, аналитика, refill волны и периодическое сохранение позиции.
- */
 @Singleton
 class PlaybackSessionCoordinator @Inject constructor(
     private val playerController: PlayerController,
@@ -47,14 +43,15 @@ class PlaybackSessionCoordinator @Inject constructor(
     private var tickerJob: Job? = null
     private var waveRefillJob: Job? = null
 
-    private var currentTrack: Track? = null
-    private var currentOrigin: QueueOrigin = QueueOrigin.MAIN
-    private var playedMs = 0L
-    private var lastTickAt = 0L
-    private var historyWritten = false
+    internal var currentTrack: Track? = null
+    internal var currentOrigin: QueueOrigin = QueueOrigin.MAIN
+    internal var playedMs = 0L
+    internal var lastTickAt = 0L
+    internal var historyWritten = false
     private var analyticsFired = false
-    private var wasPlaying = false
+    internal var wasPlaying = false
     private var lastSavedAt = 0L
+    internal var elapsedMs: () -> Long = { SystemClock.elapsedRealtime() }
 
     private val lifecycleObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
@@ -73,67 +70,71 @@ class PlaybackSessionCoordinator @Inject constructor(
     }
 
     private suspend fun tick() {
-        lastTickAt = SystemClock.elapsedRealtime()
+        lastTickAt = elapsedMs()
         while (scope.isActive) {
             delay(TICK_MS)
-            val state = playerController.state.value
-            val now = SystemClock.elapsedRealtime()
-            val playingNow = state.isPlaying
-            if (playingNow && wasPlaying) {
-                playedMs += (now - lastTickAt).coerceAtLeast(0L)
-            }
-            lastTickAt = now
-
-            val track = state.currentTrack
-            if (track?.id != currentTrack?.id) {
-                val previous = currentTrack
-                if (previous != null) finalizeTrack(previous, playedMs, currentOrigin)
-                currentTrack = track
-                currentOrigin = state.queueOrigin
-                playedMs = 0L
-                historyWritten = false
-                analyticsFired = false
-                if (track != null) {
-                    if (currentOrigin == QueueOrigin.WAVE ||
-                        currentOrigin == QueueOrigin.WAVE_FROM_TRACK
-                    ) {
-                        runCatching { waveRepository.recordShown(track) }
-                    }
-                    playerController.preloadNext()
-                    saveQueue()
-                }
-            }
-
-            if (track != null && !historyWritten) {
-                val fraction = if (track.durationMs > 0L) {
-                    playedMs.toFloat() / track.durationMs
-                } else {
-                    0f
-                }
-                if (playedMs >= HISTORY_MIN_MS || fraction >= 0.5f) {
-                    historyWritten = true
-                    runCatching {
-                        playHistoryRepository.addToHistory(track, playedFraction = fraction)
-                    }
-                }
-            }
-
-            if (track != null && playingNow && !analyticsFired) {
-                analyticsFired = true
-                analyticsTracker.track(AnalyticsEvents.TRACK_PLAY)
-            }
-
-            if (playingNow) {
-                maybeRefillWave(state)
-                if (now - lastSavedAt >= SAVE_INTERVAL_MS) saveQueue()
-            } else if (wasPlaying) {
-                saveQueue()
-            }
-            wasPlaying = playingNow
+            tickOnce()
         }
     }
 
-    private suspend fun finalizeTrack(track: Track, played: Long, origin: QueueOrigin) {
+    internal suspend fun tickOnce() {
+        val state = playerController.state.value
+        val now = elapsedMs()
+        val playingNow = state.isPlaying
+        if (playingNow && wasPlaying) {
+            playedMs += (now - lastTickAt).coerceAtLeast(0L)
+        }
+        lastTickAt = now
+
+        val track = state.currentTrack
+        if (track?.id != currentTrack?.id) {
+            val previous = currentTrack
+            if (previous != null) finalizeTrack(previous, playedMs, currentOrigin)
+            currentTrack = track
+            currentOrigin = state.queueOrigin
+            playedMs = 0L
+            historyWritten = false
+            analyticsFired = false
+            if (track != null) {
+                if (currentOrigin == QueueOrigin.WAVE ||
+                    currentOrigin == QueueOrigin.WAVE_FROM_TRACK
+                ) {
+                    runCatching { waveRepository.recordShown(track) }
+                }
+                playerController.preloadNext()
+                saveQueue()
+            }
+        }
+
+        if (track != null && !historyWritten) {
+            val fraction = if (track.durationMs > 0L) {
+                playedMs.toFloat() / track.durationMs
+            } else {
+                0f
+            }
+            if (playedMs >= HISTORY_MIN_MS || fraction >= 0.5f) {
+                historyWritten = true
+                runCatching {
+                    playHistoryRepository.addToHistory(track, playedFraction = fraction)
+                }
+            }
+        }
+
+        if (track != null && playingNow && !analyticsFired) {
+            analyticsFired = true
+            analyticsTracker.track(AnalyticsEvents.TRACK_PLAY)
+        }
+
+        if (playingNow) {
+            maybeRefillWave(state)
+            if (now - lastSavedAt >= SAVE_INTERVAL_MS) saveQueue()
+        } else if (wasPlaying) {
+            saveQueue()
+        }
+        wasPlaying = playingNow
+    }
+
+    internal suspend fun finalizeTrack(track: Track, played: Long, origin: QueueOrigin) {
         if (played <= 0L) return
         val context = if (origin == QueueOrigin.MAIN) {
             TasteContext.NORMAL
@@ -218,7 +219,7 @@ class PlaybackSessionCoordinator @Inject constructor(
             currentIndex = state.currentIndex.coerceIn(0, state.queue.lastIndex),
             positionMs = position,
         )
-        lastSavedAt = SystemClock.elapsedRealtime()
+        lastSavedAt = elapsedMs()
     }
 
     private companion object {

@@ -19,10 +19,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/**
- * Плейлисты на настоящем Room в памяти: проверяем маппинг entity ↔ Track,
- * уникальность пары (плейлист, трек) и каскадное удаление внешнего ключа.
- */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class PlaylistRepositoryTest {
@@ -83,7 +79,6 @@ class PlaylistRepositoryTest {
         assertEquals(track.artworkUrl, stored.artworkUrl)
         assertEquals(track.durationMs, stored.durationMs)
         assertEquals(track.transcodingUrl, stored.transcodingUrl)
-        // Поток не сохраняем: его резолвит плеер по источнику и transcodingUrl.
         assertNull(stored.streamUrl)
         assertNull(stored.genre)
     }
@@ -134,7 +129,6 @@ class PlaylistRepositoryTest {
 
         assertEquals(1, repository.observePlaylists().first().size)
         assertTrue(repository.observeTracks(first).first().isEmpty())
-        // Второй плейлист не тронут, а строка удалённого ушла каскадом.
         assertEquals(1, dao.countAllTracks())
         assertEquals(1, dao.count(second))
     }

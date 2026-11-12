@@ -38,10 +38,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * Состояние импорта по ссылке: диалог ссылки → загрузка → превью → сохранение.
- * Ошибки живут отдельным потоком, чтобы Snackbar не сбивал диалог превью.
- */
 sealed interface PlaylistImportState {
     data object Idle : PlaylistImportState
     data object Loading : PlaylistImportState
@@ -62,7 +58,6 @@ class LibraryViewModel @Inject constructor(
     playerController: PlayerController,
 ) : ViewModel() {
 
-    /** Флаги импорта: скрывают FAB и блок Spotify после первого импорта. */
     val appSettings: StateFlow<AppSettings> = settingsRepository.settings
         .stateIn(
             scope = viewModelScope,
@@ -77,7 +72,6 @@ class LibraryViewModel @Inject constructor(
             initialValue = emptyList(),
         )
 
-    /** Id играющего трека — строка в списке подсвечивается и показывает эквалайзер. */
     val currentTrackId: StateFlow<String?> = playerController.state
         .map { it.currentTrack?.id }
         .distinctUntilChanged()
@@ -87,7 +81,6 @@ class LibraryViewModel @Inject constructor(
             initialValue = null,
         )
 
-    /** Играет ли плеер сейчас: на паузе эквалайзер заменяется точками. */
     val isPlaying: StateFlow<Boolean> = playerController.state
         .map { it.isPlaying }
         .distinctUntilChanged()
@@ -97,7 +90,6 @@ class LibraryViewModel @Inject constructor(
             initialValue = false,
         )
 
-    /** Идентификаторы скачанных треков — для бейджей «офлайн». */
     val downloadedIds: StateFlow<Set<String>> = downloadRepository.observeDownloadedIds()
         .stateIn(
             scope = viewModelScope,
@@ -105,7 +97,6 @@ class LibraryViewModel @Inject constructor(
             initialValue = emptySet(),
         )
 
-    /** Сами скачанные треки — вкладка «Скачанное» в медиатеке. */
     val downloadedTracks: StateFlow<List<DownloadedTrack>> =
         downloadRepository.observeDownloadedTracks()
             .stateIn(
@@ -114,7 +105,6 @@ class LibraryViewModel @Inject constructor(
                 initialValue = emptyList(),
             )
 
-    /** Плейлисты со счётчиками — третья вкладка медиатеки. */
     val playlists: StateFlow<List<Playlist>> = playlistRepository.observePlaylists()
         .stateIn(
             scope = viewModelScope,
@@ -122,7 +112,6 @@ class LibraryViewModel @Inject constructor(
             initialValue = emptyList(),
         )
 
-    /** Состояния кнопок скачивания в списке лайков. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val downloadStates: StateFlow<Map<String, DownloadState>> = likedTracks
         .map { tracks -> tracks.map { it.id } }
@@ -137,40 +126,32 @@ class LibraryViewModel @Inject constructor(
     private val _downloadError = MutableStateFlow<String?>(null)
     val downloadError: StateFlow<String?> = _downloadError.asStateFlow()
 
-    /** Ошибка БД при снятии лайка — показывается Snackbar'ом вместо краша. */
     private val _likeError = MutableStateFlow<String?>(null)
     val likeError: StateFlow<String?> = _likeError.asStateFlow()
 
-    /** Ошибка удаления плейлиста — отдельный поток, чтобы не путать с лайком. */
     private val _playlistError = MutableStateFlow<String?>(null)
     val playlistError: StateFlow<String?> = _playlistError.asStateFlow()
 
-    /** Текущий шаг импорта по ссылке. */
     private val _importState = MutableStateFlow<PlaylistImportState>(PlaylistImportState.Idle)
     val importState: StateFlow<PlaylistImportState> = _importState.asStateFlow()
 
-    /** Причина ошибки импорта: текст подбирает UI из строковых ресурсов. */
     private val _importError = MutableStateFlow<ImportError?>(null)
     val importError: StateFlow<ImportError?> = _importError.asStateFlow()
 
-    /** Имя успешно сохранённого плейлиста — для Snackbar об успехе. */
     private val _importSuccess = MutableStateFlow<String?>(null)
     val importSuccess: StateFlow<String?> = _importSuccess.asStateFlow()
 
     private var importJob: Job? = null
 
-    /** Плейлисты Spotify вошедшего пользователя — строка импорта в медиатеке. */
     private val _spotifyPlaylists = MutableStateFlow<List<SpotifyPlaylistSummary>>(emptyList())
     val spotifyPlaylists: StateFlow<List<SpotifyPlaylistSummary>> = _spotifyPlaylists.asStateFlow()
 
     private val _spotifyLoading = MutableStateFlow(false)
     val spotifyLoading: StateFlow<Boolean> = _spotifyLoading.asStateFlow()
 
-    /** Не удалось загрузить плейлисты Spotify — показываем Snackbar. */
     private val _spotifyError = MutableStateFlow(false)
     val spotifyError: StateFlow<Boolean> = _spotifyError.asStateFlow()
 
-    /** Вошёл ли пользователь в Spotify: без входа секция скрыта. */
     val spotifyConnected: StateFlow<Boolean> = spotifyAuthRepository.authState
         .map { it.connected }
         .distinctUntilChanged()
@@ -181,7 +162,6 @@ class LibraryViewModel @Inject constructor(
         )
 
     init {
-        // Как только вход завершён, подтягиваем плейлисты пользователя.
         viewModelScope.launch {
             spotifyAuthRepository.authState.collect { state ->
                 if (state.connected) {
@@ -193,7 +173,6 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /** Ручное обновление: пользователь мог добавить плейлист в Spotify. */
     fun refreshSpotifyPlaylists() {
         if (spotifyAuthRepository.authState.value.connected) loadSpotifyPlaylists()
     }
@@ -212,9 +191,6 @@ class LibraryViewModel @Inject constructor(
         _spotifyError.value = false
     }
 
-    // ─── Импорт любимых треков Spotify ───────────────────────────────────
-
-    /** Сколько новых лайков добавлено последним импортом; null — результата нет. */
     private val _spotifyLikesImported = MutableStateFlow<Int?>(null)
     val spotifyLikesImported: StateFlow<Int?> = _spotifyLikesImported.asStateFlow()
 
@@ -224,11 +200,6 @@ class LibraryViewModel @Inject constructor(
     private val _spotifyLikesError = MutableStateFlow(false)
     val spotifyLikesError: StateFlow<Boolean> = _spotifyLikesError.asStateFlow()
 
-    /**
-     * Импорт любимых треков Spotify: тянем `/v1/me/tracks` постранично и
-     * докладываем в нашу БД только те, которых ещё нет в избранном.
-     * Без входа ничего не делаем — UI показывает подсказку и гасит кнопку.
-     */
     fun importSpotifyLikes() {
         if (_spotifyLikesLoading.value) return
         if (!spotifyAuthRepository.authState.value.connected) {
@@ -248,7 +219,6 @@ class LibraryViewModel @Inject constructor(
                         runCatching { likedTracksRepository.likeTrack(track) }
                     }
                     _spotifyLikesImported.value = fresh.size
-                    // Успешный импорт прячет чипс и подсказку «Требуется вход».
                     runCatching { settingsRepository.setSpotifyLikesImported(true) }
                     runCatching { settingsRepository.setImportCompleted(true) }
                 }
@@ -268,10 +238,6 @@ class LibraryViewModel @Inject constructor(
         _spotifyLikesError.value = false
     }
 
-    /**
-     * Импорт плейлиста Spotify по id: переиспользуем обычный разбор ссылки,
-     * чтобы превью и сохранение шли тем же путём, что и ручная вставка.
-     */
     fun importSpotifyPlaylist(id: String) {
         startImport("https://open.spotify.com/playlist/$id")
     }
@@ -307,7 +273,6 @@ class LibraryViewModel @Inject constructor(
         _playlistError.value = null
     }
 
-    /** Удаление скачанного трека: файл и запись в Room убирает репозиторий. */
     fun removeDownload(trackId: String) {
         viewModelScope.launch {
             runCatching { downloadRepository.remove(trackId) }
@@ -319,10 +284,6 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Создание пустого плейлиста из медиатеки. Имя обрезается репозиторием;
-     * ошибка БД не крашит экран — показываем Snackbar через общий поток.
-     */
     fun createPlaylist(name: String) {
         if (name.isBlank()) return
         viewModelScope.launch {
@@ -335,10 +296,6 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Удаление плейлиста: его треки уходят каскадом внешнего ключа.
-     * Сбой БД не крашит экран — показываем Snackbar.
-     */
     fun deletePlaylist(playlistId: Long) {
         viewModelScope.launch {
             runCatching { playlistRepository.deletePlaylist(playlistId) }
@@ -350,10 +307,6 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Загрузка плейлиста по ссылке: разбор и сеть делает сервис, здесь только
-     * состояния для UI. Повторный запуск отменяет предыдущую загрузку.
-     */
     fun startImport(link: String) {
         importJob?.cancel()
         _importError.value = null
@@ -371,10 +324,6 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Сохранение превью: создаём плейлист и добавляем треки по одному.
-     * Ошибка БД не крашит экран — показываем Snackbar и возвращаемся в Idle.
-     */
     fun confirmImport() {
         val playlist = (_importState.value as? PlaylistImportState.Preview)?.playlist ?: return
         _importState.value = PlaylistImportState.Saving
@@ -398,7 +347,6 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    /** Отмена на любом шаге: незавершённая загрузка тоже прекращается. */
     fun cancelImport() {
         importJob?.cancel()
         importJob = null

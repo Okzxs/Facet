@@ -3,7 +3,6 @@ package com.facet.music.core.player
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Чистая логика таймера сна: пресеты, время окончания и остаток минут. */
 class SleepTimerTest {
 
     private val minute = 60_000L
@@ -30,7 +29,6 @@ class SleepTimerTest {
         val endsAt = 30 * minute
 
         assertEquals(30, sleepTimerRemainingMinutes(endsAt, nowMillis = 0L))
-        // За 20 секунд до конца показываем «1 мин», а не «0»: таймер ещё идёт.
         assertEquals(1, sleepTimerRemainingMinutes(endsAt, endsAt - 20_000L))
         assertEquals(2, sleepTimerRemainingMinutes(endsAt, endsAt - 90_000L))
     }

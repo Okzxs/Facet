@@ -11,10 +11,6 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Мост между ExoPlayer и единым резолвером. Вызывается на потоке загрузчика,
- * поэтому здесь и только здесь допустим runBlocking с общим дедлайном.
- */
 @UnstableApi
 @Singleton
 class PlaybackDataSpecResolver @Inject constructor(

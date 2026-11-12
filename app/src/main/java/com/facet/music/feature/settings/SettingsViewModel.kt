@@ -20,10 +20,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * ViewModel экрана настроек: оформление (динамические цвета, акцент)
- * и интеграция Spotify (ключи + вход по OAuth).
- */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
@@ -38,21 +34,14 @@ class SettingsViewModel @Inject constructor(
             initialValue = AppSettings(),
         )
 
-    /** Состояние входа Spotify: имя и аватар для карточки интеграции. */
     val spotifyAuth: StateFlow<SpotifyAuthState> = spotifyAuthRepository.authState
 
-    /**
-     * URL страницы согласия. UI открывает его в браузере и сбрасывает:
-     * навигация — побочный эффект экрана, а не состояние ViewModel.
-     */
     private val _spotifyAuthUrl = MutableStateFlow<String?>(null)
     val spotifyAuthUrl: StateFlow<String?> = _spotifyAuthUrl.asStateFlow()
 
-    /** Вход не удалось даже начать (нет Client ID или сбой генерации PKCE). */
     private val _spotifyAuthError = MutableStateFlow(false)
     val spotifyAuthError: StateFlow<Boolean> = _spotifyAuthError.asStateFlow()
 
-    /** Кэш Media3: размер и число ключей, обновляется при открытии экрана. */
     private val _cacheBytes = MutableStateFlow(0L)
     val cacheBytes: StateFlow<Long> = _cacheBytes.asStateFlow()
 
@@ -70,7 +59,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Очистка кэша Media3. */
     fun clearAudioCache() {
         viewModelScope.launch(Dispatchers.IO) {
             playbackCache.clear()
@@ -78,21 +66,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Согласие на анонимную статистику. */
     fun setAnalyticsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setAnalyticsEnabled(enabled)
         }
     }
 
-    /** Продолжать воспроизведение после возврата из другого приложения. */
     fun setResumeAfterFocusLoss(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setResumeAfterFocusLoss(enabled)
         }
     }
 
-    /** Качество скачивания: 128/256/320 кбит/с. */
     fun setDownloadQuality(kbps: Int) {
         viewModelScope.launch {
             settingsRepository.setDownloadQuality(kbps)
@@ -111,11 +96,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Готовый акцент из палитры. Пишется и в legacy-поле для Android ниже 12,
-     * и в активный [AppSettings.customAccentColor] — только он перекрывает
-     * Dynamic Color на Android 12+, поэтому без второй записи кружки «не работали».
-     */
     fun setAccentColor(color: Color) {
         val argb = color.toArgb()
         viewModelScope.launch {
@@ -132,24 +112,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Язык интерфейса: "system", "ru" или "en". Activity пересоздастся сама. */
     fun setAppLanguage(language: String) {
         viewModelScope.launch {
             settingsRepository.setAppLanguage(language)
         }
     }
 
-    /** Ключи Spotify нужны только для поиска: стрим всё равно идёт через YouTube. */
     fun saveSpotifyCredentials(clientId: String, clientSecret: String) {
         viewModelScope.launch {
             settingsRepository.setSpotifyCredentials(clientId, clientSecret)
         }
     }
 
-    /**
-     * Вход Spotify: сначала сохраняем ключи (Client ID переживёт перезапуск),
-     * затем генерируем PKCE и отдаём URL для браузера.
-     */
     fun signInSpotify(clientId: String, clientSecret: String) {
         viewModelScope.launch {
             settingsRepository.setSpotifyCredentials(clientId, clientSecret)
@@ -171,12 +145,10 @@ class SettingsViewModel @Inject constructor(
         _spotifyAuthError.value = false
     }
 
-    /** Применить собственный цвет; null сбрасывает собственный акцент. */
     fun setCustomAccentColor(color: Color?) {
         val argb = color?.toArgb()
         viewModelScope.launch {
             settingsRepository.setCustomAccentColor(argb)
-            // Сброс (null) в недавние не попадает — применять нечего.
             if (argb != null) {
                 settingsRepository.addRecentAccentColor(argb)
                 settingsRepository.setAccentEnabled(true)

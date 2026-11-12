@@ -32,10 +32,6 @@ object NetworkModule {
         isLenient = true
     }
 
-    /**
-     * Общая основа: пул соединений и диспетчер делятся между API- и
-     * медиа-клиентами через newBuilder(), поэтому сокеты не удваиваются.
-     */
     @Provides
     @Singleton
     @Named(BASE_CLIENT)
@@ -48,11 +44,6 @@ object NetworkModule {
         .addInterceptor(userAgentInterceptor())
         .build()
 
-    /**
-     * JSON-API: короткие таймауты, Accept: application/json, повторы для
-     * идемпотентных GET. Заголовок Accept ставится только здесь: NewPipe
-     * и медиа-запросы не должны получать JSON вместо HTML/аудио.
-     */
     @Provides
     @Singleton
     @ApiClient
@@ -68,10 +59,6 @@ object NetworkModule {
         return builder.build()
     }
 
-    /**
-     * Медиа-клиент: аудиопоток и HLS-сегменты читаются дольше, общего
-     * дедлайна нет. Скачивание использует этот же клиент через EntryPoint.
-     */
     @Provides
     @Singleton
     @MediaClient

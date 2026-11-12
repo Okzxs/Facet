@@ -2,7 +2,6 @@ package com.facet.music.core.player
 
 import android.net.Uri
 
-/** URI элемента плейлиста: facet://track/{urlEncoded trackId}. */
 object PlaybackUri {
 
     private const val SCHEME = "facet"

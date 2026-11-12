@@ -9,19 +9,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Одноразовое намерение открыть поиск с готовым запросом и источником. */
 data class SearchIntent(
     val query: String,
     val service: ServiceType,
 )
 
-/**
- * Мост между плеером и экраном поиска.
- *
- * SharedFlow с replay = 1 нужен, потому что событие отправляется до навигации:
- * SearchViewModel может быть создан уже после клика по «Найти». После обработки
- * экран вызывает [consumeSearchIntent], чтобы запрос не повторялся при возврате.
- */
 @Singleton
 class NavigationEvents @Inject constructor() {
 
@@ -36,7 +28,6 @@ class NavigationEvents @Inject constructor() {
         _searchIntents.tryEmit(SearchIntent(query = query, service = service))
     }
 
-    /** Сбрасывает replay-кэш после того, как поиск забрал намерение. */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun consumeSearchIntent() {
         _searchIntents.resetReplayCache()

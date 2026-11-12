@@ -11,12 +11,6 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 
-/**
- * Точка доступа к графу Hilt из [DownloadTrackWorker].
- *
- * WorkManager создаёт воркер сам, поэтому зависимости берём через EntryPoint —
- * это избавляет от дополнительной зависимости androidx.hilt:hilt-work.
- */
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface DownloadWorkerEntryPoint {
@@ -27,10 +21,8 @@ interface DownloadWorkerEntryPoint {
 
     fun downloadRepository(): DownloadRepository
 
-    /** Свежий progressive-URL резолвится внутри воркера перед скачиванием. */
     fun downloadSourceResolver(): DownloadSourceResolver
 
-    /** Медиа-клиент: длинное чтение и отсутствие общего дедлайна. */
     @MediaClient
     fun mediaClient(): OkHttpClient
 

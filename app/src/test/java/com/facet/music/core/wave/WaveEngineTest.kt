@@ -3,6 +3,7 @@ package com.facet.music.core.wave
 import com.facet.music.core.text.MusicNormalizer
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -310,6 +311,149 @@ class WaveEngineTest {
         )
 
         assertTrue(result.tracks.any { it.id == "slow-1" })
+    }
+
+    @Test
+    fun `never puts more than three tracks of one seed in a row`() = runBlocking {
+        val seedA = (1..10).map { track("a-$it", "Artist A-$it") }
+        val seedB = (1..10).map { track("b-$it", "Artist B-$it") }
+        val store = FakeHistoryStore(WaveHistory())
+        val engine = engine(
+            store = store,
+            candidates = seedA.map { Candidate(it, CandidateOrigin.RELATED, "seed-a") } +
+                seedB.map { Candidate(it, CandidateOrigin.RELATED, "seed-b") },
+        )
+
+        val result = engine.nextBatch(plan, WaveSessionState(), 20)
+        val seeds = result.tracks.map { result.details[MusicNormalizer.trackKey(it.artist, it.title)]?.seedKey }
+        var run = 0
+        var prev: String? = null
+        seeds.forEach { seed ->
+            run = if (seed != null && seed == prev) run + 1 else 1
+            prev = seed
+            assertTrue("seed run=$run", run <= 3)
+        }
+    }
+
+    @Test
+    fun `artist window five keeps same artist at least five tracks apart`() = runBlocking {
+        val repeat = (1..3).map { track("rep-$it", "Repeat Artist") }
+        val others = (1..18).map { track("oth-$it", "Other Artist $it") }
+        val store = FakeHistoryStore(WaveHistory())
+        val engine = engine(
+            store = store,
+            candidates = repeat.map { Candidate(it, CandidateOrigin.RELATED, "s1") } +
+                others.map { Candidate(it, CandidateOrigin.RELATED, it.id) },
+        )
+
+        val result = engine.nextBatch(plan, WaveSessionState(), 20)
+        val positions = result.tracks.mapIndexedNotNull { idx, t ->
+            idx.takeIf { t.artist == "Repeat Artist" }
+        }
+        assertTrue(positions.size <= 2)
+        if (positions.size == 2) {
+            assertTrue("positions=${positions[0]},${positions[1]}", positions[1] - positions[0] >= 5)
+        }
+    }
+
+    @Test
+    fun `familiar tracks respect 30 day impression and 21 day play windows`() = runBlocking {
+        val core = (1..18).map { track("core-$it", "Core Artist $it") }
+        val recentShownFamiliar = track("fam-shown", "Fam Artist 1")
+        val recentPlayedFamiliar = track("fam-played", "Fam Artist 2")
+        val eligibleFamiliar = track("fam-ok", "Fam Artist 3")
+        val history = WaveHistory(
+            impressions = listOf(impression(recentShownFamiliar, now - 25 * DAY_MS)),
+            plays = listOf(
+                PlayedTrack(recentPlayedFamiliar, now - 15 * DAY_MS, 1f, false),
+                PlayedTrack(eligibleFamiliar, now - 35 * DAY_MS, 1f, false),
+            ),
+        )
+        val store = FakeHistoryStore(history)
+        val engine = engine(
+            store = store,
+            candidates = core.map { Candidate(it, CandidateOrigin.RELATED, it.id) } +
+                listOf(recentShownFamiliar, recentPlayedFamiliar, eligibleFamiliar).map {
+                    Candidate(it, CandidateOrigin.FAMILIAR, it.id)
+                },
+        )
+
+        val result = engine.nextBatch(plan.copy(history = history), WaveSessionState(), 20)
+        val ids = result.tracks.map { it.id }.toSet()
+
+        assertFalse("fam-shown" in ids)
+        assertFalse("fam-played" in ids)
+        assertTrue("fam-ok" in ids)
+    }
+
+    @Test
+    fun `familiar mood targets fifteen percent familiar and ten percent exploration`() = runBlocking {
+        val core = (1..20).map { track("core-$it", "Core $it") }
+        val tags = (1..6).map { track("tag-$it", "Tag $it") }
+        val familiar = (1..5).map { track("old-$it", "Old $it") }
+        val history = WaveHistory(plays = familiar.map { PlayedTrack(it, now - 40 * DAY_MS, 1f, false) })
+        val store = FakeHistoryStore(history)
+        val engine = engine(
+            store = store,
+            candidates = core.map { Candidate(it, CandidateOrigin.RELATED, it.id) } +
+                tags.map { Candidate(it, CandidateOrigin.TAG, it.id) } +
+                familiar.map { Candidate(it, CandidateOrigin.FAMILIAR, it.id) },
+        )
+
+        val result = engine.nextBatch(
+            plan.copy(history = history, mood = WaveMood.FAMILIAR),
+            WaveSessionState(),
+            20,
+        )
+
+        assertEquals(3, result.tracks.count { it.id.startsWith("old-") })
+        val exploration = result.tracks.count { it.id.startsWith("tag-") }
+        assertTrue("exploration=$exploration", exploration in 2..4)
+    }
+
+    @Test
+    fun `source exception or timeout does not fail wave and shortage triggers retry`() = runBlocking {
+        var calls = 0
+        val failingSource = object : CandidateSource {
+            override suspend fun candidates(plan: WaveSessionPlan, randomSeed: Long): List<Candidate> {
+                throw IllegalStateException("boom")
+            }
+        }
+        val slowSource = object : CandidateSource {
+            override suspend fun candidates(plan: WaveSessionPlan, randomSeed: Long): List<Candidate> {
+                delay(500)
+                return listOf(Candidate(track("slow", "Slow Artist"), CandidateOrigin.RELATED, "slow"))
+            }
+        }
+        val growingSource = object : CandidateSource {
+            override suspend fun candidates(plan: WaveSessionPlan, randomSeed: Long): List<Candidate> {
+                calls++
+                return if (calls == 1) {
+                    (1..4).map { Candidate(track("g1-$it", "Artist A$it"), CandidateOrigin.RELATED, "a$it") }
+                } else {
+                    (1..6).map { Candidate(track("g2-$it", "Artist B$it"), CandidateOrigin.RELATED, "b$it") }
+                }
+            }
+        }
+        val engine = WaveEngine(
+            sources = setOf(failingSource, slowSource, growingSource),
+            tasteProfileProvider = object : TasteProfileProvider {
+                override suspend fun profile(): WaveTasteProfile = profile
+            },
+            historyStore = FakeHistoryStore(WaveHistory()),
+            clock = object : Clock { override fun nowMs(): Long = now },
+            randomProvider = object : RandomProvider {
+                override fun newSeed(): Long = 7L
+                override fun create(seed: Long): Random = Random(seed)
+            },
+            config = WaveConfig(candidateTimeoutMs = 50L),
+        )
+
+        val result = engine.nextBatch(plan, WaveSessionState(), 10)
+
+        assertEquals(2, calls)
+        assertEquals(10, result.tracks.size)
+        assertFalse(result.isShort)
     }
 
     private fun engine(

@@ -4,10 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Разбор ссылок на плейлисты: каждый сервис, query-параметры, мусор и пустая строка.
- * Тесты чистые JVM — парсер не трогает Android и сеть.
- */
 class PlaylistLinkParserTest {
 
     private fun success(link: String): PlaylistLinkParseResult.Success =

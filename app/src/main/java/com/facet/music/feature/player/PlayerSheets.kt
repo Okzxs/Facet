@@ -145,10 +145,6 @@ import kotlinx.coroutines.launch
 import java.util.Date
 import kotlin.math.abs
 
-/**
- * Детюн: выбор строя. 440 Гц — стандарт, остальные сдвигают питч
- * через PlaybackParameters, скорость не меняется.
- */
 @Composable
 internal fun TuningDialog(
     selectedHz: Int,
@@ -200,7 +196,6 @@ internal fun TuningDialog(
     )
 }
 
-/** Вариации трека: скорость и питч одной настройкой. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun VariationsSheet(
@@ -251,7 +246,6 @@ internal fun VariationsSheet(
     }
 }
 
-/** Строковый ресурс названия вариации. */
 internal fun variationLabelRes(variation: PlaybackVariation): Int = when (variation) {
     PlaybackVariation.NORMAL -> R.string.variation_normal
     PlaybackVariation.SPEED_UP -> R.string.variation_speed_up

@@ -26,15 +26,6 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Обёртка над WorkManager для UI: ставит задачу скачивания и объединяет
- * состояние Room и WorkInfo.
- *
- * Источник и свежий URL выбирает сам [DownloadTrackWorker]: подписанные
- * ссылки стриминговых сервисов быстро протухают, поэтому резолв перед
- * постановкой задачи бессмысленен. В WorkData кладём только идентичность
- * трека, а ошибки источника приходят через WorkInfo.
- */
 @Singleton
 class DownloadManager @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -43,20 +34,8 @@ class DownloadManager @Inject constructor(
 
     private val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
 
-    /**
-     * Время последнего клика по кнопке скачивания для защиты от двойного тапа.
-     * `download()` — suspend и вызывается из разных ViewModelScope, поэтому карта
-     * обязана быть потокобезопасной; устаревшие записи вычищаются при каждом тапе.
-     */
     private val lastTapAt = ConcurrentHashMap<String, Long>()
 
-    /**
-     * Ставит трек в очередь на скачивание.
-     *
-     * Резолв источника выполняется в воркере, поэтому здесь нет сетевых
-     * запросов: пользователь сразу видит прогресс, а ошибка появляется
-     * в виде FAILED WorkInfo.
-     */
     suspend fun download(track: Track): Result<Unit> {
         val now = SystemClock.elapsedRealtime()
         lastTapAt.entries.removeAll { now - it.value > TAP_HISTORY_TTL_MS }
@@ -67,8 +46,6 @@ class DownloadManager @Inject constructor(
         }
         lastTapAt[track.id] = now
 
-        // Активную задачу не перезапускаем: REPLACE оборвал бы RUNNING-воркер
-        // и потерял прогресс вместе с недокачанным `.part`.
         if (observeState(track.id).first() is DownloadState.InProgress) {
             Log.d(TAG, "download(): скачивание уже идёт для ${track.id}")
             return Result.success(Unit)
@@ -85,31 +62,16 @@ class DownloadManager @Inject constructor(
         }
     }
 
-    /**
-     * Отменяет активное скачивание.
-     *
-     * Отмена WorkManager прерывает корутину воркера, а вместе с ней —
-     * резолв и активный HTTP-запрос. Недокачанный `.part` удаляет
-     * [DownloadEngine]. Готовый файл и запись в Room не трогаем.
-     */
     fun cancel(trackId: String) {
         Log.d(TAG, "cancel(): отменяем задачу скачивания $trackId")
         workManager.cancelUniqueWork(uniqueWorkName(trackId))
     }
 
-    /**
-     * Наблюдает состояние скачивания конкретного трека:
-     * запись в Room + статус и прогресс задачи WorkManager.
-     */
     fun observeState(trackId: String): Flow<DownloadState> =
         observeStates(listOf(trackId)).map { states ->
             states[trackId] ?: DownloadState.NotDownloaded
         }
 
-    /**
-     * Состояния сразу для списка треков — один WorkManager-запрос на экран.
-     * Нужно карточкам «Для вас», «Недавнего», «Воспоминаний» и медиатеки.
-     */
     fun observeStates(trackIds: Collection<String>): Flow<Map<String, DownloadState>> {
         val ids = trackIds.distinct()
         if (ids.isEmpty()) return flowOf(emptyMap())
@@ -142,7 +104,6 @@ class DownloadManager @Inject constructor(
     }
 
     private fun enqueue(track: Track) {
-        // Тег попытки позволяет выбрать самую свежую задачу из цепочки unique work.
         val attemptTag = ATTEMPT_TAG_PREFIX + System.currentTimeMillis()
         val request = OneTimeWorkRequestBuilder<DownloadTrackWorker>()
             .setInputData(
@@ -162,8 +123,6 @@ class DownloadManager @Inject constructor(
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build(),
             )
-            // Воркер возвращает Result.retry() на транзиентных сбоях — без критерия
-            // повтора WorkManager перезапустил бы задачу немедленно и по кругу.
             .setBackoffCriteria(
                 BackoffPolicy.EXPONENTIAL,
                 RETRY_BACKOFF_SECONDS,
@@ -185,11 +144,6 @@ class DownloadManager @Inject constructor(
         )
     }
 
-    /**
-     * Выбирает последнюю попытку по тегу `download-at:<millis>`.
-     * Порядок списка из WorkManager не гарантирован, поэтому опираться
-     * на `lastOrNull()` нельзя.
-     */
     private fun latestWorkInfo(workInfos: List<WorkInfo>): WorkInfo? {
         return workInfos.maxByOrNull { info ->
             info.tags.firstOrNull { it.startsWith(ATTEMPT_TAG_PREFIX) }
@@ -212,22 +166,16 @@ class DownloadManager @Inject constructor(
     companion object {
         private const val TAG = "DownloadFlow"
 
-        /** Тег всех задач скачивания — для диагностики и массовой отмены. */
         const val TAG_DOWNLOAD = "download"
 
-        /** Префикс тега трека: по нему список экрана находит свой WorkInfo. */
         const val TRACK_TAG_PREFIX = "download-track:"
 
-        /** Префикс тега попытки: по нему выбирается самая свежая задача. */
         const val ATTEMPT_TAG_PREFIX = "download-at:"
 
-        /** Защита от двойного тапа по кнопке скачивания. */
         private const val TAP_DEBOUNCE_MS = 700L
 
-        /** Срок жизни записи о тапе: карта не должна расти всю сессию. */
         private const val TAP_HISTORY_TTL_MS = 60_000L
 
-        /** Начальная задержка экспоненциального повтора воркера. */
         private const val RETRY_BACKOFF_SECONDS = 30L
 
         private val ACTIVE_WORK_STATES = setOf(
@@ -236,15 +184,6 @@ class DownloadManager @Inject constructor(
             WorkInfo.State.RUNNING,
         )
 
-        /**
-         * Чистая функция сопоставления состояния для UI.
-         *
-         * Приоритет:
-         * 1. запись в Room — трек точно доступен офлайн;
-         * 2. терминальный WorkInfo (SUCCEEDED/CANCELLED/FAILED);
-         * 3. активный WorkInfo — прогресс из `setProgress()` воркера;
-         * 4. без активной задачи считаем, что трек не скачан.
-         */
         internal fun resolveDownloadState(
             isDownloaded: Boolean,
             workState: WorkInfo.State?,

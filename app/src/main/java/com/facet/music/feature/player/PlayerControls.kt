@@ -61,8 +61,6 @@ internal fun PlayerProgressSection(
     val latestSeek by rememberUpdatedState(onSeek)
 
     fun emit() {
-        // На паузе clock заморожен на момент ухода в паузу, а seek двигает
-        // плеер напрямую — читаем сырую позицию, иначе seek не виден в UI.
         val position = if (latestPlaying) latestClock() else latestRawPosition()
         playbackPositionMs = position
         val duration = latestDuration
@@ -72,7 +70,6 @@ internal fun PlayerProgressSection(
 
     LaunchedEffect(trackId, isPlaying) {
         if (!isPlaying) {
-            // Пауза: позиция меняется только seek'ом — дешёвый опрос без кадров.
             while (true) {
                 emit()
                 delay(PROGRESS_PAUSED_POLL_MS)
@@ -191,5 +188,4 @@ internal fun formatMs(ms: Long): String {
 
 internal const val PROGRESS_EMIT_INTERVAL_MS = 100L
 
-/** Опрос позиции на паузе: позиция меняется только seek'ом, кадры не нужны. */
 internal const val PROGRESS_PAUSED_POLL_MS = 250L

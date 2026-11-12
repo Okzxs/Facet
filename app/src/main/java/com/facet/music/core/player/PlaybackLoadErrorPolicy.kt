@@ -12,11 +12,6 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * При 401/403/404/410 ссылка считается протухшей: сбрасываем in-memory поток
- * и закэшированный ответ, ResolvingDataSource резолвит заново, позиция
- * воспроизведения сохраняется. Не больше двух таких повторов на трек.
- */
 @UnstableApi
 @Singleton
 class PlaybackLoadErrorPolicy @Inject constructor(
@@ -53,7 +48,6 @@ class PlaybackLoadErrorPolicy @Inject constructor(
     }
 }
 
-/** Ключ кэша: id трека для элемента плейлиста, стабильный путь для HLS-сегментов. */
 @UnstableApi
 object PlaybackCacheKeyFactory : CacheKeyFactory {
     override fun buildCacheKey(dataSpec: DataSpec): String =

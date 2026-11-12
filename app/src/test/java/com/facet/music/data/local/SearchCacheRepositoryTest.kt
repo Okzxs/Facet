@@ -86,7 +86,6 @@ class SearchCacheRepositoryTest {
         )
 
         assertNotNull(repository.get("muse", Source.SPOTIFY, ttlMs = 60_000L))
-        // С этим TTL запись уже просрочена и должна исчезнуть.
         assertNull(repository.get("muse", Source.SPOTIFY, ttlMs = 1_000L))
     }
 

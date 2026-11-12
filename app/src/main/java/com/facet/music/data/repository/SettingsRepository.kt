@@ -5,156 +5,87 @@ import com.facet.music.core.service.ServiceType
 import com.facet.music.core.wave.WaveMood
 import kotlinx.coroutines.flow.Flow
 
-/**
- * Режим темы приложения.
- */
 enum class ThemeMode {
-    /** Всегда светлая. */
     LIGHT,
 
-    /** Всегда тёмная. */
     DARK,
 
-    /** Следует системной теме. */
     SYSTEM,
 }
 
-/**
- * Пользовательские настройки оформления.
- *
- * @param dynamicCoverColors динамические цвета обложки (палитра плеера от artwork);
- * @param accentColorArgb выбранный вручную акцентный цвет (ARGB), применяется на Android ниже 12;
- * @param themeMode режим темы: светлая/тёмная/системная;
- * @param customAccentColor собственный акцентный цвет пользователя (ARGB) — работает
- * на всех версиях Android и имеет приоритет над Dynamic Color; null — не задан;
- * @param recentAccentColors недавно применённые акцентные цвета (ARGB), свежие в
- * начале списка, без дубликатов, не больше [AppSettings.MAX_RECENT_ACCENTS];
- * @param spotifyClientId Client ID приложения Spotify (нужен только для поиска);
- * @param spotifyClientSecret Client Secret приложения Spotify;
- * @param appLanguage язык интерфейса: `system` — как в системе, иначе `ru`/`en`.
- */
 data class AppSettings(
     val dynamicCoverColors: Boolean = false,
     val accentColorArgb: Int = DEFAULT_ACCENT_ARGB,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val customAccentColor: Int? = null,
     val recentAccentColors: List<Int> = emptyList(),
-    /** Включён ли собственный акцентный цвет; выключен — цвета берутся с обоев. */
     val accentEnabled: Boolean = false,
-    /** Ключ Spotify для поиска метаданных (стрим всё равно идёт через YouTube). */
     val spotifyClientId: String = "",
-    /** Секрет Spotify; хранится в обычных SharedPreferences, как остальные настройки. */
     val spotifyClientSecret: String = "",
-    /** Язык интерфейса: [AppSettings.LANGUAGE_SYSTEM], `ru` или `en`. */
     val appLanguage: String = LANGUAGE_SYSTEM,
-    /** Показан ли онбординг первого запуска; false — показываем при старте. */
     val onboardingCompleted: Boolean = false,
-    /** Был ли успешный импорт профиля/списка/лайков: FAB больше не нужен. */
     val importCompleted: Boolean = false,
-    /** Импортированы ли любимые Spotify: блок импорта в медиатеке скрыт. */
     val spotifyLikesImported: Boolean = false,
-    /** Желаемое качество скачивания, кбит/с: 128, 256 или 320. */
     val downloadQualityKbps: Int = 320,
-    /** client_id приложения SoundCloud: нужен только для импорта лайков. */
     val soundcloudClientId: String = "",
-    /** Согласие на анонимную статистику; по умолчанию выключено. */
     val analyticsEnabled: Boolean = false,
-    /** Продолжать после потери аудиофокуса (TikTok/звонок), когда пользователь вернулся. */
     val resumeAfterFocusLoss: Boolean = true,
-    /** Выбранные источники поиска: по умолчанию все. */
     val searchSources: Set<ServiceType> = ServiceType.entries.toSet(),
-    /** Настроение волны: знакомое / баланс / открытия. */
     val waveMood: WaveMood = WaveMood.BALANCE,
 ) {
-    /** Настроены ли ключи Spotify: нужны оба поля, иначе поиск не работает. */
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
 
     companion object {
-        /** Базовый коралловый — совпадает с fallback-палитрой приложения. */
         const val DEFAULT_ACCENT_ARGB: Int = 0xFFA63A2B.toInt()
 
-        /** Сколько недавних цветов держим в настройках и показываем в UI. */
         const val MAX_RECENT_ACCENTS: Int = 5
 
-        /** «Как в системе» — значение языка по умолчанию. */
         const val LANGUAGE_SYSTEM: String = AppLocale.LANGUAGE_SYSTEM
 
-        /** Поддерживаемые принудительные языки интерфейса. */
         val SUPPORTED_LANGUAGES = AppLocale.supportedLanguages
     }
 }
 
-/**
- * Репозиторий настроек приложения (SharedPreferences).
- */
 interface SettingsRepository {
 
-    /** Реактивный поток текущих настроек. */
     val settings: Flow<AppSettings>
 
-    /** Включить/выключить динамические цвета обложки. */
     suspend fun setDynamicCoverColors(enabled: Boolean)
 
-    /** Сохранить акцентный цвет (ARGB). */
     suspend fun setAccentColorArgb(argb: Int)
 
-    /** Сохранить режим темы. */
     suspend fun setThemeMode(mode: ThemeMode)
 
-    /** Сохранить собственный акцентный цвет; null сбрасывает выбор. */
     suspend fun setCustomAccentColor(argb: Int?)
 
-    /** Включить/выключить собственный акцент; выключенный — цвета обоев. */
     suspend fun setAccentEnabled(enabled: Boolean)
 
-    /**
-     * Добавить цвет в недавние акценты: свежий уходит в начало (LIFO),
-     * дубликаты убираются, список обрезается до [AppSettings.MAX_RECENT_ACCENTS].
-     */
     suspend fun addRecentAccentColor(argb: Int)
 
-    /**
-     * Сохранить ключи Spotify (Client Credentials Flow для поиска).
-     * Пустые строки означают «интеграция не настроена».
-     */
     suspend fun setSpotifyCredentials(clientId: String, secret: String)
 
-    /**
-     * Сохранить язык интерфейса: `system` — как в системе, иначе `ru`/`en`.
-     * Применяется в `MainActivity` пересозданием Activity.
-     */
     suspend fun setAppLanguage(language: String)
 
-    /** Отметить онбординг пройденным, чтобы не показывать его снова. */
     suspend fun setOnboardingCompleted(completed: Boolean)
 
-    /** Запомнить, что импорт уже был: FAB «Импорт профиля или списка» скрывается. */
     suspend fun setImportCompleted(completed: Boolean)
 
-    /** Запомнить импорт любимых Spotify: блок с подсказкой больше не показываем. */
     suspend fun setSpotifyLikesImported(imported: Boolean)
 
-    /** Сохранить желаемое качество скачивания (128/256/320 кбит/с). */
     suspend fun setDownloadQuality(kbps: Int)
 
-    /** Сохранить client_id SoundCloud для импорта лайков. */
     suspend fun setSoundCloudClientId(clientId: String)
 
-    /** Включить/выключить анонимную статистику. */
     suspend fun setAnalyticsEnabled(enabled: Boolean)
 
-    /** Продолжать воспроизведение после возврата из другого приложения. */
     suspend fun setResumeAfterFocusLoss(enabled: Boolean)
 
-    /** Сохранить набор источников поиска; пустой набор трактуется как «все». */
     suspend fun setSearchSources(sources: Set<ServiceType>)
 
-    /** Сохранить настроение волны. */
     suspend fun setWaveMood(mood: WaveMood)
 
     companion object {
-        /** Допустимые варианты качества скачивания. */
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)
     }
 }

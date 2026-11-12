@@ -18,13 +18,6 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Глобальный монитор доступности музыкальных сервисов.
- *
- * Проверка ленивая: при открытии поиска/панели статусов и не чаще раза
- * в 10 минут. Это лёгкий HEAD, а не полноценный поиск. Состояние живёт
- * в Singleton и переживает пересоздание ViewModel/экранов.
- */
 @Singleton
 class ServiceStatusManager @Inject constructor(
     private val sourceRegistry: PlayableSourceRegistry,
@@ -33,7 +26,6 @@ class ServiceStatusManager @Inject constructor(
 
     private val tag = "ServiceStatus"
 
-    /** Отдельный scope: проверки не должны зависеть от UI. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val checkMutex = Mutex()
@@ -44,16 +36,11 @@ class ServiceStatusManager @Inject constructor(
     @Volatile
     private var lastCheckAtMs: Long = 0L
 
-    // Пока первая проверка не завершилась, показываем спиннер, а не ложную ошибку.
     private val _statuses = MutableStateFlow(
         ServiceType.entries.associateWith { ServiceHealth(isChecking = true) },
     )
     val statuses: StateFlow<Map<ServiceType, ServiceHealth>> = _statuses.asStateFlow()
 
-    /**
-     * Вызывается при открытии поиска или панели статусов. Повторный запуск
-     * в течение 10 минут ничего не делает.
-     */
     @Synchronized
     fun ensureFresh() {
         if (checkJob?.isActive == true) return
@@ -61,17 +48,12 @@ class ServiceStatusManager @Inject constructor(
         checkJob = scope.launch { runChecks() }
     }
 
-    /** Принудительное обновление из UI: отменяет текущую проверку. */
     @Synchronized
     fun refreshStatus() {
         checkJob?.cancel()
         checkJob = scope.launch { runChecks() }
     }
 
-    /**
-     * Успешный поиск — тоже доказательство, что сервис жив.
-     * Не перебиваем статус, если прямо сейчас идёт плановая проверка.
-     */
     fun markAvailable(type: ServiceType) {
         _statuses.update { current ->
             val health = current[type] ?: return@update current
@@ -83,7 +65,6 @@ class ServiceStatusManager @Inject constructor(
         }
     }
 
-    /** Видна тестам; в приложении вызывается через ensureFresh/refreshStatus. */
     internal suspend fun runChecks() {
         checkMutex.withLock {
             lastCheckAtMs = System.currentTimeMillis()

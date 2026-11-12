@@ -11,8 +11,6 @@ val lastFmApiKey: String = providers.gradleProperty("LASTFM_API_KEY")
     .orElse(providers.environmentVariable("LASTFM_API_KEY"))
     .getOrElse(localLastFmApiKey)
 
-// Параметры релизной подписи. Файл и сам keystore в .gitignore:
-// их нельзя коммитить, но без них release-сборка остаётся неподписанной.
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) {
@@ -37,10 +35,8 @@ android {
         applicationId = "com.facet.music"
         minSdk = 26
         targetSdk = 35
-        // 5 — обновление 01.11.2026: иконка вписана в safe zone без обрезки.
-        // versionName остаётся 1.0.0.
-        versionCode = 5
-        versionName = "1.0.0"
+        versionCode = 6
+        versionName = "1.1.0"
 
         val escapedLastFmKey = lastFmApiKey
             .replace("\\", "\\\\")
@@ -64,8 +60,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Подписываем только когда есть keystore: на чистой машине
-            // release-сборка останется неподписанной, но не упадёт.
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -95,7 +89,6 @@ ksp {
 }
 
 dependencies {
-    // Compose BOM
     implementation(platform("androidx.compose:compose-bom:2024.11.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -104,30 +97,24 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // AndroidX Core
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
 
-    // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.4")
 
-    // Hilt
     implementation("com.google.dagger:hilt-android:2.52")
     ksp("com.google.dagger:hilt-android-compiler:2.52")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
-    // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    // Кэш client_id SoundCloud с TTL
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // Media3 (ExoPlayer + офлайн-скачивание и кэш HLS-потоков)
     implementation("androidx.media3:media3-exoplayer:1.9.4")
     implementation("androidx.media3:media3-exoplayer-hls:1.9.4")
     implementation("androidx.media3:media3-datasource:1.9.4")
@@ -136,44 +123,35 @@ dependencies {
     implementation("androidx.media3:media3-session:1.9.4")
     implementation("androidx.media3:media3-ui:1.9.4")
 
-    // Retrofit + OkHttp + Serialization
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
 
-    // Palette
     implementation("androidx.palette:palette-ktx:1.0.0")
 
-    // HCT-тональные палитры Material 3 (замена HSL-генерации акцента)
     implementation("com.materialkolor:material-kolor:2.0.2")
 
-    // Coil (images)
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
 
-    // Геопозиция для «Воспоминаний»
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
-    // Шифрование секретов (токены Spotify, client_secret): Tink + Android Keystore
     implementation("com.google.crypto.tink:tink-android:1.15.0")
 
-    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    // WorkManager (фоновое скачивание треков)
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
-    // NewPipe Extractor (SoundCloud и другие сервисы без официального API)
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
 
-    // JVM-тесты (без эмулятора)
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("androidx.test:core-ktx:1.6.1")
     testImplementation("androidx.room:room-testing:2.6.1")
 }

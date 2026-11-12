@@ -21,11 +21,6 @@ import javax.inject.Inject
 @HiltAndroidApp
 class FacetApp : Application() {
 
-    /**
-     * NewPipe требует глобальную инициализацию перед первым использованием.
-     * Делаем это в Application.onCreate() сразу после того, как Hilt
-     * внедрит зависимости (inject происходит внутри super.onCreate()).
-     */
     @Inject
     lateinit var newPipeDownloader: NewPipeDownloader
 
@@ -42,7 +37,7 @@ class FacetApp : Application() {
     private var warmedClientId = false
 
     override fun onCreate() {
-        super.onCreate() // Hilt инжектит поля здесь
+        super.onCreate()
         enableStrictMode()
         NewPipe.init(newPipeDownloader)
         applicationScope.launch { runCatching { playbackCache.warmUp() } }
@@ -50,10 +45,6 @@ class FacetApp : Application() {
         warmUpSoundCloudAfterFirstFrame()
     }
 
-    /**
-     * client_id SoundCloud нужен только для api-v2; добываем его в фоне
-     * после первого кадра, чтобы не задерживать холодный старт.
-     */
     private fun warmUpSoundCloudAfterFirstFrame() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
@@ -80,17 +71,11 @@ class FacetApp : Application() {
         )
     }
 
-    /**
-     * Старый AudioCacheWorker удалён: снимаем оставшиеся задачи и стираем
-     * каталог прошлой версии. Media3 SimpleCache живёт отдельно.
-     */
     private fun cleanLegacyAudioCache() {
         applicationScope.launch {
             runCatching { WorkManager.getInstance(this@FacetApp).cancelAllWorkByTag(LEGACY_TAG) }
             val legacy = File(cacheDir, LEGACY_TAG)
             if (legacy.exists()) runCatching { legacy.deleteRecursively() }
-            // Кэш фазы 3 хранил поток под ключом трека без MIME; после перехода
-            // на выбор транскодингов старые файлы могут не совпасть по формату.
             val legacyMedia = File(cacheDir, LEGACY_MEDIA_CACHE)
             if (legacyMedia.exists()) runCatching { legacyMedia.deleteRecursively() }
         }
