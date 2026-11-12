@@ -750,7 +750,15 @@ fun PlayerScreen(
                         isPlaying = playerState.isPlaying,
                         playbackClock = playbackClock,
                         onNext = { viewModel.playNext() },
-                        onPrevious = { viewModel.playPrevious(force = true) },
+                        onPrevious = {
+                            // Spotify-правило: трек проигран дольше 15 с — свайп назад
+                            // перематывает его в начало, иначе переключает на предыдущий.
+                            if (viewModel.currentPositionMs() > PREVIOUS_REWIND_MS) {
+                                viewModel.seekToMs(0)
+                            } else {
+                                viewModel.playPrevious(force = true)
+                            }
+                        },
                         previousArtworkUrl = playerState.queue.getOrNull(playerState.currentIndex - 1)?.artworkUrl,
                         nextArtworkUrl = playerState.queue.getOrNull(playerState.currentIndex + 1)?.artworkUrl,
                         onArtworkBoundsChanged = { artworkBounds.value = it },

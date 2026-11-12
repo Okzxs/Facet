@@ -27,7 +27,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -153,13 +152,16 @@ import kotlin.math.abs
  */
 internal const val PLAYER_LAYOUT_VARIANT = 1
 
-/** Свайп по обложке: порог переключения трека — 30% ширины, скорость — 1000 px/s. */
+/** Свайп по обложке: порог переключения трека — 30% высоты, скорость — 1000 px/s. */
 internal const val SWITCH_SHARE = 0.30f
 
 internal const val SWITCH_VELOCITY_PX_S = 1000f
 
-/** Доля ширины, после которой показывается HUD направления переключения. */
+/** Доля высоты, после которой показывается HUD направления переключения. */
 internal const val SWIPE_PREVIEW_SHARE = 0.15f
+
+/** После стольких миллисекунд прослушивания свайп «назад» перематывает трек в начало. */
+internal const val PREVIOUS_REWIND_MS = 15_000L
 
 /** Параметры компоновки для конкретного варианта. */
 private data class HeroStyle(
@@ -232,13 +234,15 @@ internal fun ExpressiveHeroZone(
         TrackDisplay(trackKey, title, artist, artworkUrl)
     }
 
-    // Переключение трека горизонтальным свайпом с прямой манипуляцией:
-    // обложка едет за пальцем, соседи выезжают по краям, порог — 30% ширины
+    // Переключение трека вертикальным свайпом с прямой манипуляцией:
+    // обложка едет за пальцем, соседи выезжают сверху/снизу, порог — 30% высоты
     // или скорость 1000 px/s, отпускание — пружина spatial.
+    // Вверх — следующий трек, вниз — предыдущий (с правилом 15 секунд на стороне
+    // колбэка: прослушанный трек перематывается в начало, свежий — переключается).
     val haptics = LocalHapticFeedback.current
     val heroScope = rememberCoroutineScope()
     var swipeDirection by remember(trackKey) { mutableIntStateOf(0) }
-    var dragX by remember { mutableFloatStateOf(0f) }
+    var dragY by remember { mutableFloatStateOf(0f) }
     val swipeVelocityTracker = remember { VelocityTracker() }
     var dragSettleJob by remember { mutableStateOf<Job?>(null) }
 
@@ -311,23 +315,23 @@ internal fun ExpressiveHeroZone(
                                         }
                                     }
                                     .pointerInput(trackKey) {
-                                        detectHorizontalDragGestures(
+                                        detectVerticalDragGestures(
                                             onDragStart = {
                                                 dragSettleJob?.cancel()
                                                 swipeVelocityTracker.resetTracking()
                                             },
-                                            onHorizontalDrag = { change, dragAmount ->
+                                            onVerticalDrag = { change, dragAmount ->
                                                 change.consume()
                                                 swipeVelocityTracker.addPosition(
                                                     change.uptimeMillis,
                                                     change.position,
                                                 )
-                                                val limit = size.width.toFloat()
-                                                dragX = (dragX + dragAmount).coerceIn(-limit, limit)
+                                                val limit = size.height.toFloat()
+                                                dragY = (dragY + dragAmount).coerceIn(-limit, limit)
                                                 val preview = limit * SWIPE_PREVIEW_SHARE
                                                 val direction = when {
-                                                    dragX <= -preview -> -1
-                                                    dragX >= preview -> 1
+                                                    dragY >= preview -> 1
+                                                    dragY <= -preview -> -1
                                                     else -> 0
                                                 }
                                                 if (direction != swipeDirection) {
@@ -340,29 +344,29 @@ internal fun ExpressiveHeroZone(
                                                 }
                                             },
                                             onDragEnd = {
-                                                val velocityX = swipeVelocityTracker.calculateVelocity().x
-                                                val width = size.width.toFloat()
-                                                val passed = abs(dragX) > width * SWITCH_SHARE ||
-                                                    abs(velocityX) > SWITCH_VELOCITY_PX_S
-                                                val goingNext = dragX < 0f || velocityX < 0f
+                                                val velocityY = swipeVelocityTracker.calculateVelocity().y
+                                                val height = size.height.toFloat()
+                                                val passed = abs(dragY) > height * SWITCH_SHARE ||
+                                                    abs(velocityY) > SWITCH_VELOCITY_PX_S
+                                                val goingNext = dragY < 0f || velocityY < 0f
                                                 dragSettleJob = heroScope.launch {
                                                     if (passed) {
                                                         haptics.performHapticFeedback(
                                                             HapticFeedbackType.TextHandleMove,
                                                         )
                                                         animate(
-                                                            initialValue = dragX,
-                                                            targetValue = if (goingNext) -width else width,
+                                                            initialValue = dragY,
+                                                            targetValue = if (goingNext) -height else height,
                                                             animationSpec = Motion.spatialFast(),
-                                                        ) { value, _ -> dragX = value }
+                                                        ) { value, _ -> dragY = value }
                                                         if (goingNext) onNext() else onPrevious()
-                                                        dragX = 0f
+                                                        dragY = 0f
                                                     } else {
                                                         animate(
-                                                            initialValue = dragX,
+                                                            initialValue = dragY,
                                                             targetValue = 0f,
                                                             animationSpec = Motion.spatialDefault(),
-                                                        ) { value, _ -> dragX = value }
+                                                        ) { value, _ -> dragY = value }
                                                     }
                                                     swipeDirection = 0
                                                 }
@@ -370,10 +374,10 @@ internal fun ExpressiveHeroZone(
                                             onDragCancel = {
                                                 dragSettleJob = heroScope.launch {
                                                     animate(
-                                                        initialValue = dragX,
+                                                        initialValue = dragY,
                                                         targetValue = 0f,
                                                         animationSpec = Motion.spatialDefault(),
-                                                    ) { value, _ -> dragX = value }
+                                                    ) { value, _ -> dragY = value }
                                                     swipeDirection = 0
                                                 }
                                             },
@@ -383,14 +387,14 @@ internal fun ExpressiveHeroZone(
                                 DisposableEffect(trackKey) {
                                     onDispose { onArtworkBoundsChanged(null) }
                                 }
-                                // Соседний трек справа (следующий): выезжает по краю за пальцем.
+                                // Соседний трек снизу (следующий): выезжает за пальцем вверх.
                                 if (nextArtworkUrl != null) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .graphicsLayer {
-                                                translationX = dragX + this.size.width
-                                                alpha = if (dragX < -1f) 1f else 0f
+                                                translationY = dragY + this.size.height
+                                                alpha = if (dragY < -1f) 1f else 0f
                                             },
                                     ) {
                                         Surface(
@@ -408,14 +412,14 @@ internal fun ExpressiveHeroZone(
                                         }
                                     }
                                 }
-                                // Соседний трек слева (предыдущий).
+                                // Соседний трек сверху (предыдущий).
                                 if (previousArtworkUrl != null) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .graphicsLayer {
-                                                translationX = dragX - this.size.width
-                                                alpha = if (dragX > 1f) 1f else 0f
+                                                translationY = dragY - this.size.height
+                                                alpha = if (dragY > 1f) 1f else 0f
                                             },
                                     ) {
                                         Surface(
@@ -436,7 +440,7 @@ internal fun ExpressiveHeroZone(
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .graphicsLayer { translationX = dragX }
+                                        .graphicsLayer { translationY = dragY }
                                         // Морф в мини-плеер — только на актуальном треке:
                                         // уходящий кадр не должен дублировать shared-element.
                                         .then(if (state.key == trackKey) coverModifier else Modifier),
