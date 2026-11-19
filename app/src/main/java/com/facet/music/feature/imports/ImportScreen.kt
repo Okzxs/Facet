@@ -261,32 +261,39 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                     ) {
                         Column {
                             Spacer(Modifier.height(12.dp))
-                            Text("${state.likesPreview.size} likes · ${state.selectedLikeIds.size} selected", style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.import_likes_count_selected, state.likesPreview.size, state.selectedLikeIds.size), style = MaterialTheme.typography.titleSmall)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 LikesSourceFilter.entries.forEach { filter ->
                                     FilterChip(
                                         selected = state.likesSourceFilter == filter,
                                         onClick = { viewModel.setLikesSourceFilter(filter) },
-                                        label = { Text(when (filter) { LikesSourceFilter.ALL -> "Все"; LikesSourceFilter.SOUNDCLOUD -> "SoundCloud"; LikesSourceFilter.YOUTUBE -> "YouTube" }) },
+                                        label = { Text(when (filter) { LikesSourceFilter.ALL -> stringResource(R.string.import_likes_all); LikesSourceFilter.SOUNDCLOUD -> "SoundCloud"; LikesSourceFilter.YOUTUBE -> "YouTube" }) },
                                     )
                                 }
                             }
-                            LikesSection("SoundCloud", state.likesPreview.size, state.selectedLikeIds.size) {
+                            LikesSection("SoundCloud", if (state.likesSourceFilter == LikesSourceFilter.YOUTUBE) 0 else state.likesPreview.size, if (state.likesSourceFilter == LikesSourceFilter.YOUTUBE) 0 else state.selectedLikeIds.size) {
                                 if (state.likesSourceFilter != LikesSourceFilter.YOUTUBE) {
-                                    state.likesPreview.take(PREVIEW_TRACK_COUNT).forEach { track ->
+                                    state.likesPreview.forEach { track ->
                                         LikesTrackRow(track, "SC", track.id in state.selectedLikeIds) { viewModel.toggleLike(track.id) }
                                     }
                                 }
                             }
-                            LikesSection("YouTube fallback", 0, 0) {
-                                if (!state.fallbackChecked) {
-                                    Text("Fallback ещё не проверен", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    TextButton(onClick = viewModel::checkYouTubeFallback) { Text("Проверить выбранные") }
-                                } else Text("Совпадений пока нет")
+                            LikesSection(stringResource(R.string.import_likes_youtube_fallback), state.fallbackResults.values.count { it.status == FallbackStatus.FOUND }, 0) {
+                                if (state.likesSourceFilter != LikesSourceFilter.SOUNDCLOUD) {
+                                    state.fallbackResults.values.filter { it.fallbackSource != null }.forEach { item ->
+                                        LikesTrackRow(item.fallbackSource!!, "SC→YT", item.track.id in state.selectedLikeIds) { viewModel.toggleLike(item.track.id) }
+                                    }
+                                    when {
+                                        state.fallbackProgress > 0 -> Text(stringResource(R.string.import_likes_check_progress, state.fallbackProgress, state.fallbackResults.size))
+                                        !state.fallbackChecked -> Text(stringResource(R.string.import_likes_not_checked), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        state.fallbackResults.values.none { it.fallbackSource != null } -> Text(stringResource(R.string.import_likes_no_matches))
+                                    }
+                                    TextButton(onClick = viewModel::checkYouTubeFallback, enabled = state.selectedLikeIds.isNotEmpty()) { Text(stringResource(R.string.import_likes_check_selected)) }
+                                }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(checked = state.selectedLikeIds.size == state.likesPreview.size, onCheckedChange = viewModel::selectAllLikes)
-                                Text("Выбрать все")
+                                Text(stringResource(R.string.import_likes_select_all))
                             }
                             Spacer(Modifier.height(10.dp))
                             Button(
@@ -540,5 +547,3 @@ private fun importErrorText(error: ImportError): String = when (error) {
     ImportError.SAVE_FAILED -> stringResource(R.string.import_error_save)
     else -> stringResource(R.string.import_error_network)
 }
-
-private const val PREVIEW_TRACK_COUNT = 5

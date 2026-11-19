@@ -404,6 +404,14 @@
     <string name="import_sc_likes_network">Couldn’t reach SoundCloud</string>
     <string name="import_sc_likes_done">Synced likes: %1$d</string>
     <string name="import_sc_likes_duplicates">No new likes — everything is already in favourites</string>
+    <string name="import_likes_count_selected">Likes: %1$d · selected: %2$d</string>
+    <string name="import_likes_all">All</string>
+    <string name="import_likes_youtube_fallback">YouTube fallback</string>
+    <string name="import_likes_select_all">Select all</string>
+    <string name="import_likes_check_selected">Check selected</string>
+    <string name="import_likes_not_checked">Fallback hasn’t been checked</string>
+    <string name="import_likes_no_matches">No matches found</string>
+    <string name="import_likes_check_progress">Checked %1$d of %2$d</string>
     <string name="import_error_soundcloud_client">Add a SoundCloud client_id to import likes</string>
     <string name="import_profile_found">Playlists: %1$d · selected %2$d</string>
     <string name="import_profile_tracks">%1$d tracks</string>

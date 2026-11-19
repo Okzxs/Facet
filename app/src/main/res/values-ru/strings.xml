@@ -409,6 +409,14 @@
     <string name="import_sc_likes_network">Не удалось связаться с SoundCloud</string>
     <string name="import_sc_likes_done">Синхронизировано лайков: %1$d</string>
     <string name="import_sc_likes_duplicates">Новых лайков нет — всё уже в избранном</string>
+    <string name="import_likes_count_selected">Лайков: %1$d · выбрано: %2$d</string>
+    <string name="import_likes_all">Все</string>
+    <string name="import_likes_youtube_fallback">YouTube-фолбэк</string>
+    <string name="import_likes_select_all">Выбрать все</string>
+    <string name="import_likes_check_selected">Проверить выбранные</string>
+    <string name="import_likes_not_checked">Фолбэк ещё не проверен</string>
+    <string name="import_likes_no_matches">Совпадений нет</string>
+    <string name="import_likes_check_progress">Проверено %1$d из %2$d</string>
     <string name="import_error_soundcloud_client">Добавь client_id SoundCloud для импорта лайков</string>
     <string name="import_profile_found">Плейлистов: %1$d · выбрано %2$d</string>
     <string name="import_profile_tracks">Треков: %1$d</string>
