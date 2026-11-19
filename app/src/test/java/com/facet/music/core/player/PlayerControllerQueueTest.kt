@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -179,6 +180,56 @@ class PlayerControllerQueueTest {
         verify(exactly = 0) { player.stop() }
         verify(exactly = 0) { player.pause() }
     }
+
+    @Test
+    fun `late resolve cannot replace newer playback command`() = runTest {
+        val slowA = CompletableDeferred<Result<ResolvedStream>>()
+        val fastB = CompletableDeferred<Result<ResolvedStream>>()
+        coEvery { resolver.resolve(any<Track>(), any()) } coAnswers {
+            if (firstArg<Track>().id == "A") slowA.await() else fastB.await()
+        }
+
+        controller.setQueueAndPlay(listOf(track("A")))
+        runCurrent()
+        controller.setQueueAndPlay(listOf(track("B")))
+        fastB.complete(Result.success(stream("b")))
+        runCurrent()
+        val queueAfterB = items.map { it.mediaId }
+
+        slowA.complete(Result.success(stream("a")))
+        advanceUntilIdle()
+
+        assertEquals(listOf("B"), queueAfterB)
+        assertEquals(listOf("B"), items.map { it.mediaId })
+        assertEquals("B", controller.state.value.currentTrack?.id)
+    }
+
+    @Test
+    fun `clear queue invalidates pending resolve`() = runTest {
+        val slowA = CompletableDeferred<Result<ResolvedStream>>()
+        val fastB = CompletableDeferred<Result<ResolvedStream>>()
+        coEvery { resolver.resolve(any<Track>(), any()) } coAnswers {
+            if (firstArg<Track>().id == "A") slowA.await() else fastB.await()
+        }
+
+        controller.setQueueAndPlay(listOf(track("A")))
+        runCurrent()
+        controller.clearQueue()
+        runCurrent()
+        slowA.complete(Result.success(stream("a")))
+        advanceUntilIdle()
+
+        assertTrue(items.isEmpty())
+        assertTrue(controller.state.value.queue.isEmpty())
+        verify(exactly = 0) { player.play() }
+    }
+
+    private fun stream(id: String) = ResolvedStream(
+        url = "https://example.com/$id.mp3",
+        mimeType = MimeTypes.AUDIO_MPEG,
+        isHls = false,
+        source = Source.SOUNDCLOUD,
+    )
 
     @Test
     fun `append adds items to the player`() = runTest {

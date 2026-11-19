@@ -38,6 +38,7 @@ class PlayerController @Inject constructor(
     private var attachedPlayer: Player? = null
     private var originalQueue: List<Track> = emptyList()
     private var resolveJob: Job? = null
+    private var playbackGeneration = 0L
     private var preloadJob: Job? = null
 
     @Volatile
@@ -197,6 +198,7 @@ class PlayerController @Inject constructor(
         origin: QueueOrigin = QueueOrigin.MAIN,
     ) {
         if (tracks.isEmpty()) return
+        val generation = ++playbackGeneration
         val clampedIndex = startIndex.coerceIn(0, tracks.lastIndex)
         originalQueue = tracks
         val effectiveQueue = if (_state.value.isShuffle) {
@@ -223,14 +225,17 @@ class PlayerController @Inject constructor(
 
         scope.launch {
             val player = awaitPlayer() ?: run {
+                if (generation != playbackGeneration) return@launch
                 resolving = false
                 _state.update { it.copy(isBuffering = false, isLoading = false) }
                 return@launch
             }
+            if (generation != playbackGeneration) return@launch
             player.setMediaItems(mediaItems(effectiveQueue), effectiveIndex, 0L)
             player.repeatMode = repeatMode()
             player.shuffleModeEnabled = false
             val stream = playbackResolver.resolve(effectiveQueue[effectiveIndex]).getOrNull()
+            if (generation != playbackGeneration) return@launch
             if (stream != null) {
                 player.setMediaItems(
                     mediaItems(effectiveQueue, effectiveIndex, stream.mimeType),
@@ -315,16 +320,20 @@ class PlayerController @Inject constructor(
     fun playTrackAt(index: Int) {
         val queue = _state.value.queue
         if (index !in queue.indices) return
+        val generation = ++playbackGeneration
         resolving = true
         _state.update { it.copy(isBuffering = true, isLoading = true, error = null) }
         scope.launch {
             val player = awaitPlayer() ?: run {
+                if (generation != playbackGeneration) return@launch
                 resolving = false
                 _state.update { it.copy(isBuffering = false, isLoading = false) }
                 return@launch
             }
+            if (generation != playbackGeneration) return@launch
             ensurePlayerQueue(player, queue, index)
             val stream = playbackResolver.resolve(queue[index]).getOrNull()
+            if (generation != playbackGeneration) return@launch
             val currentMime = player.getMediaItemAt(index).localConfiguration?.mimeType
             if (stream != null && stream.mimeType != currentMime) {
                 player.setMediaItems(
@@ -613,6 +622,8 @@ class PlayerController @Inject constructor(
     }
 
     fun clearQueue() {
+        ++playbackGeneration
+        resolveJob?.cancel()
         resolving = false
         scope.launch {
             val player = awaitPlayer()
