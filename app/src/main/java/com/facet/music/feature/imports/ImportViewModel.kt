@@ -40,6 +40,15 @@ enum class LikesError {
     NETWORK,
 }
 
+enum class FallbackStatus { UNKNOWN, CHECKING, FOUND, NOT_FOUND }
+enum class LikesSourceFilter { ALL, SOUNDCLOUD, YOUTUBE }
+data class LikesPreviewItem(
+    val track: Track,
+    val primarySource: String = "SoundCloud",
+    val fallbackSource: Track? = null,
+    val status: FallbackStatus = FallbackStatus.UNKNOWN,
+)
+
 data class ProfilePlaylistItem(
     val id: String,
     val url: String?,
@@ -68,6 +77,9 @@ data class ImportUiState(
     val likesError: LikesError? = null,
     val likesApiCode: Int? = null,
     val likesTimes: Map<String, Long> = emptyMap(),
+    val selectedLikeIds: Set<String> = emptySet(),
+    val likesSourceFilter: LikesSourceFilter = LikesSourceFilter.ALL,
+    val fallbackChecked: Boolean = false,
 ) {
     val selectedCount: Int get() = playlists.count { it.selected }
 }
@@ -116,6 +128,8 @@ class ImportViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             likesPreview = result.tracks,
+                            selectedLikeIds = result.tracks.mapTo(linkedSetOf()) { it.id },
+                            fallbackChecked = false,
                             likesError = emptyReason,
                             likesApiCode = null,
                             likesTimes = result.likeTimes,
@@ -141,7 +155,7 @@ class ImportViewModel @Inject constructor(
 
     fun importSoundCloudLikes() {
         val state = _uiState.value
-        val preview = state.likesPreview
+        val preview = state.likesPreview.filter { it.id in state.selectedLikeIds }
         if (preview.isEmpty() || state.isImporting) return
         viewModelScope.launch {
             _uiState.update { it.copy(isImporting = true) }
@@ -173,6 +187,23 @@ class ImportViewModel @Inject constructor(
             }
             runCatching { settingsRepository.setImportCompleted(true) }
         }
+    }
+
+    fun toggleLike(trackId: String) = _uiState.update { state ->
+        state.copy(selectedLikeIds = if (trackId in state.selectedLikeIds) {
+            state.selectedLikeIds - trackId
+        } else state.selectedLikeIds + trackId)
+    }
+
+    fun selectAllLikes(selected: Boolean) = _uiState.update { state ->
+        state.copy(selectedLikeIds = if (selected) state.likesPreview.mapTo(linkedSetOf()) { it.id } else emptySet())
+    }
+
+    fun setLikesSourceFilter(filter: LikesSourceFilter) = _uiState.update { it.copy(likesSourceFilter = filter) }
+
+    fun checkYouTubeFallback() {
+        // TODO: Resolve selected SoundCloud likes through TrackMatcher on demand; never batch-match the full list.
+        _uiState.update { it.copy(fallbackChecked = true) }
     }
 
     fun setTab(tab: ImportTab) {

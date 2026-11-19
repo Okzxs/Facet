@@ -11,6 +11,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +35,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -155,6 +158,29 @@ fun ImportScreen(
 }
 
 @Composable
+private fun LikesSection(title: String, count: Int, selected: Int, content: @Composable ColumnScope.() -> Unit) {
+    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("$title · $selected/$count", style = MaterialTheme.typography.titleSmall)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun LikesTrackRow(track: com.facet.music.data.model.Track, badge: String, checked: Boolean, onToggle: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        AsyncImage(track.artworkUrl, contentDescription = null, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+            Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+            Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) { Text(badge, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall) }
+        Checkbox(checked = checked, onCheckedChange = { onToggle() })
+    }
+}
+
+@Composable
 private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewModel) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -235,21 +261,32 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                     ) {
                         Column {
                             Spacer(Modifier.height(12.dp))
-                            Text(
-                                text = stringResource(
-                                    R.string.import_sc_likes_found,
-                                    state.likesPreview.size,
-                                ),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            state.likesPreview.take(PREVIEW_TRACK_COUNT).forEach { track ->
-                                Text(
-                                    text = "${track.artist} — ${track.title}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                            Text("${state.likesPreview.size} likes · ${state.selectedLikeIds.size} selected", style = MaterialTheme.typography.titleSmall)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                LikesSourceFilter.entries.forEach { filter ->
+                                    FilterChip(
+                                        selected = state.likesSourceFilter == filter,
+                                        onClick = { viewModel.setLikesSourceFilter(filter) },
+                                        label = { Text(when (filter) { LikesSourceFilter.ALL -> "Все"; LikesSourceFilter.SOUNDCLOUD -> "SoundCloud"; LikesSourceFilter.YOUTUBE -> "YouTube" }) },
+                                    )
+                                }
+                            }
+                            LikesSection("SoundCloud", state.likesPreview.size, state.selectedLikeIds.size) {
+                                if (state.likesSourceFilter != LikesSourceFilter.YOUTUBE) {
+                                    state.likesPreview.take(PREVIEW_TRACK_COUNT).forEach { track ->
+                                        LikesTrackRow(track, "SC", track.id in state.selectedLikeIds) { viewModel.toggleLike(track.id) }
+                                    }
+                                }
+                            }
+                            LikesSection("YouTube fallback", 0, 0) {
+                                if (!state.fallbackChecked) {
+                                    Text("Fallback ещё не проверен", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    TextButton(onClick = viewModel::checkYouTubeFallback) { Text("Проверить выбранные") }
+                                } else Text("Совпадений пока нет")
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = state.selectedLikeIds.size == state.likesPreview.size, onCheckedChange = viewModel::selectAllLikes)
+                                Text("Выбрать все")
                             }
                             Spacer(Modifier.height(10.dp))
                             Button(
@@ -268,7 +305,7 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                                 Text(
                                     stringResource(
                                         R.string.import_sc_likes_import,
-                                        state.likesPreview.size,
+                                        state.selectedLikeIds.size,
                                     ),
                                 )
                             }
