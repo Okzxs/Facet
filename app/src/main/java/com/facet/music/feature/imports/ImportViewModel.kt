@@ -82,7 +82,7 @@ data class ImportUiState(
     val likesSourceFilter: LikesSourceFilter = LikesSourceFilter.ALL,
     val fallbackChecked: Boolean = false,
     val fallbackResults: Map<String, LikesPreviewItem> = emptyMap(),
-    val fallbackProgress: Int = 0,
+    val fallbackRunning: Boolean = false,
     val likesTotal: Int = 0,
     val visibleLikes: Int = 20,
 ) {
@@ -137,7 +137,7 @@ class ImportViewModel @Inject constructor(
                             selectedLikeIds = result.tracks.mapTo(linkedSetOf()) { it.id },
                             fallbackChecked = false,
                             fallbackResults = emptyMap(),
-                            fallbackProgress = 0,
+                            fallbackRunning = false,
                             likesTotal = result.likesCount,
                             visibleLikes = 20,
                             likesError = emptyReason,
@@ -216,6 +216,7 @@ class ImportViewModel @Inject constructor(
     }
 
     fun checkYouTubeFallback() {
+        if (_uiState.value.fallbackRunning) return
         val chosen = _uiState.value.likesPreview.filter { it.id in _uiState.value.selectedLikeIds }
             .filter {
                 val status = _uiState.value.fallbackResults[it.id]?.status
@@ -224,21 +225,24 @@ class ImportViewModel @Inject constructor(
             .take(5)
         if (chosen.isEmpty()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(fallbackChecked = true, fallbackProgress = 0) }
-            chosen.forEach { original ->
-                _uiState.update { state -> state.copy(fallbackResults = state.fallbackResults +
-                    (original.id to LikesPreviewItem(original, status = FallbackStatus.CHECKING))) }
-                val candidates = youTubeRepository.search(
-                    query = "${original.artist} ${original.title}", limit = 5,
-                ).getOrNull().orEmpty()
-                val match = trackMatcher.best(original, candidates)?.track
-                _uiState.update { state -> state.copy(
-                    fallbackProgress = state.fallbackProgress + 1,
-                    fallbackResults = state.fallbackResults + (original.id to LikesPreviewItem(
-                        track = original, fallbackSource = match,
-                        status = if (match == null) FallbackStatus.NOT_FOUND else FallbackStatus.FOUND,
-                    )),
-                ) }
+            _uiState.update { it.copy(fallbackChecked = true, fallbackRunning = true) }
+            try {
+                chosen.forEach { original ->
+                    _uiState.update { state -> state.copy(fallbackResults = state.fallbackResults +
+                        (original.id to LikesPreviewItem(original, status = FallbackStatus.CHECKING))) }
+                    val candidates = youTubeRepository.search(
+                        query = "${original.artist} ${original.title}", limit = 5,
+                    ).getOrNull().orEmpty()
+                    val match = trackMatcher.best(original, candidates)?.track
+                    _uiState.update { state -> state.copy(
+                        fallbackResults = state.fallbackResults + (original.id to LikesPreviewItem(
+                            track = original, fallbackSource = match,
+                            status = if (match == null) FallbackStatus.NOT_FOUND else FallbackStatus.FOUND,
+                        )),
+                    ) }
+                }
+            } finally {
+                _uiState.update { it.copy(fallbackRunning = false) }
             }
         }
     }

@@ -158,10 +158,23 @@ fun ImportScreen(
 }
 
 @Composable
-private fun LikesSection(title: String, count: Int, selected: Int, content: @Composable ColumnScope.() -> Unit) {
+private fun LikesSection(
+    title: String,
+    subtitle: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("$title · $selected/$count", style = MaterialTheme.typography.titleSmall)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             content()
         }
     }
@@ -280,14 +293,66 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                                     FilterChip(
                                         selected = state.likesSourceFilter == filter,
                                         onClick = { viewModel.setLikesSourceFilter(filter) },
-                                        label = { Text(when (filter) { LikesSourceFilter.ALL -> stringResource(R.string.import_likes_all); LikesSourceFilter.SOUNDCLOUD -> "SoundCloud"; LikesSourceFilter.YOUTUBE -> "YouTube" }) },
+                                        label = {
+                                            Text(
+                                                when (filter) {
+                                                    LikesSourceFilter.ALL -> stringResource(R.string.import_likes_all)
+                                                    LikesSourceFilter.SOUNDCLOUD -> "SoundCloud"
+                                                    LikesSourceFilter.YOUTUBE -> "YouTube"
+                                                },
+                                            )
+                                        },
                                     )
                                 }
                             }
-                            LikesSection("SoundCloud", if (state.likesSourceFilter == LikesSourceFilter.YOUTUBE) 0 else state.likesPreview.size, if (state.likesSourceFilter == LikesSourceFilter.YOUTUBE) 0 else state.selectedLikeIds.size) {
-                                if (state.likesSourceFilter != LikesSourceFilter.YOUTUBE) {
+                            if (state.likesSourceFilter != LikesSourceFilter.YOUTUBE) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = state.selectedLikeIds.size == state.likesPreview.size,
+                                        onCheckedChange = viewModel::selectAllLikes,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.import_likes_select_all),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Button(
+                                    onClick = viewModel::importSoundCloudLikes,
+                                    enabled = !state.isImporting && state.selectedLikeIds.isNotEmpty(),
+                                    shape = CircleShape,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    if (state.isImporting) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                    Text(
+                                        pluralStringResource(
+                                            R.plurals.import_sc_likes_import,
+                                            state.selectedLikeIds.size,
+                                            state.selectedLikeIds.size,
+                                        ),
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                LikesSection(
+                                    title = "SoundCloud",
+                                    subtitle = stringResource(
+                                        R.string.import_likes_selected_of,
+                                        state.selectedLikeIds.size,
+                                        state.likesPreview.size,
+                                    ),
+                                ) {
                                     state.likesPreview.take(state.visibleLikes).forEach { track ->
-                                        LikesTrackRow(track, "SC", track.id in state.selectedLikeIds) { viewModel.toggleLike(track.id) }
+                                        LikesTrackRow(track, "SC", track.id in state.selectedLikeIds) {
+                                            viewModel.toggleLike(track.id)
+                                        }
                                     }
                                     if (state.visibleLikes < state.likesPreview.size) {
                                         TextButton(onClick = viewModel::showMoreLikes) {
@@ -296,43 +361,54 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                                     }
                                 }
                             }
-                            LikesSection(stringResource(R.string.import_likes_youtube_fallback), state.fallbackResults.values.count { it.status == FallbackStatus.FOUND }, 0) {
-                                if (state.likesSourceFilter != LikesSourceFilter.SOUNDCLOUD) {
+                            if (state.likesSourceFilter != LikesSourceFilter.SOUNDCLOUD) {
+                                val found = state.fallbackResults.values.count { it.status == FallbackStatus.FOUND }
+                                val checked = state.fallbackResults.size
+                                Spacer(Modifier.height(8.dp))
+                                LikesSection(
+                                    title = stringResource(R.string.import_likes_youtube_fallback),
+                                    subtitle = if (checked > 0) {
+                                        stringResource(R.string.import_likes_found_of, found, checked, state.selectedLikeIds.size)
+                                    } else {
+                                        stringResource(R.string.import_likes_not_checked)
+                                    },
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.import_likes_fallback_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                     state.fallbackResults.values.filter { it.fallbackSource != null }.forEach { item ->
                                         LikesTrackRow(item.fallbackSource!!, "SC→YT", false, showCheckbox = false) {}
                                     }
-                                    when {
-                                        state.fallbackProgress > 0 -> Text(stringResource(R.string.import_likes_check_progress, state.fallbackProgress, state.fallbackResults.size))
-                                        !state.fallbackChecked -> Text(stringResource(R.string.import_likes_not_checked), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        state.fallbackResults.values.none { it.fallbackSource != null } -> Text(stringResource(R.string.import_likes_no_matches))
+                                    if (checked > 0 && found == 0) {
+                                        Text(
+                                            text = stringResource(R.string.import_likes_no_matches),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
-                                    TextButton(onClick = viewModel::checkYouTubeFallback, enabled = state.selectedLikeIds.isNotEmpty()) { Text(stringResource(R.string.import_likes_check_selected)) }
+                                    TextButton(
+                                        onClick = viewModel::checkYouTubeFallback,
+                                        enabled = state.selectedLikeIds.isNotEmpty() && !state.fallbackRunning,
+                                    ) {
+                                        if (state.fallbackRunning) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                        }
+                                        Text(
+                                            stringResource(
+                                                if (state.fallbackRunning) {
+                                                    R.string.import_likes_check_running
+                                                } else {
+                                                    R.string.import_likes_check_selected
+                                                },
+                                            ),
+                                        )
+                                    }
                                 }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = state.selectedLikeIds.size == state.likesPreview.size, onCheckedChange = viewModel::selectAllLikes)
-                                Text(stringResource(R.string.import_likes_select_all))
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            Button(
-                                onClick = viewModel::importSoundCloudLikes,
-                                enabled = !state.isImporting,
-                                shape = CircleShape,
-                            ) {
-                                if (state.isImporting) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                }
-                                Text(
-                                    stringResource(
-                                        R.string.import_sc_likes_import,
-                                        state.selectedLikeIds.size,
-                                    ),
-                                )
                             }
                         }
                     }

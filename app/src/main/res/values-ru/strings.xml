@@ -402,7 +402,12 @@
     <string name="import_sc_likes_hint">Импорт работает для публичных профилей. Если профиль приватный — лайки недоступны.</string>
     <string name="import_sc_likes_button">Загрузить лайки</string>
     <string name="import_sc_likes_found">Лайков: %1$d</string>
-    <string name="import_sc_likes_import">Импортировать %1$d лайков</string>
+    <plurals name="import_sc_likes_import">
+        <item quantity="one">Импортировать %1$d лайк</item>
+        <item quantity="few">Импортировать %1$d лайка</item>
+        <item quantity="many">Импортировать %1$d лайков</item>
+        <item quantity="other">Импортировать %1$d лайка</item>
+    </plurals>
     <string name="import_sc_likes_empty">У профиля нет лайков</string>
     <string name="import_sc_likes_private">Профиль приватный или лайки скрыты</string>
     <string name="import_sc_likes_api_error">Ошибка API SoundCloud: %1$d</string>
@@ -417,8 +422,11 @@
     <string name="import_likes_select_all">Выбрать все</string>
     <string name="import_likes_check_selected">Проверить выбранные</string>
     <string name="import_likes_not_checked">Фолбэк ещё не проверен</string>
+    <string name="import_likes_selected_of">Выбрано %1$d из %2$d</string>
+    <string name="import_likes_found_of">Найдено %1$d · проверено %2$d из %3$d</string>
+    <string name="import_likes_fallback_hint">Альтернативы в YouTube для выбранных треков. Импортируются только треки SoundCloud.</string>
+    <string name="import_likes_check_running">Проверяем…</string>
     <string name="import_likes_no_matches">Совпадений нет</string>
-    <string name="import_likes_check_progress">Проверено %1$d из %2$d</string>
     <string name="import_error_soundcloud_client">Добавь client_id SoundCloud для импорта лайков</string>
     <string name="import_profile_found">Плейлистов: %1$d · выбрано %2$d</string>
     <string name="import_profile_tracks">Треков: %1$d</string>

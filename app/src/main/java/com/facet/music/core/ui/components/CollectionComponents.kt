@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,6 +54,9 @@ fun SectionHeader(
     actionLabel: String? = null,
     actionIcon: ImageVector? = null,
     onAction: (() -> Unit)? = null,
+    secondaryActionIcon: ImageVector? = null,
+    secondaryActionContentDescription: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -84,6 +88,18 @@ fun SectionHeader(
                 if (!actionLabel.isNullOrBlank()) {
                     Text(text = actionLabel, style = MaterialTheme.typography.labelLarge)
                 }
+            }
+        }
+        if (onSecondaryAction != null && secondaryActionIcon != null) {
+            IconButton(
+                onClick = onSecondaryAction,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = secondaryActionIcon,
+                    contentDescription = secondaryActionContentDescription,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }

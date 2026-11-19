@@ -103,6 +103,7 @@ fun AppNavGraph() {
             val route = navBackStackEntry?.destination?.route
             !isPlayerOpen &&
                 route != Screen.Settings.route &&
+                route != Screen.Import.route &&
                 route != Screen.LikedTracks.route &&
                 route != Screen.Playlist.route &&
                 route != Screen.Artist.route &&

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.rounded.AddLink
 import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
@@ -345,7 +346,10 @@ fun LibraryScreen(
                     title = stringResource(R.string.library_tab_playlists),
                     actionLabel = stringResource(R.string.library_import_short),
                     actionIcon = Icons.Rounded.AddLink,
-                    onAction = { showImportDialog = true },
+                    onAction = onImportClick,
+                    secondaryActionIcon = Icons.Rounded.Link,
+                    secondaryActionContentDescription = stringResource(R.string.import_link_title),
+                    onSecondaryAction = { showImportDialog = true },
                 )
             }
             if (playlists.isEmpty()) {
@@ -355,7 +359,7 @@ fun LibraryScreen(
                             newPlaylistName = ""
                             showCreateDialog = true
                         },
-                        onImport = { showImportDialog = true },
+                        onImport = onImportClick,
                     )
                 }
             } else {
