@@ -9,7 +9,7 @@ import org.junit.Test
 class ImportedPlaylistTest {
     private val track = Track(
         id = "track", source = Source.YOUTUBE, title = "Track", artist = "Artist",
-        streamUrl = null, durationMs = 1_000L, genre = null, transcodingUrl = "url",
+        artworkUrl = null, streamUrl = null, durationMs = 1_000L, genre = null, transcodingUrl = "url",
     )
 
     @Test fun `imported playlist defaults to complete`() {
