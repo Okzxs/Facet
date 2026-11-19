@@ -109,7 +109,12 @@ class PlaylistImportServiceImpl @Inject constructor(
         }
 
         val tracks = items.mapNotNull { it.toImportedTrack(importService) }
-        successOrEmpty(extractor.name, importService, tracks)
+        successOrEmpty(
+            extractor.name,
+            importService,
+            tracks,
+            isIncomplete = pages == MAX_NEWPIPE_PAGES && page.hasNextPage(),
+        )
     }.rethrowCancellation()
         .getOrElse { error -> networkFailure(error) }
 
@@ -155,11 +160,12 @@ class PlaylistImportServiceImpl @Inject constructor(
         name: String,
         service: ImportService,
         tracks: List<Track>,
+        isIncomplete: Boolean = false,
     ): PlaylistImportResult =
         if (tracks.isEmpty()) {
             failure(ImportError.EMPTY_PLAYLIST, "В плейлисте нет треков")
         } else {
-            PlaylistImportResult.Success(ImportedPlaylist(name, service, tracks))
+            PlaylistImportResult.Success(ImportedPlaylist(name, service, tracks, isIncomplete))
         }
 
     private fun networkFailure(error: Throwable): PlaylistImportResult {

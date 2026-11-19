@@ -3,6 +3,7 @@ package com.facet.music.data.source.external
 import com.facet.music.core.import.SoundCloudLikesParser
 import com.facet.music.core.network.ApiClient
 import com.facet.music.data.model.Track
+import com.facet.music.data.source.soundcloud.SoundCloudClientIdProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -12,7 +13,6 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.schabi.newpipe.extractor.services.soundcloud.SoundcloudParsingHelper
 import java.io.IOException
 import java.net.URLEncoder
 import javax.inject.Inject
@@ -26,7 +26,7 @@ data class SoundCloudLikesResult(
 
 class SoundCloudApiException(
     val code: Int,
-    body: String,
+    val body: String,
 ) : IOException("SoundCloud HTTP $code: ${body.take(160)}")
 
 class SoundCloudLikesPrivateException :
@@ -36,25 +36,39 @@ class SoundCloudLikesPrivateException :
 class SoundCloudLikesProvider @Inject constructor(
     @ApiClient private val client: OkHttpClient,
     private val json: Json,
+    private val clientIds: SoundCloudClientIdProvider,
 ) {
+
+    internal constructor(
+        client: OkHttpClient,
+        json: Json,
+        clientIds: SoundCloudClientIdProvider,
+        api: String,
+    ) : this(client, json, clientIds) {
+        apiBase = api.trimEnd('/')
+    }
+
+    private var apiBase = API
 
     suspend fun fetchLikes(
         profileUrl: String,
         limit: Int = MAX_LIKES,
     ): Result<SoundCloudLikesResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val clientId = SoundcloudParsingHelper.clientId()
-                ?: error("SoundCloud не выдал client_id")
+            val clientId = clientIds.get()
             val profile = resolveProfile(profileUrl, clientId)
             val result = LinkedHashMap<String, SoundCloudLikesParser.LikeItem>()
-            var next: String? = "$API/users/${profile.userId}/track_likes" +
+            var next: String? = "$apiBase/users/${profile.userId}/track_likes" +
                 "?limit=$PAGE_SIZE&client_id=$clientId"
 
             while (next != null && result.size < limit) {
                 val body = try {
                     get(next, clientId)
                 } catch (e: SoundCloudApiException) {
-                    if (e.code == 401 || e.code == 403) throw SoundCloudLikesPrivateException()
+                    if ((e.code == 401 || e.code == 403) &&
+                        (e.body.contains("private", ignoreCase = true) ||
+                            e.body.contains("hidden", ignoreCase = true))
+                    ) throw SoundCloudLikesPrivateException()
                     throw e
                 }
                 val page = SoundCloudLikesParser.parse(body, json)
@@ -75,7 +89,7 @@ class SoundCloudLikesProvider @Inject constructor(
 
     private fun resolveProfile(profileUrl: String, clientId: String): Profile {
         val normalized = normalize(profileUrl)
-        val url = "$API/resolve?url=${encode(normalized)}&client_id=$clientId"
+        val url = "$apiBase/resolve?url=${encode(normalized)}&client_id=$clientId"
         val body = get(url, clientId)
         val root = json.parseToJsonElement(body).jsonObject
         val id = root["id"]?.jsonPrimitive?.longOrNull

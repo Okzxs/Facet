@@ -182,6 +182,7 @@ class PlayerControllerQueueTest {
     }
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun `late resolve cannot replace newer playback command`() = runTest {
         val slowA = CompletableDeferred<Result<ResolvedStream>>()
         val fastB = CompletableDeferred<Result<ResolvedStream>>()
@@ -205,6 +206,7 @@ class PlayerControllerQueueTest {
     }
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun `clear queue invalidates pending resolve`() = runTest {
         val slowA = CompletableDeferred<Result<ResolvedStream>>()
         val fastB = CompletableDeferred<Result<ResolvedStream>>()

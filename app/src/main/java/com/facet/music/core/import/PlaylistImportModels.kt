@@ -6,4 +6,5 @@ data class ImportedPlaylist(
     val name: String,
     val service: ImportService,
     val tracks: List<Track>,
+    val isIncomplete: Boolean = false,
 )
