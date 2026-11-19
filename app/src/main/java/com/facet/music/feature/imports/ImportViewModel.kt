@@ -83,6 +83,8 @@ data class ImportUiState(
     val fallbackChecked: Boolean = false,
     val fallbackResults: Map<String, LikesPreviewItem> = emptyMap(),
     val fallbackProgress: Int = 0,
+    val likesTotal: Int = 0,
+    val visibleLikes: Int = 20,
 ) {
     val selectedCount: Int get() = playlists.count { it.selected }
 }
@@ -134,6 +136,10 @@ class ImportViewModel @Inject constructor(
                             likesPreview = result.tracks,
                             selectedLikeIds = result.tracks.mapTo(linkedSetOf()) { it.id },
                             fallbackChecked = false,
+                            fallbackResults = emptyMap(),
+                            fallbackProgress = 0,
+                            likesTotal = result.likesCount,
+                            visibleLikes = 20,
                             likesError = emptyReason,
                             likesApiCode = null,
                             likesTimes = result.likeTimes,
@@ -205,9 +211,16 @@ class ImportViewModel @Inject constructor(
 
     fun setLikesSourceFilter(filter: LikesSourceFilter) = _uiState.update { it.copy(likesSourceFilter = filter) }
 
+    fun showMoreLikes() = _uiState.update {
+        it.copy(visibleLikes = (it.visibleLikes + 20).coerceAtMost(it.likesPreview.size))
+    }
+
     fun checkYouTubeFallback() {
         val chosen = _uiState.value.likesPreview.filter { it.id in _uiState.value.selectedLikeIds }
-            .filter { _uiState.value.fallbackResults[it.id]?.status != FallbackStatus.FOUND }
+            .filter {
+                val status = _uiState.value.fallbackResults[it.id]?.status
+                status != FallbackStatus.FOUND && status != FallbackStatus.NOT_FOUND
+            }
             .take(5)
         if (chosen.isEmpty()) return
         viewModelScope.launch {

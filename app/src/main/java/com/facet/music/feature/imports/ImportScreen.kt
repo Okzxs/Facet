@@ -168,7 +168,13 @@ private fun LikesSection(title: String, count: Int, selected: Int, content: @Com
 }
 
 @Composable
-private fun LikesTrackRow(track: com.facet.music.data.model.Track, badge: String, checked: Boolean, onToggle: () -> Unit) {
+private fun LikesTrackRow(
+    track: com.facet.music.data.model.Track,
+    badge: String,
+    checked: Boolean,
+    showCheckbox: Boolean = true,
+    onToggle: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         AsyncImage(track.artworkUrl, contentDescription = null, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
         Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
@@ -176,7 +182,7 @@ private fun LikesTrackRow(track: com.facet.music.data.model.Track, badge: String
             Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) { Text(badge, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall) }
-        Checkbox(checked = checked, onCheckedChange = { onToggle() })
+        if (showCheckbox) Checkbox(checked = checked, onCheckedChange = { onToggle() })
     }
 }
 
@@ -261,7 +267,14 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                     ) {
                         Column {
                             Spacer(Modifier.height(12.dp))
-                            Text(stringResource(R.string.import_likes_count_selected, state.likesPreview.size, state.selectedLikeIds.size), style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                if (state.likesTotal > 0) {
+                                    stringResource(R.string.import_likes_available, state.likesTotal, state.likesPreview.size)
+                                } else {
+                                    stringResource(R.string.import_likes_count_selected, state.likesPreview.size, state.selectedLikeIds.size)
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                            )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 LikesSourceFilter.entries.forEach { filter ->
                                     FilterChip(
@@ -273,15 +286,20 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                             }
                             LikesSection("SoundCloud", if (state.likesSourceFilter == LikesSourceFilter.YOUTUBE) 0 else state.likesPreview.size, if (state.likesSourceFilter == LikesSourceFilter.YOUTUBE) 0 else state.selectedLikeIds.size) {
                                 if (state.likesSourceFilter != LikesSourceFilter.YOUTUBE) {
-                                    state.likesPreview.forEach { track ->
+                                    state.likesPreview.take(state.visibleLikes).forEach { track ->
                                         LikesTrackRow(track, "SC", track.id in state.selectedLikeIds) { viewModel.toggleLike(track.id) }
+                                    }
+                                    if (state.visibleLikes < state.likesPreview.size) {
+                                        TextButton(onClick = viewModel::showMoreLikes) {
+                                            Text(stringResource(R.string.import_likes_show_more))
+                                        }
                                     }
                                 }
                             }
                             LikesSection(stringResource(R.string.import_likes_youtube_fallback), state.fallbackResults.values.count { it.status == FallbackStatus.FOUND }, 0) {
                                 if (state.likesSourceFilter != LikesSourceFilter.SOUNDCLOUD) {
                                     state.fallbackResults.values.filter { it.fallbackSource != null }.forEach { item ->
-                                        LikesTrackRow(item.fallbackSource!!, "SC→YT", item.track.id in state.selectedLikeIds) { viewModel.toggleLike(item.track.id) }
+                                        LikesTrackRow(item.fallbackSource!!, "SC→YT", false, showCheckbox = false) {}
                                     }
                                     when {
                                         state.fallbackProgress > 0 -> Text(stringResource(R.string.import_likes_check_progress, state.fallbackProgress, state.fallbackResults.size))
