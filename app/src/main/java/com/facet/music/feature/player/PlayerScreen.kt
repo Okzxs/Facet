@@ -561,7 +561,8 @@ fun PlayerScreen(
                                         modifier = Modifier
                                             .size(44.dp)
                                             .graphicsLayer {
-                                                alpha = coverMorph.value.coerceIn(0f, 1f)
+                                                alpha = ((coverMorph.value - 0.85f) / 0.15f)
+                                                    .coerceIn(0f, 1f)
                                             }
                                             .clip(RoundedCornerShape(12.dp))
                                             .onGloballyPositioned {
@@ -898,7 +899,11 @@ fun PlayerScreen(
                         onArtistClick = track?.let { current -> { onArtistClick(current) } },
                         onSourceClick = { viewModel.openSources() },
                         sourceSubstitution = playerState.sourceSubstitution,
-                        coverAlpha = 1f - coverMorph.value,
+                        coverAlpha = if (isLyricsMode) {
+                            0f
+                        } else {
+                            ((0.15f - coverMorph.value) / 0.15f).coerceIn(0f, 1f)
+                        },
                         coverModifier = if (swipeState.isDragging) Modifier else coverModifier,
                         coverSwipeModifier = coverSwipeModifier,
                         panelModifier = panelModifier,
@@ -1036,7 +1041,8 @@ fun PlayerScreen(
                     width = with(density) { (right - left).toDp() },
                     height = with(density) { (bottom - top).toDp() },
                 )
-                .clip(RoundedCornerShape(lerp(28f, 12f, morphValue).dp)),
+                .clip(RoundedCornerShape(lerp(28f, 12f, morphValue).dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         ) {
             AsyncImage(
                 model = track?.artworkUrl,
