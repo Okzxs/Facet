@@ -20,6 +20,7 @@ import com.facet.music.core.service.ServiceType
 import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.entity.DislikedTrackEntity
+import com.facet.music.data.model.LyricsResult
 import com.facet.music.data.model.CanonicalTrack
 import com.facet.music.data.model.Track
 import com.facet.music.data.model.TrackVariant
@@ -31,6 +32,7 @@ import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.TasteRepository
 import com.facet.music.data.repository.WaveRepository
+import com.facet.music.data.source.lyrics.LyricsTranslationEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,6 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -54,6 +57,7 @@ class PlayerViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
     private val navigationEvents: NavigationEvents,
     private val trackLikeManager: TrackLikeManager,
+    private val lyricsTranslationEngine: LyricsTranslationEngine,
     private val canonicalTrackRepository: CanonicalTrackRepository,
 ) : ViewModel() {
 
@@ -63,6 +67,8 @@ class PlayerViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
+
+    private var lyricsOriginal: LyricsData? = null
 
     private val lyricsCache = object : LinkedHashMap<String, LyricsData>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LyricsData>): Boolean {
@@ -488,16 +494,39 @@ class PlayerViewModel @Inject constructor(
         Log.d("LRCLIB", "PlayerViewModel.loadLyrics для трека '${track.title}' (${track.artist})")
         val key = lyricsKey(track)
         lyricsCache[key]?.let { cached ->
-            _uiState.update { it.copy(lyricsData = cached, isLyricsLoading = false, lyricsError = null) }
+            lyricsOriginal = cached
+            _uiState.update {
+                it.copy(
+                    lyricsData = cached,
+                    isLyricsLoading = false,
+                    lyricsError = null,
+                    isLyricsTranslated = false,
+                    lyricsProvider = cached.provider,
+                )
+            }
             prefetchNextLyrics()
             return
         }
-        lyricsRepository.getLyrics(title = track.title, artist = track.artist, durationMs = track.durationMs)
+        lyricsRepository.getLyrics(
+            title = track.title,
+            artist = track.artist,
+            durationMs = track.durationMs,
+            preferredProvider = _uiState.value.lyricsProviderMode,
+        )
             .onSuccess { result ->
                 val data = withContext(Dispatchers.Default) { buildLyricsData(result) }
                 Log.d("LRCLIB", "PlayerViewModel: тексты успешно получены (isSynced=${data.isSynced}, строк=${data.lines.size})")
                 synchronized(lyricsCache) { lyricsCache[key] = data }
-                _uiState.update { it.copy(lyricsData = data, isLyricsLoading = false, lyricsError = null) }
+                lyricsOriginal = data
+                _uiState.update {
+                    it.copy(
+                        lyricsData = data,
+                        isLyricsLoading = false,
+                        lyricsError = null,
+                        isLyricsTranslated = false,
+                        lyricsProvider = data.provider,
+                    )
+                }
                 prefetchNextLyrics()
             }
             .onFailure { error ->
@@ -509,7 +538,8 @@ class PlayerViewModel @Inject constructor(
             }
     }
 
-    private fun lyricsKey(track: Track): String = "${track.artist}|${track.title}"
+    private fun lyricsKey(track: Track): String =
+        "${track.artist}|${track.title}|${_uiState.value.lyricsProviderMode.orEmpty()}"
 
     private fun prefetchNextLyrics() {
         val state = playerState.value
@@ -517,12 +547,98 @@ class PlayerViewModel @Inject constructor(
         val key = lyricsKey(next)
         if (synchronized(lyricsCache) { lyricsCache.containsKey(key) }) return
         viewModelScope.launch {
-            lyricsRepository.getLyrics(title = next.title, artist = next.artist, durationMs = next.durationMs)
+            lyricsRepository.getLyrics(
+                title = next.title,
+                artist = next.artist,
+                durationMs = next.durationMs,
+                preferredProvider = _uiState.value.lyricsProviderMode,
+            )
                 .onSuccess { result ->
                     val data = withContext(Dispatchers.Default) { buildLyricsData(result) }
                     synchronized(lyricsCache) { lyricsCache[key] = data }
                 }
         }
+    }
+
+    fun cycleLyricsProvider() {
+        val next = when (_uiState.value.lyricsProviderMode) {
+            null -> "LyricsPlus"
+            "LyricsPlus" -> "LRCLIB"
+            else -> null
+        }
+        val track = _uiState.value.track ?: playerState.value.currentTrack ?: return
+        _uiState.update {
+            it.copy(
+                lyricsProviderMode = next,
+                lyricsData = null,
+                lyricsError = null,
+                isLyricsTranslated = false,
+                isLyricsLoading = true,
+            )
+        }
+        viewModelScope.launch { loadLyrics(track) }
+    }
+
+    fun toggleLyricsTranslation() {
+        val state = _uiState.value
+        val data = state.lyricsData ?: return
+        if (state.isLyricsTranslated) {
+            _uiState.update {
+                it.copy(
+                    lyricsData = lyricsOriginal ?: data,
+                    isLyricsTranslated = false,
+                )
+            }
+            return
+        }
+        if (state.isLyricsTranslationLoading) return
+        val track = state.track ?: return
+        val target = Locale.getDefault().language.ifBlank { "en" }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLyricsTranslationLoading = true) }
+            val sourceLines = data.richLines.ifEmpty {
+                data.lines.mapIndexed { index, text ->
+                    com.facet.music.data.model.LyricLine(
+                        timeMs = data.timesMs.getOrElse(index) { 0L },
+                        text = text,
+                    )
+                }
+            }
+            val texts = lyricsTranslationEngine.translate(
+                trackKey = track.id,
+                lines = sourceLines.map { it.text },
+                targetLanguage = target,
+            )
+            if (texts == null) {
+                _uiState.update { it.copy(isLyricsTranslationLoading = false) }
+                return@launch
+            }
+            val translatedLines = sourceLines.mapIndexed { index, line ->
+                val text = texts.getOrElse(index) { line.text }
+                line.copy(
+                    text = text,
+                    words = emptyList(),
+                )
+            }
+            val result = LyricsResult(
+                lines = translatedLines,
+                isSynced = data.isSynced,
+                isInstrumental = data.isInstrumental,
+                provider = "Перевод",
+            )
+            lyricsOriginal = data
+            _uiState.update {
+                it.copy(
+                    lyricsData = buildLyricsData(result),
+                    isLyricsTranslated = true,
+                    isLyricsTranslationLoading = false,
+                )
+            }
+        }
+    }
+
+    fun setLyricsOffsetMs(value: Int) {
+        _uiState.update { it.copy(lyricsOffsetMs = value.coerceIn(-2_000, 2_000)) }
     }
 
     fun togglePlayPause() {
@@ -588,6 +704,11 @@ data class PlayerUiState(
     val lyricsData: LyricsData? = null,
     val isLyricsLoading: Boolean = false,
     val lyricsError: UiError? = null,
+    val isLyricsTranslated: Boolean = false,
+    val isLyricsTranslationLoading: Boolean = false,
+    val lyricsProvider: String? = null,
+    val lyricsProviderMode: String? = null,
+    val lyricsOffsetMs: Int = 0,
     val downloadError: String? = null,
     val isRadioLoading: Boolean = false,
     val showSources: Boolean = false,

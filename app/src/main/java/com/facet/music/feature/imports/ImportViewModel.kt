@@ -4,11 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.facet.music.core.import.ImportError
 import com.facet.music.core.import.ImportService
+import com.facet.music.core.import.ImportedPlaylist
 import com.facet.music.core.import.ProfileLinkParser
 import com.facet.music.core.import.TextPlaylistParser
 import com.facet.music.core.import.TextTrackQuery
 import com.facet.music.data.model.Track
 import com.facet.music.core.source.TrackMatcher
+import com.facet.music.data.repository.CanonicalTrackRepository
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlaylistRepository
 import com.facet.music.data.repository.SettingsRepository
@@ -29,7 +31,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class ImportTab { PROFILE, TEXT }
+enum class ImportTab { PROFILE, LINK, TEXT }
 
 enum class LikesError {
     EMPTY,
@@ -85,6 +87,10 @@ data class ImportUiState(
     val fallbackRunning: Boolean = false,
     val likesTotal: Int = 0,
     val visibleLikes: Int = 20,
+    val playlistLink: String = "",
+    val playlistPreview: ImportedPlaylist? = null,
+    val playlistLoading: Boolean = false,
+    val playlistImporting: Boolean = false,
 ) {
     val selectedCount: Int get() = playlists.count { it.selected }
 }
@@ -99,6 +105,7 @@ class ImportViewModel @Inject constructor(
     private val soundCloudLikesProvider: SoundCloudLikesProvider,
     private val settingsRepository: SettingsRepository,
     private val trackMatcher: TrackMatcher,
+    private val canonicalTrackRepository: CanonicalTrackRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ImportUiState())
@@ -188,6 +195,7 @@ class ImportViewModel @Inject constructor(
                     }
                 }
             }
+            runCatching { canonicalTrackRepository.recordVariants(preview) }
             _uiState.update {
                 it.copy(
                     isImporting = false,
@@ -332,6 +340,7 @@ class ImportViewModel @Inject constructor(
                     loaded.playlist.tracks.forEach { track ->
                         playlistRepository.addTrack(playlistId, track)
                     }
+                    canonicalTrackRepository.recordVariants(loaded.playlist.tracks)
                 }.onSuccess { imported++ }
             }
             _uiState.update {
@@ -350,6 +359,65 @@ class ImportViewModel @Inject constructor(
                 runCatching { settingsRepository.setImportCompleted(true) }
             }
         }
+    }
+
+    fun setPlaylistLink(value: String) {
+        _uiState.update {
+            it.copy(
+                playlistLink = value,
+                playlistPreview = if (value == it.playlistLink) it.playlistPreview else null,
+                error = null,
+            )
+        }
+    }
+
+    fun loadPlaylistLink() {
+        val link = _uiState.value.playlistLink.trim()
+        if (link.isEmpty()) {
+            _uiState.update { it.copy(error = ImportError.EMPTY_LINK) }
+            return
+        }
+        if (_uiState.value.playlistLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(playlistLoading = true, error = null, playlistPreview = null) }
+            when (val result = playlistImportService.load(link)) {
+                is PlaylistImportResult.Success -> _uiState.update {
+                    it.copy(playlistLoading = false, playlistPreview = result.playlist)
+                }
+                is PlaylistImportResult.Failure -> _uiState.update {
+                    it.copy(playlistLoading = false, error = result.error)
+                }
+            }
+        }
+    }
+
+    fun importPlaylistLink() {
+        val state = _uiState.value
+        val preview = state.playlistPreview ?: return
+        if (state.playlistImporting || preview.tracks.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(playlistImporting = true, error = null) }
+            runCatching {
+                val playlistId = playlistRepository.createPlaylist(preview.name)
+                preview.tracks.forEach { track -> playlistRepository.addTrack(playlistId, track) }
+                canonicalTrackRepository.recordVariants(preview.tracks)
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        playlistImporting = false,
+                        message = "Импортировано треков: ${preview.tracks.size}",
+                        importedPlaylists = 1,
+                    )
+                }
+                runCatching { settingsRepository.setImportCompleted(true) }
+            }.onFailure {
+                _uiState.update { it.copy(playlistImporting = false, error = ImportError.SAVE_FAILED) }
+            }
+        }
+    }
+
+    fun clearPlaylistPreview() {
+        _uiState.update { it.copy(playlistPreview = null) }
     }
 
     fun parseText() {
@@ -385,6 +453,7 @@ class ImportViewModel @Inject constructor(
             runCatching {
                 val playlistId = playlistRepository.createPlaylist("Импорт из списка")
                 state.textFound.forEach { playlistRepository.addTrack(playlistId, it) }
+                canonicalTrackRepository.recordVariants(state.textFound)
             }.onSuccess {
                 _uiState.update {
                     it.copy(

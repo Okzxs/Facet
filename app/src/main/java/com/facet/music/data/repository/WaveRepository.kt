@@ -1,6 +1,7 @@
 package com.facet.music.data.repository
 
 import com.facet.music.core.wave.WaveCandidateDetails
+import com.facet.music.core.wave.WaveExplanation
 import com.facet.music.core.wave.WaveMood
 import com.facet.music.core.wave.WaveOutcome
 import com.facet.music.data.model.Track
@@ -66,6 +67,10 @@ interface WaveRepository {
     suspend fun consumeMoodRefresh(): Boolean
 
     suspend fun cleanupIfNeeded()
+
+    suspend fun explain(track: Track): Result<WaveExplanation>
+
+    suspend fun boostPreference(track: Track, delta: Double)
 
     suspend fun blockArtist(artistKey: String)
 

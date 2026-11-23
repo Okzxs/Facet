@@ -72,6 +72,7 @@ class WaveRepositoryTest {
             json = Json,
             analyticsTracker = mockk(relaxed = true),
             artistRepository = mockk(relaxed = true),
+            tasteRepository = mockk(relaxed = true),
         )
     }
 

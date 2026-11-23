@@ -19,6 +19,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.PersonOff
 import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Album
@@ -107,6 +109,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.content.Intent
 import android.text.format.DateFormat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -156,6 +159,7 @@ fun PlayerScreen(
     foregroundModifier: Modifier = Modifier,
     isClosing: Boolean = false,
     swipeState: PlayerSwipeState,
+    onCoverBoundsChanged: (Rect?) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
@@ -167,12 +171,14 @@ fun PlayerScreen(
     val sleepTimer by viewModel.sleepTimer.collectAsState()
 
     var isLyricsMode by remember { mutableStateOf(false) }
+    BackHandler(enabled = isLyricsMode) { isLyricsMode = false }
     var showQueueSheet by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
     var showSleepTimer by remember { mutableStateOf(false) }
     var showTuning by remember { mutableStateOf(false) }
     var showVariations by remember { mutableStateOf(false) }
+    var showLyricsOffset by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
@@ -488,6 +494,7 @@ fun PlayerScreen(
             contentColor = MaterialTheme.colorScheme.onSurface,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
+                AnimatedVisibility(visible = !isLyricsMode, enter = fadeIn(), exit = fadeOut()) {
                 TopAppBar(
                     navigationIcon = {
                         IconButton(onClick = onBack) {
@@ -613,6 +620,77 @@ fun PlayerScreen(
                                         showVariations = true
                                     },
                                 )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = when {
+                                                uiState.isLyricsTranslationLoading -> stringResource(R.string.player_lyrics_translating)
+                                                uiState.isLyricsTranslated -> stringResource(R.string.player_lyrics_original)
+                                                else -> stringResource(R.string.player_lyrics_translate)
+                                            },
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Translate,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    enabled = uiState.lyricsData != null && !uiState.isLyricsTranslationLoading,
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.toggleLyricsTranslation()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_lyrics_offset)) },
+                                    leadingIcon = {
+                                        Icon(Icons.Rounded.Translate, contentDescription = null)
+                                    },
+                                    trailingIcon = {
+                                        Text(
+                                            text = "${uiState.lyricsOffsetMs} ms",
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                    },
+                                    enabled = uiState.lyricsData != null,
+                                    onClick = {
+                                        showMenu = false
+                                        showLyricsOffset = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                R.string.player_lyrics_source,
+                                                uiState.lyricsProvider
+                                                    ?: uiState.lyricsProviderMode
+                                                    ?: stringResource(R.string.player_lyrics_source_auto),
+                                            ),
+                                        )
+                                    },
+                                    enabled = uiState.lyricsData != null,
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.cycleLyricsProvider()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_lyrics_share)) },
+                                    enabled = uiState.lyricsData != null,
+                                    onClick = {
+                                        showMenu = false
+                                        val text = uiState.lyricsData?.lines?.joinToString("\n").orEmpty()
+                                        if (text.isNotBlank()) {
+                                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, text)
+                                            }
+                                            context.startActivity(Intent.createChooser(intent, null))
+                                        }
+                                    },
+                                )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = {
@@ -641,6 +719,7 @@ fun PlayerScreen(
                         containerColor = Color.Transparent,
                     ),
                 )
+                }
             },
         ) { padding ->
             Column(
@@ -664,6 +743,7 @@ fun PlayerScreen(
                         isLyricsLoading = uiState.isLyricsLoading,
                         lyricsError = uiState.lyricsError?.let { stringResource(it.messageRes) },
                         lyricsListState = lyricsListState,
+                        lyricsOffsetMs = uiState.lyricsOffsetMs,
                         palette = playerColors,
                         actionAccent = coverAccent,
                         actionContainer = heroActionContainer,
@@ -682,7 +762,10 @@ fun PlayerScreen(
                         },
                         previousArtworkUrl = playerState.queue.getOrNull(playerState.currentIndex - 1)?.artworkUrl,
                         nextArtworkUrl = playerState.queue.getOrNull(playerState.currentIndex + 1)?.artworkUrl,
-                        onArtworkBoundsChanged = { artworkBounds.value = it },
+                        onArtworkBoundsChanged = {
+                            artworkBounds.value = it
+                            if (it != null) onCoverBoundsChanged(it)
+                        },
                         isDismissDragging = swipeState.isDragging,
                         onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                         onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
@@ -701,7 +784,7 @@ fun PlayerScreen(
                             .weight(1f),
                     )
 
-                    if (!hasLocationPermission) {
+                    if (!hasLocationPermission && !isLyricsMode) {
                         LocationPermissionBanner(
                             actionLabel = if (permissionRequested) {
                                 stringResource(R.string.player_permission_settings)
@@ -719,7 +802,7 @@ fun PlayerScreen(
                     val isPlayerReady = playerState.playbackState == androidx.media3.common.Player.STATE_READY
                     val error = if (isPlayerReady) null else (uiState.error ?: playerState.error)
 
-                    if (error != null) {
+                    if (error != null && !isLyricsMode) {
                         Text(
                             text = "⚠️ ${stringResource(error.messageRes)}",
                             color = MaterialTheme.colorScheme.error,
@@ -728,6 +811,7 @@ fun PlayerScreen(
                         )
                     }
 
+                    if (!isLyricsMode) {
                     PlayerControlIsland(
                         isPlaying = playerState.isPlaying,
                         isBuffering = isBuffering,
@@ -778,8 +862,17 @@ fun PlayerScreen(
                             onSeek = { fraction -> viewModel.seekTo(fraction) },
                         )
                     }
+                    }
                 }
         }
+    }
+
+    if (showLyricsOffset) {
+        LyricsOffsetDialog(
+            offsetMs = uiState.lyricsOffsetMs,
+            onOffsetChange = viewModel::setLyricsOffsetMs,
+            onDismiss = { showLyricsOffset = false },
+        )
     }
 
     if (showTuning) {
@@ -951,3 +1044,35 @@ private fun blendPaletteWithAccent(
     )
 }
 
+@Composable
+private fun LyricsOffsetDialog(
+    offsetMs: Int,
+    onOffsetChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.player_lyrics_offset)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.player_lyrics_offset_value, offsetMs))
+                Slider(
+                    value = offsetMs.toFloat(),
+                    onValueChange = { onOffsetChange((it / 100f).toInt() * 100) },
+                    valueRange = -2_000f..2_000f,
+                    steps = 39,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.player_lyrics_done))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onOffsetChange(0) }) {
+                Text(stringResource(R.string.player_lyrics_reset))
+            }
+        },
+    )
+}

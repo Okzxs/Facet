@@ -50,6 +50,10 @@ class TasteRepositoryImpl @Inject constructor(
         changeWeight(track, DISLIKE_DELTA)
     }
 
+    override suspend fun boost(track: Track, delta: Double) {
+        changeWeight(track, delta)
+    }
+
     override suspend fun getTopGenres(limit: Int): List<TasteWeight> =
         withContext(Dispatchers.IO) {
             val now = clock.nowMs()

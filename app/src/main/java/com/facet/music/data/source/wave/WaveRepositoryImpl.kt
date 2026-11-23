@@ -15,12 +15,15 @@ import com.facet.music.core.wave.WaveEngine
 import com.facet.music.core.wave.WaveGeneration
 import com.facet.music.core.wave.WaveHistoryStore
 import com.facet.music.core.wave.WaveMood
+import com.facet.music.core.wave.WaveExplanation
+import com.facet.music.core.wave.WaveExplanationFactory
 import com.facet.music.core.wave.WaveOutcome
 import com.facet.music.core.wave.WaveSessionPlan
 import com.facet.music.core.wave.WaveSessionRecord
 import com.facet.music.core.wave.WaveSessionState
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.ArtistRepository
+import com.facet.music.data.repository.TasteRepository
 import com.facet.music.data.repository.WaveBatch
 import com.facet.music.data.repository.WaveRepository
 import com.facet.music.data.repository.WaveSelection
@@ -55,6 +58,7 @@ class WaveRepositoryImpl @Inject constructor(
     private val json: Json,
     private val analyticsTracker: AnalyticsTracker,
     private val artistRepository: ArtistRepository,
+    private val tasteRepository: TasteRepository,
 ) : WaveRepository {
 
     private val _activeSession = MutableStateFlow<WaveSession?>(null)
@@ -338,6 +342,46 @@ class WaveRepositoryImpl @Inject constructor(
     override suspend fun cleanupIfNeeded() = withContext(Dispatchers.IO) {
         historyStore.cleanupIfNeeded(clock.nowMs())
     }
+
+    override suspend fun explain(track: Track): Result<WaveExplanation> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val currentPlan = plan ?: error("Сессия волны не запущена")
+                val candidate = details[keyOf(track)] ?: error("Нет данных о треке")
+                val seedTrack = currentPlan.seedTracks.firstOrNull {
+                    it.trackKey == candidate.seedKey
+                }?.track
+                val seedArtist = currentPlan.seedArtists.firstOrNull {
+                    it.key == candidate.seedKey
+                }?.displayName ?: seedTrack?.artist
+                WaveExplanationFactory.explain(
+                    details = candidate,
+                    track = track,
+                    seedArtistName = seedArtist,
+                    seedTrackTitle = seedTrack?.title,
+                )
+            }.rethrowCancellation()
+        }
+
+    override suspend fun boostPreference(track: Track, delta: Double) =
+        withContext(Dispatchers.IO) {
+            runCatching { tasteRepository.boost(track, delta) }
+            mutex.withLock {
+                val currentPlan = plan ?: return@withLock
+                val artistKey = artistKeyOf(track)
+                val genreKey = MusicNormalizer.normalizeWords(track.genre.orEmpty())
+                    .takeIf { it.isNotBlank() }
+                val artists = currentPlan.profile.artists.toMutableMap()
+                artists[artistKey] = ((artists[artistKey] ?: 0.0) + delta).coerceIn(-10.0, 10.0)
+                val genres = currentPlan.profile.genres.toMutableMap()
+                if (genreKey != null) {
+                    genres[genreKey] = ((genres[genreKey] ?: 0.0) + delta).coerceIn(-10.0, 10.0)
+                }
+                plan = currentPlan.copy(
+                    profile = currentPlan.profile.copy(artists = artists, genres = genres),
+                )
+            }
+        }
 
     override suspend fun blockArtist(artistKey: String) = withContext(Dispatchers.IO) {
         historyStore.blockArtist(artistKey, clock.nowMs())

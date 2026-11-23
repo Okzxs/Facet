@@ -41,11 +41,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -53,6 +55,10 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -100,6 +106,9 @@ import com.facet.music.R
 import com.facet.music.core.ui.components.AppLoadingIndicator
 import com.facet.music.core.ui.components.TrackArtwork
 import com.facet.music.core.wave.WaveCandidateDetails
+import com.facet.music.core.wave.WaveExplanation
+import com.facet.music.core.wave.WaveReason
+import com.facet.music.core.wave.WaveReasonType
 import com.facet.music.core.wave.WaveMood
 import com.facet.music.data.model.Track
 import com.facet.music.navigation.LocalBottomDockHeight
@@ -258,6 +267,7 @@ fun WaveScreen(
                             null
                         },
                         onArtistClick = { onArtistClick(track) },
+                        onExplain = { viewModel.openExplanation(track) },
                     )
                 }
             } else if (!uiState.isGenerating && uiState.error == null) {
@@ -275,6 +285,19 @@ fun WaveScreen(
                     onDismiss = { debugTrack = null },
                 )
             }
+        }
+
+        val explainTrack = uiState.explanationTrack
+        if (explainTrack != null) {
+            WaveExplanationDialog(
+                track = explainTrack,
+                explanation = uiState.explanation,
+                isLoading = uiState.isExplanationLoading,
+                onMoreLikeThis = viewModel::moreLikeThis,
+                onLessLikeThis = viewModel::lessLikeThis,
+                onBlockArtist = viewModel::blockFromExplanation,
+                onDismiss = viewModel::dismissExplanation,
+            )
         }
 
         if (uiState.showColdStart) {
@@ -760,6 +783,7 @@ private fun WaveTrackRow(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)?,
     onArtistClick: () -> Unit,
+    onExplain: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -833,6 +857,16 @@ private fun WaveTrackRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.clickable(onClick = onArtistClick),
                 )
+            }
+            onExplain?.let { explain ->
+                IconButton(onClick = explain, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = stringResource(R.string.wave_explain_cd),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
             Icon(
                 imageVector = Icons.Rounded.PlayArrow,
@@ -947,6 +981,121 @@ private fun DebugRow(label: String, value: String) {
         )
         Text(text = value, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+@Composable
+private fun WaveExplanationDialog(
+    track: Track,
+    explanation: WaveExplanation?,
+    isLoading: Boolean,
+    onMoreLikeThis: () -> Unit,
+    onLessLikeThis: () -> Unit,
+    onBlockArtist: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.wave_explain_title)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                when {
+                    isLoading -> AppLoadingIndicator(
+                        size = 24.dp,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
+                    explanation == null -> Text(
+                        text = stringResource(R.string.wave_explain_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    else -> explanation.reasons.forEach { reason ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primary,
+                                        CircleShape,
+                                    ),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = waveReasonText(reason),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                FilledTonalButton(
+                    onClick = onMoreLikeThis,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.wave_more_like))
+                }
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = onLessLikeThis,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.wave_less_like))
+                }
+                Spacer(Modifier.height(6.dp))
+                TextButton(
+                    onClick = onBlockArtist,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.wave_block_artist))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun waveReasonText(reason: WaveReason): String = when (reason.type) {
+    WaveReasonType.SEED_TRACK -> stringResource(
+        R.string.wave_reason_seed_track,
+        reason.value.orEmpty(),
+    )
+    WaveReasonType.SEED_ARTIST -> stringResource(
+        R.string.wave_reason_seed_artist,
+        reason.value.orEmpty(),
+    )
+    WaveReasonType.SIMILAR_ARTIST -> stringResource(
+        R.string.wave_reason_similar_artist,
+        reason.value.orEmpty(),
+    )
+    WaveReasonType.GENRE -> stringResource(R.string.wave_reason_genre, reason.value.orEmpty())
+    WaveReasonType.NOVELTY -> stringResource(R.string.wave_reason_novelty)
+    WaveReasonType.FAMILIAR -> stringResource(R.string.wave_reason_familiar)
+    WaveReasonType.POPULAR -> stringResource(R.string.wave_reason_popular)
+    WaveReasonType.FOLLOWED -> stringResource(R.string.wave_reason_followed)
+    WaveReasonType.SECOND_HOP -> stringResource(R.string.wave_reason_second_hop)
+    WaveReasonType.PENALTY -> stringResource(R.string.wave_reason_penalty, reason.value.orEmpty())
 }
 
 @Composable

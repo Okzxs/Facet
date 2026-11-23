@@ -223,3 +223,28 @@ data class WaveConfig(
     val impressionRetentionDays: Int = 90,
     val cleanupIntervalHours: Int = 24,
 )
+
+enum class WaveReasonType {
+    SEED_TRACK,
+    SEED_ARTIST,
+    SIMILAR_ARTIST,
+    GENRE,
+    NOVELTY,
+    FAMILIAR,
+    POPULAR,
+    FOLLOWED,
+    SECOND_HOP,
+    PENALTY,
+}
+
+data class WaveReason(
+    val type: WaveReasonType,
+    val value: String? = null,
+    val weight: Double = 0.0,
+)
+
+data class WaveExplanation(
+    val trackId: String,
+    val score: Double,
+    val reasons: List<WaveReason>,
+)

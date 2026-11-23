@@ -6,7 +6,10 @@ import com.facet.music.data.model.LyricsResult
 import com.facet.music.data.repository.LyricsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -14,6 +17,8 @@ import javax.inject.Singleton
 @Singleton
 class LyricsRepositoryImpl @Inject constructor(
     private val lrclibApi: LrclibApi,
+    private val betterLyrics: BetterLyricsProvider,
+    private val lyricsPlus: LyricsPlusProvider,
 ) : LyricsRepository {
 
     private val tag = "LRCLIB"
@@ -22,13 +27,48 @@ class LyricsRepositoryImpl @Inject constructor(
         title: String,
         artist: String,
         durationMs: Long,
+        preferredProvider: String?,
     ): Result<LyricsResult> = withContext(Dispatchers.IO) {
         runCatching {
             val durationSec = if (durationMs > 0) durationMs / 1000L else null
             val cleanQuery = cleanTrackMetadata(title, artist)
 
-            Log.d(tag, "Requesting: ${cleanQuery.title} - ${cleanQuery.artist} - ${durationSec}s")
+            Log.d(tag, "Providers: ${cleanQuery.title} - ${cleanQuery.artist}")
 
+            val providers = if (preferredProvider == "LRCLIB") {
+                emptyList()
+            } else {
+                coroutineScope {
+                    buildList {
+                        if (preferredProvider == null || preferredProvider == "BetterLyrics") {
+                            add(async { "BetterLyrics" to betterLyrics.lookup(cleanQuery.title, cleanQuery.artist, durationMs) })
+                        }
+                        if (preferredProvider == null || preferredProvider == "LyricsPlus") {
+                            add(async { "LyricsPlus" to lyricsPlus.lookup(cleanQuery.title, cleanQuery.artist, durationMs) })
+                        }
+                    }.map { job -> withTimeoutOrNull(PROVIDER_TIMEOUT_MS) { job.await() } }
+                        .mapNotNull { it }
+                }
+            }
+            val providerLines = providers.filter { !it.second.isNullOrEmpty() }
+
+            providerLines.firstOrNull { it.second.orEmpty().any { line -> line.isWordSynced } }?.let { (name, lines) ->
+                return@runCatching LyricsResult(
+                    lines = lines.orEmpty(),
+                    isSynced = true,
+                    provider = name,
+                )
+            }
+            providerLines.firstOrNull()?.let { (name, lines) ->
+                val value = lines.orEmpty()
+                return@runCatching LyricsResult(
+                    lines = value,
+                    isSynced = value.any { it.timeMs > 0 },
+                    provider = name,
+                )
+            }
+
+            Log.d(tag, "Фолбэк: LRCLIB")
             var found = tryGetLyrics(cleanQuery.title, cleanQuery.artist, durationSec)
 
             if (found == null && durationSec != null) {
@@ -157,4 +197,8 @@ class LyricsRepositoryImpl @Inject constructor(
     }
 
     private data class CleanQuery(val artist: String, val title: String)
+
+    private companion object {
+        const val PROVIDER_TIMEOUT_MS = 7_000L
+    }
 }

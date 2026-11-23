@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.AddLink
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Button
@@ -134,6 +135,11 @@ fun ImportScreen(
                     text = { Text(stringResource(R.string.import_tab_profile)) },
                 )
                 Tab(
+                    selected = state.tab == ImportTab.LINK,
+                    onClick = { viewModel.setTab(ImportTab.LINK) },
+                    text = { Text(stringResource(R.string.import_tab_link)) },
+                )
+                Tab(
                     selected = state.tab == ImportTab.TEXT,
                     onClick = { viewModel.setTab(ImportTab.TEXT) },
                     text = { Text(stringResource(R.string.import_tab_text)) },
@@ -150,6 +156,7 @@ fun ImportScreen(
             ) { tab ->
                 when (tab) {
                     ImportTab.PROFILE -> ProfileImportContent(state, viewModel)
+                    ImportTab.LINK -> LinkImportContent(state, viewModel)
                     ImportTab.TEXT -> TextImportContent(state, viewModel)
                 }
             }
@@ -448,6 +455,120 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                                 state.selectedCount,
                             ),
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LinkImportContent(state: ImportUiState, viewModel: ImportViewModel) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(key = "playlist_link") {
+            ImportCard(
+                icon = Icons.Rounded.AddLink,
+                title = stringResource(R.string.import_link_card_title),
+                subtitle = stringResource(R.string.import_link_hint),
+            ) {
+                OutlinedTextField(
+                    value = state.playlistLink,
+                    onValueChange = viewModel::setPlaylistLink,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.import_link_field)) },
+                    placeholder = { Text("https://open.spotify.com/playlist/…") },
+                    shape = MaterialTheme.shapes.medium,
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = viewModel::loadPlaylistLink,
+                    enabled = !state.playlistLoading && state.playlistLink.isNotBlank(),
+                    shape = CircleShape,
+                ) {
+                    if (state.playlistLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(stringResource(R.string.import_link_load))
+                }
+            }
+        }
+
+        val preview = state.playlistPreview
+        if (preview != null) {
+            item(key = "playlist_preview") {
+                ImportCard(
+                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                    title = preview.name,
+                    subtitle = pluralStringResource(
+                        R.plurals.import_link_track_count,
+                        preview.tracks.size,
+                        preview.tracks.size,
+                    ),
+                ) {
+                    preview.tracks.take(10).forEach { track ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AsyncImage(
+                                track.artworkUrl,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(10.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
+                            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                                Text(
+                                    track.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    track.artist,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    if (preview.isIncomplete) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.import_link_incomplete),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = viewModel::importPlaylistLink,
+                        enabled = !state.playlistImporting && preview.tracks.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = CircleShape,
+                    ) {
+                        if (state.playlistImporting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(stringResource(R.string.import_link_import))
                     }
                 }
             }

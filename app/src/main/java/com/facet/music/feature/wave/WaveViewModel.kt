@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.facet.music.core.player.PlayerController
 import com.facet.music.core.player.QueueOrigin
 import com.facet.music.core.wave.WaveCandidateDetails
+import com.facet.music.core.wave.WaveExplanation
 import com.facet.music.core.wave.WaveMood
 import com.facet.music.data.model.Track
+import com.facet.music.core.text.MusicNormalizer
 import com.facet.music.data.repository.LastFmRepository
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.PlayHistoryRepository
@@ -39,6 +41,9 @@ data class WaveUiState(
     val coldStartArtists: List<String> = emptyList(),
     val selectedColdStartArtists: Set<String> = emptySet(),
     val showColdStart: Boolean = false,
+    val explanationTrack: Track? = null,
+    val explanation: WaveExplanation? = null,
+    val isExplanationLoading: Boolean = false,
 )
 
 @HiltViewModel
@@ -256,6 +261,53 @@ class WaveViewModel @Inject constructor(
         val index = tracks.indexOfFirst { it.id == track.id }
         if (index < 0) return
         playerController.setQueueAndPlay(tracks, startIndex = index, origin = QueueOrigin.WAVE)
+    }
+
+    fun openExplanation(track: Track) {
+        _uiState.update {
+            it.copy(explanationTrack = track, explanation = null, isExplanationLoading = true)
+        }
+        viewModelScope.launch {
+            val explanation = waveRepository.explain(track).getOrNull()
+            _uiState.update { it.copy(explanation = explanation, isExplanationLoading = false) }
+        }
+    }
+
+    fun dismissExplanation() {
+        _uiState.update { it.copy(explanationTrack = null, explanation = null, isExplanationLoading = false) }
+    }
+
+    fun moreLikeThis() {
+        val track = _uiState.value.explanationTrack ?: return
+        viewModelScope.launch {
+            waveRepository.boostPreference(track, 1.5)
+            dismissExplanation()
+        }
+    }
+
+    fun lessLikeThis() {
+        val track = _uiState.value.explanationTrack ?: return
+        viewModelScope.launch {
+            waveRepository.boostPreference(track, -1.5)
+            dismissExplanation()
+        }
+    }
+
+    fun blockFromExplanation() {
+        val track = _uiState.value.explanationTrack ?: return
+        viewModelScope.launch {
+            val artistKey = MusicNormalizer.normalizeArtist(track.artist)
+                .ifBlank { "track:${track.id}" }
+            waveRepository.blockArtist(artistKey)
+            _uiState.update { state ->
+                state.copy(
+                    tracks = state.tracks.filterNot { it.id == track.id },
+                    explanationTrack = null,
+                    explanation = null,
+                    isExplanationLoading = false,
+                )
+            }
+        }
     }
 
     fun resetWave() {

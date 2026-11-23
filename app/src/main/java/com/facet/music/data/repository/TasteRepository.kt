@@ -32,6 +32,8 @@ interface TasteRepository {
 
     suspend fun onDislike(track: Track)
 
+    suspend fun boost(track: Track, delta: Double)
+
     suspend fun getTopGenres(limit: Int = 5): List<TasteWeight>
 
     suspend fun getTopArtists(limit: Int = 5): List<TasteWeight>
