@@ -3,6 +3,7 @@ package com.facet.music.data.local
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.facet.music.data.local.dao.ArtistCacheDao
+import com.facet.music.data.local.dao.CanonicalTrackDao
 import com.facet.music.data.local.dao.ChartCacheDao
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.dao.FollowedArtistDao
@@ -17,6 +18,7 @@ import com.facet.music.data.local.dao.SearchCacheDao
 import com.facet.music.data.local.dao.TasteDao
 import com.facet.music.data.local.dao.WaveDao
 import com.facet.music.data.local.entity.ArtistBlocklistEntity
+import com.facet.music.data.local.entity.CanonicalTrackEntity
 import com.facet.music.data.local.entity.ArtistCacheEntity
 import com.facet.music.data.local.entity.ChartCacheEntity
 import com.facet.music.data.local.entity.DislikedTrackEntity
@@ -32,6 +34,7 @@ import com.facet.music.data.local.entity.QueueEntity
 import com.facet.music.data.local.entity.RecentlyShownEntity
 import com.facet.music.data.local.entity.ResolvedMatchEntity
 import com.facet.music.data.local.entity.SearchCacheEntity
+import com.facet.music.data.local.entity.TrackVariantEntity
 import com.facet.music.data.local.entity.UserPreferenceEntity
 import com.facet.music.data.local.entity.WaveImpressionEntity
 import com.facet.music.data.local.entity.WaveSessionEntity
@@ -57,8 +60,10 @@ import com.facet.music.data.local.entity.WaveSessionEntity
         WaveImpressionEntity::class,
         WaveSessionEntity::class,
         ArtistBlocklistEntity::class,
+        CanonicalTrackEntity::class,
+        TrackVariantEntity::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -76,4 +81,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun artistCacheDao(): ArtistCacheDao
     abstract fun followedArtistDao(): FollowedArtistDao
     abstract fun waveDao(): WaveDao
+    abstract fun canonicalTrackDao(): CanonicalTrackDao
 }

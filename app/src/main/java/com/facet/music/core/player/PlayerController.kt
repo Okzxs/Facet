@@ -7,7 +7,9 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import com.facet.music.core.error.UiError
 import com.facet.music.core.source.PlaybackResolver
+import com.facet.music.core.source.ResolvedStream
 import com.facet.music.core.text.MusicNormalizer
+import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.QueueRepository
 import com.facet.music.data.repository.SettingsRepository
@@ -243,6 +245,7 @@ class PlayerController @Inject constructor(
                     0L,
                 )
             }
+            applySourceSubstitution(effectiveQueue[effectiveIndex], stream)
             player.prepare()
             player.play()
             preloadNext()
@@ -342,11 +345,56 @@ class PlayerController @Inject constructor(
                     0L,
                 )
             }
+            applySourceSubstitution(queue[index], stream)
             player.seekTo(index, 0L)
             player.prepare()
             player.play()
             preloadNext()
         }
+    }
+
+    fun switchToVariant(track: Track) {
+        val state = _state.value
+        val index = state.currentIndex
+        if (track.id.isBlank() || index !in state.queue.indices) return
+        val position = currentPositionMs()
+        val previous = state.queue[index]
+        val nextQueue = state.queue.toMutableList().also { it[index] = track }
+        if (originalQueue.isNotEmpty()) {
+            originalQueue = originalQueue.map { queued ->
+                if (queued.id == previous.id) track else queued
+            }
+        }
+        _state.update {
+            it.copy(
+                queue = nextQueue,
+                currentTrack = track,
+                isBuffering = true,
+                isLoading = true,
+                error = null,
+                sourceSubstitution = null,
+            )
+        }
+        scope.launch {
+            val player = awaitPlayer() ?: return@launch
+            val stream = playbackResolver.resolve(track).getOrNull()
+            val mime = stream?.mimeType ?: defaultMime(track)
+            player.replaceMediaItem(index, TrackMediaItem.create(track, mime))
+            player.seekTo(index, position)
+            applySourceSubstitution(track, stream)
+            player.prepare()
+            player.play()
+        }
+    }
+
+    private fun applySourceSubstitution(track: Track, stream: ResolvedStream?) {
+        val actual = stream?.source
+        val substitution = if (actual != null && actual != track.source) {
+            SourceSubstitution(original = track.source, actual = actual)
+        } else {
+            null
+        }
+        _state.update { it.copy(sourceSubstitution = substitution) }
     }
 
     fun playNext(loop: Boolean = false) {
@@ -821,4 +869,10 @@ data class PlayerState(
     val isShuffle: Boolean = false,
     val queueOrigin: QueueOrigin = QueueOrigin.MAIN,
     val error: UiError? = null,
+    val sourceSubstitution: SourceSubstitution? = null,
+)
+
+data class SourceSubstitution(
+    val original: Source,
+    val actual: Source,
 )

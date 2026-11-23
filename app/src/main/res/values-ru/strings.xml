@@ -247,6 +247,16 @@
     <string name="player_permission_settings">Настройки</string>
     <string name="player_permission_allow">Разрешить</string>
     <string name="player_source">Источник: %1$s</string>
+    <string name="sources_sheet_title">Где играет</string>
+    <string name="sources_sheet_play">Играть</string>
+    <string name="sources_sheet_current">Играет</string>
+    <string name="sources_sheet_empty">Других источников пока нет.</string>
+    <string name="sources_quality_full">Полный трек</string>
+    <string name="sources_quality_preview">Превью %1$d с</string>
+    <string name="sources_quality_subscription">Только Go+</string>
+    <string name="sources_badge_cd">Источники</string>
+    <string name="sources_switch_cd">Сменить источник</string>
+    <string name="player_source_substituted">Играет %1$s вместо %2$s</string>
     <string name="player_radio_start">Волна от трека</string>
     <string name="player_tuning">Детюн</string>
     <string name="player_variations">Вариации</string>

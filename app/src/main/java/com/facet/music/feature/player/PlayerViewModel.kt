@@ -20,8 +20,11 @@ import com.facet.music.core.service.ServiceType
 import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.entity.DislikedTrackEntity
+import com.facet.music.data.model.CanonicalTrack
 import com.facet.music.data.model.Track
+import com.facet.music.data.model.TrackVariant
 import com.facet.music.data.repository.AppSettings
+import com.facet.music.data.repository.CanonicalTrackRepository
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.LyricsRepository
 import com.facet.music.data.repository.SettingsRepository
@@ -51,6 +54,7 @@ class PlayerViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
     private val navigationEvents: NavigationEvents,
     private val trackLikeManager: TrackLikeManager,
+    private val canonicalTrackRepository: CanonicalTrackRepository,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
@@ -178,6 +182,8 @@ class PlayerViewModel @Inject constructor(
                                 lyricsError = null,
                                 error = null,
                                 downloadError = null,
+                                showSources = false,
+                                sourcesTrack = null,
                             )
                         }
                     }
@@ -267,6 +273,41 @@ class PlayerViewModel @Inject constructor(
                 Log.e(tag, "Не удалось заблокировать исполнителя", error)
             }
         }
+    }
+
+    fun openSources() {
+        val track = playerState.value.currentTrack ?: _uiState.value.track ?: return
+        _uiState.update {
+            it.copy(showSources = true, isSourcesLoading = true, sourcesTrack = null)
+        }
+        viewModelScope.launch {
+            val key = canonicalTrackRepository.canonicalKey(track)
+            val stored = runCatching { canonicalTrackRepository.variants(key) }.getOrNull().orEmpty()
+            val resolved = runCatching { canonicalTrackRepository.resolveByTrackId(track.id) }
+                .getOrNull()?.variants?.map { it.track }.orEmpty()
+            val variants = (listOf(track) + resolved + stored).distinctBy { it.id }
+            _uiState.update {
+                it.copy(
+                    isSourcesLoading = false,
+                    sourcesTrack = CanonicalTrack(
+                        key = key,
+                        title = track.title,
+                        artist = track.artist,
+                        primary = track,
+                        variants = variants.map { variant -> TrackVariant(variant, 1.0, 0L) },
+                    ),
+                )
+            }
+        }
+    }
+
+    fun closeSources() {
+        _uiState.update { it.copy(showSources = false, sourcesTrack = null, isSourcesLoading = false) }
+    }
+
+    fun switchVariant(track: Track) {
+        playerController.switchToVariant(track)
+        closeSources()
     }
 
     fun toggleDownload() {
@@ -549,5 +590,8 @@ data class PlayerUiState(
     val lyricsError: UiError? = null,
     val downloadError: String? = null,
     val isRadioLoading: Boolean = false,
+    val showSources: Boolean = false,
+    val sourcesTrack: CanonicalTrack? = null,
+    val isSourcesLoading: Boolean = false,
 )
 

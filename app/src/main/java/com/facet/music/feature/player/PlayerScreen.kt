@@ -123,6 +123,7 @@ import com.facet.music.core.ui.components.PlayerQueueSheet
 import com.facet.music.core.ui.components.PlayerSliderState
 import com.facet.music.core.ui.components.AddToPlaylistSheet
 import com.facet.music.core.ui.components.SleepTimerSheet
+import com.facet.music.core.ui.components.TrackSourcesSheet
 import com.facet.music.core.ui.theme.Motion
 import com.facet.music.core.ui.theme.PillShape
 import com.facet.music.core.ui.theme.bestContentColor
@@ -690,6 +691,8 @@ fun PlayerScreen(
                         onToggleDislike = { viewModel.toggleDislike() },
                         onDownloadClick = { viewModel.toggleDownload() },
                         onArtistClick = track?.let { current -> { onArtistClick(current) } },
+                        onSourceClick = { viewModel.openSources() },
+                        sourceSubstitution = playerState.sourceSubstitution,
                         coverModifier = if (swipeState.isDragging) Modifier else coverModifier,
                         coverSwipeModifier = coverSwipeModifier,
                         panelModifier = panelModifier,
@@ -798,6 +801,16 @@ fun PlayerScreen(
                 showVariations = false
             },
             onDismiss = { showVariations = false },
+        )
+    }
+
+    if (uiState.showSources) {
+        TrackSourcesSheet(
+            canonical = uiState.sourcesTrack,
+            currentTrackId = track?.id,
+            isLoading = uiState.isSourcesLoading,
+            onPlay = viewModel::switchVariant,
+            onDismiss = viewModel::closeSources,
         )
     }
 

@@ -414,6 +414,49 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
     }
 }
 
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `canonical_tracks` (
+                `canonicalKey` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `primaryTrackId` TEXT NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`canonicalKey`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `track_variants` (
+                `canonicalKey` TEXT NOT NULL,
+                `trackId` TEXT NOT NULL,
+                `source` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `artist` TEXT NOT NULL,
+                `sourceUrl` TEXT,
+                `artworkUrl` TEXT,
+                `durationMs` INTEGER NOT NULL,
+                `confidence` REAL NOT NULL,
+                `lastCheckedAt` INTEGER NOT NULL,
+                `trackJson` TEXT NOT NULL,
+                PRIMARY KEY(`canonicalKey`, `trackId`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_track_variants_trackId` " +
+                "ON `track_variants` (`trackId`)",
+        )
+        database.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_track_variants_lastCheckedAt` " +
+                "ON `track_variants` (`lastCheckedAt`)",
+        )
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2,
     MIGRATION_2_3,
@@ -433,4 +476,5 @@ val ALL_MIGRATIONS = arrayOf(
     MIGRATION_16_17,
     MIGRATION_17_18,
     MIGRATION_18_19,
+    MIGRATION_19_20,
 )

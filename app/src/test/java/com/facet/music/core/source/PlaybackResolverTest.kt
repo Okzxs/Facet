@@ -4,8 +4,10 @@ import androidx.media3.common.MimeTypes
 import com.facet.music.data.local.dao.ResolvedMatchDao
 import com.facet.music.data.local.entity.ResolvedMatchEntity
 import com.facet.music.data.model.DownloadedTrack
+import com.facet.music.data.model.CanonicalTrack
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.CanonicalTrackRepository
 import com.facet.music.data.repository.DownloadRepository
 import io.mockk.Runs
 import io.mockk.coEvery
@@ -217,6 +219,7 @@ class PlaybackResolverTest {
             registry = PlayableSourceRegistry(setOf(soundcloud)),
             matcher = TrackMatcher(),
             matchDao = mockk(relaxed = true),
+            canonicalTrackRepository = canonicalFallback(),
             scope = this,
         )
 
@@ -420,6 +423,37 @@ class PlaybackResolverTest {
         assertEquals(1, youtube.resolveCalls.get())
     }
 
+    @Test
+    fun `canonical variant is used when own source fails`() = runTest {
+        val original = track("sc:fb", Source.SOUNDCLOUD)
+        val variant = track("yt:fb", Source.YOUTUBE)
+        val soundcloud = FakeSource(
+            source = Source.SOUNDCLOUD,
+            resolveResult = { Result.failure(ResolveException(ResolveError.Network, "boom")) },
+        )
+        val youtube = FakeSource(
+            source = Source.YOUTUBE,
+            resolveResult = { Result.success(stream(Source.YOUTUBE)) },
+        )
+        val dao = mockk<ResolvedMatchDao>(relaxed = true)
+        coEvery { dao.get(any()) } returns null
+        val downloads = mockk<DownloadRepository>()
+        coEvery { downloads.getDownloadedTrack(any()) } returns null
+        val resolver = PlaybackResolver(
+            downloadRepository = downloads,
+            registry = PlayableSourceRegistry(setOf(soundcloud, youtube)),
+            matcher = TrackMatcher(),
+            matchDao = dao,
+            canonicalTrackRepository = canonicalFallback(variant),
+            scope = this,
+        )
+
+        val result = resolver.resolve(original).getOrThrow()
+
+        assertEquals(Source.YOUTUBE, result.source)
+        assertEquals(1, youtube.resolveCalls.get())
+    }
+
     private fun TestScope.resolver(
         sources: List<PlayableSource>,
         dao: ResolvedMatchDao = mockk(relaxed = true),
@@ -431,6 +465,7 @@ class PlaybackResolverTest {
             registry = PlayableSourceRegistry(sources.toSet()),
             matcher = TrackMatcher(),
             matchDao = dao,
+            canonicalTrackRepository = canonicalFallback(),
             scope = this,
         )
     }
@@ -488,4 +523,23 @@ class PlaybackResolverTest {
             return resolveResult()
         }
     }
+
+    private fun canonicalFallback(fallback: Track? = null): CanonicalTrackRepository =
+        object : CanonicalTrackRepository {
+            override fun canonicalKey(track: Track): String = track.id
+
+            override suspend fun canonicalize(tracks: List<Track>): List<CanonicalTrack> = emptyList()
+
+            override suspend fun variants(canonicalKey: String): List<Track> = emptyList()
+
+            override suspend fun bestForPlayback(canonicalKey: String): Track? = null
+
+            override suspend fun fallbackFor(track: Track): Track? = fallback
+
+            override suspend fun recordVariant(track: Track, confidence: Double) = Unit
+
+            override suspend fun recordVariants(tracks: List<Track>, confidence: Double) = Unit
+
+            override suspend fun resolveByTrackId(trackId: String): CanonicalTrack? = null
+        }
 }

@@ -129,6 +129,7 @@ import com.facet.music.core.ui.theme.StatusOnlineLight
 import com.facet.music.core.ui.components.AddToPlaylistSheet
 import com.facet.music.core.ui.components.AppLoadingIndicator
 import com.facet.music.core.ui.components.TrackCard
+import com.facet.music.core.ui.components.TrackSourcesSheet
 import com.facet.music.navigation.LocalBottomDockHeight
 import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Source
@@ -342,10 +343,24 @@ fun SearchScreen(
                         },
                         onPlayNext = handlePlayNext,
                         onAddToQueue = handleAddToQueue,
+                        onSourcesClick = viewModel::onShowSources,
                     )
                 }
             }
         }
+    }
+
+    if (state.sourcesTrack != null || state.sourcesLoading) {
+        TrackSourcesSheet(
+            canonical = state.sourcesTrack,
+            currentTrackId = null,
+            isLoading = state.sourcesLoading,
+            onPlay = { selected ->
+                viewModel.dismissSources()
+                onTrackClick(selected, listOf(selected))
+            },
+            onDismiss = viewModel::dismissSources,
+        )
     }
 
     playlistTrack?.let { track ->
@@ -1231,6 +1246,7 @@ private fun ResultsList(
     onArtistListen: (List<Track>) -> Unit,
     onPlayNext: (Track) -> Unit,
     onAddToQueue: (Track) -> Unit,
+    onSourcesClick: (Track) -> Unit,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(listState, tracks.size) {
@@ -1302,6 +1318,7 @@ private fun ResultsList(
                             onAddToPlaylist = onAddToPlaylist,
                             onPlayNext = onPlayNext,
                             onAddToQueue = onAddToQueue,
+                            onSourcesClick = onSourcesClick,
                         )
                     }
                 }
@@ -1319,6 +1336,11 @@ private fun ResultsList(
                     onArtistClick = { onTrackArtistClick(track) },
                     onPlayNext = { onPlayNext(track) },
                     onAddToQueue = { onAddToQueue(track) },
+                    onSourcesClick = if (track.sourceCount > 1) {
+                        { onSourcesClick(track) }
+                    } else {
+                        null
+                    },
                 )
             }
             if (isLoadingMore) {
@@ -1469,6 +1491,7 @@ private fun ArtistTracksSection(
     onAddToPlaylist: (Track) -> Unit,
     onPlayNext: (Track) -> Unit,
     onAddToQueue: (Track) -> Unit,
+    onSourcesClick: (Track) -> Unit,
 ) {
     Column(modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)) {
         Row(
@@ -1503,6 +1526,11 @@ private fun ArtistTracksSection(
                     onArtistClick = {},
                     onPlayNext = { onPlayNext(track) },
                     onAddToQueue = { onAddToQueue(track) },
+                    onSourcesClick = if (track.sourceCount > 1) {
+                        { onSourcesClick(track) }
+                    } else {
+                        null
+                    },
                 )
             }
         }

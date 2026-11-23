@@ -165,6 +165,7 @@ class SearchViewModelTest {
         navigationEvents = NavigationEvents(),
         settingsRepository = settingsRepository,
         searchSuggestions = suggestions,
+        canonicalTrackRepository = mockk(relaxed = true),
         downloadRepository = downloadRepository,
     )
 

@@ -59,7 +59,7 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration from version 1 to 19 preserves likes and creates all tables`() = runBlocking {
+    fun `migration from version 1 to 20 preserves likes and creates all tables`() = runBlocking {
         createVersion1Database()
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
@@ -96,7 +96,7 @@ class DatabaseMigrationTest {
             assertEquals(1, chart.size)
             assertTrue(chart.single().cachedAt > 0)
 
-            assertEquals(19, database.openHelper.writableDatabase.version)
+            assertEquals(20, database.openHelper.writableDatabase.version)
             assertTrue(hasTable(database.openHelper.writableDatabase, "resolved_matches"))
             assertTrue(!hasTable(database.openHelper.writableDatabase, "audio_cache"))
             assertTrue(hasTable(database.openHelper.writableDatabase, "artist_cache"))
@@ -104,6 +104,8 @@ class DatabaseMigrationTest {
             assertTrue(hasTable(database.openHelper.writableDatabase, "wave_impressions"))
             assertTrue(hasTable(database.openHelper.writableDatabase, "wave_sessions"))
             assertTrue(hasTable(database.openHelper.writableDatabase, "artist_blocklist"))
+            assertTrue(hasTable(database.openHelper.writableDatabase, "canonical_tracks"))
+            assertTrue(hasTable(database.openHelper.writableDatabase, "track_variants"))
             assertTrue(
                 "seedTracksJson" in tableColumns(database.openHelper.writableDatabase, "wave_sessions"),
             )
@@ -355,6 +357,59 @@ class DatabaseMigrationTest {
                 "'Artist', NULL, 1000)",
         )
         assertEquals(1, countRows(db, "followed_artists"))
+    }
+
+    @Test
+    fun `migration 19 to 20 creates canonical track tables`() {
+        val db = openLegacyDatabase("m-19-20.db", 19) {
+            it.execSQL(LIKED_TRACKS_V4_DDL)
+        }
+
+        MIGRATION_19_20.migrate(db)
+
+        assertTrue(hasTable(db, "canonical_tracks"))
+        assertEquals(
+            setOf("canonicalKey", "title", "artist", "primaryTrackId", "updatedAt"),
+            tableColumns(db, "canonical_tracks"),
+        )
+        assertTrue(hasTable(db, "track_variants"))
+        assertEquals(
+            setOf(
+                "canonicalKey",
+                "trackId",
+                "source",
+                "title",
+                "artist",
+                "sourceUrl",
+                "artworkUrl",
+                "durationMs",
+                "confidence",
+                "lastCheckedAt",
+                "trackJson",
+            ),
+            tableColumns(db, "track_variants"),
+        )
+        assertTrue(hasIndex(db, "index_track_variants_trackId"))
+        assertTrue(hasIndex(db, "index_track_variants_lastCheckedAt"))
+
+        db.execSQL(
+            """
+            INSERT INTO `canonical_tracks`
+                (`canonicalKey`, `title`, `artist`, `primaryTrackId`, `updatedAt`)
+            VALUES ('artist|song', 'Song', 'Artist', 'sc:1', 1000)
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            INSERT INTO `track_variants`
+                (`canonicalKey`, `trackId`, `source`, `title`, `artist`, `sourceUrl`,
+                 `artworkUrl`, `durationMs`, `confidence`, `lastCheckedAt`, `trackJson`)
+            VALUES ('artist|song', 'sc:1', 'SOUNDCLOUD', 'Song', 'Artist',
+                    'https://soundcloud.com/a/song', NULL, 180000, 1.0, 1000, '{}')
+            """.trimIndent(),
+        )
+        assertEquals(1, countRows(db, "canonical_tracks"))
+        assertEquals(1, countRows(db, "track_variants"))
     }
 
     @Test

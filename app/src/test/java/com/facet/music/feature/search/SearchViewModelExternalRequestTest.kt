@@ -99,6 +99,7 @@ class SearchViewModelExternalRequestTest {
         navigationEvents = events,
         settingsRepository = settingsRepository,
         searchSuggestions = suggestions,
+        canonicalTrackRepository = mockk(relaxed = true),
         downloadRepository = downloadRepository,
     )
 }

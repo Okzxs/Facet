@@ -121,6 +121,7 @@ import com.facet.music.core.ui.components.ExpressivePlayerSlider
 import com.facet.music.core.ui.components.PlayerControlIsland
 import com.facet.music.core.ui.components.PlayerQueueSheet
 import com.facet.music.core.ui.components.PlayerSliderState
+import com.facet.music.core.ui.components.displayName
 import com.facet.music.core.ui.components.AddToPlaylistSheet
 import com.facet.music.core.ui.components.SleepTimerSheet
 import com.facet.music.core.ui.theme.Motion
@@ -133,6 +134,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import com.facet.music.core.ui.theme.PlayerDynamicColors
 import com.facet.music.core.ui.theme.rememberPlayerDynamicColors
 import com.facet.music.core.player.PlaybackTuning
+import com.facet.music.core.player.SourceSubstitution
 import com.facet.music.core.player.PlaybackVariation
 import com.facet.music.data.model.LyricsResult
 import com.facet.music.data.model.Source
@@ -207,6 +209,8 @@ internal fun ExpressiveHeroZone(
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
     onArtistClick: (() -> Unit)? = null,
+    onSourceClick: (() -> Unit)? = null,
+    sourceSubstitution: SourceSubstitution? = null,
     coverModifier: Modifier = Modifier,
     coverSwipeModifier: Modifier = Modifier,
     panelModifier: Modifier = Modifier,
@@ -506,11 +510,34 @@ internal fun ExpressiveHeroZone(
                             )
                             if (source != null && !source.isMetadataOnly) {
                                 Spacer(Modifier.height(2.dp))
+                                val sourceModifier = if (onSourceClick != null) {
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(MaterialTheme.shapes.small)
+                                        .clickable { onSourceClick() }
+                                } else {
+                                    Modifier.fillMaxWidth()
+                                }
                                 Text(
                                     text = stringResource(R.string.player_source, sourceLabel(source)),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                                     maxLines = 1,
+                                    textAlign = TextAlign.Center,
+                                    modifier = sourceModifier,
+                                )
+                            }
+                            if (sourceSubstitution != null) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = stringResource(
+                                        R.string.player_source_substituted,
+                                        sourceSubstitution.actual.displayName(),
+                                        sourceSubstitution.original.displayName(),
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    maxLines = 2,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth(),
                                 )

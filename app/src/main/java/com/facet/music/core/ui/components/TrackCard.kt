@@ -90,6 +90,7 @@ fun TrackCard(
     onArtistClick: (() -> Unit)? = null,
     onPlayNext: (() -> Unit)? = null,
     onAddToQueue: (() -> Unit)? = null,
+    onSourcesClick: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -170,6 +171,13 @@ fun TrackCard(
                             if (track.sourceCount > 1) {
                                 Spacer(Modifier.width(6.dp))
                                 Surface(
+                                    modifier = if (onSourcesClick != null) {
+                                        Modifier
+                                            .clip(CircleShape)
+                                            .clickable { onSourcesClick() }
+                                    } else {
+                                        Modifier
+                                    },
                                     shape = CircleShape,
                                     color = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -284,6 +292,21 @@ fun TrackCard(
                 expanded = actionsExpanded,
                 onDismissRequest = { actionsExpanded = false },
             ) {
+                if (onSourcesClick != null && track.sourceCount > 1) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.sources_sheet_title)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.MusicNote,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            actionsExpanded = false
+                            onSourcesClick()
+                        },
+                    )
+                }
                 onPlayNext?.let { playNext ->
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.queue_play_next)) },

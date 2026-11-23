@@ -15,9 +15,11 @@ import com.facet.music.core.service.ServiceStatusManager
 import com.facet.music.core.service.ServiceType
 import com.facet.music.core.source.PlayableSourceRegistry
 import com.facet.music.data.model.Artist
+import com.facet.music.data.model.CanonicalTrack
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.model.TrackPage
+import com.facet.music.data.repository.CanonicalTrackRepository
 import com.facet.music.data.repository.DownloadRepository
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SoundCloudRepository
@@ -61,6 +63,8 @@ data class SearchUiState(
     val isOffline: Boolean = false,
     val sourceHint: String? = null,
     val suggestions: List<String> = emptyList(),
+    val sourcesTrack: CanonicalTrack? = null,
+    val sourcesLoading: Boolean = false,
 )
 
 private data class SearchRequest(
@@ -96,6 +100,7 @@ class SearchViewModel @Inject constructor(
     private val navigationEvents: NavigationEvents,
     private val settingsRepository: SettingsRepository,
     private val searchSuggestions: SearchSuggestions,
+    private val canonicalTrackRepository: CanonicalTrackRepository,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
 
@@ -122,6 +127,8 @@ class SearchViewModel @Inject constructor(
     private var translitJob: Job? = null
     private var artistTracksJob: Job? = null
     private var suggestionJob: Job? = null
+    private var variantsJob: Job? = null
+    private var sourcesJob: Job? = null
 
     private var directRequest: SearchRequest? = null
     private var currentRequest: SearchRequest? = null
@@ -239,6 +246,39 @@ class SearchViewModel @Inject constructor(
         }
         requestFlow.update { it.copy(sources = sources) }
         viewModelScope.launch { settingsRepository.setSearchSources(sources) }
+    }
+
+    fun onShowSources(track: Track) {
+        sourcesJob?.cancel()
+        _uiState.update { it.copy(sourcesLoading = true, sourcesTrack = null) }
+        sourcesJob = viewModelScope.launch {
+            val displayed = _uiState.value.results
+            val canonical = runCatching {
+                canonicalTrackRepository.canonicalize(displayed.ifEmpty { listOf(track) })
+            }.getOrNull()?.firstOrNull { it.key == canonicalTrackRepository.canonicalKey(track) }
+                ?: CanonicalTrack(
+                    key = canonicalTrackRepository.canonicalKey(track),
+                    title = track.title,
+                    artist = track.artist,
+                    primary = track,
+                    variants = listOf(com.facet.music.data.model.TrackVariant(track, 1.0, 0L)),
+                )
+            _uiState.update { it.copy(sourcesLoading = false, sourcesTrack = canonical) }
+        }
+    }
+
+    fun dismissSources() {
+        sourcesJob?.cancel()
+        _uiState.update { it.copy(sourcesTrack = null, sourcesLoading = false) }
+    }
+
+    private fun scheduleVariantSync(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        variantsJob?.cancel()
+        variantsJob = viewModelScope.launch {
+            delay(500L)
+            runCatching { canonicalTrackRepository.recordVariants(tracks) }
+        }
     }
 
     fun retry() {
@@ -409,6 +449,7 @@ class SearchViewModel @Inject constructor(
                         groups.values.toList(),
                         request.query,
                     )
+                    scheduleVariantSync(displayed)
                 }
                 is SourceEvent.Artists -> {
                     successes++

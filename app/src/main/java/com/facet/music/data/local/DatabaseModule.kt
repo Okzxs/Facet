@@ -3,6 +3,7 @@ package com.facet.music.data.local
 import android.content.Context
 import androidx.room.Room
 import com.facet.music.data.local.dao.ArtistCacheDao
+import com.facet.music.data.local.dao.CanonicalTrackDao
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.dao.FollowedArtistDao
 import com.facet.music.data.local.dao.DownloadedTracksDao
@@ -122,5 +123,11 @@ object DatabaseModule {
     @Singleton
     fun provideWaveDao(database: AppDatabase): WaveDao {
         return database.waveDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCanonicalTrackDao(database: AppDatabase): CanonicalTrackDao {
+        return database.canonicalTrackDao()
     }
 }

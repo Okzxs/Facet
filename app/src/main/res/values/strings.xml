@@ -246,6 +246,16 @@
     <string name="player_permission_settings">Settings</string>
     <string name="player_permission_allow">Allow</string>
     <string name="player_source">Source: %1$s</string>
+    <string name="sources_sheet_title">Where it plays</string>
+    <string name="sources_sheet_play">Play</string>
+    <string name="sources_sheet_current">Playing</string>
+    <string name="sources_sheet_empty">No other sources yet.</string>
+    <string name="sources_quality_full">Full track</string>
+    <string name="sources_quality_preview">Preview %1$d s</string>
+    <string name="sources_quality_subscription">Go+ only</string>
+    <string name="sources_badge_cd">Sources</string>
+    <string name="sources_switch_cd">Change source</string>
+    <string name="player_source_substituted">Playing %1$s instead of %2$s</string>
     <string name="player_radio_start">Start wave</string>
     <string name="player_tuning">Tuning</string>
     <string name="player_variations">Variations</string>

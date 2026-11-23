@@ -8,6 +8,7 @@ import com.facet.music.data.local.entity.ResolvedMatchEntity
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.model.isMetadataOnly
+import com.facet.music.data.repository.CanonicalTrackRepository
 import com.facet.music.data.repository.DownloadRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -37,6 +38,7 @@ class PlaybackResolver @Inject constructor(
     private val registry: PlayableSourceRegistry,
     private val matcher: TrackMatcher,
     private val matchDao: ResolvedMatchDao,
+    private val canonicalTrackRepository: CanonicalTrackRepository,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -151,6 +153,20 @@ class PlaybackResolver @Inject constructor(
         if (track.source == Source.LOCAL) {
             return Result.failure(ResolveException(ResolveError.NotAvailable))
         }
+
+        val variant = runCatching { canonicalTrackRepository.fallbackFor(track) }.getOrNull()
+        if (variant != null) {
+            val variantProvider = registry.provider(variant.source)
+            if (variantProvider != null) {
+                val variantResult = retrying(track) { variantProvider.resolveStream(variant) }
+                val variantStream = variantResult.getOrNull()
+                if (variantStream != null && (!requireProgressive || !variantStream.isHls)) {
+                    Log.d(TAG, "Использован канонический вариант: ${variant.source}")
+                    return Result.success(variantStream)
+                }
+            }
+        }
+
         val external = resolveExternal(track, requireProgressive)
         if (external.isFailure && ownFailure?.error == ResolveError.Network) {
             val extError = (external.exceptionOrNull() as? ResolveException)?.error

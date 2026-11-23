@@ -137,5 +137,11 @@ abstract class RepositoryModule {
     abstract fun bindQueueRepository(
         impl: com.facet.music.data.local.QueueRepositoryImpl,
     ): com.facet.music.data.repository.QueueRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCanonicalTrackRepository(
+        impl: com.facet.music.data.local.CanonicalTrackRepositoryImpl,
+    ): com.facet.music.data.repository.CanonicalTrackRepository
 }
 
