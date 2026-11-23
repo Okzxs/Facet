@@ -1,6 +1,64 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 12.11.2026 (Фазы 10–11 и релиз 1.1.0)
+## Последнее обновление: 24.11.2026 (четыре столпа: канонический слой, импорт, волна, текст)
+
+---
+
+## Сессия 70: четыре столпа плана (24.11.2026)
+
+Основа — `docs/plans/facet-four-pillars.md`, база `950415d`; работа шла двумя коммитами `c1d8a8c` (канонический слой + источники) и `acb10b6` (импорт по ссылке, объяснимая волна, премиум-текст). Release не собирался локально (правило 8 ГБ); debug APK 31 711 269 байт, SHA-256 `284f05df5dc563d95f5c5ad9f7282247a6625e4ec04fd60bbab44c811e71efe6`.
+
+### 1. Канонический слой (Room v20)
+
+- **`track_variants`** (PK `canonicalKey`+`trackId`, индексы `trackId`/`lastCheckedAt`): `source`, `title`, `artist`, `sourceUrl`, `artworkUrl`, `durationMs`, `confidence`, `lastCheckedAt`, полный `Track` в `trackJson`. **`canonical_tracks`** (PK `canonicalKey`): `title`, `artist`, `primaryTrackId`, `updatedAt`. `MIGRATION_19_20` + тест; сквозной тест 1→20 обновлён.
+- **`CanonicalTrackRepository`** + `Impl`: группировка по `MusicNormalizer.trackKey`, выбор primary по «полноте потока» (streamUrl → transcodingUrl → preview → Go+), `confidence` от совпадения артиста, разницы длительности и доступности; `variants`, `bestForPlayback`, `fallbackFor`, `resolveByTrackId`, `recordVariant(s)`. Варианты живут 60 дней, канонические записи 180.
+- **Fallback.** `PlaybackResolver` после своего провайдера и до внешнего матча пробует `canonicalTrackRepository.fallbackFor`; `PlayerState.sourceSubstitution` хранит пару «было/стало», плеер пишет «Играет YouTube вместо SoundCloud».
+- **Поиск.** `SearchViewModel` сохраняет варианты пачкой с дебаунсом 500 мс; `TrackCard` показывает `+N`, тап по бейджу или пункт «Где играет» в меню открывает `TrackSourcesSheet` (источник, длительность, полный/превью/Go+, «Играть отсюда»).
+- **Плеер.** Строка «Источник: …» кликабельна и открывает ту же шторку; `PlayerController.switchToVariant` заменяет текущий media item с сохранением позиции (`replaceMediaItem` + `seekTo(index, position)`), очередь и `originalQueue` обновляются.
+
+### 2. Импорт-хаб
+
+- В `ImportScreen` третья вкладка **«По ссылке»**: `PlaylistImportService.load` → превью (название, счётчик, первые 10 треков) → импорт в `PlaylistRepository`. Поддержаны Spotify/Deezer/YouTube/SoundCloud, Яндекс отдаёт `YANDEX_UNSUPPORTED`, ошибки не валят остальные вкладки.
+- Все импорты (лайки SoundCloud, профиль, текст, ссылка) после сохранения пишут варианты в канонический слой через `recordVariants`, дубли схлопываются по ключу.
+- Существующие лайки SoundCloud с двумя списками и бейджами `SC`/`SC→YT` сохранены без изменений.
+
+### 3. Объяснимая волна
+
+- `WaveReason`, `WaveReasonType`, `WaveExplanation`; `WaveExplanationFactory` собирает причины из `WaveCandidateDetails` (семя-трек/артист, похожий артист, жанр, новизна, популярность, подписка, штраф за перебор артиста) и убирает дубли.
+- `WaveRepository.explain(track)` берёт `details` пачки и имена семян из плана сессии; `boostPreference(track, delta)` пишет вес в `TasteRepository` и в профиль текущей сессии (артист + жанр, clamp ±10), поэтому «Больше/Меньше такого» влияет на следующую пачку, а не только логируется. «Не рекомендовать артиста» вызывает `blockArtist` и убирает трек из списка.
+- В каждой строке волны — иконка «Почему?»; диалог показывает причины и три действия. Debug long-press с числами остался только в debug-сборке.
+
+### 4. Премиум-текст
+
+- Из backup-ветки перенесён только текстовый слой, без кастомного морфа обложки в мини-плеер: `LyricWord`/`LyricSyllable`/`sungUntilMs`/`background`/`alignment` в `LyricLine`; `TtmlParser`, `EnhancedLrcParser`, `LyricParsing`, `LyricsPlusProvider`, `BetterLyricsProvider`, `LyricsTranslationEngine`, `ProviderLyrics`.
+- `LyricsRepositoryImpl` сначала спрашивает word-sync провайдеры (LyricsPlus/BetterLyrics, таймаут), затем LRCLIB; `preferredProvider` даёт ручной выбор, кэш учитывает режим провайдера.
+- `PlayerLyrics` — компактная шапка (обложка, трек, артист, лайк/дизлайк/шаринг) без транспорта, крупные строки 34/41sp с затуханием, подсветка по словам/слогам, кнопка возврата к текущей строке, tap по строке = seek.
+- Меню плеера: перевод (движок перевода, тайминги сохраняются), офсет ±2 с (диалог со слайдером), выбор источника текста (Авто → LyricsPlus → LRCLIB), «Поделиться текстом». `BackHandler` возвращает из текста в плеер.
+- Пустой текст — штатный empty state с «Повторить поиск текста», без краша.
+
+### Проверка
+
+- `testDebugUnitTest assembleDebug` — **70 suite / 412 тестов, 0 failures, 1 skipped**. Новые тесты: `CanonicalTrackRepositoryTest` (7), `DatabaseMigrationTest` 19→20 и 1→20, `WaveExplanationFactoryTest` (5), `PlaybackResolverTest` fallback, `LyricsParserTest`.
+- Live на MI 8 (`192.168.1.111:39017`, Android 15): шторка «Где играет» открывается по строке источника и показывает полный трек SoundCloud 5:31; режим текста открывается с компактной шапкой и штатным empty state для трека без текста; волна собралась (20 треков), «Почему этот трек» показала «Похоже на Moby — Porcelain», «Новое для тебя», «Популярно», «Потому что ты слушаешь Susfactor» и три действия.
+- Замечание: на этом же устройстве вкладка «Моя волна» иногда открывает плеер при тапе по доку — похоже на перекрытие мини-плеера; проверить при апгрейде UI (аудит M3, P1 snackbar/док).
+
+### Файлы (основное)
+
+```
+app/src/main/java/com/facet/music/data/local/{CanonicalTrackRepositoryImpl,dao/CanonicalTrackDao,entity/{CanonicalTrackEntity,TrackVariantEntity}}.kt
+app/src/main/java/com/facet/music/data/repository/{CanonicalTrackRepository,WaveRepository,TasteRepository}.kt
+app/src/main/java/com/facet/music/core/source/PlaybackResolver.kt
+app/src/main/java/com/facet/music/core/ui/components/{TrackCard,TrackSourcesSheet}.kt
+app/src/main/java/com/facet/music/core/wave/{WaveModels,WaveExplanationFactory}.kt
+app/src/main/java/com/facet/music/data/source/lyrics/*.kt
+app/src/main/java/com/facet/music/feature/{search,player,wave,imports}/*.kt
+app/schemas/com.facet.music.data.local.AppDatabase/20.json
+docs/research/m3-audit.md
+```
+
+### Следующий шаг
+
+- M3-аудит готов (`docs/research/m3-audit.md`, 43 отклонения, 2 × P1): сначала волна правок 1 (snackbar над доком, кружки акцента 48dp/Role.RadioButton, контраст статусов, `Switch`-семантика), затем компоненты и adaptive. Полный рефакторинг не требуется.
 
 ---
 
