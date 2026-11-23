@@ -212,6 +212,7 @@ internal fun ExpressiveHeroZone(
     onArtistClick: (() -> Unit)? = null,
     onSourceClick: (() -> Unit)? = null,
     sourceSubstitution: SourceSubstitution? = null,
+    coverAlpha: Float = 1f,
     coverModifier: Modifier = Modifier,
     coverSwipeModifier: Modifier = Modifier,
     panelModifier: Modifier = Modifier,
@@ -244,13 +245,6 @@ internal fun ExpressiveHeroZone(
         ) { lyricsMode ->
             if (lyricsMode) {
                 LyricsForeground(
-                    title = title,
-                    artist = artist,
-                    artworkUrl = artworkUrl,
-                    isLiked = isLiked,
-                    isDisliked = isDisliked,
-                    onToggleLike = onToggleLike,
-                    onToggleDislike = onToggleDislike,
                     lyricsData = lyricsData,
                     isLoading = isLyricsLoading,
                     error = lyricsError,
@@ -292,6 +286,7 @@ internal fun ExpressiveHeroZone(
                                 modifier = Modifier
                                     .fillMaxWidth(0.82f)
                                     .aspectRatio(1f)
+                                    .graphicsLayer { alpha = coverAlpha }
                                     .clip(artworkShape)
                                     .then(coverSwipeModifier)
                                     .onGloballyPositioned {

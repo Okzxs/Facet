@@ -96,7 +96,7 @@ private val LYRIC_EASING = CubicBezierEasing(0.41f, 0f, 0.12f, 0.99f)
 private const val LYRIC_SETTLE_MS = 400
 private const val LYRIC_TOP_PADDING_DP = 40
 private const val LYRIC_BOTTOM_PADDING_FRACTION = 0.8f
-private val LYRIC_ALPHA = floatArrayOf(1f, 0.74f, 0.6f, 0.48f, 0.4f, 0.34f)
+private val LYRIC_ALPHA = floatArrayOf(1f, 0.74f, 0.6f, 0.52f, 0.46f, 0.4f)
 private val LYRIC_BLUR = arrayOf(0.dp, 1.dp, 1.dp, 1.7.dp, 2.4.dp)
 private const val LYRIC_BROWSING_ALPHA = 0.8f
 private const val LYRIC_INACTIVE_SCALE = 0.98f
@@ -591,13 +591,6 @@ private fun WordSweptText(
 
 @Composable
 internal fun LyricsForeground(
-    title: String,
-    artist: String,
-    artworkUrl: String?,
-    isLiked: Boolean,
-    isDisliked: Boolean,
-    onToggleLike: () -> Unit,
-    onToggleDislike: () -> Unit,
     lyricsData: LyricsData?,
     isLoading: Boolean,
     error: String?,
@@ -610,135 +603,19 @@ internal fun LyricsForeground(
     onListBoundsChanged: (Rect?) -> Unit,
     offsetMs: Int = 0,
 ) {
-    val context = LocalContext.current
-    Column(Modifier.fillMaxSize()) {
-        LyricsHeader(
-            title = title,
-            artist = artist,
-            artworkUrl = artworkUrl,
-            isLiked = isLiked,
-            isDisliked = isDisliked,
-            onToggleLike = onToggleLike,
-            onToggleDislike = onToggleDislike,
-            onShare = {
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, "$title — $artist")
-                }
-                context.startActivity(Intent.createChooser(intent, null))
-            },
-        )
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-    LyricsListView(
-        lyrics = lyricsData,
-        isLoading = isLoading,
-        error = error,
-        listState = listState,
-        isPlaying = isPlaying,
-        clock = playbackClock,
-        highlightColor = highlightColor,
-        onSeekToLine = onSeekToLine,
-        onRetry = onRetry,
-                onListBoundsChanged = onListBoundsChanged,
-                offsetMs = offsetMs,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LyricsHeader(
-    title: String,
-    artist: String,
-    artworkUrl: String?,
-    isLiked: Boolean,
-    isDisliked: Boolean,
-    onToggleLike: () -> Unit,
-    onToggleDislike: () -> Unit,
-    onShare: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Surface(
-            modifier = Modifier.size(54.dp),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) {
-            AsyncImage(
-                model = artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
-            Text(
-                text = artist,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            HeaderAction(
-                icon = Icons.Rounded.ThumbDown,
-                contentDescription = stringResource(
-                    if (isDisliked) R.string.player_undislike_cd else R.string.player_dislike_cd,
-                ),
-                active = isDisliked,
-                onClick = onToggleDislike,
-            )
-            HeaderAction(
-                icon = if (isLiked) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                contentDescription = stringResource(R.string.player_like_cd),
-                active = isLiked,
-                onClick = onToggleLike,
-            )
-            HeaderAction(
-                icon = Icons.Rounded.Share,
-                contentDescription = stringResource(R.string.player_lyrics_share),
-                active = false,
-                onClick = onShare,
-            )
-        }
-    }
-}
-
-@Composable
-private fun HeaderAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    active: Boolean,
-    onClick: () -> Unit,
-) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .padding(start = 2.dp)
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(
-                if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                else MaterialTheme.colorScheme.surfaceContainerHigh,
-            ),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(20.dp),
+    Box(Modifier.fillMaxSize()) {
+        LyricsListView(
+            lyrics = lyricsData,
+            isLoading = isLoading,
+            error = error,
+            listState = listState,
+            isPlaying = isPlaying,
+            clock = playbackClock,
+            highlightColor = highlightColor,
+            onSeekToLine = onSeekToLine,
+            onRetry = onRetry,
+            onListBoundsChanged = onListBoundsChanged,
+            offsetMs = offsetMs,
         )
     }
 }

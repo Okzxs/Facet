@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.R
+import com.facet.music.core.ui.components.DockAwareSnackbarHost
 import com.facet.music.core.download.DownloadState
 import com.facet.music.core.ui.components.AddToPlaylistSheet
 import com.facet.music.core.ui.components.EmptyState
@@ -133,7 +135,7 @@ fun LikedTracksScreen(
             .background(MaterialTheme.colorScheme.background),
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.statusBars,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { DockAwareSnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -179,7 +181,7 @@ fun LikedTracksScreen(
                             onClick = { onTrackClick(likedTracks.first(), likedTracks) },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(52.dp),
+                                .heightIn(min = 52.dp),
                             shape = CircleShape,
                         ) {
                             Icon(

@@ -47,7 +47,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.facet.music.R
+import com.facet.music.core.ui.components.DockAwareSnackbarHost
 import com.facet.music.core.import.ImportError
 import com.facet.music.core.import.ImportService
 
@@ -116,7 +117,7 @@ fun ImportScreen(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { DockAwareSnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(
@@ -124,7 +125,7 @@ fun ImportScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            TabRow(
+            PrimaryTabRow(
                 selectedTabIndex = state.tab.ordinal,
                 containerColor = MaterialTheme.colorScheme.background,
                 contentColor = MaterialTheme.colorScheme.primary,

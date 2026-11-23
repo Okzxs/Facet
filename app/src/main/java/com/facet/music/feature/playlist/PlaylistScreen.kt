@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.R
+import com.facet.music.core.ui.components.DockAwareSnackbarHost
 import com.facet.music.core.ui.components.EmptyState
 import com.facet.music.core.ui.components.PlaylistCover
 import com.facet.music.core.ui.components.TrackCard
@@ -145,7 +146,7 @@ fun PlaylistScreen(
             .background(MaterialTheme.colorScheme.background),
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.statusBars,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { DockAwareSnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {

@@ -11,6 +11,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -95,6 +99,10 @@ import com.facet.music.R
 import com.facet.music.core.i18n.AppLocale
 import com.facet.music.core.location.LocationPermissions
 import com.facet.music.data.repository.SettingsRepository
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.facet.music.core.ui.theme.contrastContentColor
 import com.facet.music.core.ui.theme.AccentOption
 import com.facet.music.core.ui.theme.AccentOptions
 import com.facet.music.core.spotify.SpotifyAuthState
@@ -273,7 +281,10 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.selectableGroup(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             recents.forEach { argb ->
                                 RecentColorDot(
                                     color = Color(argb),
@@ -288,6 +299,7 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .selectableGroup()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -396,7 +408,7 @@ fun SettingsScreen(
                             LocationPermissions.openAppSettings(context)
                         }
                     },
-                    modifier = Modifier.height(48.dp),
+                    modifier = Modifier.heightIn(min = 48.dp),
                     shape = CircleShape,
                 ) {
                     Text(stringResource(R.string.settings_check_permissions))
@@ -432,7 +444,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(10.dp))
                 FilledTonalButton(
                     onClick = { LocationPermissions.openAppSettings(context) },
-                    modifier = Modifier.height(48.dp),
+                    modifier = Modifier.heightIn(min = 48.dp),
                     shape = CircleShape,
                 ) {
                     Text(stringResource(R.string.settings_battery_open))
@@ -633,6 +645,11 @@ private fun SettingsSwitchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -652,7 +669,7 @@ private fun SettingsSwitchRow(
         Spacer(Modifier.width(12.dp))
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
         )
     }
 }
@@ -760,7 +777,7 @@ private fun CustomColorDot(
 
     Box(
         modifier = Modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -794,7 +811,7 @@ private fun CustomColorDot(
                 } else {
                     stringResource(R.string.settings_custom_color_cd)
                 },
-                tint = Color.White,
+                tint = color?.let(::contrastContentColor) ?: Color.White,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -987,11 +1004,17 @@ private fun RecentColorDot(
         label = "recentDotSize",
     )
 
+    val hex = color.toHexString()
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(48.dp)
             .clip(CircleShape)
-            .clickable(onClick = onClick),
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = hex },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -1013,8 +1036,8 @@ private fun RecentColorDot(
             if (selected) {
                 Icon(
                     imageVector = Icons.Rounded.Check,
-                    contentDescription = stringResource(R.string.settings_recent_color_cd),
-                    tint = Color.White,
+                    contentDescription = null,
+                    tint = contrastContentColor(color),
                     modifier = Modifier.size(14.dp),
                 )
             }
@@ -1028,6 +1051,7 @@ private fun AccentDot(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val name = stringResource(option.nameRes)
     val dotSize by animateDpAsState(
         targetValue = if (selected) 40.dp else 34.dp,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
@@ -1036,13 +1060,16 @@ private fun AccentDot(
 
     Box(
         modifier = Modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(CircleShape)
-            .clickable(
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onClick,
-            ),
+            )
+            .semantics { contentDescription = name },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -1064,8 +1091,8 @@ private fun AccentDot(
             if (selected) {
                 Icon(
                     imageVector = Icons.Rounded.Check,
-                    contentDescription = stringResource(option.nameRes),
-                    tint = Color.White,
+                    contentDescription = null,
+                    tint = contrastContentColor(option.color),
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -1328,3 +1355,6 @@ private fun GuideStep(number: Int, titleRes: Int, bodyRes: Int) {
 }
 
 private const val SPOTIFY_DASHBOARD_URL = "https://developer.spotify.com/dashboard"
+
+private fun Color.toHexString(): String =
+    "#%06X".format(0xFFFFFF and toArgb())

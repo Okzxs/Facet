@@ -6,6 +6,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
@@ -54,6 +55,11 @@ import androidx.compose.material.icons.rounded.PersonOff
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Lyrics
@@ -97,6 +103,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -104,6 +112,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -117,6 +127,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
+import com.facet.music.core.ui.components.DockAwareSnackbarHost
 import com.facet.music.core.download.DownloadMessages
 import com.facet.music.core.download.DownloadState
 import com.facet.music.core.location.LocationPermissions
@@ -171,6 +182,39 @@ fun PlayerScreen(
     val sleepTimer by viewModel.sleepTimer.collectAsState()
 
     var isLyricsMode by remember { mutableStateOf(false) }
+    var lyricsControlsVisible by remember { mutableStateOf(true) }
+    val coverMorph = remember { Animatable(0f) }
+    var headerArtBounds by remember { mutableStateOf<Rect?>(null) }
+    var heroArtBounds by remember { mutableStateOf<Rect?>(null) }
+    val density = LocalDensity.current
+    val showControlsLabel = stringResource(R.string.player_lyrics_show_controls)
+
+    LaunchedEffect(isLyricsMode) {
+        if (isLyricsMode) {
+            lyricsControlsVisible = true
+            withFrameNanos { }
+            val from = heroArtBounds
+            val to = headerArtBounds
+            if (from != null && to != null) {
+                coverMorph.animateTo(1f, tween(360, easing = FastOutSlowInEasing))
+            } else {
+                coverMorph.snapTo(1f)
+            }
+            delay(700L)
+            if (isLyricsMode) lyricsControlsVisible = false
+        } else {
+            lyricsControlsVisible = true
+            withFrameNanos { }
+            val from = headerArtBounds
+            val to = heroArtBounds
+            if (from != null && to != null) {
+                coverMorph.snapTo(1f)
+                coverMorph.animateTo(0f, tween(360, easing = FastOutSlowInEasing))
+            } else {
+                coverMorph.snapTo(0f)
+            }
+        }
+    }
     BackHandler(enabled = isLyricsMode) { isLyricsMode = false }
     var showQueueSheet by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -492,9 +536,8 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            snackbarHost = { SnackbarHost(snackbarHostState) },
+            snackbarHost = { DockAwareSnackbarHost(snackbarHostState) },
             topBar = {
-                AnimatedVisibility(visible = !isLyricsMode, enter = fadeIn(), exit = fadeOut()) {
                 TopAppBar(
                     navigationIcon = {
                         IconButton(onClick = onBack) {
@@ -505,27 +548,88 @@ fun PlayerScreen(
                         }
                     },
                     title = {
-                        Column {
-                            Text(
-                                text = stringResource(R.string.player_now_playing),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                text = track?.artist ?: "—",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    shadow = Shadow(
-                                        color = coverAccent.copy(alpha = 0.55f),
-                                        blurRadius = 18f,
-                                    ),
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                        AnimatedContent(
+                            targetState = isLyricsMode,
+                            transitionSpec = {
+                                fadeIn(tween(220)) togetherWith fadeOut(tween(140))
+                            },
+                            label = "playerTopBarTitle",
+                        ) { lyricsMode ->
+                            if (lyricsMode) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .graphicsLayer {
+                                                alpha = coverMorph.value.coerceIn(0f, 1f)
+                                            }
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .onGloballyPositioned {
+                                                headerArtBounds = it.boundsInRoot()
+                                            },
+                                    ) {
+                                        AsyncImage(
+                                            model = track?.artworkUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = track?.title ?: "—",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            text = track?.artist ?: "—",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column {
+                                    Text(
+                                        text = stringResource(R.string.player_now_playing),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = track?.artist ?: "—",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            shadow = Shadow(
+                                                color = coverAccent.copy(alpha = 0.55f),
+                                                blurRadius = 18f,
+                                            ),
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     },
                     actions = {
+                        if (isLyricsMode) {
+                            IconButton(onClick = { toggleLikeWithPermission() }) {
+                                Icon(
+                                    imageVector = if (isLiked) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                                    contentDescription = stringResource(R.string.player_like_cd),
+                                    tint = if (isLiked) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                )
+                            }
+                        }
                         Box {
                             IconButton(onClick = { showMenu = true }) {
                                 Icon(
@@ -537,6 +641,22 @@ fun PlayerScreen(
                                 expanded = showMenu,
                                 onDismissRequest = { showMenu = false },
                             ) {
+                                if (isLyricsMode) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.player_dislike_cd)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.ThumbDown,
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        onClick = {
+                                            showMenu = false
+                                            viewModel.toggleDislike()
+                                        },
+                                    )
+                                    HorizontalDivider()
+                                }
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.playlist_add_title)) },
                                     leadingIcon = {
@@ -719,7 +839,6 @@ fun PlayerScreen(
                         containerColor = Color.Transparent,
                     ),
                 )
-                }
             },
         ) { padding ->
             Column(
@@ -764,7 +883,10 @@ fun PlayerScreen(
                         nextArtworkUrl = playerState.queue.getOrNull(playerState.currentIndex + 1)?.artworkUrl,
                         onArtworkBoundsChanged = {
                             artworkBounds.value = it
-                            if (it != null) onCoverBoundsChanged(it)
+                            if (it != null) {
+                                heroArtBounds = it
+                                onCoverBoundsChanged(it)
+                            }
                         },
                         isDismissDragging = swipeState.isDragging,
                         onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
@@ -776,6 +898,7 @@ fun PlayerScreen(
                         onArtistClick = track?.let { current -> { onArtistClick(current) } },
                         onSourceClick = { viewModel.openSources() },
                         sourceSubstitution = playerState.sourceSubstitution,
+                        coverAlpha = 1f - coverMorph.value,
                         coverModifier = if (swipeState.isDragging) Modifier else coverModifier,
                         coverSwipeModifier = coverSwipeModifier,
                         panelModifier = panelModifier,
@@ -811,7 +934,13 @@ fun PlayerScreen(
                         )
                     }
 
-                    if (!isLyricsMode) {
+                    AnimatedVisibility(
+                        visible = !isLyricsMode || lyricsControlsVisible,
+                        enter = fadeIn(tween(220)) +
+                            slideInVertically(tween(260)) { it / 3 },
+                        exit = fadeOut(tween(160)) +
+                            slideOutVertically(tween(200)) { it / 3 },
+                    ) {
                     PlayerControlIsland(
                         isPlaying = playerState.isPlaying,
                         isBuffering = isBuffering,
@@ -867,6 +996,58 @@ fun PlayerScreen(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
+    if (isLyricsMode && !lyricsControlsVisible) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 4.dp)
+                .size(width = 24.dp, height = 112.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { lyricsControlsVisible = true }
+                .semantics { contentDescription = showControlsLabel },
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(8.dp)
+                    .fillMaxHeight(0.55f)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.22f)),
+            )
+        }
+    }
+
+    val morphHero = heroArtBounds
+    val morphHeader = headerArtBounds
+    val morphValue = coverMorph.value
+    if (morphHero != null && morphHeader != null && morphValue > 0.001f && morphValue < 0.999f) {
+        val left = lerp(morphHero.left, morphHeader.left, morphValue)
+        val top = lerp(morphHero.top, morphHeader.top, morphValue)
+        val right = lerp(morphHero.right, morphHeader.right, morphValue)
+        val bottom = lerp(morphHero.bottom, morphHeader.bottom, morphValue)
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+                .size(
+                    width = with(density) { (right - left).toDp() },
+                    height = with(density) { (bottom - top).toDp() },
+                )
+                .clip(RoundedCornerShape(lerp(28f, 12f, morphValue).dp)),
+        ) {
+            AsyncImage(
+                model = track?.artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+
+    }
     if (showLyricsOffset) {
         LyricsOffsetDialog(
             offsetMs = uiState.lyricsOffsetMs,

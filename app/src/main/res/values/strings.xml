@@ -249,6 +249,7 @@
     <string name="player_lyrics_offset_value">Offset: %1$d ms</string>
     <string name="player_lyrics_done">Done</string>
     <string name="player_lyrics_reset">Reset</string>
+    <string name="player_lyrics_show_controls">Show controls</string>
     <string name="player_lyrics_share">Share lyrics</string>
     <string name="player_lyrics_source">Source: %1$s</string>
     <string name="player_lyrics_source_auto">Auto</string>

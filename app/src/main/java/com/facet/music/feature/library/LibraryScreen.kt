@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.R
+import com.facet.music.core.ui.components.DockAwareSnackbarHost
 import com.facet.music.core.download.DownloadState
 import com.facet.music.core.import.ImportError
 import com.facet.music.core.spotify.SpotifyPlaylistSummary
@@ -242,7 +243,7 @@ fun LibraryScreen(
             .background(MaterialTheme.colorScheme.background)
             .nestedScroll(topBarScrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets.statusBars,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { DockAwareSnackbarHost(snackbarHostState) },
         topBar = {
             LargeTopAppBar(
                 title = {

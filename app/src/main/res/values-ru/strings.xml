@@ -250,6 +250,7 @@
     <string name="player_lyrics_offset_value">Смещение: %1$d мс</string>
     <string name="player_lyrics_done">Готово</string>
     <string name="player_lyrics_reset">Сбросить</string>
+    <string name="player_lyrics_show_controls">Показать управление</string>
     <string name="player_lyrics_share">Поделиться текстом</string>
     <string name="player_lyrics_source">Источник: %1$s</string>
     <string name="player_lyrics_source_auto">Авто</string>
