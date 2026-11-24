@@ -32,6 +32,7 @@ data class AppSettings(
     val resumeAfterFocusLoss: Boolean = true,
     val searchSources: Set<ServiceType> = ServiceType.entries.toSet(),
     val waveMood: WaveMood = WaveMood.BALANCE,
+    val lyricsTranslationLanguage: String = LANGUAGE_SYSTEM,
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -84,6 +85,8 @@ interface SettingsRepository {
     suspend fun setSearchSources(sources: Set<ServiceType>)
 
     suspend fun setWaveMood(mood: WaveMood)
+
+    suspend fun setLyricsTranslationLanguage(language: String)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

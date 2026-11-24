@@ -118,6 +118,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setLyricsTranslationLanguage(language: String) {
+        viewModelScope.launch {
+            settingsRepository.setLyricsTranslationLanguage(language)
+        }
+    }
+
     fun saveSpotifyCredentials(clientId: String, clientSecret: String) {
         viewModelScope.launch {
             settingsRepository.setSpotifyCredentials(clientId, clientSecret)

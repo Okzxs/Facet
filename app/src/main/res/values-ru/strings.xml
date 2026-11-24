@@ -97,6 +97,8 @@
     <string name="settings_accent_green">Зелёный</string>
     <string name="settings_accent_orange">Оранжевый</string>
     <string name="settings_accent_red">Красный</string>
+    <string name="settings_lyrics_translation_section">Перевод текста</string>
+    <string name="settings_lyrics_translation_hint">Язык перевода текста. «Системный» — язык устройства.</string>
     <string name="settings_language_section">Язык</string>
     <string name="settings_language">Язык интерфейса</string>
     <string name="settings_language_hint">Применяется сразу, без перезапуска приложения</string>

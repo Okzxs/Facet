@@ -340,6 +340,25 @@ fun SettingsScreen(
                 )
             }
 
+            SettingsSectionTitle(R.string.settings_lyrics_translation_section)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_lyrics_translation_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(14.dp))
+                SegmentedButtonRow(
+                    selected = settings.lyricsTranslationLanguage,
+                    onSelect = viewModel::setLyricsTranslationLanguage,
+                )
+            }
+
             SettingsSectionTitle(R.string.settings_integrations)
             SpotifyIntegrationCard(
                 settings = settings,

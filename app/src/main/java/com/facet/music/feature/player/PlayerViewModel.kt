@@ -18,6 +18,7 @@ import com.facet.music.core.player.sleepTimerEndTime
 import com.facet.music.core.player.toFriendlyPlaybackError
 import com.facet.music.core.service.ServiceType
 import com.facet.music.core.util.rethrowCancellation
+import com.facet.music.data.local.LyricsOffsetStore
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.entity.DislikedTrackEntity
 import com.facet.music.data.model.LyricsResult
@@ -59,6 +60,7 @@ class PlayerViewModel @Inject constructor(
     private val trackLikeManager: TrackLikeManager,
     private val lyricsTranslationEngine: LyricsTranslationEngine,
     private val canonicalTrackRepository: CanonicalTrackRepository,
+    private val lyricsOffsetStore: LyricsOffsetStore,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
@@ -190,6 +192,7 @@ class PlayerViewModel @Inject constructor(
                                 downloadError = null,
                                 showSources = false,
                                 sourcesTrack = null,
+                                lyricsOffsetMs = lyricsOffsetStore.get(track.id),
                             )
                         }
                     }
@@ -593,8 +596,15 @@ class PlayerViewModel @Inject constructor(
         }
         if (state.isLyricsTranslationLoading) return
         val track = state.track ?: return
-        val target = Locale.getDefault().language.ifBlank { "en" }
         viewModelScope.launch {
+            val language = runCatching {
+                settingsRepository.settings.first().lyricsTranslationLanguage
+            }.getOrDefault(AppSettings.LANGUAGE_SYSTEM)
+            val target = if (language == AppSettings.LANGUAGE_SYSTEM) {
+                Locale.getDefault().language.ifBlank { "en" }
+            } else {
+                language
+            }
             _uiState.update { it.copy(isLyricsTranslationLoading = true) }
             val sourceLines = data.richLines.ifEmpty {
                 data.lines.mapIndexed { index, text ->
@@ -638,7 +648,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun setLyricsOffsetMs(value: Int) {
-        _uiState.update { it.copy(lyricsOffsetMs = value.coerceIn(-2_000, 2_000)) }
+        val offset = value.coerceIn(-2_000, 2_000)
+        _uiState.update { it.copy(lyricsOffsetMs = offset) }
+        val trackId = _uiState.value.track?.id ?: playerState.value.currentTrack?.id
+        if (trackId != null) lyricsOffsetStore.set(trackId, offset)
     }
 
     fun togglePlayPause() {

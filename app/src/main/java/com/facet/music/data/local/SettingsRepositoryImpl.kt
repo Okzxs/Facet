@@ -78,6 +78,9 @@ class SettingsRepositoryImpl @Inject constructor(
         analyticsEnabled = prefs.getBoolean(KEY_ANALYTICS_ENABLED, false),
         resumeAfterFocusLoss = prefs.getBoolean(KEY_RESUME_AFTER_FOCUS_LOSS, true),
         searchSources = loadSearchSources(),
+        lyricsTranslationLanguage = prefs.getString(KEY_LYRICS_TRANSLATION_LANGUAGE, null)
+            ?.takeIf { it in AppSettings.SUPPORTED_LANGUAGES }
+            ?: AppSettings.LANGUAGE_SYSTEM,
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -260,6 +263,18 @@ class SettingsRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun setLyricsTranslationLanguage(language: String) {
+        val normalized = if (language in AppSettings.SUPPORTED_LANGUAGES) {
+            language
+        } else {
+            AppSettings.LANGUAGE_SYSTEM
+        }
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_LYRICS_TRANSLATION_LANGUAGE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(lyricsTranslationLanguage = normalized) }
+    }
+
     override suspend fun setSearchSources(sources: Set<ServiceType>) {
         awaitLoaded()
         val normalized = sources.ifEmpty { ServiceType.entries.toSet() }
@@ -292,6 +307,8 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_RESUME_AFTER_FOCUS_LOSS = "resume_after_focus_loss"
         const val KEY_SEARCH_SOURCES = "search_sources"
         const val KEY_WAVE_MOOD = "wave_mood"
+
+        const val KEY_LYRICS_TRANSLATION_LANGUAGE = "lyrics_translation_language"
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"
         const val KEY_LEGACY_ALL_SOURCES = "search_all_sources"
     }

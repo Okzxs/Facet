@@ -561,7 +561,7 @@ fun PlayerScreen(
                                         modifier = Modifier
                                             .size(44.dp)
                                             .graphicsLayer {
-                                                alpha = ((coverMorph.value - 0.85f) / 0.15f)
+                                                alpha = ((coverMorph.value - 0.98f) / 0.02f)
                                                     .coerceIn(0f, 1f)
                                             }
                                             .clip(RoundedCornerShape(12.dp))
@@ -902,7 +902,7 @@ fun PlayerScreen(
                         coverAlpha = if (isLyricsMode) {
                             0f
                         } else {
-                            ((0.15f - coverMorph.value) / 0.15f).coerceIn(0f, 1f)
+                            ((0.02f - coverMorph.value) / 0.02f).coerceIn(0f, 1f)
                         },
                         coverModifier = if (swipeState.isDragging) Modifier else coverModifier,
                         coverSwipeModifier = coverSwipeModifier,

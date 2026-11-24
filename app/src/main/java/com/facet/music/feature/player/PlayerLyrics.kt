@@ -53,6 +53,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
@@ -172,27 +174,23 @@ internal fun LyricsListView(
     val synced = lyrics?.isSynced == true && !lyrics.isEmpty
     val density = LocalDensity.current
     var viewportHeightPx by remember { mutableIntStateOf(0) }
-    val timeState = remember { mutableLongStateOf(0L) }
+    val lyricTimeMs = rememberLyricClock(
+        positionProvider = clock,
+        isPlaying = isPlaying && synced,
+        resetKey = lyrics,
+    )
+    val lyricTimeState = rememberUpdatedState(lyricTimeMs)
     val activeIndex = remember(lyrics) {
         derivedStateOf {
-            if (lyrics == null || !lyrics.isSynced) -1 else lyrics.activeIndexAt(timeState.longValue + offsetMs)
+            val data = lyrics
+            if (data == null || !data.isSynced) {
+                -1
+            } else {
+                data.activeIndexAt(lyricTimeState.value + offsetMs)
+            }
         }
     }
     val currentIndex by activeIndex
-
-    LaunchedEffect(synced, isPlaying) {
-        if (!synced) {
-            timeState.longValue = clock()
-            return@LaunchedEffect
-        }
-        if (!isPlaying) {
-            timeState.longValue = clock()
-            return@LaunchedEffect
-        }
-        while (true) {
-            withFrameMillis { timeState.longValue = clock() }
-        }
-    }
 
     var userPaused by remember { mutableStateOf(false) }
     var autoScrolling by remember { mutableStateOf(false) }
@@ -508,6 +506,20 @@ private fun WordSweptText(
     modifier: Modifier = Modifier,
 ) {
     var layout by remember(line) { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    var sweep by remember(line) { mutableStateOf(0f) }
+    val liftPx = with(LocalDensity.current) { (2.dp * sweep).toPx() }
+    LaunchedEffect(line) {
+        var lastFrame = 0L
+        while (true) {
+            withFrameNanos { frame ->
+                if (frame - lastFrame >= SONG_SWEEP_FRAME_NS) {
+                    lastFrame = frame
+                    val length = line.text.length.coerceAtLeast(1)
+                    sweep = (line.revealedChars(clock()) / length).coerceIn(0f, 1f)
+                }
+            }
+        }
+    }
     Column(modifier) {
         Box {
         Text(
@@ -518,7 +530,11 @@ private fun WordSweptText(
             maxLines = Int.MAX_VALUE,
             modifier = Modifier
                 .fillMaxWidth()
-                .blur(8.dp, BlurredEdgeTreatment.Unbounded),
+                .graphicsLayer {
+                    translationY = -liftPx
+                    alpha = 0.55f + 0.45f * sweep
+                }
+                .blur((7.dp + 4.dp * sweep), BlurredEdgeTreatment.Unbounded),
         )
         Text(
             text = line.text,
@@ -526,7 +542,9 @@ private fun WordSweptText(
             color = color.copy(alpha = 0.42f),
             softWrap = true,
             maxLines = Int.MAX_VALUE,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { translationY = -liftPx },
         )
         Text(
             text = line.text,
@@ -537,6 +555,7 @@ private fun WordSweptText(
             onTextLayout = { layout = it },
             modifier = Modifier
                 .fillMaxWidth()
+                .graphicsLayer { translationY = -liftPx }
                 .drawWithContent {
                     val position = clock()
                     val chars = line.revealedChars(position)
@@ -619,3 +638,5 @@ internal fun LyricsForeground(
         )
     }
 }
+
+private const val SONG_SWEEP_FRAME_NS = 33_000_000L

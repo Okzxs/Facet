@@ -98,6 +98,8 @@
     <string name="settings_accent_green">Green</string>
     <string name="settings_accent_orange">Orange</string>
     <string name="settings_accent_red">Red</string>
+    <string name="settings_lyrics_translation_section">Lyrics translation</string>
+    <string name="settings_lyrics_translation_hint">Language for translated lyrics. System uses the device language.</string>
     <string name="settings_language_section">Language</string>
     <string name="settings_language">Interface language</string>
     <string name="settings_language_hint">Applies immediately, no restart needed</string>
