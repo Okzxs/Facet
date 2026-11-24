@@ -147,6 +147,11 @@ class SettingsRepositoryImpl @Inject constructor(
         dismissSensitivity = prefs.getString(KEY_DISMISS_SENSITIVITY, null)
             ?.takeIf { it in AppSettings.DISMISS_SENSITIVITIES }
             ?: AppSettings.SENSITIVITY_MEDIUM,
+        progressStyle = prefs.getString(KEY_PROGRESS_STYLE, null)
+            ?.takeIf { it in AppSettings.PROGRESS_STYLES }
+            ?: AppSettings.PROGRESS_WAVE,
+        miniPlayerClose = prefs.getBoolean(KEY_MINI_CLOSE, true),
+        miniPlayerProgress = prefs.getBoolean(KEY_MINI_PROGRESS, true),
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -512,6 +517,29 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(dismissSensitivity = normalized) }
     }
 
+    override suspend fun setProgressStyle(style: String) {
+        val normalized = style.takeIf { it in AppSettings.PROGRESS_STYLES }
+            ?: AppSettings.PROGRESS_WAVE
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_PROGRESS_STYLE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(progressStyle = normalized) }
+    }
+
+    override suspend fun setMiniPlayerClose(visible: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_MINI_CLOSE, visible).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(miniPlayerClose = visible) }
+    }
+
+    override suspend fun setMiniPlayerProgress(visible: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_MINI_PROGRESS, visible).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(miniPlayerProgress = visible) }
+    }
+
     override suspend fun setSkipSilenceEnabled(enabled: Boolean) {        withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
         }
@@ -607,6 +635,12 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_PLAYER_BACKDROP = "player_backdrop"
 
         const val KEY_DISMISS_SENSITIVITY = "dismiss_sensitivity"
+
+        const val KEY_PROGRESS_STYLE = "progress_style"
+
+        const val KEY_MINI_CLOSE = "mini_player_close"
+
+        const val KEY_MINI_PROGRESS = "mini_player_progress"
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"

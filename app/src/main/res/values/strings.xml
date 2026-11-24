@@ -703,4 +703,13 @@
     <string name="studio_dismiss_low">Firm</string>
     <string name="studio_dismiss_medium">Balanced</string>
     <string name="studio_dismiss_high">Light</string>
+
+    <string name="studio_progress">Progress bar</string>
+    <string name="studio_progress_wave">Wave</string>
+    <string name="studio_progress_line">Line</string>
+    <string name="studio_mini_player">Mini player</string>
+    <string name="studio_mini_close">Close button</string>
+    <string name="studio_mini_close_hint">Swipe the mini player away instead</string>
+    <string name="studio_mini_progress">Progress line</string>
+    <string name="studio_mini_progress_hint">Thin line at the bottom of the mini player</string>
 </resources>

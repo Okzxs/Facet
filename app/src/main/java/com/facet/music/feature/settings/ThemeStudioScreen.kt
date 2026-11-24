@@ -432,6 +432,35 @@ fun ThemeStudioScreen(
                             selected = settings.dismissSensitivity,
                             onSelect = viewModel::setDismissSensitivity,
                         )
+                        Spacer(Modifier.height(14.dp))
+                        StudioChipRow(
+                            title = stringResource(R.string.studio_progress),
+                            options = listOf(
+                                AppSettings.PROGRESS_WAVE to R.string.studio_progress_wave,
+                                AppSettings.PROGRESS_LINE to R.string.studio_progress_line,
+                            ),
+                            selected = settings.progressStyle,
+                            onSelect = viewModel::setProgressStyle,
+                        )
+                        Spacer(Modifier.height(18.dp))
+                        Text(
+                            text = stringResource(R.string.studio_mini_player),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        StudioSwitchRow(
+                            title = stringResource(R.string.studio_mini_close),
+                            hint = stringResource(R.string.studio_mini_close_hint),
+                            checked = settings.miniPlayerClose,
+                            onCheckedChange = viewModel::setMiniPlayerClose,
+                        )
+                        StudioSwitchRow(
+                            title = stringResource(R.string.studio_mini_progress),
+                            hint = stringResource(R.string.studio_mini_progress_hint),
+                            checked = settings.miniPlayerProgress,
+                            onCheckedChange = viewModel::setMiniPlayerProgress,
+                        )
                     }
                 }
 

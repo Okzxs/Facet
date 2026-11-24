@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.facet.music.core.ui.components.ExpressivePlayerSlider
 import com.facet.music.core.ui.components.PlayerSliderState
 import com.facet.music.core.ui.theme.Motion
+import com.facet.music.data.repository.AppSettings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +49,7 @@ internal fun PlayerProgressSection(
     isBuffering: Boolean = false,
     isResolving: Boolean = false,
     bufferedFraction: () -> Float = { 0f },
+    progressStyle: String = AppSettings.PROGRESS_WAVE,
     onSeek: (Float) -> Unit,
 ) {
     var sliderState by remember(trackId) { mutableStateOf(PlayerSliderState()) }
@@ -125,6 +129,30 @@ internal fun PlayerProgressSection(
             } else {
                 key(trackId) {
                     val gestureTrack = trackId
+                    if (progressStyle == AppSettings.PROGRESS_LINE) {
+                        Slider(
+                            value = displayPosition.coerceIn(0f, 1f),
+                            onValueChange = { value ->
+                                if (latestTrackId == gestureTrack) {
+                                    sliderState = sliderState.change(value)
+                                }
+                            },
+                            onValueChangeFinished = {
+                                if (latestTrackId == gestureTrack) {
+                                    sliderState.preview?.let { latestSeek(it) }
+                                    sliderState = sliderState.cancel()
+                                    emit()
+                                }
+                            },
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.onSurface,
+                                activeTrackColor = primaryColor,
+                                inactiveTrackColor = MaterialTheme.colorScheme.onSurface
+                                    .copy(alpha = 0.16f),
+                            ),
+                            enabled = durationMs > 0,
+                        )
+                    } else {
                     ExpressivePlayerSlider(
                         value = displayPosition.coerceIn(0f, 1f),
                         onValueChange = { value ->
@@ -157,6 +185,7 @@ internal fun PlayerProgressSection(
                         enabled = durationMs > 0,
                         isPlaying = isPlaying,
                     )
+                    }
                 }
             }
         }

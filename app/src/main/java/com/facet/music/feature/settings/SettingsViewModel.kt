@@ -207,6 +207,18 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setDismissSensitivity(sensitivity) }
     }
 
+    fun setProgressStyle(style: String) {
+        viewModelScope.launch { settingsRepository.setProgressStyle(style) }
+    }
+
+    fun setMiniPlayerClose(visible: Boolean) {
+        viewModelScope.launch { settingsRepository.setMiniPlayerClose(visible) }
+    }
+
+    fun setMiniPlayerProgress(visible: Boolean) {
+        viewModelScope.launch { settingsRepository.setMiniPlayerProgress(visible) }
+    }
+
     private fun refreshCacheStats() {
         viewModelScope.launch(Dispatchers.IO) {
             _cacheBytes.value = playbackCache.sizeBytes()

@@ -482,6 +482,8 @@ fun AppNavGraph(settings: AppSettings) {
                             },
                             currentFraction = { playerViewModel.currentFraction() },
                             coverModifier = coverModifier,
+                            showClose = settings.miniPlayerClose,
+                            showProgress = settings.miniPlayerProgress,
                         )
                     }
                 }

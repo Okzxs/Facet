@@ -55,6 +55,9 @@ data class AppSettings(
     val coverSize: String = COVER_LARGE,
     val playerBackdrop: String = BACKDROP_COVER,
     val dismissSensitivity: String = SENSITIVITY_MEDIUM,
+    val progressStyle: String = PROGRESS_WAVE,
+    val miniPlayerClose: Boolean = true,
+    val miniPlayerProgress: Boolean = true,
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -129,6 +132,10 @@ data class AppSettings(
         const val SENSITIVITY_MEDIUM: String = "MEDIUM"
         const val SENSITIVITY_HIGH: String = "HIGH"
         val DISMISS_SENSITIVITIES = setOf(SENSITIVITY_LOW, SENSITIVITY_MEDIUM, SENSITIVITY_HIGH)
+
+        const val PROGRESS_WAVE: String = "WAVE"
+        const val PROGRESS_LINE: String = "LINE"
+        val PROGRESS_STYLES = setOf(PROGRESS_WAVE, PROGRESS_LINE)
 
         val DEFAULT_HOME_SECTION_ORDER: List<String> = listOf(
             SECTION_HERO,
@@ -226,6 +233,12 @@ interface SettingsRepository {
     suspend fun setPlayerBackdrop(backdrop: String)
 
     suspend fun setDismissSensitivity(sensitivity: String)
+
+    suspend fun setProgressStyle(style: String)
+
+    suspend fun setMiniPlayerClose(visible: Boolean)
+
+    suspend fun setMiniPlayerProgress(visible: Boolean)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

@@ -105,6 +105,8 @@ internal fun FloatingMiniPlayer(
     currentFraction: () -> Float,
     modifier: Modifier = Modifier,
     coverModifier: Modifier = Modifier,
+    showClose: Boolean = true,
+    showProgress: Boolean = true,
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -303,24 +305,27 @@ internal fun FloatingMiniPlayer(
                 }
             }
 
-            Spacer(Modifier.width(2.dp))
+            if (showClose) {
+                Spacer(Modifier.width(2.dp))
 
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .clickable(role = Role.Button, onClick = onCloseClick),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = stringResource(R.string.player_close_mini),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button, onClick = onCloseClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.player_close_mini),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
 
+        if (showProgress) {
         MiniPlayerProgressBar(
             fraction = { latestFraction.value() },
             isPlaying = isPlaying,
@@ -330,6 +335,7 @@ internal fun FloatingMiniPlayer(
                 .padding(start = 24.dp, end = 24.dp, bottom = 3.dp)
                 .fillMaxWidth(),
         )
+        }
     }
 }
 

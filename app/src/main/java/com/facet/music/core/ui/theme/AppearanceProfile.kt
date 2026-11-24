@@ -30,6 +30,9 @@ data class AppearanceProfile(
     val coverSize: String = AppSettings.COVER_LARGE,
     val playerBackdrop: String = AppSettings.BACKDROP_COVER,
     val dismissSensitivity: String = AppSettings.SENSITIVITY_MEDIUM,
+    val progressStyle: String = AppSettings.PROGRESS_WAVE,
+    val miniPlayerClose: Boolean = true,
+    val miniPlayerProgress: Boolean = true,
 ) {
 
     fun sanitized(): AppearanceProfile = copy(
@@ -68,6 +71,8 @@ data class AppearanceProfile(
         dismissSensitivity = dismissSensitivity
             .takeIf { it in AppSettings.DISMISS_SENSITIVITIES }
             ?: AppSettings.SENSITIVITY_MEDIUM,
+        progressStyle = progressStyle.takeIf { it in AppSettings.PROGRESS_STYLES }
+            ?: AppSettings.PROGRESS_WAVE,
     )
 
     fun toJson(): String = profileJson.encodeToString(AppearanceProfile.serializer(), sanitized())
@@ -103,6 +108,9 @@ data class AppearanceProfile(
             coverSize = settings.coverSize,
             playerBackdrop = settings.playerBackdrop,
             dismissSensitivity = settings.dismissSensitivity,
+            progressStyle = settings.progressStyle,
+            miniPlayerClose = settings.miniPlayerClose,
+            miniPlayerProgress = settings.miniPlayerProgress,
         ).sanitized()
 
         fun parse(json: String): AppearanceProfile? = runCatching {
@@ -136,4 +144,7 @@ suspend fun SettingsRepository.applyProfile(profile: AppearanceProfile) {
     setCoverSize(safe.coverSize)
     setPlayerBackdrop(safe.playerBackdrop)
     setDismissSensitivity(safe.dismissSensitivity)
+    setProgressStyle(safe.progressStyle)
+    setMiniPlayerClose(safe.miniPlayerClose)
+    setMiniPlayerProgress(safe.miniPlayerProgress)
 }

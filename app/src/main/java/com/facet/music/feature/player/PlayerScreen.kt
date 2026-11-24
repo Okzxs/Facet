@@ -1050,6 +1050,7 @@ fun PlayerScreen(
                             isBuffering = isBuffering,
                             isResolving = uiState.isResolving,
                             bufferedFraction = { viewModel.bufferedFraction() },
+                            progressStyle = appSettings.progressStyle,
                             onSeek = { fraction -> viewModel.seekTo(fraction) },
                         )
                     }

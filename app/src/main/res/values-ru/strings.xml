@@ -710,4 +710,13 @@
     <string name="studio_dismiss_low">Уверенный</string>
     <string name="studio_dismiss_medium">Средний</string>
     <string name="studio_dismiss_high">Лёгкий</string>
+
+    <string name="studio_progress">Полоса прогресса</string>
+    <string name="studio_progress_wave">Волна</string>
+    <string name="studio_progress_line">Линия</string>
+    <string name="studio_mini_player">Мини-плеер</string>
+    <string name="studio_mini_close">Кнопка закрытия</string>
+    <string name="studio_mini_close_hint">Мини-плеер можно смахнуть</string>
+    <string name="studio_mini_progress">Полоска прогресса</string>
+    <string name="studio_mini_progress_hint">Тонкая линия внизу мини-плеера</string>
 </resources>
