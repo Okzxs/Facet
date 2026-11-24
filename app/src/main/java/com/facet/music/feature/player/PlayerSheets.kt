@@ -116,6 +116,8 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
 import com.facet.music.core.download.DownloadMessages
+import com.facet.music.core.player.EqualizerCurve
+import com.facet.music.core.player.EqualizerPreset
 import com.facet.music.core.download.DownloadState
 import com.facet.music.core.location.LocationPermissions
 import com.facet.music.core.ui.components.ExpressivePlayerSlider
@@ -194,6 +196,95 @@ internal fun TuningDialog(
             }
         },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun EqualizerSheet(
+    enabled: Boolean,
+    preset: String,
+    onEnabledChange: (Boolean) -> Unit,
+    onPresetSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 28.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.player_equalizer),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.equalizer_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.equalizer_enabled),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            }
+            Spacer(Modifier.height(4.dp))
+            EqualizerPreset.entries.forEach { option ->
+                val selected = option.name == preset
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable(enabled = enabled) { onPresetSelect(option.name) }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = selected,
+                        onClick = { if (enabled) onPresetSelect(option.name) },
+                        enabled = enabled,
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(equalizerPresetLabel(option)),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (enabled) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                        Text(
+                            text = EqualizerCurve.curve(option).joinToString(" · ") { gain ->
+                                val rounded = gain.toInt()
+                                if (rounded > 0) "+$rounded" else "$rounded"
+                            } + " dB",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal fun equalizerPresetLabel(preset: EqualizerPreset): Int = when (preset) {
+    EqualizerPreset.FLAT -> R.string.equalizer_preset_flat
+    EqualizerPreset.BASS -> R.string.equalizer_preset_bass
+    EqualizerPreset.VOCAL -> R.string.equalizer_preset_vocal
+    EqualizerPreset.ROCK -> R.string.equalizer_preset_rock
+    EqualizerPreset.ELECTRONIC -> R.string.equalizer_preset_electronic
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

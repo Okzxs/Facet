@@ -81,6 +81,10 @@ class SettingsRepositoryImpl @Inject constructor(
         lyricsTranslationLanguage = prefs.getString(KEY_LYRICS_TRANSLATION_LANGUAGE, null)
             ?.takeIf { it in AppSettings.SUPPORTED_LANGUAGES }
             ?: AppSettings.LANGUAGE_SYSTEM,
+        equalizerEnabled = prefs.getBoolean(KEY_EQUALIZER_ENABLED, false),
+        equalizerPreset = prefs.getString(KEY_EQUALIZER_PRESET, null)
+            ?.takeIf { it in EQUALIZER_PRESETS }
+            ?: "FLAT",
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -275,6 +279,21 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(lyricsTranslationLanguage = normalized) }
     }
 
+    override suspend fun setEqualizerEnabled(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_EQUALIZER_ENABLED, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(equalizerEnabled = enabled) }
+    }
+
+    override suspend fun setEqualizerPreset(preset: String) {
+        val normalized = preset.takeIf { it in EQUALIZER_PRESETS } ?: "FLAT"
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_EQUALIZER_PRESET, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(equalizerPreset = normalized) }
+    }
+
     override suspend fun setSearchSources(sources: Set<ServiceType>) {
         awaitLoaded()
         val normalized = sources.ifEmpty { ServiceType.entries.toSet() }
@@ -309,6 +328,12 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_WAVE_MOOD = "wave_mood"
 
         const val KEY_LYRICS_TRANSLATION_LANGUAGE = "lyrics_translation_language"
+
+        const val KEY_EQUALIZER_ENABLED = "equalizer_enabled"
+
+        const val KEY_EQUALIZER_PRESET = "equalizer_preset"
+
+        val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"
         const val KEY_LEGACY_ALL_SOURCES = "search_all_sources"
     }

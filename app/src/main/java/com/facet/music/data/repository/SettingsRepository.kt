@@ -33,6 +33,8 @@ data class AppSettings(
     val searchSources: Set<ServiceType> = ServiceType.entries.toSet(),
     val waveMood: WaveMood = WaveMood.BALANCE,
     val lyricsTranslationLanguage: String = LANGUAGE_SYSTEM,
+    val equalizerEnabled: Boolean = false,
+    val equalizerPreset: String = "FLAT",
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -87,6 +89,10 @@ interface SettingsRepository {
     suspend fun setWaveMood(mood: WaveMood)
 
     suspend fun setLyricsTranslationLanguage(language: String)
+
+    suspend fun setEqualizerEnabled(enabled: Boolean)
+
+    suspend fun setEqualizerPreset(preset: String)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

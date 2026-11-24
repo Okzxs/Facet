@@ -271,6 +271,14 @@
     <string name="player_source_substituted">Playing %1$s instead of %2$s</string>
     <string name="player_radio_start">Start wave</string>
     <string name="player_tuning">Tuning</string>
+    <string name="player_equalizer">Equalizer</string>
+    <string name="equalizer_hint">Five-band Android equalizer for the player audio session.</string>
+    <string name="equalizer_enabled">Enable equalizer</string>
+    <string name="equalizer_preset_flat">Flat</string>
+    <string name="equalizer_preset_bass">Bass</string>
+    <string name="equalizer_preset_vocal">Vocal</string>
+    <string name="equalizer_preset_rock">Rock</string>
+    <string name="equalizer_preset_electronic">Electronic</string>
     <string name="player_variations">Variations</string>
     <string name="tuning_title">Tuning</string>
     <string name="tuning_hint">Shifts the pitch without changing speed. 440 Hz is standard.</string>

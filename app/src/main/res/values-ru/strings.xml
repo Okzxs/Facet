@@ -272,6 +272,14 @@
     <string name="player_source_substituted">Играет %1$s вместо %2$s</string>
     <string name="player_radio_start">Волна от трека</string>
     <string name="player_tuning">Детюн</string>
+    <string name="player_equalizer">Эквалайзер</string>
+    <string name="equalizer_hint">Пятиполосный эквалайзер Android для аудиосессии плеера.</string>
+    <string name="equalizer_enabled">Включить эквалайзер</string>
+    <string name="equalizer_preset_flat">Ровный</string>
+    <string name="equalizer_preset_bass">Бас</string>
+    <string name="equalizer_preset_vocal">Вокал</string>
+    <string name="equalizer_preset_rock">Рок</string>
+    <string name="equalizer_preset_electronic">Электроника</string>
     <string name="player_variations">Вариации</string>
     <string name="tuning_title">Детюн</string>
     <string name="tuning_hint">Сдвигает питч, не меняя скорость. 440 Гц — стандарт.</string>

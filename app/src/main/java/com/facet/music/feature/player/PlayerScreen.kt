@@ -56,8 +56,10 @@ import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Bedtime
@@ -138,6 +140,7 @@ import com.facet.music.core.ui.components.PlayerSliderState
 import com.facet.music.core.ui.components.AddToPlaylistSheet
 import com.facet.music.core.ui.components.SleepTimerSheet
 import com.facet.music.core.ui.components.TrackSourcesSheet
+import com.facet.music.feature.player.EqualizerSheet
 import com.facet.music.core.ui.theme.Motion
 import com.facet.music.core.ui.theme.PillShape
 import com.facet.music.core.ui.theme.bestContentColor
@@ -222,6 +225,7 @@ fun PlayerScreen(
     var showSleepTimer by remember { mutableStateOf(false) }
     var showTuning by remember { mutableStateOf(false) }
     var showVariations by remember { mutableStateOf(false) }
+    var showEqualizer by remember { mutableStateOf(false) }
     var showLyricsOffset by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -764,6 +768,19 @@ fun PlayerScreen(
                                     },
                                 )
                                 DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_equalizer)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Tune,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        showEqualizer = true
+                                    },
+                                )
+                                DropdownMenuItem(
                                     text = { Text(stringResource(R.string.player_lyrics_offset)) },
                                     leadingIcon = {
                                         Icon(Icons.Rounded.Translate, contentDescription = null)
@@ -1070,6 +1087,16 @@ fun PlayerScreen(
                 showTuning = false
             },
             onDismiss = { showTuning = false },
+        )
+    }
+
+    if (showEqualizer) {
+        EqualizerSheet(
+            enabled = appSettings.equalizerEnabled,
+            preset = appSettings.equalizerPreset,
+            onEnabledChange = viewModel::setEqualizerEnabled,
+            onPresetSelect = viewModel::setEqualizerPreset,
+            onDismiss = { showEqualizer = false },
         )
     }
 

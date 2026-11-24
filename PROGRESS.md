@@ -4,6 +4,35 @@
 
 ---
 
+## Сессия 70, часть 3: P0 добит и эквалайзер (24.11.2026)
+
+### Текст
+
+- **Морф обложки** — конечные точки теперь появляются на последних 2% пути: миниатюра в шапке при `morph > 0.98`, hero-обложка при `morph < 0.02`. В кадре всегда одна обложка.
+- **`LyricClock`** (`feature/player/LyricClock.kt`): монотонные часы с коррекцией дрейфа 0.18, порогом seek 450 мс (вперёд/назад), паузой без бега времени и сбросом на смену текста. `rememberLyricClock` крутит `withFrameNanos` при воспроизведении и `delay(120)` на паузе; `LyricsListView` использует его вместо самодельного `timeState`.
+- **Word sweep** активной строки получил lift (подъём до 2dp) и glow (blur 7→11dp, alpha 0.55→1.0) с обновлением 30 раз в секунду только у активной строки.
+- **Офсет per-track**: `LyricsOffsetStore` (SharedPreferences `lyrics_offsets`) читает значение при смене трека и пишет при изменении; 0 удаляет запись, диапазон ±2000 мс.
+- **Язык перевода**: `AppSettings.lyricsTranslationLanguage` (system/ru/en), настройка в Settings рядом с языком интерфейса; `toggleLyricsTranslation` берёт язык из настроек, а не только из системы.
+
+### Эквалайзер (Приоритет 1, шаг 1)
+
+- `AudioSessionBridge` — одно значение `StateFlow<Int>` из `MusicService`; сервис генерирует `AudioManager.generateAudioSessionId()`, вызывает `ExoPlayer.setAudioSessionId()` и публикует id.
+- `EqualizerController` (`@Singleton`, application scope): слушает связку session + settings, создаёт `android.media.audiofx.Equalizer(0, session)`, применяет 5 полос по кривой, отпускает эффект при смене сессии/выключении. `MODIFY_AUDIO_SETTINGS` добавлен в манифест.
+- `EqualizerCurve` — пресеты FLAT/BASS/VOCAL/ROCK/ELECTRONIC в дБ, разложение по частотам <250/<1000/<4000/выше, clamp в millibels по диапазону устройства.
+- UI: `EqualizerSheet` в меню плеера — Switch и пять пресетов с подписями «+6 · +2 · 0 · +1 dB». Состояние хранится в `AppSettings.equalizerEnabled/equalizerPreset`.
+
+### Проверка
+
+- `testDebugUnitTest assembleDebug` — **73 suite / 426 тестов, 0 failures, 1 skipped**. Новые: `LyricClockTest` (5), `LyricsOffsetStoreTest` (4), `EqualizerCurveTest` (5).
+- Debug APK 31 830 989 байт, SHA-256 `24e3a550e33606a8368f457f29a5bc3d3d29cdb353480250482a596220827848`.
+- Live на MI 8: текст идёт по часам без откатов, офсет сохраняется; эквалайзер включён пресетом BASS — logcat `Equalizer: Эквалайзер BASS включён, полос: 5`, `audio_flinger` показывает включённый эффект на сессии плеера (Session 003, Enabled y).
+
+### Дальше по приоритету 1
+
+- Нормализация/лимитер (свой `AudioProcessor`), пропуск тишины (Media3 `SilenceSkippingAudioProcessor`), затем crossfade/Automix только после прототипа.
+
+---
+
 ## Сессия 70, часть 2: морф текста и M3-волна 1 (24.11.2026)
 
 Коммит `77f5626` поверх четырёх столпов. Локальный release не запускался.

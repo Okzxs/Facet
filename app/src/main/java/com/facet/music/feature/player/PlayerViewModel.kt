@@ -310,6 +310,14 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    fun setEqualizerEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setEqualizerEnabled(enabled) }
+    }
+
+    fun setEqualizerPreset(preset: String) {
+        viewModelScope.launch { settingsRepository.setEqualizerPreset(preset) }
+    }
+
     fun closeSources() {
         _uiState.update { it.copy(showSources = false, sourcesTrack = null, isSourcesLoading = false) }
     }

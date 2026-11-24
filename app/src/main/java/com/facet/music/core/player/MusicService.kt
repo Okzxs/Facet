@@ -52,6 +52,9 @@ class MusicService : MediaSessionService() {
     lateinit var trackLikeManager: TrackLikeManager
 
     @Inject
+    lateinit var equalizerController: EqualizerController
+
+    @Inject
     lateinit var coordinator: PlaybackSessionCoordinator
 
     @Inject
@@ -87,12 +90,22 @@ class MusicService : MediaSessionService() {
             playbackDataSourceFactory.cacheDataSourceFactory,
         ).setLoadErrorHandlingPolicy(loadErrorPolicy)
 
+        val audioSessionId = runCatching {
+            (getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager)
+                ?.generateAudioSessionId()
+        }.getOrNull()?.takeIf { it > 0 } ?: 0
+
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+
+        if (audioSessionId > 0) {
+            runCatching { player.setAudioSessionId(audioSessionId) }
+            AudioSessionBridge.set(audioSessionId)
+        }
 
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(
