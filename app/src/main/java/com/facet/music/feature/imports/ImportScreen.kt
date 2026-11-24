@@ -47,10 +47,12 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -125,25 +127,31 @@ fun ImportScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            PrimaryTabRow(
+            PrimaryScrollableTabRow(
                 selectedTabIndex = state.tab.ordinal,
+                edgePadding = 0.dp,
                 containerColor = MaterialTheme.colorScheme.background,
                 contentColor = MaterialTheme.colorScheme.primary,
             ) {
                 Tab(
                     selected = state.tab == ImportTab.PROFILE,
                     onClick = { viewModel.setTab(ImportTab.PROFILE) },
-                    text = { Text(stringResource(R.string.import_tab_profile)) },
+                    text = { Text(stringResource(R.string.import_tab_profile), maxLines = 1) },
                 )
                 Tab(
                     selected = state.tab == ImportTab.LINK,
                     onClick = { viewModel.setTab(ImportTab.LINK) },
-                    text = { Text(stringResource(R.string.import_tab_link)) },
+                    text = { Text(stringResource(R.string.import_tab_link), maxLines = 1) },
+                )
+                Tab(
+                    selected = state.tab == ImportTab.YOUTUBE,
+                    onClick = { viewModel.setTab(ImportTab.YOUTUBE) },
+                    text = { Text(stringResource(R.string.import_tab_youtube), maxLines = 1) },
                 )
                 Tab(
                     selected = state.tab == ImportTab.TEXT,
                     onClick = { viewModel.setTab(ImportTab.TEXT) },
-                    text = { Text(stringResource(R.string.import_tab_text)) },
+                    text = { Text(stringResource(R.string.import_tab_text), maxLines = 1) },
                 )
             }
 
@@ -158,6 +166,7 @@ fun ImportScreen(
                 when (tab) {
                     ImportTab.PROFILE -> ProfileImportContent(state, viewModel)
                     ImportTab.LINK -> LinkImportContent(state, viewModel)
+                    ImportTab.YOUTUBE -> YouTubeImportContent(state, viewModel)
                     ImportTab.TEXT -> TextImportContent(state, viewModel)
                 }
             }
@@ -458,6 +467,119 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YouTubeImportContent(state: ImportUiState, viewModel: ImportViewModel) {
+    val takeoutLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri?.let(viewModel::importYouTubeTakeout)
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(key = "yt_profile") {
+            ImportCard(
+                icon = Icons.Rounded.Person,
+                title = stringResource(R.string.import_yt_profile_title),
+                subtitle = stringResource(R.string.import_yt_profile_hint),
+            ) {
+                OutlinedTextField(
+                    value = state.link,
+                    onValueChange = viewModel::setLink,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.import_yt_profile_field)) },
+                    placeholder = { Text("https://music.youtube.com/channel/…") },
+                    shape = MaterialTheme.shapes.medium,
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = viewModel::loadProfile,
+                    enabled = !state.isLoading && state.link.isNotBlank(),
+                    shape = CircleShape,
+                ) {
+                    Text(stringResource(R.string.import_yt_profile_load))
+                }
+                if (state.playlists.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.import_profile_found,
+                            state.playlists.size,
+                            state.selectedCount,
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    state.playlists.forEach { playlist ->
+                        ProfilePlaylistRow(
+                            playlist = playlist,
+                            onToggle = { viewModel.togglePlaylist(playlist.id) },
+                        )
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = viewModel::importSelected,
+                        enabled = !state.isImporting && state.selectedCount > 0,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = CircleShape,
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.import_profile_import_selected,
+                                state.selectedCount,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        item(key = "yt_takeout") {
+            ImportCard(
+                icon = Icons.Rounded.Favorite,
+                title = stringResource(R.string.import_yt_takeout_title),
+                subtitle = stringResource(R.string.import_yt_takeout_hint),
+            ) {
+                Button(
+                    onClick = {
+                        takeoutLauncher.launch(
+                            arrayOf(
+                                "text/csv",
+                                "text/comma-separated-values",
+                                "text/plain",
+                                "application/csv",
+                            ),
+                        )
+                    },
+                    enabled = !state.isImporting,
+                    shape = CircleShape,
+                ) {
+                    if (state.isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(stringResource(R.string.import_yt_takeout_button))
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.import_yt_takeout_steps),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

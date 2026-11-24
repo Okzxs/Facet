@@ -189,6 +189,7 @@ internal fun ExpressiveHeroZone(
     lyricsError: String?,
     lyricsListState: LazyListState,
     lyricsOffsetMs: Int,
+    lyricsEditMode: Boolean,
     palette: PlayerDynamicColors,
     actionAccent: Color,
     actionContainer: Color,
@@ -206,6 +207,7 @@ internal fun ExpressiveHeroZone(
     onSeekToLine: (Long) -> Unit,
     onRetryLyrics: () -> Unit,
     onLyricsListBoundsChanged: (Rect?) -> Unit,
+    onSetLineTime: ((Int) -> Unit)? = null,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
@@ -256,6 +258,8 @@ internal fun ExpressiveHeroZone(
                     onRetry = onRetryLyrics,
                     onListBoundsChanged = onLyricsListBoundsChanged,
                     offsetMs = lyricsOffsetMs,
+                    editMode = lyricsEditMode,
+                    onSetLineTime = onSetLineTime,
                 )
             } else {
                 Column(

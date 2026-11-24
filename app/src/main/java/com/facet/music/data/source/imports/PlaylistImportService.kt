@@ -23,6 +23,7 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfo
 import org.schabi.newpipe.extractor.StreamingService
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
@@ -200,12 +201,51 @@ class PlaylistImportServiceImpl @Inject constructor(
             when (parsed.service) {
                 ImportService.SPOTIFY -> loadSpotifyProfile(parsed.id)
                 ImportService.SOUNDCLOUD -> loadSoundCloudProfile(parsed.id)
+                ImportService.YOUTUBE -> loadYouTubeProfile(parsed.id)
                 else -> ProfileImportResult.Failure(
                     ImportError.UNSUPPORTED_LINK,
                     "Импорт профилей этого сервиса не поддерживается",
                 )
             }
         }
+
+    private suspend fun loadYouTubeProfile(channelUrl: String): ProfileImportResult =
+        runCatching {
+            val service = ServiceList.YouTube
+            val channel = ChannelInfo.getInfo(service, channelUrl)
+            val tab = channel.tabs.firstOrNull { handler ->
+                handler.contentFilters.any { it.contains("playlist", ignoreCase = true) }
+            } ?: channel.tabs.firstOrNull()
+                ?: return@runCatching ProfileImportResult.Failure(
+                    ImportError.EMPTY_PLAYLIST,
+                    NO_PUBLIC_PLAYLISTS,
+                )
+            val extractor = service.getChannelTabExtractor(tab)
+            extractor.fetchPage()
+            val playlists = extractor.initialPage.items
+                .filterIsInstance<PlaylistInfoItem>()
+                .map { item ->
+                    ProfilePlaylist(
+                        service = ImportService.YOUTUBE,
+                        id = item.url,
+                        url = item.url,
+                        name = item.name,
+                        coverUrl = item.thumbnails.lastOrNull()?.url,
+                        trackCount = item.streamCount.toInt(),
+                    )
+                }
+            if (playlists.isEmpty()) {
+                ProfileImportResult.Failure(ImportError.EMPTY_PLAYLIST, NO_PUBLIC_PLAYLISTS)
+            } else {
+                ProfileImportResult.Success(playlists)
+            }
+        }.rethrowCancellation()
+            .getOrElse { error ->
+                ProfileImportResult.Failure(
+                    ImportError.NETWORK,
+                    error.message ?: "Не удалось загрузить канал YouTube",
+                )
+            }
 
     private suspend fun loadSpotifyProfile(userId: String): ProfileImportResult {
         if (!spotifyProvider.isConfigured()) {

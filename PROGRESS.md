@@ -4,6 +4,29 @@
 
 ---
 
+## Сессия 70, часть 6: провайдеры текста, авто-тайминг и YouTube-импорт (24.11.2026)
+
+### Текст
+
+- **Выбор источника текста** — строка «Источник: …» в меню плеера открывает `LyricsProviderSheet` с вариантами Авто / BetterLyrics / LyricsPlus / LRCLIB. Выбор живёт только до смены трека: `lyricsProviderMode` сбрасывается в `null` при переходе, в настройки не пишется, кэш по-прежнему различает провайдера.
+- **Авто-тайминг plain-текста.** `LyricsAutoTimer` раскладывает строки по длительности трека (5–97%) с весом по числу символов; в меню — «Подобрать тайминг текста», доступно только для несинхронизированного текста.
+- **Ручная правка.** Режим «Править тайминг строк»: пауза на нужном месте + долгий тап по строке ставит ей текущую позицию, строки пересортировываются, показывается подсказка. Тайминги сохраняются в `LyricsTimingStore` (SharedPreferences `lyrics_timings`) и применяются при повторной загрузке текста.
+- **Проверка.** `LyricsAutoTimerTest` (4), `LyricsTimingStoreTest` (3), `LyricsProviderSheet` живьём: Авто выбран по умолчанию, LRCLIB применяется и перезагружает текст.
+
+### Импорт YouTube Music
+
+- **Публичный профиль.** `ProfileLinkParser` понимает `youtube.com/channel/…`, `@handle`, `/c/…`, `/user/…` и `music.youtube.com`; `PlaylistImportService` через `ChannelInfo` берёт вкладку плейлистов, `getChannelTabExtractor` отдаёт публичные плейлисты. Кнопка «Загрузить плейлисты» и выбор нескольких — как у Spotify/SoundCloud.
+- **Свои лайки без входа.** `YouTubeTakeoutParser` читает `Liked music.csv` из Google Takeout (кавычки, запятые в названиях, дедуп по Video ID). В новой вкладке «YouTube» — выбор файла через SAF, импорт в лайки с готовыми YouTube-треками, `recordVariants` в канонический слой. Приватная медиатека не запрашивается, OAuth не нужен.
+- **Хаб импорта.** Четыре вкладки (Профиль / По ссылке / YouTube / Текст), `PrimaryScrollableTabRow` вместо обрезающихся фиксированных табов, подсказка про YouTube Music в общем профиле.
+
+### Проверка
+
+- `testDebugUnitTest assembleDebug` — **77 suite / 444 теста, 0 failures, 1 skipped**. Новые: `YouTubeTakeoutParserTest` (4), YouTube-кейсы в `ProfileLinkParserTest`, `LyricsAutoTimerTest`, `LyricsTimingStoreTest`.
+- Debug APK 32 084 049 байт, SHA-256 `2174f942b7497fc1c214600f4caa5f280fe998bbf8eb7c63935fb85564731ef0`.
+- Live на MI 8: вкладка YouTube показывает профиль и Takeout-карточку, шторка источника текста открывается, LRCLIB применяется.
+
+---
+
 ## Сессия 70, часть 5: M3-волна 2 — навигация и адаптив (24.11.2026)
 
 - **Свой flexible-док.** `ExpressiveBottomDock` больше не `NavigationBar`: плавающая `Surface` (extraLarge, surfaceContainerHigh, shadow 8dp), четыре пункта с иконкой в пилюле `secondaryContainer` и подписью `labelMedium` в две строки. Высота считается по контенту и растёт с fontScale, `selectableGroup` + `Role.Tab`, выбранная иконка/подпись анимируются пружиной.

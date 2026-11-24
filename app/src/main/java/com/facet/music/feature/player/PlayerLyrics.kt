@@ -9,7 +9,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -170,6 +172,8 @@ internal fun LyricsListView(
     onRetry: () -> Unit,
     onListBoundsChanged: (Rect?) -> Unit,
     offsetMs: Int = 0,
+    editMode: Boolean = false,
+    onSetLineTime: ((Int) -> Unit)? = null,
 ) {
     val synced = lyrics?.isSynced == true && !lyrics.isEmpty
     val density = LocalDensity.current
@@ -323,6 +327,11 @@ internal fun LyricsListView(
                             isActive = synced && index == currentIndex,
                             browsing = userPaused,
                             clock = { clock() + offsetMs },
+                            onLongClick = if (editMode && !line.isGap) {
+                                { onSetLineTime?.invoke(index) }
+                            } else {
+                                null
+                            },
                             onClick = if (synced && line.timeMs >= 0) {
                                 {
                                     onSeekToLine(line.timeMs)
@@ -380,6 +389,7 @@ internal fun LyricsListView(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LyricLineItem(
     line: com.facet.music.data.model.LyricLine,
@@ -389,14 +399,16 @@ private fun LyricLineItem(
     browsing: Boolean,
     clock: () -> Long,
     onClick: (() -> Unit)?,
+    onLongClick: (() -> Unit)? = null,
 ) {
     if (line.isGap) {
         LyricGapLine(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(
-                    enabled = onClick != null,
+                .combinedClickable(
+                    enabled = onClick != null || onLongClick != null,
                     onClick = { onClick?.invoke() },
+                    onLongClick = onLongClick,
                 )
                 .padding(vertical = 10.dp),
         )
@@ -454,9 +466,10 @@ private fun LyricLineItem(
             transformOrigin = TransformOrigin(0f, 0.5f)
         }
         .blur(blurRadius, BlurredEdgeTreatment.Unbounded)
-        .clickable(
-            enabled = onClick != null,
+        .combinedClickable(
+            enabled = onClick != null || onLongClick != null,
             onClick = { onClick?.invoke() },
+            onLongClick = onLongClick,
         )
         .padding(vertical = 10.dp)
     if (isActive && line.isWordSynced) {
@@ -621,6 +634,8 @@ internal fun LyricsForeground(
     onRetry: () -> Unit,
     onListBoundsChanged: (Rect?) -> Unit,
     offsetMs: Int = 0,
+    editMode: Boolean = false,
+    onSetLineTime: ((Int) -> Unit)? = null,
 ) {
     Box(Modifier.fillMaxSize()) {
         LyricsListView(
@@ -635,7 +650,25 @@ internal fun LyricsForeground(
             onRetry = onRetry,
             onListBoundsChanged = onListBoundsChanged,
             offsetMs = offsetMs,
+            editMode = editMode,
+            onSetLineTime = onSetLineTime,
         )
+        if (editMode) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp, start = 20.dp, end = 20.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            ) {
+                Text(
+                    text = stringResource(R.string.player_lyrics_edit_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+        }
     }
 }
 

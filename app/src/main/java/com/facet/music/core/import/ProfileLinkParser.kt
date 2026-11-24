@@ -20,6 +20,7 @@ object ProfileLinkParser {
         return when {
             isSpotifyHost(host) -> parseSpotify(tail)
             isSoundCloudHost(host) -> parseSoundCloud(host, tail)
+            isYouTubeHost(host) -> parseYouTube(tail)
             else -> null
         }
     }
@@ -47,6 +48,25 @@ object ProfileLinkParser {
 
     private fun isSoundCloudHost(host: String): Boolean =
         host == "soundcloud.com" || host.endsWith(".soundcloud.com")
+
+    private fun isYouTubeHost(host: String): Boolean =
+        host == "youtube.com" || host.endsWith(".youtube.com")
+
+    private fun parseYouTube(segments: List<String>): ParsedProfile? {
+        if (segments.isEmpty()) return null
+        val first = segments.first()
+        val url = when {
+            first.equals("channel", true) -> segments.getOrNull(1)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { "https://www.youtube.com/channel/$it" }
+            first.startsWith("@") -> "https://www.youtube.com/$first"
+            first.equals("c", true) || first.equals("user", true) -> segments.getOrNull(1)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { "https://www.youtube.com/$first/$it" }
+            else -> null
+        }
+        return url?.let { ParsedProfile(ImportService.YOUTUBE, it) }
+    }
 
     private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
 

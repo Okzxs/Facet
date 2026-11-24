@@ -42,6 +42,23 @@ class ProfileLinkParserTest {
     }
 
     @Test
+    fun `youtube channel and handle links are profiles`() {
+        val channel = ProfileLinkParser.parse("https://www.youtube.com/channel/UCabc123")
+        assertEquals(ImportService.YOUTUBE, channel?.service)
+        assertEquals("https://www.youtube.com/channel/UCabc123", channel?.id)
+
+        val handle = ProfileLinkParser.parse("https://music.youtube.com/@daftpunk")
+        assertEquals(ImportService.YOUTUBE, handle?.service)
+        assertEquals("https://www.youtube.com/@daftpunk", handle?.id)
+    }
+
+    @Test
+    fun `youtube watch links are not profiles`() {
+        assertNull(ProfileLinkParser.parse("https://www.youtube.com/watch?v=abc"))
+        assertNull(ProfileLinkParser.parse("https://music.youtube.com/playlist?list=OLAK5uy"))
+    }
+
+    @Test
     fun `empty and foreign links are rejected`() {
         assertNull(ProfileLinkParser.parse("   "))
         assertNull(ProfileLinkParser.parse("https://deezer.com/profile/123"))

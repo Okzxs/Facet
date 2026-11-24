@@ -248,6 +248,10 @@
     <string name="player_no_track">Нет трека</string>
     <string name="player_permission_settings">Настройки</string>
     <string name="player_permission_allow">Разрешить</string>
+    <string name="player_lyrics_auto_timing">Подобрать тайминг текста</string>
+    <string name="player_lyrics_edit_timing">Править тайминг строк</string>
+    <string name="player_lyrics_edit_timing_on">Править тайминг: вкл</string>
+    <string name="player_lyrics_edit_hint">Поставьте паузу и долго нажмите на строку, чтобы задать время</string>
     <string name="player_lyrics_offset">Смещение текста</string>
     <string name="player_lyrics_offset_value">Смещение: %1$d мс</string>
     <string name="player_lyrics_done">Готово</string>
@@ -255,6 +259,10 @@
     <string name="player_lyrics_show_controls">Показать управление</string>
     <string name="player_lyrics_share">Поделиться текстом</string>
     <string name="player_lyrics_source">Источник: %1$s</string>
+    <string name="player_lyrics_source_sheet_title">Источник текста</string>
+    <string name="player_lyrics_source_better">BetterLyrics</string>
+    <string name="player_lyrics_source_plus">LyricsPlus</string>
+    <string name="player_lyrics_source_lrclib">LRCLIB</string>
     <string name="player_lyrics_source_auto">Авто</string>
     <string name="player_lyrics_translate">Перевести текст</string>
     <string name="player_lyrics_original">Показать оригинал</string>
@@ -425,6 +433,15 @@
     <string name="import_success">Плейлист «%1$s» импортирован</string>
     <string name="import_screen_title">Импорт</string>
     <string name="import_tab_profile">Профиль</string>
+    <string name="import_tab_youtube">YouTube</string>
+    <string name="import_yt_profile_title">Профиль YouTube Music</string>
+    <string name="import_yt_profile_hint">Публичный канал или страница артиста — покажем публичные плейлисты.</string>
+    <string name="import_yt_profile_field">Ссылка на канал</string>
+    <string name="import_yt_profile_load">Загрузить плейлисты</string>
+    <string name="import_yt_takeout_title">Свои лайки из YouTube Music</string>
+    <string name="import_yt_takeout_hint">Файл Google Takeout «Liked music.csv». Без входа в аккаунт.</string>
+    <string name="import_yt_takeout_button">Выбрать CSV из Takeout</string>
+    <string name="import_yt_takeout_steps">Google Takeout → YouTube and YouTube Music → плейлисты → Liked music.csv</string>
     <string name="import_tab_text">Список</string>
     <string name="import_tab_link">По ссылке</string>
     <string name="import_link_card_title">Плейлист по ссылке</string>
@@ -439,7 +456,7 @@
     <string name="import_profile_hint_spotify">Вставь ссылку на профиль Spotify — покажем публичные плейлисты.</string>
     <string name="import_profile_hint_soundcloud">Вставь ссылку на профиль SoundCloud — покажем публичные плейлисты.</string>
     <string name="import_profile_card_title">Профиль</string>
-    <string name="import_profile_hint">Публичные профили Spotify и SoundCloud. Вставь ссылку или имя пользователя.</string>
+    <string name="import_profile_hint">Публичные профили Spotify, SoundCloud и YouTube Music. Вставь ссылку.</string>
     <string name="import_profile_placeholder">soundcloud.com/username</string>
     <string name="import_profile_field">Ссылка на профиль</string>
     <string name="import_profile_load">Загрузить плейлисты</string>

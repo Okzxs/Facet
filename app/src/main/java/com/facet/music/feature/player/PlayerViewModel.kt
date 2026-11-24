@@ -7,6 +7,7 @@ import com.facet.music.core.download.DownloadManager
 import com.facet.music.core.download.DownloadMessages
 import com.facet.music.core.download.DownloadState
 import com.facet.music.core.error.UiError
+import com.facet.music.core.lyrics.LyricsAutoTimer
 import com.facet.music.core.navigation.NavigationEvents
 import com.facet.music.core.player.PlaybackVariation
 import com.facet.music.core.player.PlayerController
@@ -19,8 +20,10 @@ import com.facet.music.core.player.toFriendlyPlaybackError
 import com.facet.music.core.service.ServiceType
 import com.facet.music.core.util.rethrowCancellation
 import com.facet.music.data.local.LyricsOffsetStore
+import com.facet.music.data.local.LyricsTimingStore
 import com.facet.music.data.local.dao.DislikedTrackDao
 import com.facet.music.data.local.entity.DislikedTrackEntity
+import com.facet.music.data.model.LyricLine
 import com.facet.music.data.model.LyricsResult
 import com.facet.music.data.model.CanonicalTrack
 import com.facet.music.data.model.Track
@@ -61,6 +64,7 @@ class PlayerViewModel @Inject constructor(
     private val lyricsTranslationEngine: LyricsTranslationEngine,
     private val canonicalTrackRepository: CanonicalTrackRepository,
     private val lyricsOffsetStore: LyricsOffsetStore,
+    private val lyricsTimingStore: LyricsTimingStore,
 ) : ViewModel() {
 
     private val tag = "PlayerViewModel"
@@ -71,6 +75,7 @@ class PlayerViewModel @Inject constructor(
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     private var lyricsOriginal: LyricsData? = null
+    private var currentLyricLines: List<LyricLine> = emptyList()
 
     private val lyricsCache = object : LinkedHashMap<String, LyricsData>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LyricsData>): Boolean {
@@ -193,6 +198,9 @@ class PlayerViewModel @Inject constructor(
                                 showSources = false,
                                 sourcesTrack = null,
                                 lyricsOffsetMs = lyricsOffsetStore.get(track.id),
+                                lyricsProviderMode = null,
+                                lyricsEditMode = false,
+                                lyricsAutoTimed = false,
                             )
                         }
                     }
@@ -513,14 +521,16 @@ class PlayerViewModel @Inject constructor(
         Log.d("LRCLIB", "PlayerViewModel.loadLyrics для трека '${track.title}' (${track.artist})")
         val key = lyricsKey(track)
         lyricsCache[key]?.let { cached ->
-            lyricsOriginal = cached
+            val timed = withStoredTimings(track, cached)
+            lyricsOriginal = timed
+            currentLyricLines = linesOf(timed)
             _uiState.update {
                 it.copy(
-                    lyricsData = cached,
+                    lyricsData = timed,
                     isLyricsLoading = false,
                     lyricsError = null,
                     isLyricsTranslated = false,
-                    lyricsProvider = cached.provider,
+                    lyricsProvider = timed.provider,
                 )
             }
             prefetchNextLyrics()
@@ -533,7 +543,10 @@ class PlayerViewModel @Inject constructor(
             preferredProvider = _uiState.value.lyricsProviderMode,
         )
             .onSuccess { result ->
-                val data = withContext(Dispatchers.Default) { buildLyricsData(result) }
+                val data = withContext(Dispatchers.Default) {
+                    buildLyricsData(withStoredTimings(track, result))
+                }
+                currentLyricLines = linesOf(data)
                 Log.d("LRCLIB", "PlayerViewModel: тексты успешно получены (isSynced=${data.isSynced}, строк=${data.lines.size})")
                 synchronized(lyricsCache) { lyricsCache[key] = data }
                 lyricsOriginal = data
@@ -589,6 +602,21 @@ class PlayerViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 lyricsProviderMode = next,
+                lyricsData = null,
+                lyricsError = null,
+                isLyricsTranslated = false,
+                isLyricsLoading = true,
+            )
+        }
+        viewModelScope.launch { loadLyrics(track) }
+    }
+
+    fun setLyricsProvider(mode: String?) {
+        if (_uiState.value.lyricsProviderMode == mode) return
+        val track = _uiState.value.track ?: playerState.value.currentTrack ?: return
+        _uiState.update {
+            it.copy(
+                lyricsProviderMode = mode,
                 lyricsData = null,
                 lyricsError = null,
                 isLyricsTranslated = false,
@@ -670,6 +698,97 @@ class PlayerViewModel @Inject constructor(
         if (trackId != null) lyricsOffsetStore.set(trackId, offset)
     }
 
+    fun autoTimeLyrics() {
+        val data = _uiState.value.lyricsData ?: return
+        val track = _uiState.value.track ?: playerState.value.currentTrack ?: return
+        val lines = currentLyricLines.ifEmpty { linesOf(data) }
+        if (lines.isEmpty()) return
+        val duration = track.durationMs.takeIf { it > 0 } ?: durationMs()
+        if (duration <= 0) return
+        val timed = LyricsAutoTimer.distribute(lines, duration)
+        currentLyricLines = timed
+        persistTimings(track.id, timed)
+        val result = LyricsResult(
+            lines = timed,
+            isSynced = true,
+            isInstrumental = data.isInstrumental,
+            provider = data.provider,
+        )
+        val rebuilt = buildLyricsData(result)
+        lyricsOriginal = rebuilt
+        _uiState.update {
+            it.copy(
+                lyricsData = rebuilt,
+                lyricsAutoTimed = true,
+                isLyricsTranslated = false,
+            )
+        }
+    }
+
+    fun toggleLyricsEditMode() {
+        _uiState.update { it.copy(lyricsEditMode = !it.lyricsEditMode) }
+    }
+
+    fun setLineTime(index: Int) {
+        val track = _uiState.value.track ?: playerState.value.currentTrack ?: return
+        val data = _uiState.value.lyricsData ?: return
+        val lines = currentLyricLines.ifEmpty { linesOf(data) }
+        if (index !in lines.indices) return
+        val position = currentPositionMs()
+        val updated = lines.mapIndexed { i, line ->
+            if (i == index) line.copy(timeMs = position, words = emptyList(), sungUntilMs = null)
+            else line
+        }.sortedBy { it.timeMs }
+        currentLyricLines = updated
+        persistTimings(track.id, updated)
+        val result = LyricsResult(
+            lines = updated,
+            isSynced = true,
+            isInstrumental = data.isInstrumental,
+            provider = data.provider,
+        )
+        lyricsOriginal = buildLyricsData(result)
+        _uiState.update {
+            it.copy(lyricsData = lyricsOriginal, isLyricsTranslated = false)
+        }
+    }
+
+    private fun withStoredTimings(track: Track, data: LyricsData): LyricsData {
+        val stored = lyricsTimingStore.get(track.id)
+        val lines = linesOf(data)
+        if (stored.isEmpty() || stored.size != lines.size) return data
+        val timed = lines.mapIndexed { index, line -> line.copy(timeMs = stored[index]) }
+        val result = LyricsResult(
+            lines = timed,
+            isSynced = true,
+            isInstrumental = data.isInstrumental,
+            provider = data.provider,
+        )
+        return buildLyricsData(result)
+    }
+
+    private fun withStoredTimings(track: Track, result: LyricsResult): LyricsResult {
+        val stored = lyricsTimingStore.get(track.id)
+        if (stored.isEmpty() || stored.size != result.lines.size) return result
+        return result.copy(
+            lines = result.lines.mapIndexed { index, line ->
+                line.copy(timeMs = stored[index])
+            },
+            isSynced = true,
+        )
+    }
+
+    private fun linesOf(data: LyricsData): List<LyricLine> =
+        data.richLines.ifEmpty {
+            data.lines.mapIndexed { index, text ->
+                LyricLine(timeMs = data.timesMs.getOrElse(index) { 0L }, text = text)
+            }
+        }
+
+    private fun persistTimings(trackId: String, lines: List<LyricLine>) {
+        lyricsTimingStore.set(trackId, lines.map { it.timeMs.coerceAtLeast(0L) })
+    }
+
     fun togglePlayPause() {
         _uiState.update { it.copy(error = null) }
         playerController.pauseOrResume()
@@ -743,5 +862,7 @@ data class PlayerUiState(
     val showSources: Boolean = false,
     val sourcesTrack: CanonicalTrack? = null,
     val isSourcesLoading: Boolean = false,
+    val lyricsEditMode: Boolean = false,
+    val lyricsAutoTimed: Boolean = false,
 )
 

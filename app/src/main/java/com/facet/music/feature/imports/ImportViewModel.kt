@@ -1,5 +1,7 @@
 package com.facet.music.feature.imports
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.facet.music.core.import.ImportError
@@ -8,6 +10,8 @@ import com.facet.music.core.import.ImportedPlaylist
 import com.facet.music.core.import.ProfileLinkParser
 import com.facet.music.core.import.TextPlaylistParser
 import com.facet.music.core.import.TextTrackQuery
+import com.facet.music.core.import.YouTubeTakeoutParser
+import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.core.source.TrackMatcher
 import com.facet.music.data.repository.CanonicalTrackRepository
@@ -23,6 +27,9 @@ import com.facet.music.data.source.imports.PlaylistImportResult
 import com.facet.music.data.source.imports.PlaylistImportService
 import com.facet.music.data.source.imports.ProfileImportResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,7 +38,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class ImportTab { PROFILE, LINK, TEXT }
+enum class ImportTab { PROFILE, LINK, YOUTUBE, TEXT }
 
 enum class LikesError {
     EMPTY,
@@ -106,6 +113,7 @@ class ImportViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val trackMatcher: TrackMatcher,
     private val canonicalTrackRepository: CanonicalTrackRepository,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ImportUiState())
@@ -358,6 +366,59 @@ class ImportViewModel @Inject constructor(
             if (imported > 0) {
                 runCatching { settingsRepository.setImportCompleted(true) }
             }
+        }
+    }
+
+    fun importYouTubeTakeout(uri: Uri) {
+        if (_uiState.value.isImporting) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImporting = true, error = null) }
+            val liked = runCatching {
+                withContext(Dispatchers.IO) {
+                    val csv = context.contentResolver.openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+                        .orEmpty()
+                    YouTubeTakeoutParser.parse(csv)
+                }
+            }.getOrDefault(emptyList())
+            if (liked.isEmpty()) {
+                _uiState.update { it.copy(isImporting = false, error = ImportError.EMPTY_PLAYLIST) }
+                return@launch
+            }
+            val existing = runCatching {
+                likedTracksRepository.getLikedTracks().first()
+            }.getOrDefault(emptyList()).mapTo(HashSet()) { it.id }
+            var imported = 0
+            val importedTracks = mutableListOf<Track>()
+            liked.forEach { item ->
+                val url = "https://music.youtube.com/watch?v=${item.videoId}"
+                if (!existing.add(url)) return@forEach
+                val track = Track(
+                    id = url,
+                    source = Source.YOUTUBE,
+                    title = item.title,
+                    artist = item.artist.ifBlank { "YouTube Music" },
+                    artworkUrl = "https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg",
+                    streamUrl = null,
+                    durationMs = 0L,
+                    genre = null,
+                    transcodingUrl = url,
+                )
+                runCatching { likedTracksRepository.likeTrack(track) }
+                    .onSuccess {
+                        imported++
+                        importedTracks += track
+                    }
+            }
+            runCatching { canonicalTrackRepository.recordVariants(importedTracks) }
+            _uiState.update {
+                it.copy(
+                    isImporting = false,
+                    message = "Импортировано лайков: $imported",
+                )
+            }
+            runCatching { settingsRepository.setImportCompleted(true) }
         }
     }
 

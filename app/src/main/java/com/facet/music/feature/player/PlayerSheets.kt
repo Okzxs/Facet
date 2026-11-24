@@ -202,6 +202,63 @@ internal fun TuningDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+internal fun LyricsProviderSheet(
+    current: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 28.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.player_lyrics_source_sheet_title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(10.dp))
+            val options = listOf(
+                null to R.string.player_lyrics_source_auto,
+                "BetterLyrics" to R.string.player_lyrics_source_better,
+                "LyricsPlus" to R.string.player_lyrics_source_plus,
+                "LRCLIB" to R.string.player_lyrics_source_lrclib,
+            )
+            options.forEach { (mode, labelRes) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable {
+                            onSelect(mode)
+                            onDismiss()
+                        }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = current == mode,
+                        onClick = {
+                            onSelect(mode)
+                            onDismiss()
+                        },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(labelRes),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 internal fun EqualizerSheet(
     enabled: Boolean,
     preset: String,

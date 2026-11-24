@@ -141,6 +141,7 @@ import com.facet.music.core.ui.components.AddToPlaylistSheet
 import com.facet.music.core.ui.components.SleepTimerSheet
 import com.facet.music.core.ui.components.TrackSourcesSheet
 import com.facet.music.feature.player.EqualizerSheet
+import com.facet.music.feature.player.LyricsProviderSheet
 import com.facet.music.core.ui.theme.Motion
 import com.facet.music.core.ui.theme.PillShape
 import com.facet.music.core.ui.theme.bestContentColor
@@ -226,6 +227,7 @@ fun PlayerScreen(
     var showTuning by remember { mutableStateOf(false) }
     var showVariations by remember { mutableStateOf(false) }
     var showEqualizer by remember { mutableStateOf(false) }
+    var showLyricsProvider by remember { mutableStateOf(false) }
     var showLyricsOffset by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -781,6 +783,32 @@ fun PlayerScreen(
                                     },
                                 )
                                 DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_lyrics_auto_timing)) },
+                                    enabled = uiState.lyricsData?.isSynced == false,
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.autoTimeLyrics()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (uiState.lyricsEditMode) {
+                                                    R.string.player_lyrics_edit_timing_on
+                                                } else {
+                                                    R.string.player_lyrics_edit_timing
+                                                },
+                                            ),
+                                        )
+                                    },
+                                    enabled = uiState.lyricsData != null,
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.toggleLyricsEditMode()
+                                    },
+                                )
+                                DropdownMenuItem(
                                     text = { Text(stringResource(R.string.player_lyrics_offset)) },
                                     leadingIcon = {
                                         Icon(Icons.Rounded.Translate, contentDescription = null)
@@ -802,8 +830,8 @@ fun PlayerScreen(
                                         Text(
                                             stringResource(
                                                 R.string.player_lyrics_source,
-                                                uiState.lyricsProvider
-                                                    ?: uiState.lyricsProviderMode
+                                                uiState.lyricsProviderMode
+                                                    ?: uiState.lyricsProvider
                                                     ?: stringResource(R.string.player_lyrics_source_auto),
                                             ),
                                         )
@@ -811,7 +839,7 @@ fun PlayerScreen(
                                     enabled = uiState.lyricsData != null,
                                     onClick = {
                                         showMenu = false
-                                        viewModel.cycleLyricsProvider()
+                                        showLyricsProvider = true
                                     },
                                 )
                                 DropdownMenuItem(
@@ -881,6 +909,7 @@ fun PlayerScreen(
                         lyricsError = uiState.lyricsError?.let { stringResource(it.messageRes) },
                         lyricsListState = lyricsListState,
                         lyricsOffsetMs = uiState.lyricsOffsetMs,
+                        lyricsEditMode = uiState.lyricsEditMode,
                         palette = playerColors,
                         actionAccent = coverAccent,
                         actionContainer = heroActionContainer,
@@ -910,6 +939,7 @@ fun PlayerScreen(
                         onSeekToLine = { timeMs -> viewModel.seekToMs(timeMs) },
                         onRetryLyrics = { viewModel.loadLyricsIfNeeded(track) },
                         onLyricsListBoundsChanged = { lyricsListBounds.value = it },
+                        onSetLineTime = viewModel::setLineTime,
                         onToggleLike = { toggleLikeWithPermission() },
                         onToggleDislike = { viewModel.toggleDislike() },
                         onDownloadClick = { viewModel.toggleDownload() },
@@ -1087,6 +1117,14 @@ fun PlayerScreen(
                 showTuning = false
             },
             onDismiss = { showTuning = false },
+        )
+    }
+
+    if (showLyricsProvider) {
+        LyricsProviderSheet(
+            current = uiState.lyricsProviderMode,
+            onSelect = viewModel::setLyricsProvider,
+            onDismiss = { showLyricsProvider = false },
         )
     }
 
