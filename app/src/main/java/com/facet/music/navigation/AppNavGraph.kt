@@ -73,7 +73,7 @@ import com.facet.music.feature.artist.ArtistScreen
 import com.facet.music.feature.home.HomeScreen
 import com.facet.music.feature.library.LibraryScreen
 import com.facet.music.feature.library.LikedTracksScreen
-import com.facet.music.feature.player.DISMISS_THRESHOLD
+import com.facet.music.feature.player.dismissThresholdPx
 import com.facet.music.feature.player.PlayerSwipeState
 import com.facet.music.feature.player.PlayerViewModel
 import com.facet.music.feature.player.PlayerScreen
@@ -536,7 +536,8 @@ fun AppNavGraph() {
         } finally {
             if (!playerSwipe.isDismissed) {
                 val height = playerSwipe.screenHeightPx
-                val passed = playerSwipe.offsetPx > height * DISMISS_THRESHOLD
+                val passed = playerSwipe.offsetPx >
+                    dismissThresholdPx(height, density)
                 if (passed) {
                     playerSwipe.dismiss()
                     isPlayerOpen = false

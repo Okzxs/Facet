@@ -122,6 +122,7 @@ import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.content.Intent
+import android.util.Log
 import android.text.format.DateFormat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -436,8 +437,8 @@ fun PlayerScreen(
 
     fun finishPlayerDrag(velocityY: Float = 0f) {
         val height = swipeState.screenHeightPx
-        val threshold = height * DISMISS_THRESHOLD
-        val fastDown = velocityY > CLOSE_VELOCITY_PX_S
+        val threshold = dismissThresholdPx(height, density)
+        val fastDown = kotlin.math.abs(velocityY) > CLOSE_VELOCITY_PX_S
         if (height > 0f && (swipeState.offsetPx > threshold || fastDown)) {
             dismissPlayer()
         } else {
@@ -458,11 +459,6 @@ fun PlayerScreen(
                 if (island != null && island.contains(down.position)) {
                     return@awaitEachGesture
                 }
-                val artwork = artworkBounds.value
-                if (artwork != null && artwork.contains(down.position)) {
-                    return@awaitEachGesture
-                }
-
                 var dragStarted = false
                 var totalDy = 0f
                 val velocityTracker = VelocityTracker()
