@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -58,6 +59,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.facet.music.core.ui.components.ExpressiveBottomDock
+import com.facet.music.core.ui.components.ExpressiveNavigationRail
 import com.facet.music.core.ui.components.FloatingMiniPlayer
 import com.facet.music.core.ui.components.MiniPlayerGap
 import com.facet.music.core.ui.components.MiniPlayerHorizontalMargin
@@ -208,10 +210,11 @@ fun AppNavGraph() {
         animationSpec = Motion.spatialDefault(),
         label = "miniPlayerReserve",
     )
-    val bottomDockHeight = navBarHeight + miniPlayerReserve
+    val wideLayout = LocalConfiguration.current.screenWidthDp >= 600
+    val bottomDockHeight = if (wideLayout) miniPlayerReserve else navBarHeight + miniPlayerReserve
 
     val miniPlayerBottom by animateDpAsState(
-        targetValue = if (showBottomBar) {
+        targetValue = if (showBottomBar && !wideLayout) {
             navBarHeight + MiniPlayerGap
         } else {
             navigationBarInset + MiniPlayerGap
@@ -229,7 +232,9 @@ fun AppNavGraph() {
             NavHost(
                 navController = navController,
                 startDestination = Screen.Home.route,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = if (wideLayout) 80.dp else 0.dp),
                 enterTransition = { tabEnterTransition() },
                 exitTransition = { tabExitTransition() },
                 popEnterTransition = { tabEnterTransition() },
@@ -373,7 +378,7 @@ fun AppNavGraph() {
         }
 
         AnimatedVisibility(
-            visible = showBottomBar,
+            visible = showBottomBar && !wideLayout,
             enter = slideInVertically(
                 animationSpec = Motion.spatialDefault(),
             ) { height -> height } + fadeIn(animationSpec = Motion.effectsDefault()),
@@ -387,6 +392,15 @@ fun AppNavGraph() {
                 selectedRoute = selectedRoute,
                 onSelect = onTabSelect,
                 modifier = Modifier.onSizeChanged { size -> navBarHeightPx = size.height },
+            )
+        }
+
+        if (wideLayout) {
+            ExpressiveNavigationRail(
+                items = bottomNavItems,
+                selectedRoute = selectedRoute,
+                onSelect = onTabSelect,
+                modifier = Modifier.align(Alignment.CenterStart),
             )
         }
 
@@ -410,7 +424,7 @@ fun AppNavGraph() {
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(
-                            start = MiniPlayerHorizontalMargin,
+                            start = if (wideLayout) 88.dp else MiniPlayerHorizontalMargin,
                             end = MiniPlayerHorizontalMargin,
                             bottom = miniPlayerBottom,
                         ),
