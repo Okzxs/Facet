@@ -301,6 +301,32 @@ fun SettingsScreen(
                     .padding(horizontal = 20.dp, vertical = 8.dp),
             ) {
                 Text(
+                    text = stringResource(R.string.settings_text_scale),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.settings_text_scale_value,
+                        (settings.textScale * 100).toInt(),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Slider(
+                    value = settings.textScale,
+                    onValueChange = viewModel::setTextScale,
+                    valueRange = 0.85f..1.3f,
+                    steps = 8,
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
+                Text(
                     text = stringResource(R.string.settings_shape_style),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,

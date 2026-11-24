@@ -74,6 +74,8 @@
     <string name="settings_theme_system">System</string>
     <string name="settings_palette_section">Palette</string>
     <string name="settings_palette_hint">Signature is the Facet look. Dynamic follows your wallpaper.</string>
+    <string name="settings_text_scale">Text size</string>
+    <string name="settings_text_scale_value">%1$d%% of the base scale</string>
     <string name="settings_amoled">AMOLED black</string>
     <string name="settings_amoled_hint">Pure black surfaces in dark theme.</string>
     <string name="settings_shape_style">Corners</string>

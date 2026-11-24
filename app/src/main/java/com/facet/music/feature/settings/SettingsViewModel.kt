@@ -134,6 +134,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setShapeStyle(style) }
     }
 
+    fun setTextScale(scale: Float) {
+        viewModelScope.launch { settingsRepository.setTextScale(scale) }
+    }
+
     fun setLyricsTranslationLanguage(language: String) {
         viewModelScope.launch {
             settingsRepository.setLyricsTranslationLanguage(language)

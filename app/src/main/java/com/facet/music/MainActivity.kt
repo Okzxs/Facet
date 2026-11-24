@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
                 serifDisplay = settings.serifDisplay,
                 amoledBlack = settings.amoledBlack,
                 shapeStyle = com.facet.music.core.ui.theme.FacetShapeStyle.fromName(settings.shapeStyle),
+                textScale = settings.textScale,
             ) {
                 val context = LocalContext.current
                 LaunchedEffect(Unit) {

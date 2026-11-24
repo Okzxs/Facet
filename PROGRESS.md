@@ -4,6 +4,16 @@
 
 ---
 
+## Сессия 72, часть 2: масштаб текста и research-матрица (25.11.2026)
+
+- **Масштаб текста** 85–130% (`AppSettings.textScale`, слайдер в оформлении) — `scaledTypography` пересчитывает все 15 базовых и 9 emphasized-ролей, включая serif-вариант; применяется без перезапуска.
+- **Research** `docs/research/music-apps-ux.md` (225 строк, 123 ссылки): shallow-клоны RX Playa, Auxio, Gramophone, Retro, Metro, Namida, Riff; закрытые — по публичным источникам. Ключевые выводы: поиск настроек с синонимами, ортогональные оси темы + JSON-экспорт, 3 раскладки плеера, провайдеры текста со статусами, бэк-вокал, ±100 мс офсет, 7-полосный EQ, sleep timer «+5/до конца», настройка вкладок, AMOLED/радиусы/blur/reduce motion.
+- **Лицензии:** RX/Auxio/Gramophone/Retro/Metro — GPLv3 (совместимо с Facet при атрибуции), Riff — MIT, Namida — только идеи; Dotify публичного репо не имеет, Samsung Music деталей не подтверждено.
+- **Serif A/B:** Playfair Display оставлен для display/headline (кириллица проверена), переключатель доступен; research рекомендует точечный serif, поэтому в будущих пресетах проверим «Винил» отдельно.
+- **Проверка:** 78 suite / 447 тестов, 0 failures. APK 32 254 677 байт, SHA-256 `2a676cc80d03e006ad378028c6f8a6288def4d7d311ccde8e55301ae3cbae956`.
+
+---
+
 ## Сессия 72: Signature-тема, serif и первые настройки внешнего вида (25.11.2026)
 
 - **Направление Ink & Brass.** `FacetPalette` (DYNAMIC / SIGNATURE / NIGHT_JAZZ / PAPER / MONO) и отдельные схемы: Signature — графит `#0E0F12`/`#12141A`, бумажный офф-вайт `#F7F4EE`, латунный seed `#C8A46A`; Night Jazz — синий seed, Paper — тёплый светлый, Mono — монохром.

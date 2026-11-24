@@ -95,6 +95,7 @@ class SettingsRepositoryImpl @Inject constructor(
         shapeStyle = prefs.getString(KEY_SHAPE_STYLE, null)
             ?.takeIf { it in SHAPE_STYLES }
             ?: "DEFAULT",
+        textScale = prefs.getFloat(KEY_TEXT_SCALE, 1f).coerceIn(0.85f, 1.3f),
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -334,6 +335,14 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(shapeStyle = normalized) }
     }
 
+    override suspend fun setTextScale(scale: Float) {
+        val normalized = scale.coerceIn(0.85f, 1.3f)
+        withContext(Dispatchers.IO) {
+            prefs.edit().putFloat(KEY_TEXT_SCALE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(textScale = normalized) }
+    }
+
     override suspend fun setSkipSilenceEnabled(enabled: Boolean) {
         withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
@@ -402,6 +411,8 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_SHAPE_STYLE = "shape_style"
 
         val SHAPE_STYLES = setOf("SOFT", "DEFAULT", "ROUND")
+
+        const val KEY_TEXT_SCALE = "text_scale"
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"

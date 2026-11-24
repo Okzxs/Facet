@@ -73,6 +73,8 @@
     <string name="settings_theme_system">Система</string>
     <string name="settings_palette_section">Палитра</string>
     <string name="settings_palette_hint">Signature — фирменный вид Facet. Dynamic подстраивается под обои.</string>
+    <string name="settings_text_scale">Размер текста</string>
+    <string name="settings_text_scale_value">%1$d%% от базового размера</string>
     <string name="settings_amoled">AMOLED-чёрный</string>
     <string name="settings_amoled_hint">Чистый чёрный фон в тёмной теме.</string>
     <string name="settings_shape_style">Углы</string>

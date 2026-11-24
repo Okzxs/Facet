@@ -160,6 +160,7 @@ fun FacetTheme(
     serifDisplay: Boolean = true,
     amoledBlack: Boolean = false,
     shapeStyle: FacetShapeStyle = FacetShapeStyle.DEFAULT,
+    textScale: Float = 1f,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -203,7 +204,10 @@ fun FacetTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         motionScheme = MotionScheme.expressive(),
-        typography = if (serifDisplay) SerifDisplayTypography else AppTypography,
+        typography = scaledTypography(
+            if (serifDisplay) SerifDisplayTypography else AppTypography,
+            textScale.coerceIn(0.85f, 1.3f),
+        ),
         shapes = shapesFor(shapeStyle),
     ) {
         CompositionLocalProvider(LocalContentColor provides colorScheme.onBackground) {

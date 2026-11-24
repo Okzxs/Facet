@@ -41,6 +41,7 @@ data class AppSettings(
     val serifDisplay: Boolean = true,
     val amoledBlack: Boolean = false,
     val shapeStyle: String = "DEFAULT",
+    val textScale: Float = 1f,
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -111,6 +112,8 @@ interface SettingsRepository {
     suspend fun setAmoledBlack(enabled: Boolean)
 
     suspend fun setShapeStyle(style: String)
+
+    suspend fun setTextScale(scale: Float)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)
