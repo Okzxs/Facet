@@ -6,6 +6,14 @@
 
 ## Сессия 70, часть 3: P0 добит и эквалайзер (24.11.2026)
 
+### Хотфикс запуска (24.11.2026)
+
+- **Симптом:** приложение падало сразу после старта с `IndexOutOfBoundsException` в `Timeline.getWindow` из `PlayerController.preloadNext` (`getMediaItemAt`).
+- **Причина:** после восстановления очереди `state.queue` и таймлайн MediaController на миг расходятся; `currentMediaItemIndex` возвращал 0 при пустом таймлайне, и предзагрузка читала несуществующий элемент.
+- **Фикс:** проверка `mediaItemCount > 0`, индексы ограничены одновременно `0 until mediaItemCount` и `state.queue.indices`, чтение элементов через `runCatching { getMediaItemAt(...) }`, тот же guard в `applyMime`; убран двойной вызов `preloadNext()` после `setQueueAndPlay`.
+- **Регрессия:** `PlayerControllerQueueTest` — «preload survives an empty player timeline». Проверено тремя холодными запусками с восстановленной очередью и запуском воспроизведения: 0 FATAL, очередь играет с сохранённой позиции.
+- Тесты: 73 suite / 427, 0 failures. APK пересобран, SHA-256 `eac49084603fbdd985c0944016723bab7ec2cb6dd30c8168829466ff129e2f82`.
+
 ### Текст
 
 - **Морф обложки** — конечные точки теперь появляются на последних 2% пути: миниатюра в шапке при `morph > 0.98`, hero-обложка при `morph < 0.02`. В кадре всегда одна обложка.

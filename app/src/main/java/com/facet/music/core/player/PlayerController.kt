@@ -249,7 +249,6 @@ class PlayerController @Inject constructor(
             player.prepare()
             player.play()
             preloadNext()
-            preloadNext()
         }
     }
 
@@ -744,15 +743,21 @@ class PlayerController @Inject constructor(
         preloadJob?.cancel()
         preloadJob = scope.launch {
             val player = attachedPlayer ?: return@launch
+            val mediaCount = player.mediaItemCount
+            if (mediaCount <= 0) return@launch
             val currentIndex = player.currentMediaItemIndex
-                .takeIf { it in state.queue.indices } ?: return@launch
-            val nextIndex = (currentIndex + 1).takeIf { it in state.queue.indices }
+                .takeIf { it in 0 until mediaCount && it in state.queue.indices }
                 ?: return@launch
+            val nextIndex = (currentIndex + 1)
+                .takeIf { it in 0 until mediaCount && it in state.queue.indices }
+                ?: return@launch
+            val currentItem = runCatching { player.getMediaItemAt(currentIndex) }
+                .getOrNull() ?: return@launch
+            val nextItem = runCatching { player.getMediaItemAt(nextIndex) }
+                .getOrNull() ?: return@launch
             val stream = playbackResolver.resolve(state.queue[nextIndex]).getOrNull()
                 ?: return@launch
-            val currentItem = player.getMediaItemAt(currentIndex)
             val currentMime = currentItem.localConfiguration?.mimeType
-            val nextItem = player.getMediaItemAt(nextIndex)
             val nextMime = nextItem.localConfiguration?.mimeType
             if (stream.isHls && nextMime != stream.mimeType) {
                 val position = player.currentPosition
@@ -778,7 +783,7 @@ class PlayerController @Inject constructor(
 
     private fun applyMime(player: Player, index: Int, mimeType: String?) {
         if (index !in 0 until player.mediaItemCount) return
-        val item = player.getMediaItemAt(index)
+        val item = runCatching { player.getMediaItemAt(index) }.getOrNull() ?: return
         val desired = mimeType ?: TrackMediaItem.trackOf(item)?.let(::defaultMime) ?: return
         val current = item.localConfiguration?.mimeType
         if (current != desired) {

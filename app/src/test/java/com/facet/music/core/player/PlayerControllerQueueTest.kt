@@ -207,6 +207,21 @@ class PlayerControllerQueueTest {
 
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
+    fun `preload survives an empty player timeline`() = runTest {
+        controller.setQueueAndPlay(tracks)
+        runCurrent()
+
+        items = emptyList()
+        currentIndex = 0
+
+        controller.preloadNext()
+        advanceUntilIdle()
+
+        assertTrue(items.isEmpty())
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun `clear queue invalidates pending resolve`() = runTest {
         val slowA = CompletableDeferred<Result<ResolvedStream>>()
         val fastB = CompletableDeferred<Result<ResolvedStream>>()
