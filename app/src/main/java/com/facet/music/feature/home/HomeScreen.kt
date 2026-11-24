@@ -45,6 +45,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -566,72 +567,100 @@ private fun ContinueListeningCard(
     queue: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
     val continueCd = stringResource(R.string.home_continue_cd, track.title)
+    val shape = MaterialTheme.shapes.extraLarge
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                role = Role.Button,
-                onClick = { onTrackClick(track, queue) },
-            )
-            .semantics {
-                contentDescription = continueCd
-            },
-        shape = MaterialTheme.shapes.medium,
+            .clip(shape)
+            .clickable(role = Role.Button, onClick = { onTrackClick(track, queue) })
+            .semantics { contentDescription = continueCd },
+        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        contentColor = Color.White,
         tonalElevation = 0.dp,
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Box(modifier = Modifier
+            .fillMaxWidth()
+            .height(212.dp)) {
             Artwork(
                 url = track.artworkUrl,
                 contentDescription = null,
-                modifier = Modifier.size(88.dp),
-                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.matchParentSize(),
+                shape = MaterialTheme.shapes.extraLarge,
             )
-            Spacer(Modifier.width(16.dp))
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.08f),
+                            0.42f to Color.Black.copy(alpha = 0.28f),
+                            1f to Color.Black.copy(alpha = 0.86f),
+                        ),
+                    ),
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp),
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.18f),
+                contentColor = Color.White,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.home_continue),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            }
             Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 18.dp, end = 92.dp, bottom = 18.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.home_continue),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
                     text = track.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
                     text = track.artist,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.82f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.width(12.dp))
             FilledIconButton(
                 onClick = { onTrackClick(track, queue) },
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .size(56.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black,
+                ),
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = stringResource(R.string.common_play_cd),
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(28.dp),
                 )
             }
         }
