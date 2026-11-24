@@ -231,6 +231,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setLyricBlur(enabled) }
     }
 
+    fun setEqualizerCustomBands(bands: List<Float>) {
+        viewModelScope.launch {
+            settingsRepository.setEqualizerCustomBands(bands)
+            settingsRepository.setEqualizerPreset("CUSTOM")
+        }
+    }
+
     private fun refreshCacheStats() {
         viewModelScope.launch(Dispatchers.IO) {
             _cacheBytes.value = playbackCache.sizeBytes()

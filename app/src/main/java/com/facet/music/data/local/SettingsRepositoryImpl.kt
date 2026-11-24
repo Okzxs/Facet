@@ -155,6 +155,12 @@ class SettingsRepositoryImpl @Inject constructor(
         lyricScale = prefs.getFloat(KEY_LYRIC_SCALE, 1f).coerceIn(0.85f, 1.25f),
         lyricBold = prefs.getBoolean(KEY_LYRIC_BOLD, true),
         lyricBlur = prefs.getBoolean(KEY_LYRIC_BLUR, true),
+        equalizerCustomBands = prefs.getString(KEY_EQ_CUSTOM_BANDS, null)
+            ?.split(',')
+            ?.mapNotNull { it.trim().toFloatOrNull() }
+            ?.takeIf { it.size == AppSettings.DEFAULT_EQ_BANDS.size }
+            ?.map { it.coerceIn(AppSettings.EQ_MIN_DB, AppSettings.EQ_MAX_DB) }
+            ?: AppSettings.DEFAULT_EQ_BANDS,
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -565,6 +571,20 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(lyricBlur = enabled) }
     }
 
+    override suspend fun setEqualizerCustomBands(bands: List<Float>) {
+        val normalized = if (bands.size == AppSettings.DEFAULT_EQ_BANDS.size) {
+            bands.map { it.coerceIn(AppSettings.EQ_MIN_DB, AppSettings.EQ_MAX_DB) }
+        } else {
+            AppSettings.DEFAULT_EQ_BANDS
+        }
+        withContext(Dispatchers.IO) {
+            prefs.edit()
+                .putString(KEY_EQ_CUSTOM_BANDS, normalized.joinToString(","))
+                .apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(equalizerCustomBands = normalized) }
+    }
+
     override suspend fun setSkipSilenceEnabled(enabled: Boolean) {        withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
         }
@@ -673,7 +693,9 @@ class SettingsRepositoryImpl @Inject constructor(
 
         const val KEY_LYRIC_BLUR = "lyric_blur"
 
-        val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC")
+        const val KEY_EQ_CUSTOM_BANDS = "eq_custom_bands"
+
+        val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC", "CUSTOM")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"
         const val KEY_LEGACY_ALL_SOURCES = "search_all_sources"
     }

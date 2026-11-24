@@ -119,6 +119,7 @@ import coil3.request.crossfade
 import com.facet.music.R
 import com.facet.music.core.download.DownloadMessages
 import com.facet.music.core.player.EqualizerCurve
+import com.facet.music.data.repository.AppSettings
 import com.facet.music.core.player.EqualizerPreset
 import com.facet.music.core.download.DownloadState
 import com.facet.music.core.location.LocationPermissions
@@ -211,6 +212,7 @@ internal fun LyricsProviderSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 28.dp),
         ) {
@@ -262,18 +264,23 @@ internal fun LyricsProviderSheet(
 internal fun EqualizerSheet(
     enabled: Boolean,
     preset: String,
+    customBands: List<Float>,
     skipSilence: Boolean,
     limiterEnabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onPresetSelect: (String) -> Unit,
+    onCustomBandsChange: (List<Float>) -> Unit,
     onSkipSilenceChange: (Boolean) -> Unit,
     onLimiterChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var customExpanded by remember { mutableStateOf(preset == EqualizerCurve.CUSTOM_PRESET) }
+    var bands by remember(customBands) { mutableStateOf(customBands) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 28.dp),
         ) {
@@ -341,7 +348,7 @@ internal fun EqualizerSheet(
                             },
                         )
                         Text(
-                            text = EqualizerCurve.curve(option).joinToString(" · ") { gain ->
+                            text = EqualizerCurve.bandsForPreset(option).joinToString(" · ") { gain ->
                                 val rounded = gain.toInt()
                                 if (rounded > 0) "+$rounded" else "$rounded"
                             } + " dB",
@@ -351,8 +358,97 @@ internal fun EqualizerSheet(
                     }
                 }
             }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable(enabled = enabled) {
+                        if (preset != EqualizerCurve.CUSTOM_PRESET) {
+                            onCustomBandsChange(
+                                EqualizerCurve.bandsForPreset(EqualizerPreset.fromName(preset)),
+                            )
+                        }
+                        customExpanded = !customExpanded
+                    }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = preset == EqualizerCurve.CUSTOM_PRESET,
+                    onClick = {
+                        if (!enabled) return@RadioButton
+                        if (preset != EqualizerCurve.CUSTOM_PRESET) {
+                            onCustomBandsChange(
+                                EqualizerCurve.bandsForPreset(EqualizerPreset.fromName(preset)),
+                            )
+                        }
+                        customExpanded = true
+                    },
+                    enabled = enabled,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.equalizer_custom),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (enabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                    Text(
+                        text = stringResource(R.string.equalizer_custom_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = customExpanded) {
+                Column {
+                    EqualizerCurve.BAND_CENTERS_HZ.forEachIndexed { index, hz ->
+                        val gain = bands.getOrNull(index) ?: 0f
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.equalizer_band_label, hz),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(62.dp),
+                            )
+                            Slider(
+                                value = gain,
+                                onValueChange = { value ->
+                                    bands = bands.toMutableList().also { it[index] = value }
+                                },
+                                onValueChangeFinished = { onCustomBandsChange(bands) },
+                                valueRange = AppSettings.EQ_MIN_DB..AppSettings.EQ_MAX_DB,
+                                steps = 11,
+                                enabled = enabled,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                text = formatDb(gain),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(42.dp),
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
+}
+
+private fun formatDb(gain: Float): String {
+    val rounded = gain.toInt()
+    return if (rounded > 0) "+$rounded" else "$rounded"
 }
 
 @Composable
@@ -404,6 +500,7 @@ internal fun VariationsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 28.dp),
         ) {

@@ -322,6 +322,13 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setEqualizerEnabled(enabled) }
     }
 
+    fun setEqualizerCustomBands(bands: List<Float>) {
+        viewModelScope.launch {
+            settingsRepository.setEqualizerCustomBands(bands)
+            settingsRepository.setEqualizerPreset("CUSTOM")
+        }
+    }
+
     fun setEqualizerPreset(preset: String) {
         viewModelScope.launch { settingsRepository.setEqualizerPreset(preset) }
     }

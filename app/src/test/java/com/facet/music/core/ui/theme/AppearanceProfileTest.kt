@@ -43,6 +43,10 @@ class AppearanceProfileTest {
             lyricScale = 1.2f,
             lyricBold = false,
             lyricBlur = false,
+            eqPreset = "CUSTOM",
+            eqCustomBands = listOf(1f, 2f, 3f, 4f, 5f, 6f, -6f),
+            peakLimiter = false,
+            skipSilence = true,
         )
 
         val parsed = AppearanceProfile.parse(original.toJson())
@@ -71,6 +75,7 @@ class AppearanceProfileTest {
               "dismissSensitivity": "PSYCHIC",
               "textScale": 4.5,
               "lyricScale": 3.7,
+              "eqCustomBands": [99.0],
               "progressStyle": "RADIAL"
             }
             """.trimIndent(),
@@ -96,6 +101,10 @@ class AppearanceProfileTest {
         assertEquals(1.25f, safe.lyricScale, 0.001f)
         assertTrue(safe.lyricBold)
         assertTrue(safe.lyricBlur)
+        assertEquals("FLAT", safe.eqPreset)
+        assertEquals(AppSettings.DEFAULT_EQ_BANDS, safe.eqCustomBands)
+        assertTrue(safe.peakLimiter)
+        assertTrue(safe.skipSilence.not())
         assertEquals(1.3f, safe.textScale, 0.001f)
     }
 

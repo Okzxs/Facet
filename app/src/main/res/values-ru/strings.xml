@@ -302,7 +302,7 @@
     <string name="player_menu_text">Текст</string>
     <string name="player_menu_session">Сеанс</string>
     <string name="player_equalizer">Эквалайзер</string>
-    <string name="equalizer_hint">Пятиполосный эквалайзер Android для аудиосессии плеера.</string>
+    <string name="equalizer_hint">Эквалайзер Android для аудиосессии плеера. Число полос зависит от устройства.</string>
     <string name="equalizer_skip_silence">Пропуск тишины</string>
     <string name="equalizer_skip_silence_hint">Перепрыгивает длинные паузы в треке.</string>
     <string name="equalizer_limiter">Пиковый лимитер</string>
@@ -735,4 +735,8 @@
     <string name="studio_lyric_bold_hint">Extra bold выразительнее, medium спокойнее</string>
     <string name="studio_lyric_blur">Размывать неактивные строки</string>
     <string name="studio_lyric_blur_hint">Глубина резкости для следующих строк</string>
+
+    <string name="equalizer_custom">Своя кривая</string>
+    <string name="equalizer_custom_hint">Семь полос от 60 Гц до 12 кГц</string>
+    <string name="equalizer_band_label">%1$d Гц</string>
 </resources>

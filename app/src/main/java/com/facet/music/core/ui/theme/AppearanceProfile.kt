@@ -36,6 +36,10 @@ data class AppearanceProfile(
     val lyricScale: Float = 1f,
     val lyricBold: Boolean = true,
     val lyricBlur: Boolean = true,
+    val eqPreset: String = "FLAT",
+    val eqCustomBands: List<Float> = AppSettings.DEFAULT_EQ_BANDS,
+    val peakLimiter: Boolean = true,
+    val skipSilence: Boolean = false,
 ) {
 
     fun sanitized(): AppearanceProfile = copy(
@@ -77,6 +81,10 @@ data class AppearanceProfile(
         progressStyle = progressStyle.takeIf { it in AppSettings.PROGRESS_STYLES }
             ?: AppSettings.PROGRESS_WAVE,
         lyricScale = lyricScale.coerceIn(0.85f, 1.25f),
+        eqCustomBands = eqCustomBands
+            .takeIf { it.size == AppSettings.DEFAULT_EQ_BANDS.size }
+            ?.map { it.coerceIn(AppSettings.EQ_MIN_DB, AppSettings.EQ_MAX_DB) }
+            ?: AppSettings.DEFAULT_EQ_BANDS,
     )
 
     fun toJson(): String = profileJson.encodeToString(AppearanceProfile.serializer(), sanitized())
@@ -118,6 +126,10 @@ data class AppearanceProfile(
             lyricScale = settings.lyricScale,
             lyricBold = settings.lyricBold,
             lyricBlur = settings.lyricBlur,
+            eqPreset = settings.equalizerPreset,
+            eqCustomBands = settings.equalizerCustomBands,
+            peakLimiter = settings.peakLimiterEnabled,
+            skipSilence = settings.skipSilenceEnabled,
         ).sanitized()
 
         fun parse(json: String): AppearanceProfile? = runCatching {
@@ -157,4 +169,8 @@ suspend fun SettingsRepository.applyProfile(profile: AppearanceProfile) {
     setLyricScale(safe.lyricScale)
     setLyricBold(safe.lyricBold)
     setLyricBlur(safe.lyricBlur)
+    setEqualizerPreset(safe.eqPreset)
+    setEqualizerCustomBands(safe.eqCustomBands)
+    setPeakLimiterEnabled(safe.peakLimiter)
+    setSkipSilenceEnabled(safe.skipSilence)
 }

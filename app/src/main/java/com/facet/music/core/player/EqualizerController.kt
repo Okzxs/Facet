@@ -30,17 +30,28 @@ class EqualizerController @Inject constructor(
                 AudioSessionBridge.sessionId,
                 settingsRepository.settings,
             ) { session, settings ->
-                Triple(session, settings.equalizerEnabled, settings.equalizerPreset)
-            }.collectLatest { (session, enabled, preset) ->
-                apply(session, enabled, preset)
+                EqualizerRequest(
+                    session = session,
+                    enabled = settings.equalizerEnabled,
+                    preset = settings.equalizerPreset,
+                    customBands = settings.equalizerCustomBands,
+                )
+            }.collectLatest { request ->
+                apply(request)
             }
         }
     }
 
-    private fun apply(session: Int, enabled: Boolean, presetName: String) {
+    private fun apply(request: EqualizerRequest) {
+        val session = request.session
+        val enabled = request.enabled
         synchronized(lock) {
             if (session <= 0) return
-            val preset = EqualizerPreset.fromName(presetName)
+            val custom = request.preset.equals(
+                EqualizerCurve.CUSTOM_PRESET,
+                ignoreCase = true,
+            )
+            val preset = EqualizerPreset.fromName(request.preset)
             var effect = equalizer
             if (effect == null || boundSession != session) {
                 releaseLocked()
@@ -60,14 +71,18 @@ class EqualizerController @Inject constructor(
                 val bands = eq.numberOfBands.toInt()
                 for (band in 0 until bands) {
                     val centerHz = eq.getCenterFreq(band.toShort()) / 1_000
-                    val gain = EqualizerCurve.gainDb(preset, centerHz)
+                    val gain = if (custom) {
+                        EqualizerCurve.customGainDb(request.customBands, centerHz)
+                    } else {
+                        EqualizerCurve.gainDb(preset, centerHz)
+                    }
                     eq.setBandLevel(
                         band.toShort(),
                         EqualizerCurve.levelMillibels(gain, range[0].toInt(), range[1].toInt()),
                     )
                 }
                 eq.enabled = true
-                Log.d(TAG, "Эквалайзер ${preset.name} включён, полос: $bands")
+                Log.d(TAG, "Эквалайзер ${if (custom) "CUSTOM" else preset.name} включён, полос: $bands")
             }.onFailure { Log.w(TAG, "Не удалось применить эквалайзер", it) }
         }
     }
@@ -77,6 +92,13 @@ class EqualizerController @Inject constructor(
         equalizer = null
         boundSession = 0
     }
+
+    private data class EqualizerRequest(
+        val session: Int,
+        val enabled: Boolean,
+        val preset: String,
+        val customBands: List<Float>,
+    )
 
     private companion object {
         const val TAG = "Equalizer"

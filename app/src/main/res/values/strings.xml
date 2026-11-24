@@ -301,7 +301,7 @@
     <string name="player_menu_text">Lyrics</string>
     <string name="player_menu_session">Session</string>
     <string name="player_equalizer">Equalizer</string>
-    <string name="equalizer_hint">Five-band Android equalizer for the player audio session.</string>
+    <string name="equalizer_hint">Android equalizer for the player audio session. Band count follows the device.</string>
     <string name="equalizer_skip_silence">Skip silence</string>
     <string name="equalizer_skip_silence_hint">Jumps over long silent gaps in the track.</string>
     <string name="equalizer_limiter">Peak limiter</string>
@@ -728,4 +728,8 @@
     <string name="studio_lyric_bold_hint">Extra bold is more expressive; medium is calmer</string>
     <string name="studio_lyric_blur">Blur inactive lines</string>
     <string name="studio_lyric_blur_hint">Depth of field for upcoming lyrics</string>
+
+    <string name="equalizer_custom">Custom curve</string>
+    <string name="equalizer_custom_hint">Seven bands from 60 Hz to 12 kHz</string>
+    <string name="equalizer_band_label">%1$d Hz</string>
 </resources>

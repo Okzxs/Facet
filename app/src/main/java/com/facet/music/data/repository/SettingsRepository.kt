@@ -61,6 +61,7 @@ data class AppSettings(
     val lyricScale: Float = 1f,
     val lyricBold: Boolean = true,
     val lyricBlur: Boolean = true,
+    val equalizerCustomBands: List<Float> = DEFAULT_EQ_BANDS,
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -88,6 +89,10 @@ data class AppSettings(
         const val LANGUAGE_SYSTEM: String = AppLocale.LANGUAGE_SYSTEM
 
         val SUPPORTED_LANGUAGES = AppLocale.supportedLanguages
+
+        const val EQ_MIN_DB: Float = -6f
+        const val EQ_MAX_DB: Float = 6f
+        val DEFAULT_EQ_BANDS: List<Float> = List(7) { 0f }
 
         const val DOCK_FLOATING: String = "FLOATING"
         const val DOCK_ATTACHED: String = "ATTACHED"
@@ -248,6 +253,8 @@ interface SettingsRepository {
     suspend fun setLyricBold(enabled: Boolean)
 
     suspend fun setLyricBlur(enabled: Boolean)
+
+    suspend fun setEqualizerCustomBands(bands: List<Float>)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)
