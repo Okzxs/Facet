@@ -1,7 +1,10 @@
 package com.facet.music.core.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,9 +13,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
@@ -31,41 +36,79 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.facet.music.navigation.BottomNavItem
 
+enum class DockLabels {
+    ALWAYS,
+    SELECTED,
+    NEVER,
+}
+
 @Composable
 fun ExpressiveBottomDock(
     items: List<BottomNavItem>,
     selectedRoute: String?,
     onSelect: (BottomNavItem) -> Unit,
     modifier: Modifier = Modifier,
+    attached: Boolean = false,
+    labels: DockLabels = DockLabels.ALWAYS,
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
+    if (attached) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 0.dp,
-            shadowElevation = 8.dp,
+            shadowElevation = 0.dp,
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .selectableGroup()
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                    .padding(horizontal = 6.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 items.forEach { item ->
-                    val selected = item.screen.route == selectedRoute
                     DockItem(
                         item = item,
-                        selected = selected,
+                        selected = item.screen.route == selectedRoute,
                         onClick = { onSelect(item) },
+                        labels = labels,
                         modifier = Modifier.weight(1f),
                     )
+                }
+            }
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 0.dp,
+                shadowElevation = 8.dp,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectableGroup()
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    items.forEach { item ->
+                        DockItem(
+                            item = item,
+                            selected = item.screen.route == selectedRoute,
+                            onClick = { onSelect(item) },
+                            labels = labels,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
@@ -77,6 +120,7 @@ private fun DockItem(
     item: BottomNavItem,
     selected: Boolean,
     onClick: () -> Unit,
+    labels: DockLabels,
     modifier: Modifier = Modifier,
 ) {
     val iconColor by animateColorAsState(
@@ -97,6 +141,11 @@ private fun DockItem(
         animationSpec = spring(),
         label = "dockLabelColor",
     )
+    val showLabel = when (labels) {
+        DockLabels.ALWAYS -> true
+        DockLabels.SELECTED -> selected
+        DockLabels.NEVER -> false
+    }
     Column(
         modifier = modifier
             .clip(MaterialTheme.shapes.large)
@@ -123,20 +172,28 @@ private fun DockItem(
         ) {
             Icon(
                 imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
-                contentDescription = null,
+                contentDescription = if (!showLabel) stringResource(item.labelRes) else null,
                 tint = iconColor,
                 modifier = Modifier.size(22.dp),
             )
         }
-        Spacer(Modifier.height(3.dp))
-        Text(
-            text = stringResource(item.labelRes),
-            style = MaterialTheme.typography.labelMedium,
-            color = labelColor,
-            maxLines = 2,
-            softWrap = true,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
+        AnimatedVisibility(
+            visible = showLabel,
+            enter = expandVertically(animationSpec = spring()),
+            exit = shrinkVertically(animationSpec = spring()),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = stringResource(item.labelRes),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = labelColor,
+                    maxLines = 2,
+                    softWrap = true,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
     }
 }

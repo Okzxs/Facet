@@ -24,6 +24,8 @@ sealed class Screen(val route: String) {
     object Player : Screen("player")
     object Settings : Screen("settings")
 
+    object ThemeStudio : Screen("studio")
+
     object LikedTracks : Screen("liked")
 
     object Import : Screen("import")

@@ -58,6 +58,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.facet.music.core.ui.components.DockLabels
 import com.facet.music.core.ui.components.ExpressiveBottomDock
 import com.facet.music.core.ui.components.ExpressiveNavigationRail
 import com.facet.music.core.ui.components.FloatingMiniPlayer
@@ -69,6 +70,7 @@ import com.facet.music.core.ui.theme.prewarmPlayerPalette
 import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.AppSettings
 import com.facet.music.feature.artist.ArtistScreen
 import com.facet.music.feature.home.HomeScreen
 import com.facet.music.feature.library.LibraryScreen
@@ -80,16 +82,24 @@ import com.facet.music.feature.player.PlayerScreen
 import com.facet.music.feature.playlist.PlaylistScreen
 import com.facet.music.feature.search.SearchScreen
 import com.facet.music.feature.settings.SettingsScreen
+import com.facet.music.feature.settings.ThemeStudioScreen
 import com.facet.music.feature.wave.WaveScreen
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun AppNavGraph() {
+fun AppNavGraph(settings: AppSettings) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
     var isPlayerOpen by rememberSaveable { mutableStateOf(false) }
+
+    val navItems = remember(settings.tabOrder, settings.hiddenTabs) {
+        val byRoute = bottomNavItems.associateBy { it.screen.route }
+        settings.orderedTabs()
+            .mapNotNull { byRoute[it] }
+            .ifEmpty { listOf(bottomNavItems.first()) }
+    }
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -105,6 +115,7 @@ fun AppNavGraph() {
             val route = navBackStackEntry?.destination?.route
             !isPlayerOpen &&
                 route != Screen.Settings.route &&
+                route != Screen.ThemeStudio.route &&
                 route != Screen.Import.route &&
                 route != Screen.LikedTracks.route &&
                 route != Screen.Playlist.route &&
@@ -122,7 +133,7 @@ fun AppNavGraph() {
                 Screen.Import.route -> Screen.Library.route
                 else -> current
             }
-            bottomNavItems.firstOrNull { item -> item.screen.route == route }
+            navItems.firstOrNull { item -> item.screen.route == route }
                 ?.screen?.route
         }
     }
@@ -235,14 +246,17 @@ fun AppNavGraph() {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(start = if (wideLayout) 80.dp else 0.dp),
-                enterTransition = { tabEnterTransition() },
-                exitTransition = { tabExitTransition() },
-                popEnterTransition = { tabEnterTransition() },
-                popExitTransition = { tabExitTransition() },
+                enterTransition = { tabEnterTransition(navItems) },
+                exitTransition = { tabExitTransition(navItems) },
+                popEnterTransition = { tabEnterTransition(navItems) },
+                popExitTransition = { tabExitTransition(navItems) },
             ) {
                 composable(Screen.Home.route) {
                     HomeScreen(
                         onTrackClick = { track, queue -> openPlayer(track, queue) },
+                        sections = settings.orderedHomeSections(),
+                        heroStyle = settings.homeHeroStyle,
+                        showWavePromo = settings.homeShowWavePromo,
                         onSettingsClick = { navController.navigate(Screen.Settings.route) },
                         onWaveClick = {
                             navController.navigate(Screen.Wave.route) {
@@ -372,7 +386,17 @@ fun AppNavGraph() {
                     WaveScreen(onArtistClick = { track -> openArtist(track) })
                 }
                 composable(Screen.Settings.route) {
-                    SettingsScreen(onBack = { navController.popBackStack() })
+                    SettingsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenStudio = {
+                            navController.navigate(Screen.ThemeStudio.route) {
+                                launchSingleTop = true
+                            }
+                        },
+                    )
+                }
+                composable(Screen.ThemeStudio.route) {
+                    ThemeStudioScreen(onBack = { navController.popBackStack() })
                 }
             }
         }
@@ -388,16 +412,22 @@ fun AppNavGraph() {
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             ExpressiveBottomDock(
-                items = bottomNavItems,
+                items = navItems,
                 selectedRoute = selectedRoute,
                 onSelect = onTabSelect,
+                attached = settings.dockStyle == AppSettings.DOCK_ATTACHED,
+                labels = when (settings.dockLabels) {
+                    AppSettings.LABELS_NEVER -> DockLabels.NEVER
+                    AppSettings.LABELS_SELECTED -> DockLabels.SELECTED
+                    else -> DockLabels.ALWAYS
+                },
                 modifier = Modifier.onSizeChanged { size -> navBarHeightPx = size.height },
             )
         }
 
         if (wideLayout) {
             ExpressiveNavigationRail(
-                items = bottomNavItems,
+                items = navItems,
                 selectedRoute = selectedRoute,
                 onSelect = onTabSelect,
                 modifier = Modifier.align(Alignment.CenterStart),
@@ -537,7 +567,7 @@ fun AppNavGraph() {
             if (!playerSwipe.isDismissed) {
                 val height = playerSwipe.screenHeightPx
                 val passed = playerSwipe.offsetPx >
-                    dismissThresholdPx(height, density)
+                    dismissThresholdPx(height, density, settings.dismissSensitivity)
                 if (passed) {
                     playerSwipe.dismiss()
                     isPlayerOpen = false
@@ -551,20 +581,24 @@ fun AppNavGraph() {
 
 private const val PlayerCoverSharedKey = "player-cover"
 
-private fun NavBackStackEntry.tabIndex(): Int =
-    bottomNavItems.indexOfFirst { item ->
+private fun NavBackStackEntry.tabIndex(items: List<BottomNavItem>): Int =
+    items.indexOfFirst { item ->
         destination.hierarchy.any { it.route == item.screen.route }
     }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(): Int {
-    val from = initialState.tabIndex()
-    val to = targetState.tabIndex()
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(
+    items: List<BottomNavItem>,
+): Int {
+    val from = initialState.tabIndex(items)
+    val to = targetState.tabIndex(items)
     if (from < 0 || to < 0 || from == to) return 0
     return if (to > from) 1 else -1
 }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition(): EnterTransition {
-    val direction = tabDirection()
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition(
+    items: List<BottomNavItem>,
+): EnterTransition {
+    val direction = tabDirection(items)
     if (direction == 0) {
         return fadeIn(animationSpec = Motion.effectsFast())
     }
@@ -576,8 +610,10 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
     )
 }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(): ExitTransition {
-    val direction = tabDirection()
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(
+    items: List<BottomNavItem>,
+): ExitTransition {
+    val direction = tabDirection(items)
     if (direction == 0) {
         return fadeOut(animationSpec = Motion.effectsFast())
     }

@@ -118,6 +118,7 @@ import com.facet.music.core.download.DownloadMessages
 import com.facet.music.core.download.DownloadState
 import com.facet.music.core.location.LocationPermissions
 import com.facet.music.core.ui.components.ExpressivePlayerSlider
+import com.facet.music.data.repository.AppSettings
 import com.facet.music.core.ui.components.PlayerControlIsland
 import com.facet.music.core.ui.components.PlayerQueueSheet
 import com.facet.music.core.ui.components.PlayerSliderState
@@ -215,13 +216,23 @@ internal fun ExpressiveHeroZone(
     onSourceClick: (() -> Unit)? = null,
     sourceSubstitution: SourceSubstitution? = null,
     coverAlpha: Float = 1f,
+    layout: String = AppSettings.LAYOUT_ARTWORK,
+    coverSize: String = AppSettings.COVER_LARGE,
+    coverShapeOverride: Shape? = null,
     coverModifier: Modifier = Modifier,
     coverSwipeModifier: Modifier = Modifier,
     panelModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
     val heroScroll = rememberScrollState()
-    val artworkShape = MaterialTheme.shapes.extraLarge
+    val artworkShape: Shape = coverShapeOverride ?: MaterialTheme.shapes.extraLarge
+    val immersiveLayout = layout == AppSettings.LAYOUT_IMMERSIVE
+    val compactLayout = layout == AppSettings.LAYOUT_SIDE
+    val coverFraction = when {
+        immersiveLayout -> 0.94f
+        compactLayout -> 0.62f
+        else -> 0.82f
+    } * if (coverSize == AppSettings.COVER_MEDIUM) 0.9f else 1f
     val display = remember(trackKey, title, artist, artworkUrl) {
         TrackDisplay(trackKey, title, artist, artworkUrl)
     }
@@ -288,7 +299,7 @@ internal fun ExpressiveHeroZone(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth(0.82f)
+                                    .fillMaxWidth(coverFraction)
                                     .aspectRatio(1f)
                                     .graphicsLayer { alpha = coverAlpha }
                                     .clip(artworkShape)
@@ -413,10 +424,44 @@ internal fun ExpressiveHeroZone(
                                         }
                                     }
                                 }
+                                if (immersiveLayout) {
+                                    Box(
+                                        modifier = Modifier
+                                            .matchParentSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    0.5f to Color.Transparent,
+                                                    1f to Color.Black.copy(alpha = 0.74f),
+                                                ),
+                                            ),
+                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomStart)
+                                            .padding(start = 20.dp, end = 20.dp, bottom = 18.dp),
+                                    ) {
+                                        Text(
+                                            text = state.title,
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            text = state.artist,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.White.copy(alpha = 0.86f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
                             }
-                            Spacer(Modifier.height(24.dp))
-                            Text(
-                                text = state.title,
+                            if (!immersiveLayout) {
+                                Spacer(Modifier.height(24.dp))
+                                Text(
+                                    text = state.title,
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 2,
@@ -475,6 +520,7 @@ internal fun ExpressiveHeroZone(
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
+                            }
                             }
                         }
                     }

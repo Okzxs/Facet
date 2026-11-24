@@ -96,6 +96,57 @@ class SettingsRepositoryImpl @Inject constructor(
             ?.takeIf { it in SHAPE_STYLES }
             ?: "DEFAULT",
         textScale = prefs.getFloat(KEY_TEXT_SCALE, 1f).coerceIn(0.85f, 1.3f),
+        dockStyle = prefs.getString(KEY_DOCK_STYLE, null)
+            ?.takeIf { it in AppSettings.DOCK_STYLES }
+            ?: AppSettings.DOCK_FLOATING,
+        dockLabels = prefs.getString(KEY_DOCK_LABELS, null)
+            ?.takeIf { it in AppSettings.DOCK_LABEL_MODES }
+            ?: AppSettings.LABELS_ALWAYS,
+        tabOrder = prefs.getString(KEY_TAB_ORDER, null)
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it in AppSettings.DEFAULT_TAB_ORDER }
+            ?.distinct()
+            ?.ifEmpty { AppSettings.DEFAULT_TAB_ORDER }
+            ?: AppSettings.DEFAULT_TAB_ORDER,
+        hiddenTabs = prefs.getString(KEY_HIDDEN_TABS, null)
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it in AppSettings.DEFAULT_TAB_ORDER }
+            ?.toSet()
+            ?: emptySet(),
+        homeSectionOrder = prefs.getString(KEY_HOME_SECTION_ORDER, null)
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it in AppSettings.DEFAULT_HOME_SECTION_ORDER }
+            ?.distinct()
+            ?.ifEmpty { AppSettings.DEFAULT_HOME_SECTION_ORDER }
+            ?: AppSettings.DEFAULT_HOME_SECTION_ORDER,
+        hiddenHomeSections = prefs.getString(KEY_HIDDEN_HOME_SECTIONS, null)
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it in AppSettings.DEFAULT_HOME_SECTION_ORDER }
+            ?.toSet()
+            ?: emptySet(),
+        homeHeroStyle = prefs.getString(KEY_HOME_HERO_STYLE, null)
+            ?.takeIf { it in AppSettings.HERO_STYLES }
+            ?: AppSettings.HERO_EDITORIAL,
+        homeShowWavePromo = prefs.getBoolean(KEY_HOME_WAVE_PROMO, true),
+        playerLayout = prefs.getString(KEY_PLAYER_LAYOUT, null)
+            ?.takeIf { it in AppSettings.PLAYER_LAYOUTS }
+            ?: AppSettings.LAYOUT_ARTWORK,
+        coverShape = prefs.getString(KEY_COVER_SHAPE, null)
+            ?.takeIf { it in AppSettings.COVER_SHAPES }
+            ?: AppSettings.COVER_AUTO,
+        coverSize = prefs.getString(KEY_COVER_SIZE, null)
+            ?.takeIf { it in AppSettings.COVER_SIZES }
+            ?: AppSettings.COVER_LARGE,
+        playerBackdrop = prefs.getString(KEY_PLAYER_BACKDROP, null)
+            ?.takeIf { it in AppSettings.PLAYER_BACKDROPS }
+            ?: AppSettings.BACKDROP_COVER,
+        dismissSensitivity = prefs.getString(KEY_DISMISS_SENSITIVITY, null)
+            ?.takeIf { it in AppSettings.DISMISS_SENSITIVITIES }
+            ?: AppSettings.SENSITIVITY_MEDIUM,
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -343,8 +394,125 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(textScale = normalized) }
     }
 
-    override suspend fun setSkipSilenceEnabled(enabled: Boolean) {
+    override suspend fun setDockStyle(style: String) {
+        val normalized = style.takeIf { it in AppSettings.DOCK_STYLES }
+            ?: AppSettings.DOCK_FLOATING
         withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_DOCK_STYLE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(dockStyle = normalized) }
+    }
+
+    override suspend fun setDockLabels(mode: String) {
+        val normalized = mode.takeIf { it in AppSettings.DOCK_LABEL_MODES }
+            ?: AppSettings.LABELS_ALWAYS
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_DOCK_LABELS, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(dockLabels = normalized) }
+    }
+
+    override suspend fun setTabOrder(order: List<String>) {
+        val normalized = order.filter { it in AppSettings.DEFAULT_TAB_ORDER }.distinct()
+            .ifEmpty { AppSettings.DEFAULT_TAB_ORDER }
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_TAB_ORDER, normalized.joinToString(",")).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(tabOrder = normalized) }
+    }
+
+    override suspend fun setHiddenTabs(routes: Set<String>) {
+        val normalized = routes.filter { it in AppSettings.DEFAULT_TAB_ORDER }.toSet()
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_HIDDEN_TABS, normalized.joinToString(",")).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(hiddenTabs = normalized) }
+    }
+
+    override suspend fun setHomeSectionOrder(order: List<String>) {
+        val normalized = order.filter { it in AppSettings.DEFAULT_HOME_SECTION_ORDER }
+            .distinct()
+            .ifEmpty { AppSettings.DEFAULT_HOME_SECTION_ORDER }
+        withContext(Dispatchers.IO) {
+            prefs.edit()
+                .putString(KEY_HOME_SECTION_ORDER, normalized.joinToString(","))
+                .apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(homeSectionOrder = normalized) }
+    }
+
+    override suspend fun setHiddenHomeSections(sections: Set<String>) {
+        val normalized = sections.filter { it in AppSettings.DEFAULT_HOME_SECTION_ORDER }.toSet()
+        withContext(Dispatchers.IO) {
+            prefs.edit()
+                .putString(KEY_HIDDEN_HOME_SECTIONS, normalized.joinToString(","))
+                .apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(hiddenHomeSections = normalized) }
+    }
+
+    override suspend fun setHomeHeroStyle(style: String) {
+        val normalized = style.takeIf { it in AppSettings.HERO_STYLES }
+            ?: AppSettings.HERO_EDITORIAL
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_HOME_HERO_STYLE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(homeHeroStyle = normalized) }
+    }
+
+    override suspend fun setHomeShowWavePromo(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_HOME_WAVE_PROMO, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(homeShowWavePromo = enabled) }
+    }
+
+    override suspend fun setPlayerLayout(layout: String) {
+        val normalized = layout.takeIf { it in AppSettings.PLAYER_LAYOUTS }
+            ?: AppSettings.LAYOUT_ARTWORK
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_PLAYER_LAYOUT, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(playerLayout = normalized) }
+    }
+
+    override suspend fun setCoverShape(shape: String) {
+        val normalized = shape.takeIf { it in AppSettings.COVER_SHAPES }
+            ?: AppSettings.COVER_AUTO
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_COVER_SHAPE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(coverShape = normalized) }
+    }
+
+    override suspend fun setCoverSize(size: String) {
+        val normalized = size.takeIf { it in AppSettings.COVER_SIZES }
+            ?: AppSettings.COVER_LARGE
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_COVER_SIZE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(coverSize = normalized) }
+    }
+
+    override suspend fun setPlayerBackdrop(backdrop: String) {
+        val normalized = backdrop.takeIf { it in AppSettings.PLAYER_BACKDROPS }
+            ?: AppSettings.BACKDROP_COVER
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_PLAYER_BACKDROP, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(playerBackdrop = normalized) }
+    }
+
+    override suspend fun setDismissSensitivity(sensitivity: String) {
+        val normalized = sensitivity.takeIf { it in AppSettings.DISMISS_SENSITIVITIES }
+            ?: AppSettings.SENSITIVITY_MEDIUM
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_DISMISS_SENSITIVITY, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(dismissSensitivity = normalized) }
+    }
+
+    override suspend fun setSkipSilenceEnabled(enabled: Boolean) {        withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
         }
         _settings.update { (it ?: AppSettings()).copy(skipSilenceEnabled = enabled) }
@@ -413,6 +581,32 @@ class SettingsRepositoryImpl @Inject constructor(
         val SHAPE_STYLES = setOf("SOFT", "DEFAULT", "ROUND")
 
         const val KEY_TEXT_SCALE = "text_scale"
+
+        const val KEY_DOCK_STYLE = "dock_style"
+
+        const val KEY_DOCK_LABELS = "dock_labels"
+
+        const val KEY_TAB_ORDER = "tab_order"
+
+        const val KEY_HIDDEN_TABS = "hidden_tabs"
+
+        const val KEY_HOME_SECTION_ORDER = "home_section_order"
+
+        const val KEY_HIDDEN_HOME_SECTIONS = "hidden_home_sections"
+
+        const val KEY_HOME_HERO_STYLE = "home_hero_style"
+
+        const val KEY_HOME_WAVE_PROMO = "home_wave_promo"
+
+        const val KEY_PLAYER_LAYOUT = "player_layout"
+
+        const val KEY_COVER_SHAPE = "cover_shape"
+
+        const val KEY_COVER_SIZE = "cover_size"
+
+        const val KEY_PLAYER_BACKDROP = "player_backdrop"
+
+        const val KEY_DISMISS_SENSITIVITY = "dismiss_sensitivity"
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"

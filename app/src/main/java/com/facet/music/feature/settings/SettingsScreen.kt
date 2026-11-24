@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Language
@@ -122,6 +123,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenStudio: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsState()
@@ -136,7 +138,6 @@ fun SettingsScreen(
     var hasLocationPermission by remember {
         mutableStateOf(LocationPermissions.hasPermission(context))
     }
-    var showCustomColorDialog by remember { mutableStateOf(false) }
     var showSpotifyGuide by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -203,235 +204,21 @@ fun SettingsScreen(
             ) {
                 SettingsSectionTitle(R.string.settings_appearance)
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_theme),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                StudioEntryRow(
+                    settings = settings,
+                    onClick = onOpenStudio,
                 )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = stringResource(R.string.settings_theme_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+                SettingsDivider()
+
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_dynamic_cover),
+                    hint = stringResource(R.string.settings_dynamic_cover_hint),
+                    checked = settings.dynamicCoverColors,
+                    onCheckedChange = viewModel::setDynamicCoverColors,
                 )
-                Spacer(Modifier.height(14.dp))
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    ThemeMode.entries.forEachIndexed { index, mode ->
-                        SegmentedButton(
-                            selected = settings.themeMode == mode,
-                            onClick = { viewModel.setThemeMode(mode) },
-                            shape = SegmentedButtonDefaults.itemShape(
-                                index = index,
-                                count = ThemeMode.entries.size,
-                            ),
-                        ) {
-                            Text(
-                                text = when (mode) {
-                                    ThemeMode.LIGHT -> stringResource(R.string.settings_theme_light)
-                                    ThemeMode.DARK -> stringResource(R.string.settings_theme_dark)
-                                    ThemeMode.SYSTEM -> stringResource(R.string.settings_theme_system)
-                                },
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        }
-                    }
-                }
-            }
 
-            SettingsDivider()
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_palette_section),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = stringResource(R.string.settings_palette_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    com.facet.music.core.ui.theme.FacetPalette.entries.forEach { palette ->
-                        FilterChip(
-                            selected = settings.paletteMode == palette.name,
-                            onClick = { viewModel.setPaletteMode(palette.name) },
-                            label = {
-                                Text(
-                                    text = stringResource(paletteLabel(palette)),
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            },
-                        )
-                    }
-                }
-            }
-
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_serif_display),
-                hint = stringResource(R.string.settings_serif_display_hint),
-                checked = settings.serifDisplay,
-                onCheckedChange = viewModel::setSerifDisplay,
-            )
-
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_amoled),
-                hint = stringResource(R.string.settings_amoled_hint),
-                checked = settings.amoledBlack,
-                onCheckedChange = viewModel::setAmoledBlack,
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_text_scale),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(
-                        R.string.settings_text_scale_value,
-                        (settings.textScale * 100).toInt(),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Slider(
-                    value = settings.textScale,
-                    onValueChange = viewModel::setTextScale,
-                    valueRange = 0.85f..1.3f,
-                    steps = 8,
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_shape_style),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    com.facet.music.core.ui.theme.FacetShapeStyle.entries.forEach { style ->
-                        FilterChip(
-                            selected = settings.shapeStyle == style.name,
-                            onClick = { viewModel.setShapeStyle(style.name) },
-                            label = {
-                                Text(
-                                    text = stringResource(shapeStyleLabel(style)),
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            },
-                        )
-                    }
-                }
-            }
-
-            SettingsDivider()
-
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_dynamic_cover),
-                hint = stringResource(R.string.settings_dynamic_cover_hint),
-                checked = settings.dynamicCoverColors,
-                onCheckedChange = viewModel::setDynamicCoverColors,
-            )
-
-            SettingsDivider()
-
-            SettingsSwitchRow(
-                title = stringResource(R.string.settings_accent),
-                hint = if (settings.accentEnabled) {
-                    stringResource(R.string.settings_accent_on)
-                } else {
-                    stringResource(R.string.settings_accent_off)
-                },
-                checked = settings.accentEnabled,
-                onCheckedChange = viewModel::setAccentEnabled,
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .alpha(if (settings.accentEnabled) 1f else 0.38f)
-                    .padding(top = 12.dp, bottom = 8.dp),
-            ) {
-                val customArgb = settings.customAccentColor
-                val isPresetSelected = AccentOptions.any { it.color.toArgb() == customArgb }
-                val recents = settings.recentAccentColors
-                if (recents.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.settings_recent),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.selectableGroup(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            recents.forEach { argb ->
-                                RecentColorDot(
-                                    color = Color(argb),
-                                    selected = customArgb == argb,
-                                    onClick = { viewModel.setAccentColor(Color(argb)) },
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(14.dp))
-                    }
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectableGroup()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Spacer(Modifier.width(12.dp))
-                    AccentOptions.forEach { option ->
-                        AccentDot(
-                            option = option,
-                            selected = customArgb == option.color.toArgb(),
-                            onClick = { viewModel.setAccentColor(option.color) },
-                        )
-                    }
-                    CustomColorDot(
-                        color = customArgb?.let { Color(it) },
-                        selected = customArgb != null && !isPresetSelected,
-                        onClick = { showCustomColorDialog = true },
-                    )
-                    Spacer(Modifier.width(12.dp))
-                }
-            }
-
-            SettingsSectionTitle(R.string.settings_language_section)
+                SettingsSectionTitle(R.string.settings_language_section)
 
             Column(
                 modifier = Modifier
@@ -723,21 +510,6 @@ fun SettingsScreen(
         )
     }
 
-    if (showCustomColorDialog) {
-        CustomColorDialog(
-            initial = settings.customAccentColor?.let { Color(it) },
-            onDismiss = { showCustomColorDialog = false },
-            onApply = { color ->
-                viewModel.setCustomAccentColor(color)
-                showCustomColorDialog = false
-            },
-            onReset = {
-                viewModel.setCustomAccentColor(null)
-                showCustomColorDialog = false
-            },
-        )
-    }
-
     if (showSpotifyGuide) {
         SpotifyGuideDialog(onDismiss = { showSpotifyGuide = false })
     }
@@ -763,6 +535,76 @@ private fun SettingsDivider() {
         modifier = Modifier.padding(start = 20.dp, end = 20.dp),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
     )
+}
+
+@Composable
+private fun StudioEntryRow(
+    settings: AppSettings,
+    onClick: () -> Unit,
+) {
+    val palette = com.facet.music.core.ui.theme.FacetPalette.fromName(settings.paletteMode)
+    val shape = com.facet.music.core.ui.theme.FacetShapeStyle.fromName(settings.shapeStyle)
+    val summary = buildString {
+        append(stringResource(paletteLabel(palette)))
+        append(" · ")
+        append(
+            stringResource(
+                if (settings.serifDisplay) {
+                    R.string.studio_entry_serif
+                } else {
+                    R.string.studio_entry_sans
+                },
+            ),
+        )
+        append(" · ")
+        append(stringResource(shapeStyleLabel(shape)))
+    }
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Palette,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.settings_studio_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable
@@ -843,14 +685,14 @@ private const val SUPPORT_URL = "https://www.donationalerts.com/r/facetapp"
 private fun formatMegabytes(bytes: Long): String =
     String.format(Locale.ROOT, "%.1f", bytes / 1_048_576.0)
 
-private fun shapeStyleLabel(style: com.facet.music.core.ui.theme.FacetShapeStyle): Int =
+internal fun shapeStyleLabel(style: com.facet.music.core.ui.theme.FacetShapeStyle): Int =
     when (style) {
         com.facet.music.core.ui.theme.FacetShapeStyle.SOFT -> R.string.shape_soft
         com.facet.music.core.ui.theme.FacetShapeStyle.DEFAULT -> R.string.shape_default
         com.facet.music.core.ui.theme.FacetShapeStyle.ROUND -> R.string.shape_round
     }
 
-private fun paletteLabel(palette: com.facet.music.core.ui.theme.FacetPalette): Int =
+internal fun paletteLabel(palette: com.facet.music.core.ui.theme.FacetPalette): Int =
     when (palette) {
         com.facet.music.core.ui.theme.FacetPalette.DYNAMIC -> R.string.palette_dynamic
         com.facet.music.core.ui.theme.FacetPalette.SIGNATURE -> R.string.palette_signature
@@ -897,7 +739,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
 }
 
 @Composable
-private fun CustomColorDot(
+internal fun CustomColorDot(
     color: Color?,
     selected: Boolean,
     onClick: () -> Unit,
@@ -965,7 +807,7 @@ private fun CustomColorDot(
 }
 
 @Composable
-private fun CustomColorDialog(
+internal fun CustomColorDialog(
     initial: Color?,
     onDismiss: () -> Unit,
     onApply: (Color) -> Unit,
@@ -1139,7 +981,7 @@ private fun parseHexColor(input: String): Color? {
 }
 
 @Composable
-private fun RecentColorDot(
+internal fun RecentColorDot(
     color: Color,
     selected: Boolean,
     onClick: () -> Unit,
@@ -1192,7 +1034,7 @@ private fun RecentColorDot(
 }
 
 @Composable
-private fun AccentDot(
+internal fun AccentDot(
     option: AccentOption,
     selected: Boolean,
     onClick: () -> Unit,

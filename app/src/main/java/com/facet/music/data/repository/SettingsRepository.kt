@@ -42,9 +42,37 @@ data class AppSettings(
     val amoledBlack: Boolean = false,
     val shapeStyle: String = "DEFAULT",
     val textScale: Float = 1f,
+    val dockStyle: String = DOCK_FLOATING,
+    val dockLabels: String = LABELS_ALWAYS,
+    val tabOrder: List<String> = DEFAULT_TAB_ORDER,
+    val hiddenTabs: Set<String> = emptySet(),
+    val homeSectionOrder: List<String> = DEFAULT_HOME_SECTION_ORDER,
+    val hiddenHomeSections: Set<String> = emptySet(),
+    val homeHeroStyle: String = HERO_EDITORIAL,
+    val homeShowWavePromo: Boolean = true,
+    val playerLayout: String = LAYOUT_ARTWORK,
+    val coverShape: String = COVER_AUTO,
+    val coverSize: String = COVER_LARGE,
+    val playerBackdrop: String = BACKDROP_COVER,
+    val dismissSensitivity: String = SENSITIVITY_MEDIUM,
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
+
+    fun orderedTabs(): List<String> {
+        val known = DEFAULT_TAB_ORDER
+        val ordered = tabOrder.filter { it in known }.distinct()
+        val visible = (ordered + known.filterNot { it in ordered })
+            .filterNot { it in hiddenTabs }
+        return visible
+    }
+
+    fun orderedHomeSections(): List<String> {
+        val known = DEFAULT_HOME_SECTION_ORDER
+        val ordered = homeSectionOrder.filter { it in known }.distinct()
+        return (ordered + known.filterNot { it in ordered })
+            .filterNot { it in hiddenHomeSections }
+    }
 
     companion object {
         const val DEFAULT_ACCENT_ARGB: Int = 0xFFA63A2B.toInt()
@@ -54,6 +82,64 @@ data class AppSettings(
         const val LANGUAGE_SYSTEM: String = AppLocale.LANGUAGE_SYSTEM
 
         val SUPPORTED_LANGUAGES = AppLocale.supportedLanguages
+
+        const val DOCK_FLOATING: String = "FLOATING"
+        const val DOCK_ATTACHED: String = "ATTACHED"
+        val DOCK_STYLES = setOf(DOCK_FLOATING, DOCK_ATTACHED)
+
+        const val LABELS_ALWAYS: String = "ALWAYS"
+        const val LABELS_SELECTED: String = "SELECTED"
+        const val LABELS_NEVER: String = "NEVER"
+        val DOCK_LABEL_MODES = setOf(LABELS_ALWAYS, LABELS_SELECTED, LABELS_NEVER)
+
+        val DEFAULT_TAB_ORDER: List<String> = listOf("home", "search", "library", "wave")
+
+        const val HERO_EDITORIAL: String = "EDITORIAL"
+        const val HERO_MINIMAL: String = "MINIMAL"
+        val HERO_STYLES = setOf(HERO_EDITORIAL, HERO_MINIMAL)
+
+        const val SECTION_HERO: String = "hero"
+        const val SECTION_WAVE: String = "wave"
+        const val SECTION_NEW_RELEASES: String = "new_releases"
+        const val SECTION_CHARTS: String = "charts"
+        const val SECTION_GENRES: String = "genres"
+        const val SECTION_RECOMMENDATIONS: String = "recommendations"
+        const val SECTION_RECENT: String = "recent"
+        const val SECTION_MEMORIES: String = "memories"
+
+        const val LAYOUT_ARTWORK: String = "ARTWORK"
+        const val LAYOUT_SIDE: String = "SIDE"
+        const val LAYOUT_IMMERSIVE: String = "IMMERSIVE"
+        val PLAYER_LAYOUTS = setOf(LAYOUT_ARTWORK, LAYOUT_SIDE, LAYOUT_IMMERSIVE)
+
+        const val COVER_AUTO: String = "AUTO"
+        const val COVER_CIRCLE: String = "CIRCLE"
+        const val COVER_SQUARE: String = "SQUARE"
+        val COVER_SHAPES = setOf(COVER_AUTO, COVER_CIRCLE, COVER_SQUARE)
+
+        const val COVER_MEDIUM: String = "MEDIUM"
+        const val COVER_LARGE: String = "LARGE"
+        val COVER_SIZES = setOf(COVER_MEDIUM, COVER_LARGE)
+
+        const val BACKDROP_COVER: String = "COVER"
+        const val BACKDROP_SOLID: String = "SOLID"
+        val PLAYER_BACKDROPS = setOf(BACKDROP_COVER, BACKDROP_SOLID)
+
+        const val SENSITIVITY_LOW: String = "LOW"
+        const val SENSITIVITY_MEDIUM: String = "MEDIUM"
+        const val SENSITIVITY_HIGH: String = "HIGH"
+        val DISMISS_SENSITIVITIES = setOf(SENSITIVITY_LOW, SENSITIVITY_MEDIUM, SENSITIVITY_HIGH)
+
+        val DEFAULT_HOME_SECTION_ORDER: List<String> = listOf(
+            SECTION_HERO,
+            SECTION_WAVE,
+            SECTION_NEW_RELEASES,
+            SECTION_CHARTS,
+            SECTION_GENRES,
+            SECTION_RECOMMENDATIONS,
+            SECTION_RECENT,
+            SECTION_MEMORIES,
+        )
     }
 }
 
@@ -114,6 +200,32 @@ interface SettingsRepository {
     suspend fun setShapeStyle(style: String)
 
     suspend fun setTextScale(scale: Float)
+
+    suspend fun setDockStyle(style: String)
+
+    suspend fun setDockLabels(mode: String)
+
+    suspend fun setTabOrder(order: List<String>)
+
+    suspend fun setHiddenTabs(routes: Set<String>)
+
+    suspend fun setHomeSectionOrder(order: List<String>)
+
+    suspend fun setHiddenHomeSections(sections: Set<String>)
+
+    suspend fun setHomeHeroStyle(style: String)
+
+    suspend fun setHomeShowWavePromo(enabled: Boolean)
+
+    suspend fun setPlayerLayout(layout: String)
+
+    suspend fun setCoverShape(shape: String)
+
+    suspend fun setCoverSize(size: String)
+
+    suspend fun setPlayerBackdrop(backdrop: String)
+
+    suspend fun setDismissSensitivity(sensitivity: String)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

@@ -156,6 +156,7 @@ import com.facet.music.core.player.PlaybackTuning
 import com.facet.music.core.player.PlaybackVariation
 import com.facet.music.data.model.LyricsResult
 import com.facet.music.data.model.Source
+import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.model.Track
 import com.facet.music.data.model.isMetadataOnly
 import kotlinx.coroutines.Job
@@ -380,8 +381,10 @@ fun PlayerScreen(
         label = "heroActionIdleContainer",
     )
 
-    val backgroundBrush = remember(dynamicColorsEnabled, coverAccent, themeBackground) {
-        if (dynamicColorsEnabled) {
+    val gradientBackdrop = dynamicColorsEnabled &&
+        appSettings.playerBackdrop == AppSettings.BACKDROP_COVER
+    val backgroundBrush = remember(gradientBackdrop, coverAccent, themeBackground) {
+        if (gradientBackdrop) {
             Brush.verticalGradient(
                 colors = listOf(
                     lerpColor(themeBackground, coverAccent, 0.28f),
@@ -437,8 +440,9 @@ fun PlayerScreen(
 
     fun finishPlayerDrag(velocityY: Float = 0f) {
         val height = swipeState.screenHeightPx
-        val threshold = dismissThresholdPx(height, density)
-        val fastDown = kotlin.math.abs(velocityY) > CLOSE_VELOCITY_PX_S
+        val threshold = dismissThresholdPx(height, density, appSettings.dismissSensitivity)
+        val fastDown = kotlin.math.abs(velocityY) >
+            closeVelocityPxS(appSettings.dismissSensitivity)
         if (height > 0f && (swipeState.offsetPx > threshold || fastDown)) {
             dismissPlayer()
         } else {
@@ -893,6 +897,13 @@ fun PlayerScreen(
             ) {
                     ExpressiveHeroZone(
                         variant = PLAYER_LAYOUT_VARIANT,
+                        layout = appSettings.playerLayout,
+                        coverSize = appSettings.coverSize,
+                        coverShapeOverride = when (appSettings.coverShape) {
+                            AppSettings.COVER_CIRCLE -> CircleShape
+                            AppSettings.COVER_SQUARE -> RoundedCornerShape(4.dp)
+                            else -> null
+                        },
                         title = track?.title ?: stringResource(R.string.player_no_track),
                         artist = track?.artist ?: "—",
                         source = track?.source,

@@ -96,6 +96,7 @@ import com.facet.music.core.ui.theme.PillShape
 import com.facet.music.core.util.SeasonProvider
 import com.facet.music.data.model.SeasonMemory
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.source.external.DeezerRelease
 import com.facet.music.navigation.LocalBottomDockHeight
 import kotlinx.coroutines.delay
@@ -114,6 +115,9 @@ fun HomeScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
     onSettingsClick: () -> Unit,
     onWaveClick: () -> Unit,
+    sections: List<String> = AppSettings.DEFAULT_HOME_SECTION_ORDER,
+    heroStyle: String = AppSettings.HERO_EDITORIAL,
+    showWavePromo: Boolean = true,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -145,107 +149,131 @@ fun HomeScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(BlockGap),
         ) {
+            var extrasSkeletonShown = false
+
             item(key = "header") {
                 RevealBlock(index = 0) {
                     HomeHeader(onSettingsClick = onSettingsClick)
                 }
             }
 
-            if (heroTrack != null) {
-                item(key = "hero") {
-                    RevealBlock(index = 1) {
-                        ContinueListeningCard(
-                            track = heroTrack,
-                            queue = recentTracks,
-                            onTrackClick = onTrackClick,
-                        )
+            sections.forEachIndexed { index, section ->
+                when (section) {
+                    AppSettings.SECTION_HERO -> if (heroTrack != null) {
+                        item(key = "hero") {
+                            RevealBlock(index = index) {
+                                ContinueListeningCard(
+                                    track = heroTrack,
+                                    queue = recentTracks,
+                                    compact = heroStyle == AppSettings.HERO_MINIMAL,
+                                    onTrackClick = onTrackClick,
+                                )
+                            }
+                        }
                     }
-                }
-            }
 
-            item(key = "wave_promo") {
-                RevealBlock(index = 2) {
-                    WavePromoCard(onClick = onWaveClick)
-                }
-            }
-
-            if (uiState.isExtrasLoading) {
-                item(key = "extras_skeleton") {
-                    ExtrasSkeleton()
-                }
-            } else {
-                if (uiState.newReleases.isNotEmpty()) {
-                    item(key = "new_releases") {
-                        NewReleasesBlock(
-                            releases = uiState.newReleases,
-                            onClick = viewModel::playRelease,
-                        )
+                    AppSettings.SECTION_WAVE -> if (showWavePromo) {
+                        item(key = "wave_promo") {
+                            RevealBlock(index = index) {
+                                WavePromoCard(onClick = onWaveClick)
+                            }
+                        }
                     }
-                }
-                if (uiState.charts.isNotEmpty()) {
-                    item(key = "charts") {
-                        ChartsBlock(
-                            tracks = uiState.charts,
-                            onTrackClick = onTrackClick,
-                        )
+
+                    AppSettings.SECTION_NEW_RELEASES,
+                    AppSettings.SECTION_CHARTS,
+                    -> {
+                        if (uiState.isExtrasLoading) {
+                            if (!extrasSkeletonShown) {
+                                extrasSkeletonShown = true
+                                item(key = "extras_skeleton") {
+                                    ExtrasSkeleton()
+                                }
+                            }
+                        } else if (
+                            section == AppSettings.SECTION_NEW_RELEASES &&
+                            uiState.newReleases.isNotEmpty()
+                        ) {
+                            item(key = "new_releases") {
+                                NewReleasesBlock(
+                                    releases = uiState.newReleases,
+                                    onClick = viewModel::playRelease,
+                                )
+                            }
+                        } else if (
+                            section == AppSettings.SECTION_CHARTS &&
+                            uiState.charts.isNotEmpty()
+                        ) {
+                            item(key = "charts") {
+                                ChartsBlock(
+                                    tracks = uiState.charts,
+                                    onTrackClick = onTrackClick,
+                                )
+                            }
+                        }
                     }
-                }
-            }
 
-            if (uiState.genreSections.isNotEmpty()) {
-                item(key = "genre_playlists") {
-                    GenrePlaylistsBlock(
-                        sections = uiState.genreSections,
-                        onTrackClick = onTrackClick,
-                    )
-                }
-            }
-
-            item(key = "recommendations") {                RevealBlock(index = 2) {
-                    RecommendationsBlock(
-                        tracks = uiState.recommendations,
-                        isLoading = uiState.isRecommendationsLoading,
-                        error = uiState.recommendationsError,
-                        listState = recommendationsListState,
-                        onTrackClick = onTrackClick,
-                        onRetry = viewModel::refresh,
-                    )
-                }
-            }
-
-            if (recentTracks.isNotEmpty()) {
-                item(key = "recent") {
-                    RevealBlock(index = 3) {
-                        RecentBlock(
-                            tracks = recentTracks,
-                            onTrackClick = onTrackClick,
-                        )
-                    }
-                }
-            }
-
-            if (uiState.memories.isNotEmpty()) {
-                item(key = "memory") {
-                    RevealBlock(index = 4) {
-                        Column {
-                            HomeSectionHeader(title = stringResource(R.string.home_memories))
-                            MemoryCard(
-                                memories = uiState.memories,
-                                season = uiState.memorySeason,
+                    AppSettings.SECTION_GENRES -> if (uiState.genreSections.isNotEmpty()) {
+                        item(key = "genre_playlists") {
+                            GenrePlaylistsBlock(
+                                sections = uiState.genreSections,
                                 onTrackClick = onTrackClick,
                             )
                         }
                     }
-                }
-            } else if (uiState.likedTracks.isNotEmpty()) {
-                item(key = "liked") {
-                    RevealBlock(index = 4) {
-                        Column {
-                            HomeSectionHeader(title = stringResource(R.string.home_favourites))
-                            LikedCard(
-                                tracks = uiState.likedTracks,
+
+                    AppSettings.SECTION_RECOMMENDATIONS -> item(key = "recommendations") {
+                        RevealBlock(index = index) {
+                            RecommendationsBlock(
+                                tracks = uiState.recommendations,
+                                isLoading = uiState.isRecommendationsLoading,
+                                error = uiState.recommendationsError,
+                                listState = recommendationsListState,
                                 onTrackClick = onTrackClick,
+                                onRetry = viewModel::refresh,
                             )
+                        }
+                    }
+
+                    AppSettings.SECTION_RECENT -> if (recentTracks.isNotEmpty()) {
+                        item(key = "recent") {
+                            RevealBlock(index = index) {
+                                RecentBlock(
+                                    tracks = recentTracks,
+                                    onTrackClick = onTrackClick,
+                                )
+                            }
+                        }
+                    }
+
+                    AppSettings.SECTION_MEMORIES -> if (uiState.memories.isNotEmpty()) {
+                        item(key = "memory") {
+                            RevealBlock(index = index) {
+                                Column {
+                                    HomeSectionHeader(
+                                        title = stringResource(R.string.home_memories),
+                                    )
+                                    MemoryCard(
+                                        memories = uiState.memories,
+                                        season = uiState.memorySeason,
+                                        onTrackClick = onTrackClick,
+                                    )
+                                }
+                            }
+                        }
+                    } else if (uiState.likedTracks.isNotEmpty()) {
+                        item(key = "liked") {
+                            RevealBlock(index = index) {
+                                Column {
+                                    HomeSectionHeader(
+                                        title = stringResource(R.string.home_favourites),
+                                    )
+                                    LikedCard(
+                                        tracks = uiState.likedTracks,
+                                        onTrackClick = onTrackClick,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -566,9 +594,18 @@ private fun ContinueListeningCard(
     track: Track,
     queue: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
+    compact: Boolean = false,
 ) {
     val continueCd = stringResource(R.string.home_continue_cd, track.title)
     val shape = MaterialTheme.shapes.extraLarge
+    if (compact) {
+        CompactContinueCard(
+            track = track,
+            continueCd = continueCd,
+            onClick = { onTrackClick(track, queue) },
+        )
+        return
+    }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -661,6 +698,79 @@ private fun ContinueListeningCard(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = stringResource(R.string.common_play_cd),
                     modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactContinueCard(
+    track: Track,
+    continueCd: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.extraLarge)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = continueCd },
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Artwork(
+                url = track.artworkUrl,
+                contentDescription = null,
+                modifier = Modifier.size(72.dp),
+                shape = MaterialTheme.shapes.large,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.home_continue),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            FilledIconButton(
+                onClick = onClick,
+                modifier = Modifier.size(44.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }

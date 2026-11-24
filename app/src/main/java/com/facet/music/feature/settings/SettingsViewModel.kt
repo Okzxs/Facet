@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.facet.music.core.player.PlaybackCache
 import com.facet.music.core.spotify.SpotifyAuthState
+import com.facet.music.core.ui.theme.AppearanceProfile
+import com.facet.music.core.ui.theme.AppearanceProfileStore
+import com.facet.music.core.ui.theme.applyProfile
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SpotifyAuthRepository
@@ -25,6 +28,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val spotifyAuthRepository: SpotifyAuthRepository,
     private val playbackCache: PlaybackCache,
+    private val profileStore: AppearanceProfileStore,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = settingsRepository.settings
@@ -48,8 +52,159 @@ class SettingsViewModel @Inject constructor(
     private val _cacheCount = MutableStateFlow(0)
     val cacheCount: StateFlow<Int> = _cacheCount.asStateFlow()
 
+    private val _savedStyles = MutableStateFlow(profileStore.names())
+    val savedStyles: StateFlow<List<String>> = _savedStyles.asStateFlow()
+
+    private val _studioFeedback = MutableStateFlow<StudioFeedback?>(null)
+    val studioFeedback: StateFlow<StudioFeedback?> = _studioFeedback.asStateFlow()
+
     init {
         refreshCacheStats()
+    }
+
+    fun exportProfileJson(): String = AppearanceProfile.from(settings.value).toJson()
+
+    fun importProfileJson(json: String) {
+        val profile = AppearanceProfile.parse(json)
+        if (profile == null) {
+            _studioFeedback.value = StudioFeedback.PROFILE_INVALID
+            return
+        }
+        viewModelScope.launch {
+            settingsRepository.applyProfile(profile)
+            _studioFeedback.value = StudioFeedback.PROFILE_IMPORTED
+        }
+    }
+
+    fun resetAppearance() {
+        viewModelScope.launch {
+            settingsRepository.applyProfile(AppearanceProfile())
+            _studioFeedback.value = StudioFeedback.PROFILE_RESET
+        }
+    }
+
+    fun saveStyle(name: String) {
+        val saved = profileStore.save(name, AppearanceProfile.from(settings.value))
+        _studioFeedback.value = if (saved) {
+            _savedStyles.value = profileStore.names()
+            StudioFeedback.STYLE_SAVED
+        } else {
+            StudioFeedback.INVALID_NAME
+        }
+    }
+
+    fun applyStyle(name: String) {
+        val profile = profileStore.profile(name)
+        if (profile == null) {
+            _studioFeedback.value = StudioFeedback.PROFILE_INVALID
+            return
+        }
+        viewModelScope.launch {
+            settingsRepository.applyProfile(profile)
+            _studioFeedback.value = StudioFeedback.STYLE_APPLIED
+        }
+    }
+
+    fun deleteStyle(name: String) {
+        profileStore.delete(name)
+        _savedStyles.value = profileStore.names()
+        _studioFeedback.value = StudioFeedback.STYLE_DELETED
+    }
+
+    fun exportStyleJson(name: String): String? = profileStore.profileJson(name)
+
+    fun consumeStudioFeedback() {
+        _studioFeedback.value = null
+    }
+
+    fun applyPreset(
+        palette: String,
+        serif: Boolean,
+        shape: String,
+        amoled: Boolean,
+        themeMode: ThemeMode?,
+    ) {
+        viewModelScope.launch {
+            settingsRepository.setPaletteMode(palette)
+            settingsRepository.setSerifDisplay(serif)
+            settingsRepository.setShapeStyle(shape)
+            settingsRepository.setAmoledBlack(amoled)
+            if (themeMode != null) settingsRepository.setThemeMode(themeMode)
+            settingsRepository.setAccentEnabled(false)
+        }
+    }
+
+    fun setDockStyle(style: String) {        viewModelScope.launch { settingsRepository.setDockStyle(style) }
+    }
+
+    fun setDockLabels(mode: String) {
+        viewModelScope.launch { settingsRepository.setDockLabels(mode) }
+    }
+
+    fun moveTab(route: String, offset: Int) {
+        val order = settings.value.tabOrder.toMutableList()
+        val index = order.indexOf(route)
+        if (index < 0) return
+        val target = (index + offset).coerceIn(0, order.lastIndex)
+        if (target == index) return
+        order.removeAt(index)
+        order.add(target, route)
+        viewModelScope.launch { settingsRepository.setTabOrder(order) }
+    }
+
+    fun setTabVisible(route: String, visible: Boolean) {
+        val hidden = settings.value.hiddenTabs.toMutableSet()
+        if (visible) hidden.remove(route) else hidden.add(route)
+        if (hidden.size >= AppSettings.DEFAULT_TAB_ORDER.size) {
+            _studioFeedback.value = StudioFeedback.LAST_TAB_REQUIRED
+            return
+        }
+        viewModelScope.launch { settingsRepository.setHiddenTabs(hidden) }
+    }
+
+    fun moveHomeSection(section: String, offset: Int) {
+        val order = settings.value.homeSectionOrder.toMutableList()
+        val index = order.indexOf(section)
+        if (index < 0) return
+        val target = (index + offset).coerceIn(0, order.lastIndex)
+        if (target == index) return
+        order.removeAt(index)
+        order.add(target, section)
+        viewModelScope.launch { settingsRepository.setHomeSectionOrder(order) }
+    }
+
+    fun setHomeSectionVisible(section: String, visible: Boolean) {
+        val hidden = settings.value.hiddenHomeSections.toMutableSet()
+        if (visible) hidden.remove(section) else hidden.add(section)
+        viewModelScope.launch { settingsRepository.setHiddenHomeSections(hidden) }
+    }
+
+    fun setHomeHeroStyle(style: String) {
+        viewModelScope.launch { settingsRepository.setHomeHeroStyle(style) }
+    }
+
+    fun setHomeShowWavePromo(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setHomeShowWavePromo(enabled) }
+    }
+
+    fun setPlayerLayout(layout: String) {
+        viewModelScope.launch { settingsRepository.setPlayerLayout(layout) }
+    }
+
+    fun setCoverShape(shape: String) {
+        viewModelScope.launch { settingsRepository.setCoverShape(shape) }
+    }
+
+    fun setCoverSize(size: String) {
+        viewModelScope.launch { settingsRepository.setCoverSize(size) }
+    }
+
+    fun setPlayerBackdrop(backdrop: String) {
+        viewModelScope.launch { settingsRepository.setPlayerBackdrop(backdrop) }
+    }
+
+    fun setDismissSensitivity(sensitivity: String) {
+        viewModelScope.launch { settingsRepository.setDismissSensitivity(sensitivity) }
     }
 
     private fun refreshCacheStats() {
@@ -181,4 +336,16 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+}
+
+enum class StudioFeedback {
+    PROFILE_EXPORTED,
+    PROFILE_IMPORTED,
+    PROFILE_INVALID,
+    PROFILE_RESET,
+    STYLE_SAVED,
+    STYLE_APPLIED,
+    STYLE_DELETED,
+    INVALID_NAME,
+    LAST_TAB_REQUIRED,
 }

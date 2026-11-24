@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
 
                     !settings.onboardingCompleted -> OnboardingScreen()
 
-                    else -> AppNavGraph()
+                    else -> AppNavGraph(settings = settings)
                 }
             }
         }
