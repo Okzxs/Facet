@@ -81,6 +81,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -384,6 +385,7 @@ fun SearchScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SearchHeader() {
     Column(
@@ -391,7 +393,7 @@ private fun SearchHeader() {
     ) {
         Text(
             text = stringResource(R.string.search_title),
-            style = MaterialTheme.typography.headlineLarge,
+            style = MaterialTheme.typography.headlineLargeEmphasized,
         )
         Spacer(Modifier.height(2.dp))
         Text(
@@ -1089,7 +1091,8 @@ private fun IdleState(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp),
+            .padding(horizontal = 32.dp)
+            .padding(bottom = LocalBottomDockHeight.current),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -1141,7 +1144,8 @@ private fun EmptyResultsState(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp),
+            .padding(horizontal = 32.dp)
+            .padding(bottom = LocalBottomDockHeight.current),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -1184,7 +1188,8 @@ private fun ErrorState(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp),
+            .padding(horizontal = 32.dp)
+            .padding(bottom = LocalBottomDockHeight.current),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

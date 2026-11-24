@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,6 +48,7 @@ import coil3.request.crossfade
 import com.facet.music.R
 import kotlin.math.abs
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SectionHeader(
     title: String,
@@ -66,7 +68,7 @@ fun SectionHeader(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLargeEmphasized,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

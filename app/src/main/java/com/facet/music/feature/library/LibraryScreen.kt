@@ -48,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -99,7 +100,7 @@ import com.facet.music.data.model.toTrack
 import com.facet.music.navigation.LocalBottomDockHeight
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LibraryScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
@@ -247,7 +248,10 @@ fun LibraryScreen(
         topBar = {
             LargeTopAppBar(
                 title = {
-                    Text(text = stringResource(R.string.library_title))
+                    Text(
+                        text = stringResource(R.string.library_title),
+                        style = MaterialTheme.typography.headlineMediumEmphasized,
+                    )
                 },
                 scrollBehavior = topBarScrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(

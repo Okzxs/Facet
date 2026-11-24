@@ -186,17 +186,22 @@ fun SettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState())
-                .systemBarsPadding(),
-        ) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .systemBarsPadding(),
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             SettingsHeader(onBack = onBack)
 
-            SettingsSectionTitle(R.string.settings_appearance)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                SettingsSectionTitle(R.string.settings_appearance)
 
             Column(
                 modifier = Modifier
@@ -602,6 +607,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
+        }
         }
 
         SnackbarHost(

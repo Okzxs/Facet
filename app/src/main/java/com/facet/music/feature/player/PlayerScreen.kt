@@ -707,6 +707,7 @@ fun PlayerScreen(
                                     },
                                 )
                                 HorizontalDivider()
+                                MenuLabel(stringResource(R.string.player_menu_sound))
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.player_tuning)) },
                                     leadingIcon = {
@@ -748,6 +749,20 @@ fun PlayerScreen(
                                     },
                                 )
                                 DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.player_equalizer)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Tune,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        showEqualizer = true
+                                    },
+                                )
+                                MenuLabel(stringResource(R.string.player_menu_text))
+                                DropdownMenuItem(
                                     text = {
                                         Text(
                                             text = when {
@@ -767,19 +782,6 @@ fun PlayerScreen(
                                     onClick = {
                                         showMenu = false
                                         viewModel.toggleLyricsTranslation()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.player_equalizer)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Tune,
-                                            contentDescription = null,
-                                        )
-                                    },
-                                    onClick = {
-                                        showMenu = false
-                                        showEqualizer = true
                                     },
                                 )
                                 DropdownMenuItem(
@@ -858,6 +860,7 @@ fun PlayerScreen(
                                     },
                                 )
                                 HorizontalDivider()
+                                MenuLabel(stringResource(R.string.player_menu_session))
                                 DropdownMenuItem(
                                     text = {
                                         Text(
@@ -1330,5 +1333,16 @@ private fun LyricsOffsetDialog(
                 Text(stringResource(R.string.player_lyrics_reset))
             }
         },
+    )
+}
+
+
+@Composable
+private fun MenuLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp),
     )
 }

@@ -279,6 +279,9 @@
     <string name="player_source_substituted">Playing %1$s instead of %2$s</string>
     <string name="player_radio_start">Start wave</string>
     <string name="player_tuning">Tuning</string>
+    <string name="player_menu_sound">Sound</string>
+    <string name="player_menu_text">Lyrics</string>
+    <string name="player_menu_session">Session</string>
     <string name="player_equalizer">Equalizer</string>
     <string name="equalizer_hint">Five-band Android equalizer for the player audio session.</string>
     <string name="equalizer_skip_silence">Skip silence</string>

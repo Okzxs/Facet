@@ -280,6 +280,9 @@
     <string name="player_source_substituted">Играет %1$s вместо %2$s</string>
     <string name="player_radio_start">Волна от трека</string>
     <string name="player_tuning">Детюн</string>
+    <string name="player_menu_sound">Звук</string>
+    <string name="player_menu_text">Текст</string>
+    <string name="player_menu_session">Сеанс</string>
     <string name="player_equalizer">Эквалайзер</string>
     <string name="equalizer_hint">Пятиполосный эквалайзер Android для аудиосессии плеера.</string>
     <string name="equalizer_skip_silence">Пропуск тишины</string>

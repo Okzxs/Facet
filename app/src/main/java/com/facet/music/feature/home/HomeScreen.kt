@@ -45,6 +45,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -286,6 +287,7 @@ private fun RevealBlock(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun HomeHeader(onSettingsClick: () -> Unit) {
     val configuration = LocalConfiguration.current
@@ -312,7 +314,7 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = greeting,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineMediumEmphasized,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
