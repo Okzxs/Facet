@@ -58,6 +58,9 @@ data class AppSettings(
     val progressStyle: String = PROGRESS_WAVE,
     val miniPlayerClose: Boolean = true,
     val miniPlayerProgress: Boolean = true,
+    val lyricScale: Float = 1f,
+    val lyricBold: Boolean = true,
+    val lyricBlur: Boolean = true,
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -239,6 +242,12 @@ interface SettingsRepository {
     suspend fun setMiniPlayerClose(visible: Boolean)
 
     suspend fun setMiniPlayerProgress(visible: Boolean)
+
+    suspend fun setLyricScale(scale: Float)
+
+    suspend fun setLyricBold(enabled: Boolean)
+
+    suspend fun setLyricBlur(enabled: Boolean)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

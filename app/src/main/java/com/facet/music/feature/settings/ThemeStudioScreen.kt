@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Waves
@@ -464,6 +465,51 @@ fun ThemeStudioScreen(
                     }
                 }
 
+                item(key = "lyrics") {
+                    StudioBlock(
+                        title = stringResource(R.string.studio_lyrics),
+                        hint = stringResource(R.string.studio_lyrics_hint),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.studio_lyric_size),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.studio_lyric_size_value,
+                                    (settings.lyricScale * 100).toInt(),
+                                ),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Slider(
+                            value = settings.lyricScale,
+                            onValueChange = viewModel::setLyricScale,
+                            valueRange = 0.85f..1.25f,
+                            steps = 7,
+                        )
+                        StudioSwitchRow(
+                            title = stringResource(R.string.studio_lyric_bold),
+                            hint = stringResource(R.string.studio_lyric_bold_hint),
+                            checked = settings.lyricBold,
+                            onCheckedChange = viewModel::setLyricBold,
+                        )
+                        StudioSwitchRow(
+                            title = stringResource(R.string.studio_lyric_blur),
+                            hint = stringResource(R.string.studio_lyric_blur_hint),
+                            checked = settings.lyricBlur,
+                            onCheckedChange = viewModel::setLyricBlur,
+                        )
+                    }
+                }
+
                 item(key = "navigation") {
                     StudioBlock(
                         title = stringResource(R.string.studio_navigation),
@@ -811,10 +857,19 @@ private fun StudioPreview(settings: AppSettings) {
                                 listOf(
                                     MaterialTheme.colorScheme.primary,
                                     MaterialTheme.colorScheme.tertiary,
+                                    MaterialTheme.colorScheme.secondaryContainer,
                                 ),
                             ),
                         ),
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.86f),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

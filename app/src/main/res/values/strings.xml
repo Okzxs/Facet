@@ -712,4 +712,20 @@
     <string name="studio_mini_close_hint">Swipe the mini player away instead</string>
     <string name="studio_mini_progress">Progress line</string>
     <string name="studio_mini_progress_hint">Thin line at the bottom of the mini player</string>
+
+    <string name="settings_search_cd">Search settings</string>
+    <string name="settings_search_hint">Search settings</string>
+    <string name="settings_search_close">Close search</string>
+    <string name="settings_search_clear">Clear query</string>
+    <string name="settings_search_empty">Nothing found — try theme, lyrics, dock or downloads.</string>
+    <string name="settings_about_hint">Version, licenses and open-source components</string>
+
+    <string name="studio_lyrics">Lyrics</string>
+    <string name="studio_lyrics_hint">Size, weight and fading of inactive lines</string>
+    <string name="studio_lyric_size">Line size</string>
+    <string name="studio_lyric_size_value">%1$d%%</string>
+    <string name="studio_lyric_bold">Bold lines</string>
+    <string name="studio_lyric_bold_hint">Extra bold is more expressive; medium is calmer</string>
+    <string name="studio_lyric_blur">Blur inactive lines</string>
+    <string name="studio_lyric_blur_hint">Depth of field for upcoming lyrics</string>
 </resources>

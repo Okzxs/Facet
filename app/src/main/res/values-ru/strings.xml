@@ -719,4 +719,20 @@
     <string name="studio_mini_close_hint">Мини-плеер можно смахнуть</string>
     <string name="studio_mini_progress">Полоска прогресса</string>
     <string name="studio_mini_progress_hint">Тонкая линия внизу мини-плеера</string>
+
+    <string name="settings_search_cd">Поиск по настройкам</string>
+    <string name="settings_search_hint">Поиск по настройкам</string>
+    <string name="settings_search_close">Закрыть поиск</string>
+    <string name="settings_search_clear">Очистить запрос</string>
+    <string name="settings_search_empty">Ничего не нашлось — попробуйте «тема», «текст», «док» или «скачивание».</string>
+    <string name="settings_about_hint">Версия, лицензии и компоненты с открытым кодом</string>
+
+    <string name="studio_lyrics">Текст песни</string>
+    <string name="studio_lyrics_hint">Размер, насыщенность и затухание неактивных строк</string>
+    <string name="studio_lyric_size">Размер строк</string>
+    <string name="studio_lyric_size_value">%1$d%%</string>
+    <string name="studio_lyric_bold">Жирные строки</string>
+    <string name="studio_lyric_bold_hint">Extra bold выразительнее, medium спокойнее</string>
+    <string name="studio_lyric_blur">Размывать неактивные строки</string>
+    <string name="studio_lyric_blur_hint">Глубина резкости для следующих строк</string>
 </resources>

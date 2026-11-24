@@ -37,6 +37,12 @@ class AppearanceProfileTest {
             coverSize = AppSettings.COVER_MEDIUM,
             playerBackdrop = AppSettings.BACKDROP_SOLID,
             dismissSensitivity = AppSettings.SENSITIVITY_HIGH,
+            progressStyle = AppSettings.PROGRESS_LINE,
+            miniPlayerClose = false,
+            miniPlayerProgress = false,
+            lyricScale = 1.2f,
+            lyricBold = false,
+            lyricBlur = false,
         )
 
         val parsed = AppearanceProfile.parse(original.toJson())
@@ -63,7 +69,9 @@ class AppearanceProfileTest {
               "coverSize": "HUGE",
               "playerBackdrop": "RAINBOW",
               "dismissSensitivity": "PSYCHIC",
-              "textScale": 4.5
+              "textScale": 4.5,
+              "lyricScale": 3.7,
+              "progressStyle": "RADIAL"
             }
             """.trimIndent(),
         )
@@ -84,6 +92,10 @@ class AppearanceProfileTest {
         assertEquals(AppSettings.COVER_LARGE, safe.coverSize)
         assertEquals(AppSettings.BACKDROP_COVER, safe.playerBackdrop)
         assertEquals(AppSettings.SENSITIVITY_MEDIUM, safe.dismissSensitivity)
+        assertEquals(AppSettings.PROGRESS_WAVE, safe.progressStyle)
+        assertEquals(1.25f, safe.lyricScale, 0.001f)
+        assertTrue(safe.lyricBold)
+        assertTrue(safe.lyricBlur)
         assertEquals(1.3f, safe.textScale, 0.001f)
     }
 

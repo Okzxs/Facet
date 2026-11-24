@@ -33,6 +33,9 @@ data class AppearanceProfile(
     val progressStyle: String = AppSettings.PROGRESS_WAVE,
     val miniPlayerClose: Boolean = true,
     val miniPlayerProgress: Boolean = true,
+    val lyricScale: Float = 1f,
+    val lyricBold: Boolean = true,
+    val lyricBlur: Boolean = true,
 ) {
 
     fun sanitized(): AppearanceProfile = copy(
@@ -73,6 +76,7 @@ data class AppearanceProfile(
             ?: AppSettings.SENSITIVITY_MEDIUM,
         progressStyle = progressStyle.takeIf { it in AppSettings.PROGRESS_STYLES }
             ?: AppSettings.PROGRESS_WAVE,
+        lyricScale = lyricScale.coerceIn(0.85f, 1.25f),
     )
 
     fun toJson(): String = profileJson.encodeToString(AppearanceProfile.serializer(), sanitized())
@@ -111,6 +115,9 @@ data class AppearanceProfile(
             progressStyle = settings.progressStyle,
             miniPlayerClose = settings.miniPlayerClose,
             miniPlayerProgress = settings.miniPlayerProgress,
+            lyricScale = settings.lyricScale,
+            lyricBold = settings.lyricBold,
+            lyricBlur = settings.lyricBlur,
         ).sanitized()
 
         fun parse(json: String): AppearanceProfile? = runCatching {
@@ -147,4 +154,7 @@ suspend fun SettingsRepository.applyProfile(profile: AppearanceProfile) {
     setProgressStyle(safe.progressStyle)
     setMiniPlayerClose(safe.miniPlayerClose)
     setMiniPlayerProgress(safe.miniPlayerProgress)
+    setLyricScale(safe.lyricScale)
+    setLyricBold(safe.lyricBold)
+    setLyricBlur(safe.lyricBlur)
 }

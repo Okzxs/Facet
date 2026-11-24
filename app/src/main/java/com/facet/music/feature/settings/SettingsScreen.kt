@@ -41,7 +41,9 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
@@ -49,6 +51,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextField
@@ -73,7 +76,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -83,6 +89,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -142,6 +150,19 @@ fun SettingsScreen(
     var showLicenses by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var searchActive by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var pendingAnchor by remember { mutableStateOf<String?>(null) }
+    val anchorPositions = remember { mutableStateMapOf<String, Int>() }
+    val settingsScroll = rememberScrollState()
+
+    LaunchedEffect(pendingAnchor) {
+        val target = pendingAnchor ?: return@LaunchedEffect
+        withFrameNanos { }
+        val offset = anchorPositions[target] ?: return@LaunchedEffect
+        settingsScroll.animateScrollTo(offset)
+        pendingAnchor = null
+    }
 
     LaunchedEffect(spotifyAuthUrl) {
         val url = spotifyAuthUrl ?: return@LaunchedEffect
@@ -194,15 +215,51 @@ fun SettingsScreen(
             .systemBarsPadding(),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            SettingsHeader(onBack = onBack)
+            SettingsHeader(
+                onBack = onBack,
+                searchActive = searchActive,
+                onSearchToggle = {
+                    searchActive = !searchActive
+                    if (!searchActive) searchQuery = ""
+                },
+            )
 
+            if (searchActive) {
+                SettingsSearchField(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+
+            if (searchActive && searchQuery.isNotBlank()) {
+                SettingsSearchResults(
+                    query = searchQuery,
+                    onPick = { entry ->
+                        if (entry.opensStudio) {
+                            searchActive = false
+                            searchQuery = ""
+                            onOpenStudio()
+                        } else {
+                            pendingAnchor = entry.anchor
+                            searchActive = false
+                            searchQuery = ""
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(settingsScroll),
             ) {
-                SettingsSectionTitle(R.string.settings_appearance)
+                SettingsSectionTitle(
+                    R.string.settings_appearance,
+                    anchor = ANCHOR_APPEARANCE,
+                    positions = anchorPositions,
+                )
 
                 StudioEntryRow(
                     settings = settings,
@@ -218,7 +275,11 @@ fun SettingsScreen(
                     onCheckedChange = viewModel::setDynamicCoverColors,
                 )
 
-                SettingsSectionTitle(R.string.settings_language_section)
+                SettingsSectionTitle(
+                    R.string.settings_language_section,
+                    anchor = ANCHOR_LANGUAGE,
+                    positions = anchorPositions,
+                )
 
             Column(
                 modifier = Modifier
@@ -237,7 +298,11 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsSectionTitle(R.string.settings_lyrics_translation_section)
+            SettingsSectionTitle(
+                    R.string.settings_lyrics_translation_section,
+                    anchor = ANCHOR_LYRICS_TRANSLATION,
+                    positions = anchorPositions,
+                )
 
             Column(
                 modifier = Modifier
@@ -256,7 +321,11 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsSectionTitle(R.string.settings_integrations)
+            SettingsSectionTitle(
+                    R.string.settings_integrations,
+                    anchor = ANCHOR_INTEGRATIONS,
+                    positions = anchorPositions,
+                )
             SpotifyIntegrationCard(
                 settings = settings,
                 auth = spotifyAuth,
@@ -266,7 +335,11 @@ fun SettingsScreen(
                 onOpenGuide = { showSpotifyGuide = true },
             )
 
-            SettingsSectionTitle(R.string.settings_permissions)
+            SettingsSectionTitle(
+                    R.string.settings_permissions,
+                    anchor = ANCHOR_PERMISSIONS,
+                    positions = anchorPositions,
+                )
 
             Row(
                 modifier = Modifier
@@ -340,7 +413,11 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSectionTitle(R.string.settings_background_section)
+            SettingsSectionTitle(
+                    R.string.settings_background_section,
+                    anchor = ANCHOR_BACKGROUND,
+                    positions = anchorPositions,
+                )
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_focus_resume_title),
                 hint = stringResource(R.string.settings_focus_resume_hint),
@@ -369,7 +446,11 @@ fun SettingsScreen(
 
             SettingsDivider()
 
-            SettingsSectionTitle(R.string.settings_downloads_section)
+            SettingsSectionTitle(
+                    R.string.settings_downloads_section,
+                    anchor = ANCHOR_DOWNLOADS,
+                    positions = anchorPositions,
+                )
 
             Column(
                 modifier = Modifier
@@ -404,6 +485,7 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .settingsAnchor(ANCHOR_CACHE, anchorPositions)
                     .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -436,7 +518,11 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSectionTitle(R.string.settings_privacy_section)
+            SettingsSectionTitle(
+                    R.string.settings_privacy_section,
+                    anchor = ANCHOR_PRIVACY,
+                    positions = anchorPositions,
+                )
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_analytics_title),
                 hint = stringResource(R.string.settings_analytics_hint),
@@ -447,6 +533,7 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .settingsAnchor(ANCHOR_SUPPORT, anchorPositions)
                     .clickable {
                         runCatching {
                             context.startActivity(
@@ -492,6 +579,7 @@ fun SettingsScreen(
                 onClick = { showLicenses = true },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .settingsAnchor(ANCHOR_ABOUT, anchorPositions)
                     .padding(bottom = 24.dp),
             ) {
                 Text(
@@ -501,6 +589,7 @@ fun SettingsScreen(
             }
         }
         }
+            }
 
         SnackbarHost(
             hostState = snackbarHostState,
@@ -520,13 +609,33 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsSectionTitle(titleRes: Int) {
+private fun SettingsSectionTitle(
+    titleRes: Int,
+    anchor: String? = null,
+    positions: MutableMap<String, Int>? = null,
+) {
+    val anchorModifier = if (anchor != null && positions != null) {
+        Modifier.onGloballyPositioned { coordinates ->
+            positions[anchor] = coordinates.positionInParent().y.roundToInt()
+        }
+    } else {
+        Modifier
+    }
     Text(
         text = stringResource(titleRes),
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 8.dp),
+        modifier = Modifier
+            .padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 8.dp)
+            .then(anchorModifier),
     )
+}
+
+private fun Modifier.settingsAnchor(
+    id: String,
+    positions: MutableMap<String, Int>,
+): Modifier = onGloballyPositioned { coordinates ->
+    positions[id] = coordinates.positionInParent().y.roundToInt()
 }
 
 @Composable
@@ -702,7 +811,11 @@ internal fun paletteLabel(palette: com.facet.music.core.ui.theme.FacetPalette): 
     }
 
 @Composable
-private fun SettingsHeader(onBack: () -> Unit) {
+private fun SettingsHeader(
+    onBack: () -> Unit,
+    searchActive: Boolean,
+    onSearchToggle: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -734,6 +847,132 @@ private fun SettingsHeader(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        FilledTonalIconButton(
+            onClick = onSearchToggle,
+            modifier = Modifier.size(44.dp),
+            shape = CircleShape,
+        ) {
+            Icon(
+                imageVector = if (searchActive) Icons.Rounded.Close else Icons.Rounded.Search,
+                contentDescription = stringResource(
+                    if (searchActive) R.string.settings_search_close else R.string.settings_search_cd,
+                ),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .heightIn(min = 56.dp),
+        placeholder = { Text(stringResource(R.string.settings_search_hint)) },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Rounded.Search,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+        },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.settings_search_clear),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        },
+        singleLine = true,
+        shape = MaterialTheme.shapes.large,
+    )
+}
+
+@Composable
+private fun SettingsSearchResults(
+    query: String,
+    onPick: (SettingsSearchEntry) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val results = remember(query, context) {
+        settingsSearchEntries().filter { entry ->
+            entry.matches(
+                query = query,
+                title = context.getString(entry.titleRes),
+                hint = context.getString(entry.hintRes),
+            )
+        }
+    }
+    if (results.isEmpty()) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 32.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.settings_search_empty),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+    ) {
+        results.forEach { entry ->
+            Surface(
+                onClick = { onPick(entry) },
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(entry.titleRes),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(entry.sectionRes),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (entry.opensStudio) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -174,6 +174,9 @@ internal fun LyricsListView(
     offsetMs: Int = 0,
     editMode: Boolean = false,
     onSetLineTime: ((Int) -> Unit)? = null,
+    lyricScale: Float = 1f,
+    lyricBold: Boolean = true,
+    lyricBlurEnabled: Boolean = true,
 ) {
     val synced = lyrics?.isSynced == true && !lyrics.isEmpty
     val density = LocalDensity.current
@@ -326,6 +329,9 @@ internal fun LyricsListView(
                             distance = distance,
                             isActive = synced && index == currentIndex,
                             browsing = userPaused,
+                            lyricScale = lyricScale,
+                            lyricBold = lyricBold,
+                            lyricBlurEnabled = lyricBlurEnabled,
                             clock = { clock() + offsetMs },
                             onLongClick = if (editMode && !line.isGap) {
                                 { onSetLineTime?.invoke(index) }
@@ -400,6 +406,9 @@ private fun LyricLineItem(
     clock: () -> Long,
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)? = null,
+    lyricScale: Float = 1f,
+    lyricBold: Boolean = true,
+    lyricBlurEnabled: Boolean = true,
 ) {
     if (line.isGap) {
         LyricGapLine(
@@ -424,6 +433,7 @@ private fun LyricLineItem(
     }
     val scaleTarget = if (isActive) 1f else LYRIC_INACTIVE_SCALE
     val blurTarget = when {
+        !lyricBlurEnabled -> 0.dp
         !isSynced || browsing || isActive || distance == 0 || distance == Int.MAX_VALUE -> 0.dp
         else -> LYRIC_BLUR[step.coerceIn(0, LYRIC_BLUR.lastIndex)]
     }
@@ -442,18 +452,21 @@ private fun LyricLineItem(
         animationSpec = tween(LYRIC_SETTLE_MS, easing = LYRIC_EASING),
         label = "lyricBlur",
     )
+    val weight = if (lyricBold) FontWeight.ExtraBold else FontWeight.Medium
     val style = if (isSynced) {
+        val size = 34f * lyricScale
         MaterialTheme.typography.headlineLarge.copy(
-            fontSize = 34.sp,
-            lineHeight = 41.sp,
-            fontWeight = FontWeight.ExtraBold,
+            fontSize = size.sp,
+            lineHeight = (size * 1.2f).sp,
+            fontWeight = weight,
             textAlign = TextAlign.Start,
         )
     } else {
+        val size = 30f * lyricScale
         MaterialTheme.typography.headlineMedium.copy(
-            fontSize = 30.sp,
-            lineHeight = 38.sp,
-            fontWeight = FontWeight.ExtraBold,
+            fontSize = size.sp,
+            lineHeight = (size * 1.26f).sp,
+            fontWeight = weight,
             textAlign = TextAlign.Start,
         )
     }
@@ -636,6 +649,9 @@ internal fun LyricsForeground(
     offsetMs: Int = 0,
     editMode: Boolean = false,
     onSetLineTime: ((Int) -> Unit)? = null,
+    lyricScale: Float = 1f,
+    lyricBold: Boolean = true,
+    lyricBlurEnabled: Boolean = true,
 ) {
     Box(Modifier.fillMaxSize()) {
         LyricsListView(
@@ -652,6 +668,9 @@ internal fun LyricsForeground(
             offsetMs = offsetMs,
             editMode = editMode,
             onSetLineTime = onSetLineTime,
+            lyricScale = lyricScale,
+            lyricBold = lyricBold,
+            lyricBlurEnabled = lyricBlurEnabled,
         )
         if (editMode) {
             Surface(

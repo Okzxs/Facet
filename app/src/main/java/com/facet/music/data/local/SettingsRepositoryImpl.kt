@@ -152,6 +152,9 @@ class SettingsRepositoryImpl @Inject constructor(
             ?: AppSettings.PROGRESS_WAVE,
         miniPlayerClose = prefs.getBoolean(KEY_MINI_CLOSE, true),
         miniPlayerProgress = prefs.getBoolean(KEY_MINI_PROGRESS, true),
+        lyricScale = prefs.getFloat(KEY_LYRIC_SCALE, 1f).coerceIn(0.85f, 1.25f),
+        lyricBold = prefs.getBoolean(KEY_LYRIC_BOLD, true),
+        lyricBlur = prefs.getBoolean(KEY_LYRIC_BLUR, true),
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -540,6 +543,28 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(miniPlayerProgress = visible) }
     }
 
+    override suspend fun setLyricScale(scale: Float) {
+        val normalized = scale.coerceIn(0.85f, 1.25f)
+        withContext(Dispatchers.IO) {
+            prefs.edit().putFloat(KEY_LYRIC_SCALE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(lyricScale = normalized) }
+    }
+
+    override suspend fun setLyricBold(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_LYRIC_BOLD, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(lyricBold = enabled) }
+    }
+
+    override suspend fun setLyricBlur(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_LYRIC_BLUR, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(lyricBlur = enabled) }
+    }
+
     override suspend fun setSkipSilenceEnabled(enabled: Boolean) {        withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
         }
@@ -641,6 +666,12 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_MINI_CLOSE = "mini_player_close"
 
         const val KEY_MINI_PROGRESS = "mini_player_progress"
+
+        const val KEY_LYRIC_SCALE = "lyric_scale"
+
+        const val KEY_LYRIC_BOLD = "lyric_bold"
+
+        const val KEY_LYRIC_BLUR = "lyric_blur"
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"

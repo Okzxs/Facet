@@ -209,6 +209,9 @@ internal fun ExpressiveHeroZone(
     onRetryLyrics: () -> Unit,
     onLyricsListBoundsChanged: (Rect?) -> Unit,
     onSetLineTime: ((Int) -> Unit)? = null,
+    lyricScale: Float = 1f,
+    lyricBold: Boolean = true,
+    lyricBlurEnabled: Boolean = true,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
     onDownloadClick: () -> Unit,
@@ -271,6 +274,9 @@ internal fun ExpressiveHeroZone(
                     offsetMs = lyricsOffsetMs,
                     editMode = lyricsEditMode,
                     onSetLineTime = onSetLineTime,
+                    lyricScale = lyricScale,
+                    lyricBold = lyricBold,
+                    lyricBlurEnabled = lyricBlurEnabled,
                 )
             } else {
                 Column(

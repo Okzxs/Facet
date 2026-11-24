@@ -219,6 +219,18 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setMiniPlayerProgress(visible) }
     }
 
+    fun setLyricScale(scale: Float) {
+        viewModelScope.launch { settingsRepository.setLyricScale(scale) }
+    }
+
+    fun setLyricBold(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setLyricBold(enabled) }
+    }
+
+    fun setLyricBlur(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setLyricBlur(enabled) }
+    }
+
     private fun refreshCacheStats() {
         viewModelScope.launch(Dispatchers.IO) {
             _cacheBytes.value = playbackCache.sizeBytes()
