@@ -1094,8 +1094,12 @@ fun PlayerScreen(
         EqualizerSheet(
             enabled = appSettings.equalizerEnabled,
             preset = appSettings.equalizerPreset,
+            skipSilence = appSettings.skipSilenceEnabled,
+            limiterEnabled = appSettings.peakLimiterEnabled,
             onEnabledChange = viewModel::setEqualizerEnabled,
             onPresetSelect = viewModel::setEqualizerPreset,
+            onSkipSilenceChange = viewModel::setSkipSilence,
+            onLimiterChange = viewModel::setPeakLimiter,
             onDismiss = { showEqualizer = false },
         )
     }

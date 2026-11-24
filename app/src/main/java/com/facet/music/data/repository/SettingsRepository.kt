@@ -35,6 +35,8 @@ data class AppSettings(
     val lyricsTranslationLanguage: String = LANGUAGE_SYSTEM,
     val equalizerEnabled: Boolean = false,
     val equalizerPreset: String = "FLAT",
+    val skipSilenceEnabled: Boolean = false,
+    val peakLimiterEnabled: Boolean = true,
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -93,6 +95,10 @@ interface SettingsRepository {
     suspend fun setEqualizerEnabled(enabled: Boolean)
 
     suspend fun setEqualizerPreset(preset: String)
+
+    suspend fun setSkipSilenceEnabled(enabled: Boolean)
+
+    suspend fun setPeakLimiterEnabled(enabled: Boolean)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

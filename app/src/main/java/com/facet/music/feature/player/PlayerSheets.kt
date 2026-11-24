@@ -24,6 +24,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -101,6 +102,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -203,8 +205,12 @@ internal fun TuningDialog(
 internal fun EqualizerSheet(
     enabled: Boolean,
     preset: String,
+    skipSilence: Boolean,
+    limiterEnabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onPresetSelect: (String) -> Unit,
+    onSkipSilenceChange: (Boolean) -> Unit,
+    onLimiterChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -238,7 +244,20 @@ internal fun EqualizerSheet(
                 )
                 Switch(checked = enabled, onCheckedChange = onEnabledChange)
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(8.dp))
+            SoundToggleRow(
+                title = stringResource(R.string.equalizer_skip_silence),
+                hint = stringResource(R.string.equalizer_skip_silence_hint),
+                checked = skipSilence,
+                onCheckedChange = onSkipSilenceChange,
+            )
+            SoundToggleRow(
+                title = stringResource(R.string.equalizer_limiter),
+                hint = stringResource(R.string.equalizer_limiter_hint),
+                checked = limiterEnabled,
+                onCheckedChange = onLimiterChange,
+            )
+            Spacer(Modifier.height(8.dp))
             EqualizerPreset.entries.forEach { option ->
                 val selected = option.name == preset
                 Row(
@@ -276,6 +295,36 @@ internal fun EqualizerSheet(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SoundToggleRow(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

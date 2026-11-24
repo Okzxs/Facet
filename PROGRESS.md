@@ -4,6 +4,24 @@
 
 ---
 
+## Сессия 70, часть 4: аудио-пайплайн — тишина и лимитер (24.11.2026)
+
+### Что сделано
+
+- **Свой `AudioSink`.** `FacetRenderersFactory` собирает `DefaultAudioSink` с цепочкой `PeakLimiterAudioProcessor` → `SilenceSkippingAudioProcessor` → `SonicAudioProcessor` (последний сохраняет speed/pitch из `PlaybackTuning`).
+- **`PeakLimiterAudioProcessor`.** PCM 16-bit и float: peak-лимитер с мгновенным attack (пик в блоке сразу опускается до 0.95), плавным release 0.002 и полом усиления 0.2; `enabled` переключается на ходу, `flush` сбрасывает gain. Чистая математика вынесена в `PeakLimiter` и покрыта тестами.
+- **Пропуск тишины.** Штатный `SilenceSkippingAudioProcessor`; `player.skipSilenceEnabled` меняется из настроек.
+- **Настройки.** `skipSilenceEnabled` (по умолчанию false) и `peakLimiterEnabled` (по умолчанию true) в `AppSettings`; тумблеры в шторке «Эквалайзер» с подписями, что именно происходит.
+- **Потокобезопасность.** Применение `player.skipSilenceEnabled` переведено на `Dispatchers.Main` — первый запуск падал с `IllegalStateException: Player is accessed on the wrong thread`, поймано живым тестом и исправлено.
+
+### Проверка
+
+- `testDebugUnitTest` — **74 suite / 431 тест, 0 failures, 1 skipped**. Новые: `PeakLimiterTest` (4).
+- Debug APK 32 040 077 байт, SHA-256 `00c9d53c0ba3140ef1d21b40db93f2a78b42e7c68794e33710c761d9d1bd5134`.
+- Live на MI 8: трек играет через новый AudioSink, лимитер включён по умолчанию, переключение «Пропуска тишины» на ходу не роняет процесс, `MediaSession` остаётся `PLAYING`, FATAL — 0.
+
+---
+
 ## Сессия 70, часть 3: P0 добит и эквалайзер (24.11.2026)
 
 ### Хотфикс запуска (24.11.2026)

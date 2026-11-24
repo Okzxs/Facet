@@ -18,6 +18,7 @@ import com.facet.music.core.di.ApplicationScope
 import com.facet.music.core.source.PlaybackResolver
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.QueueRepository
+import com.facet.music.data.repository.SettingsRepository
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
@@ -53,6 +54,9 @@ class MusicService : MediaSessionService() {
 
     @Inject
     lateinit var equalizerController: EqualizerController
+
+    @Inject
+    lateinit var settingsRepository: SettingsRepository
 
     @Inject
     lateinit var coordinator: PlaybackSessionCoordinator
@@ -95,12 +99,26 @@ class MusicService : MediaSessionService() {
                 ?.generateAudioSessionId()
         }.getOrNull()?.takeIf { it > 0 } ?: 0
 
+        val limiter = PeakLimiterAudioProcessor()
+        val silenceSkipping = androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor()
+
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setRenderersFactory(FacetRenderersFactory(this, limiter, silenceSkipping))
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+
+        scope.launch {
+            settingsRepository.settings.collect { settings ->
+                limiter.enabled = settings.peakLimiterEnabled
+                silenceSkipping.setEnabled(settings.skipSilenceEnabled)
+                withContext(Dispatchers.Main) {
+                    player.skipSilenceEnabled = settings.skipSilenceEnabled
+                }
+            }
+        }
 
         if (audioSessionId > 0) {
             runCatching { player.setAudioSessionId(audioSessionId) }

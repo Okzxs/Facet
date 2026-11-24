@@ -85,6 +85,8 @@ class SettingsRepositoryImpl @Inject constructor(
         equalizerPreset = prefs.getString(KEY_EQUALIZER_PRESET, null)
             ?.takeIf { it in EQUALIZER_PRESETS }
             ?: "FLAT",
+        skipSilenceEnabled = prefs.getBoolean(KEY_SKIP_SILENCE, false),
+        peakLimiterEnabled = prefs.getBoolean(KEY_PEAK_LIMITER, true),
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -294,6 +296,20 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(equalizerPreset = normalized) }
     }
 
+    override suspend fun setSkipSilenceEnabled(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(skipSilenceEnabled = enabled) }
+    }
+
+    override suspend fun setPeakLimiterEnabled(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_PEAK_LIMITER, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(peakLimiterEnabled = enabled) }
+    }
+
     override suspend fun setSearchSources(sources: Set<ServiceType>) {
         awaitLoaded()
         val normalized = sources.ifEmpty { ServiceType.entries.toSet() }
@@ -332,6 +348,10 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_EQUALIZER_ENABLED = "equalizer_enabled"
 
         const val KEY_EQUALIZER_PRESET = "equalizer_preset"
+
+        const val KEY_SKIP_SILENCE = "skip_silence"
+
+        const val KEY_PEAK_LIMITER = "peak_limiter"
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"
