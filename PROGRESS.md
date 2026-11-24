@@ -4,6 +4,17 @@
 
 ---
 
+## Сессия 72: Signature-тема, serif и первые настройки внешнего вида (25.11.2026)
+
+- **Направление Ink & Brass.** `FacetPalette` (DYNAMIC / SIGNATURE / NIGHT_JAZZ / PAPER / MONO) и отдельные схемы: Signature — графит `#0E0F12`/`#12141A`, бумажный офф-вайт `#F7F4EE`, латунный seed `#C8A46A`; Night Jazz — синий seed, Paper — тёплый светлый, Mono — монохром.
+- **Serif A/B.** Встроен Playfair Display (OFL, 300 КБ) как display/headline-шрифт; body/label остаются Google Sans Flex. Сравнение на A26: serif даёт узнаваемый редакционный характер, sans — чище, но безлико. Оставлен serif по умолчанию, переключатель «Serif-заголовки» в настройках.
+- **AMOLED-чёрный** и **стиль углов** (Soft/Default/Round) как первые реальные настройки внешнего вида; палитра, serif, AMOLED и углы применяются сразу без перезапуска.
+- **Исправлена ошибка выбора палитры:** Signature больше не подменялся fallback-схемой; приоритет теперь custom accent → Dynamic → legacy accent → палитра.
+- **Лицензия:** OFL Playfair Display добавлена в `assets/licenses` и в диалог лицензий.
+- **Проверка:** 78 suite / 447 тестов, 0 failures; live на A26 — Signature + serif, переключение serif на sans и обратно, палитра/AMOLED/углы без крашей.
+
+---
+
 ## Сессия 71: короткий жест закрытия плеера (24.11.2026)
 
 - **Порог:** `dismissThresholdPx = min(14% высоты, 96dp)` вместо 30% высоты; fling срабатывает по модулю скорости ≥800 px/s в любую сторону (раньше учитывался только положительный знак и 1200 px/s).

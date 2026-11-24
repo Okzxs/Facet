@@ -87,6 +87,14 @@ class SettingsRepositoryImpl @Inject constructor(
             ?: "FLAT",
         skipSilenceEnabled = prefs.getBoolean(KEY_SKIP_SILENCE, false),
         peakLimiterEnabled = prefs.getBoolean(KEY_PEAK_LIMITER, true),
+        paletteMode = prefs.getString(KEY_PALETTE_MODE, null)
+            ?.takeIf { it in PALETTE_MODES }
+            ?: "SIGNATURE",
+        serifDisplay = prefs.getBoolean(KEY_SERIF_DISPLAY, true),
+        amoledBlack = prefs.getBoolean(KEY_AMOLED_BLACK, false),
+        shapeStyle = prefs.getString(KEY_SHAPE_STYLE, null)
+            ?.takeIf { it in SHAPE_STYLES }
+            ?: "DEFAULT",
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -296,6 +304,36 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(equalizerPreset = normalized) }
     }
 
+    override suspend fun setPaletteMode(mode: String) {
+        val normalized = mode.takeIf { it in PALETTE_MODES } ?: "SIGNATURE"
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_PALETTE_MODE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(paletteMode = normalized) }
+    }
+
+    override suspend fun setSerifDisplay(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_SERIF_DISPLAY, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(serifDisplay = enabled) }
+    }
+
+    override suspend fun setAmoledBlack(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_AMOLED_BLACK, enabled).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(amoledBlack = enabled) }
+    }
+
+    override suspend fun setShapeStyle(style: String) {
+        val normalized = style.takeIf { it in SHAPE_STYLES } ?: "DEFAULT"
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_SHAPE_STYLE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(shapeStyle = normalized) }
+    }
+
     override suspend fun setSkipSilenceEnabled(enabled: Boolean) {
         withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
@@ -352,6 +390,18 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_SKIP_SILENCE = "skip_silence"
 
         const val KEY_PEAK_LIMITER = "peak_limiter"
+
+        const val KEY_PALETTE_MODE = "palette_mode"
+
+        const val KEY_SERIF_DISPLAY = "serif_display"
+
+        val PALETTE_MODES = setOf("DYNAMIC", "SIGNATURE", "NIGHT_JAZZ", "PAPER", "MONO")
+
+        const val KEY_AMOLED_BLACK = "amoled_black"
+
+        const val KEY_SHAPE_STYLE = "shape_style"
+
+        val SHAPE_STYLES = setOf("SOFT", "DEFAULT", "ROUND")
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"

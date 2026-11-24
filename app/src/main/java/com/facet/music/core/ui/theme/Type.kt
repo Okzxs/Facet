@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package com.facet.music.core.ui.theme
 
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -15,6 +18,19 @@ private fun googleSansFlex(weight: Int) = Font(
     resId = R.font.google_sans_flex,
     weight = FontWeight(weight),
     variationSettings = FontVariation.Settings(FontVariation.weight(weight)),
+)
+
+@OptIn(ExperimentalTextApi::class)
+private fun playfair(weight: Int) = Font(
+    resId = R.font.playfair_display,
+    weight = FontWeight(weight),
+    variationSettings = FontVariation.Settings(FontVariation.weight(weight)),
+)
+
+val PlayfairDisplay = FontFamily(
+    playfair(400),
+    playfair(600),
+    playfair(700),
 )
 
 val GoogleSansFlex = FontFamily(
@@ -129,5 +145,45 @@ val AppTypography = Typography(
         fontSize = 11.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.5.sp,
+    ),
+)
+
+
+val SerifDisplayTypography = AppTypography.copy(
+    displayLarge = AppTypography.displayLarge.copy(fontFamily = PlayfairDisplay),
+    displayMedium = AppTypography.displayMedium.copy(fontFamily = PlayfairDisplay),
+    displaySmall = AppTypography.displaySmall.copy(fontFamily = PlayfairDisplay),
+    headlineLarge = AppTypography.headlineLarge.copy(
+        fontFamily = PlayfairDisplay,
+        fontWeight = FontWeight.Normal,
+    ),
+    headlineMedium = AppTypography.headlineMedium.copy(
+        fontFamily = PlayfairDisplay,
+        fontWeight = FontWeight.Normal,
+    ),
+    headlineSmall = AppTypography.headlineSmall.copy(
+        fontFamily = PlayfairDisplay,
+        fontWeight = FontWeight.Normal,
+    ),
+    displayLargeEmphasized = AppTypography.displayLargeEmphasized.copy(
+        fontFamily = PlayfairDisplay,
+    ),
+    displayMediumEmphasized = AppTypography.displayMediumEmphasized.copy(
+        fontFamily = PlayfairDisplay,
+    ),
+    displaySmallEmphasized = AppTypography.displaySmallEmphasized.copy(
+        fontFamily = PlayfairDisplay,
+    ),
+    headlineLargeEmphasized = AppTypography.headlineLargeEmphasized.copy(
+        fontFamily = PlayfairDisplay,
+        fontWeight = FontWeight.Normal,
+    ),
+    headlineMediumEmphasized = AppTypography.headlineMediumEmphasized.copy(
+        fontFamily = PlayfairDisplay,
+        fontWeight = FontWeight.Normal,
+    ),
+    headlineSmallEmphasized = AppTypography.headlineSmallEmphasized.copy(
+        fontFamily = PlayfairDisplay,
+        fontWeight = FontWeight.Normal,
     ),
 )

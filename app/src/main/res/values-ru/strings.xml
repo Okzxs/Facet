@@ -71,6 +71,21 @@
     <string name="settings_theme_light">Светлая</string>
     <string name="settings_theme_dark">Тёмная</string>
     <string name="settings_theme_system">Система</string>
+    <string name="settings_palette_section">Палитра</string>
+    <string name="settings_palette_hint">Signature — фирменный вид Facet. Dynamic подстраивается под обои.</string>
+    <string name="settings_amoled">AMOLED-чёрный</string>
+    <string name="settings_amoled_hint">Чистый чёрный фон в тёмной теме.</string>
+    <string name="settings_shape_style">Углы</string>
+    <string name="shape_soft">Мягкие</string>
+    <string name="shape_default">Обычные</string>
+    <string name="shape_round">Круглые</string>
+    <string name="settings_serif_display">Serif-заголовки</string>
+    <string name="settings_serif_display_hint">Редакционный serif для крупных заголовков. Выключи для строгого sans.</string>
+    <string name="palette_dynamic">Dynamic</string>
+    <string name="palette_signature">Signature</string>
+    <string name="palette_night_jazz">Night Jazz</string>
+    <string name="palette_paper">Paper</string>
+    <string name="palette_mono">Mono</string>
     <string name="settings_dynamic_cover">Динамические цвета обложки</string>
     <string name="settings_dynamic_cover_hint">Фон плеера мягко тонируется цветом обложки текущего трека</string>
     <string name="settings_accent">Акцентный цвет</string>
@@ -147,7 +162,8 @@
     <string name="settings_support_hint">DonationAlerts — разовый или ежемесячный донат</string>
     <string name="settings_licenses">Лицензии</string>
     <string name="settings_licenses_title">Лицензии и компоненты</string>
-    <string name="settings_licenses_body">Facet распространяется по GNU General Public License v3.0.\n\nИспользованы:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0</string>
+    <string name="settings_licenses_body">Facet распространяется по GNU General Public License v3.0.\n\nИспользованы:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0
+• Playfair Display — SIL Open Font License 1.1</string>
     <string name="settings_licenses_open">Открыть LICENSE</string>
     <string name="settings_licenses_close">Закрыть</string>
     <string name="settings_version">Facet · версия %1$s</string>

@@ -118,6 +118,22 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setPaletteMode(mode: String) {
+        viewModelScope.launch { settingsRepository.setPaletteMode(mode) }
+    }
+
+    fun setSerifDisplay(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setSerifDisplay(enabled) }
+    }
+
+    fun setAmoledBlack(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setAmoledBlack(enabled) }
+    }
+
+    fun setShapeStyle(style: String) {
+        viewModelScope.launch { settingsRepository.setShapeStyle(style) }
+    }
+
     fun setLyricsTranslationLanguage(language: String) {
         viewModelScope.launch {
             settingsRepository.setLyricsTranslationLanguage(language)

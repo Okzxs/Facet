@@ -72,6 +72,21 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_system">System</string>
+    <string name="settings_palette_section">Palette</string>
+    <string name="settings_palette_hint">Signature is the Facet look. Dynamic follows your wallpaper.</string>
+    <string name="settings_amoled">AMOLED black</string>
+    <string name="settings_amoled_hint">Pure black surfaces in dark theme.</string>
+    <string name="settings_shape_style">Corners</string>
+    <string name="shape_soft">Soft</string>
+    <string name="shape_default">Default</string>
+    <string name="shape_round">Round</string>
+    <string name="settings_serif_display">Serif headings</string>
+    <string name="settings_serif_display_hint">Editorial serif for large titles. Turn off for the plain sans look.</string>
+    <string name="palette_dynamic">Dynamic</string>
+    <string name="palette_signature">Signature</string>
+    <string name="palette_night_jazz">Night Jazz</string>
+    <string name="palette_paper">Paper</string>
+    <string name="palette_mono">Mono</string>
     <string name="settings_dynamic_cover">Dynamic cover colors</string>
     <string name="settings_dynamic_cover_hint">The player background is softly tinted with the current cover</string>
     <string name="settings_accent">Accent color</string>
@@ -148,7 +163,8 @@
     <string name="settings_support_hint">DonationAlerts — one-time or monthly donation</string>
     <string name="settings_licenses">Licenses</string>
     <string name="settings_licenses_title">Licenses and components</string>
-    <string name="settings_licenses_body">Facet is distributed under the GNU General Public License v3.0.\n\nBuilt with:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0</string>
+    <string name="settings_licenses_body">Facet is distributed under the GNU General Public License v3.0.\n\nBuilt with:\n• NewPipe Extractor — GPLv3\n• AndroidX, Jetpack Compose, Media3 — Apache 2.0\n• Coil, OkHttp, kotlinx.serialization — Apache 2.0\n• Rhino — MPL 2.0
+• Playfair Display — SIL Open Font License 1.1</string>
     <string name="settings_licenses_open">Open LICENSE</string>
     <string name="settings_licenses_close">Close</string>
     <string name="settings_version">Facet · version %1$s</string>

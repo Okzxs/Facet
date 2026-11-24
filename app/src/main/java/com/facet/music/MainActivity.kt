@@ -103,6 +103,10 @@ class MainActivity : ComponentActivity() {
                 themeMode = settings.themeMode,
                 accentColor = accentOverride,
                 customAccentColor = customAccentOverride,
+                palette = com.facet.music.core.ui.theme.FacetPalette.fromName(settings.paletteMode),
+                serifDisplay = settings.serifDisplay,
+                amoledBlack = settings.amoledBlack,
+                shapeStyle = com.facet.music.core.ui.theme.FacetShapeStyle.fromName(settings.shapeStyle),
             ) {
                 val context = LocalContext.current
                 LaunchedEffect(Unit) {

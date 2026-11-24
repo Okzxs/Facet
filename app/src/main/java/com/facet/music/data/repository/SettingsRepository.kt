@@ -37,6 +37,10 @@ data class AppSettings(
     val equalizerPreset: String = "FLAT",
     val skipSilenceEnabled: Boolean = false,
     val peakLimiterEnabled: Boolean = true,
+    val paletteMode: String = "SIGNATURE",
+    val serifDisplay: Boolean = true,
+    val amoledBlack: Boolean = false,
+    val shapeStyle: String = "DEFAULT",
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -99,6 +103,14 @@ interface SettingsRepository {
     suspend fun setSkipSilenceEnabled(enabled: Boolean)
 
     suspend fun setPeakLimiterEnabled(enabled: Boolean)
+
+    suspend fun setPaletteMode(mode: String)
+
+    suspend fun setSerifDisplay(enabled: Boolean)
+
+    suspend fun setAmoledBlack(enabled: Boolean)
+
+    suspend fun setShapeStyle(style: String)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

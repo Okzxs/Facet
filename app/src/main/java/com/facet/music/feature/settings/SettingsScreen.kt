@@ -245,6 +245,85 @@ fun SettingsScreen(
 
             SettingsDivider()
 
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_palette_section),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = stringResource(R.string.settings_palette_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    com.facet.music.core.ui.theme.FacetPalette.entries.forEach { palette ->
+                        FilterChip(
+                            selected = settings.paletteMode == palette.name,
+                            onClick = { viewModel.setPaletteMode(palette.name) },
+                            label = {
+                                Text(
+                                    text = stringResource(paletteLabel(palette)),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_serif_display),
+                hint = stringResource(R.string.settings_serif_display_hint),
+                checked = settings.serifDisplay,
+                onCheckedChange = viewModel::setSerifDisplay,
+            )
+
+            SettingsSwitchRow(
+                title = stringResource(R.string.settings_amoled),
+                hint = stringResource(R.string.settings_amoled_hint),
+                checked = settings.amoledBlack,
+                onCheckedChange = viewModel::setAmoledBlack,
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_shape_style),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.facet.music.core.ui.theme.FacetShapeStyle.entries.forEach { style ->
+                        FilterChip(
+                            selected = settings.shapeStyle == style.name,
+                            onClick = { viewModel.setShapeStyle(style.name) },
+                            label = {
+                                Text(
+                                    text = stringResource(shapeStyleLabel(style)),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            SettingsDivider()
+
             SettingsSwitchRow(
                 title = stringResource(R.string.settings_dynamic_cover),
                 hint = stringResource(R.string.settings_dynamic_cover_hint),
@@ -737,6 +816,22 @@ private const val SUPPORT_URL = "https://www.donationalerts.com/r/facetapp"
 
 private fun formatMegabytes(bytes: Long): String =
     String.format(Locale.ROOT, "%.1f", bytes / 1_048_576.0)
+
+private fun shapeStyleLabel(style: com.facet.music.core.ui.theme.FacetShapeStyle): Int =
+    when (style) {
+        com.facet.music.core.ui.theme.FacetShapeStyle.SOFT -> R.string.shape_soft
+        com.facet.music.core.ui.theme.FacetShapeStyle.DEFAULT -> R.string.shape_default
+        com.facet.music.core.ui.theme.FacetShapeStyle.ROUND -> R.string.shape_round
+    }
+
+private fun paletteLabel(palette: com.facet.music.core.ui.theme.FacetPalette): Int =
+    when (palette) {
+        com.facet.music.core.ui.theme.FacetPalette.DYNAMIC -> R.string.palette_dynamic
+        com.facet.music.core.ui.theme.FacetPalette.SIGNATURE -> R.string.palette_signature
+        com.facet.music.core.ui.theme.FacetPalette.NIGHT_JAZZ -> R.string.palette_night_jazz
+        com.facet.music.core.ui.theme.FacetPalette.PAPER -> R.string.palette_paper
+        com.facet.music.core.ui.theme.FacetPalette.MONO -> R.string.palette_mono
+    }
 
 @Composable
 private fun SettingsHeader(onBack: () -> Unit) {
