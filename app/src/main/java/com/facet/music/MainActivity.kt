@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +35,7 @@ import com.facet.music.core.spotify.SpotifyAuthEvent
 import com.facet.music.core.ui.theme.FacetTheme
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.SettingsRepository
+import com.facet.music.data.repository.ThemeMode
 import com.facet.music.core.analytics.AnalyticsEvents
 import com.facet.music.core.analytics.AnalyticsTracker
 import com.facet.music.data.repository.SpotifyAuthRepository
@@ -97,6 +100,33 @@ class MainActivity : ComponentActivity() {
                 settings.customAccentColor?.let { Color(it) }
             } else {
                 null
+            }
+
+            val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val darkTheme = when (settings.themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> systemDark
+            }
+            SideEffect {
+                enableEdgeToEdge(
+                    statusBarStyle = if (darkTheme) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(
+                            android.graphics.Color.TRANSPARENT,
+                            android.graphics.Color.TRANSPARENT,
+                        )
+                    },
+                    navigationBarStyle = if (darkTheme) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(
+                            android.graphics.Color.TRANSPARENT,
+                            android.graphics.Color.TRANSPARENT,
+                        )
+                    },
+                )
             }
 
             FacetTheme(

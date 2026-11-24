@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -42,6 +43,8 @@ enum class DockLabels {
     NEVER,
 }
 
+private const val LARGE_FONT_SCALE = 1.6f
+
 @Composable
 fun ExpressiveBottomDock(
     items: List<BottomNavItem>,
@@ -51,6 +54,8 @@ fun ExpressiveBottomDock(
     attached: Boolean = false,
     labels: DockLabels = DockLabels.ALWAYS,
 ) {
+    val fontScale = LocalDensity.current.fontScale
+    val effectiveLabels = if (fontScale >= LARGE_FONT_SCALE) DockLabels.NEVER else labels
     if (attached) {
         Surface(
             modifier = modifier.fillMaxWidth(),
@@ -73,7 +78,7 @@ fun ExpressiveBottomDock(
                         item = item,
                         selected = item.screen.route == selectedRoute,
                         onClick = { onSelect(item) },
-                        labels = labels,
+                        labels = effectiveLabels,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -105,7 +110,7 @@ fun ExpressiveBottomDock(
                             item = item,
                             selected = item.screen.route == selectedRoute,
                             onClick = { onSelect(item) },
-                            labels = labels,
+                            labels = effectiveLabels,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -188,7 +193,7 @@ private fun DockItem(
                     text = stringResource(item.labelRes),
                     style = MaterialTheme.typography.labelMedium,
                     color = labelColor,
-                    maxLines = 2,
+                    maxLines = 1,
                     softWrap = true,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
