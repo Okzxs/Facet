@@ -4,6 +4,16 @@
 
 ---
 
+## Сессия 89: найдена настоящая причина тишины — пиковый лимитер (25.11.2026)
+
+- **Корень проблемы.** `PeakLimiterAudioProcessor.queueInput` в ветке «лимитер выключен» делал `output.put(inputBuffer)`, а `BaseAudioProcessor.replaceOutputBuffer` в некоторых состояниях возвращает **тот же самый** `ByteBuffer`. Java кидает `IllegalArgumentException: The source buffer is this buffer`, аудио-конвейер падает, `PlayerController` показывает «Не удалось воспроизвести трек». Это не имело отношения к SoundCloud/HLS — ломался любой трек при выключенном лимитере; при включённом — та же ошибка на буферах, где input и output совпадали.
+- **Фикс лимитера:** вход теперь всегда копируется в `ByteArray`, обработка идёт из него, буфер вывода заполняется заново и явно выставляются `position/limit`; ветки PCM_FLOAT и PCM_16BIT работают с отдельными массивами и не зависят от идентичности буферов.
+- **Фикс фейдов:** цикл `updateFadeLoop` трогал `player` из `@ApplicationScope` (Dispatchers.IO), Media3 падал с `IllegalStateException: Player is accessed on the wrong thread`. Цикл переведён на `Dispatchers.Main`, внутренние `withContext` убраны.
+- **Проверка на A26:** трек играет с включёнными лимитером и эквалайзером (позиция идёт, кнопка паузы активна), в логе нет `IllegalArgument`/`FATAL`.
+- **Тесты:** 84 suite / 498 тестов, 0 failures, 1 skipped.
+
+---
+
 ## Сессия 88: валидация всех резолвов и собственный кэш (25.11.2026)
 
 - Валидация потока перенесена в общий путь `PlaybackResolver.resolve`: теперь проверяются и собственные источники (SoundCloud напрямую), а не только внешние матчи. HLS, отдающий M3U8 при `isHls=false`, принудительно переводится в HLS с `application/x-mpegURL`; не-аудио больше не кэшируется и не отдаётся.

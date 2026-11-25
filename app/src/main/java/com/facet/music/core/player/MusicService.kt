@@ -320,7 +320,7 @@ class MusicService : MediaSessionService() {
             runCatching { player.volume = 1f }
             return
         }
-        fadeJob = scope.launch {
+        fadeJob = scope.launch(Dispatchers.Main) {
             var applied = -1f
             while (isActive && player.isPlaying) {
                 val fadeMs = settingsRepository.snapshot?.fadeMs ?: 0
@@ -333,15 +333,11 @@ class MusicService : MediaSessionService() {
                 )
                 if (kotlin.math.abs(volume - applied) > 0.01f) {
                     applied = volume
-                    withContext(Dispatchers.Main) {
-                        runCatching { player.volume = volume }
-                    }
+                    runCatching { player.volume = volume }
                 }
                 delay(50L)
             }
-            withContext(Dispatchers.Main) {
-                runCatching { player.volume = 1f }
-            }
+            runCatching { player.volume = 1f }
         }
     }
 

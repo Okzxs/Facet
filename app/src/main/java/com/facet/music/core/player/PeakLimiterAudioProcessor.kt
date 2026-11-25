@@ -21,39 +21,48 @@ class PeakLimiterAudioProcessor : BaseAudioProcessor() {
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-        if (!enabled) {
-            val size = inputBuffer.remaining()
-            val output = replaceOutputBuffer(size)
-            output.put(inputBuffer).flip()
-            return
-        }
         val size = inputBuffer.remaining()
+        val bytes = ByteArray(size)
+        inputBuffer.duplicate().get(bytes)
+
         val output = replaceOutputBuffer(size)
-        when (inputAudioFormat.encoding) {
-            C.ENCODING_PCM_FLOAT -> {
-                val floats = FloatArray(size / 4)
-                inputBuffer.asFloatBuffer().get(floats)
-                PeakLimiter.process(floats, state)
-                output.asFloatBuffer().put(floats)
-                output.position(0)
-                output.limit(size)
-            }
-            C.ENCODING_PCM_16BIT -> {
-                val shorts = ShortArray(size / 2)
-                inputBuffer.asShortBuffer().get(shorts)
-                val floats = FloatArray(shorts.size) { shorts[it] / 32768f }
-                PeakLimiter.process(floats, state)
-                for (index in shorts.indices) {
-                    shorts[index] = (floats[index] * 32767f).toInt()
-                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                        .toShort()
-                }
-                output.asShortBuffer().put(shorts)
-                output.position(0)
-                output.limit(size)
-            }
+        val processed = enabled && size > 0 && when (inputAudioFormat.encoding) {
+            C.ENCODING_PCM_FLOAT -> applyFloat(bytes, output)
+            C.ENCODING_PCM_16BIT -> applyShort(bytes, output)
+            else -> false
         }
+        if (!processed) {
+            output.put(bytes)
+        }
+        output.position(0)
+        output.limit(size)
         inputBuffer.position(inputBuffer.limit())
+    }
+
+    private fun applyFloat(bytes: ByteArray, output: ByteBuffer): Boolean {
+        if (bytes.size % 4 != 0) return false
+        val source = ByteBuffer.wrap(bytes).asFloatBuffer()
+        val floats = FloatArray(source.remaining())
+        source.get(floats)
+        PeakLimiter.process(floats, state)
+        output.asFloatBuffer().put(floats)
+        return true
+    }
+
+    private fun applyShort(bytes: ByteArray, output: ByteBuffer): Boolean {
+        if (bytes.size % 2 != 0) return false
+        val source = ByteBuffer.wrap(bytes).asShortBuffer()
+        val shorts = ShortArray(source.remaining())
+        source.get(shorts)
+        val floats = FloatArray(shorts.size) { shorts[it] / 32768f }
+        PeakLimiter.process(floats, state)
+        for (index in shorts.indices) {
+            shorts[index] = (floats[index] * 32767f).toInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                .toShort()
+        }
+        output.asShortBuffer().put(shorts)
+        return true
     }
 
     override fun onFlush() {
