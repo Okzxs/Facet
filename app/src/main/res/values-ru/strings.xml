@@ -765,4 +765,9 @@
 
     <string name="search_overline">ПОИСК</string>
     <string name="settings_overline">НАСТРОЙКИ</string>
+
+    <string name="home_forgotten">Забытое</string>
+    <string name="home_fresh_likes">Свежие лайки</string>
+    <string name="studio_section_forgotten">Забытое</string>
+    <string name="studio_section_fresh_likes">Свежие лайки</string>
 </resources>

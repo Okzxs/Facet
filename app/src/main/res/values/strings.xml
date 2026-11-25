@@ -758,4 +758,9 @@
 
     <string name="search_overline">SEARCH</string>
     <string name="settings_overline">SETTINGS</string>
+
+    <string name="home_forgotten">Forgotten</string>
+    <string name="home_fresh_likes">Fresh likes</string>
+    <string name="studio_section_forgotten">Forgotten</string>
+    <string name="studio_section_fresh_likes">Fresh likes</string>
 </resources>

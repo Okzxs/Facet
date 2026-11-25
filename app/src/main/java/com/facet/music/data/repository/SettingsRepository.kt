@@ -123,6 +123,10 @@ data class AppSettings(
         const val SECTION_RECENT: String = "recent"
         const val SECTION_MEMORIES: String = "memories"
 
+        const val SECTION_FORGOTTEN: String = "forgotten"
+
+        const val SECTION_FRESH_LIKES: String = "fresh_likes"
+
         const val LAYOUT_ARTWORK: String = "ARTWORK"
         const val LAYOUT_SIDE: String = "SIDE"
         const val LAYOUT_IMMERSIVE: String = "IMMERSIVE"
@@ -158,6 +162,8 @@ data class AppSettings(
             SECTION_GENRES,
             SECTION_RECOMMENDATIONS,
             SECTION_RECENT,
+            SECTION_FORGOTTEN,
+            SECTION_FRESH_LIKES,
             SECTION_MEMORIES,
         )
     }

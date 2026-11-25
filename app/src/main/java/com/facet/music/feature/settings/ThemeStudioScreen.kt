@@ -1328,6 +1328,8 @@ private fun homeSectionLabel(section: String): Int = when (section) {
     AppSettings.SECTION_RECOMMENDATIONS -> R.string.studio_section_recommendations
     AppSettings.SECTION_RECENT -> R.string.studio_section_recent
     AppSettings.SECTION_MEMORIES -> R.string.studio_section_memories
+    AppSettings.SECTION_FORGOTTEN -> R.string.studio_section_forgotten
+    AppSettings.SECTION_FRESH_LIKES -> R.string.studio_section_fresh_likes
     else -> R.string.studio_section_hero
 }
 

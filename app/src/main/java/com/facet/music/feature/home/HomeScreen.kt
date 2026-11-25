@@ -96,6 +96,7 @@ import com.facet.music.core.ui.theme.PillShape
 import com.facet.music.core.util.SeasonProvider
 import com.facet.music.data.model.SeasonMemory
 import com.facet.music.data.model.Track
+import com.facet.music.core.home.SmartCollections
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.source.external.DeezerRelease
 import com.facet.music.navigation.LocalBottomDockHeight
@@ -151,6 +152,8 @@ fun HomeScreen(
                 AppSettings.SECTION_GENRES -> uiState.genreSections.isNotEmpty()
                 AppSettings.SECTION_RECOMMENDATIONS -> true
                 AppSettings.SECTION_RECENT -> recentTracks.isNotEmpty()
+                AppSettings.SECTION_FORGOTTEN -> uiState.likedTracks.isNotEmpty()
+                AppSettings.SECTION_FRESH_LIKES -> uiState.likedTracks.isNotEmpty()
                 AppSettings.SECTION_MEMORIES ->
                     uiState.memories.isNotEmpty() || uiState.likedTracks.isNotEmpty()
                 else -> false
@@ -161,6 +164,18 @@ fun HomeScreen(
             }
         }
         numbers
+    }
+
+    val recentIds = remember(recentTracks) { recentTracks.map { it.id }.toSet() }
+    val freshLikes = remember(uiState.likedTracks) {
+        SmartCollections.freshLikes(uiState.likedTracks)
+    }
+    val forgottenTracks = remember(uiState.likedTracks, recentIds, freshLikes) {
+        SmartCollections.forgotten(
+            liked = uiState.likedTracks,
+            recentIds = recentIds,
+            excludeIds = freshLikes.map { it.id }.toSet(),
+        )
     }
 
     LaunchedEffect(Unit) {
@@ -285,6 +300,36 @@ fun HomeScreen(
                                     onTrackClick = onTrackClick,
                                     index = sectionNumbers[section] ?: 0,
                                 )
+                            }
+                        }
+                    }
+
+                    AppSettings.SECTION_FORGOTTEN -> {
+                        if (forgottenTracks.isNotEmpty()) {
+                            item(key = "forgotten") {
+                                RevealBlock(index = index) {
+                                    CoverRowBlock(
+                                        title = stringResource(R.string.home_forgotten),
+                                        tracks = forgottenTracks,
+                                        onTrackClick = onTrackClick,
+                                        index = sectionNumbers[section] ?: 0,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    AppSettings.SECTION_FRESH_LIKES -> {
+                        if (freshLikes.isNotEmpty()) {
+                            item(key = "fresh_likes") {
+                                RevealBlock(index = index) {
+                                    CoverRowBlock(
+                                        title = stringResource(R.string.home_fresh_likes),
+                                        tracks = freshLikes,
+                                        onTrackClick = onTrackClick,
+                                        index = sectionNumbers[section] ?: 0,
+                                    )
+                                }
                             }
                         }
                     }
@@ -1079,9 +1124,22 @@ private fun RecentBlock(
     tracks: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
     index: Int,
+) = CoverRowBlock(
+    title = stringResource(R.string.home_recent),
+    tracks = tracks,
+    onTrackClick = onTrackClick,
+    index = index,
+)
+
+@Composable
+private fun CoverRowBlock(
+    title: String,
+    tracks: List<Track>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    index: Int,
 ) {
     Column {
-        HomeSectionHeader(title = stringResource(R.string.home_recent), index = index)
+        HomeSectionHeader(title = title, index = index)
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),

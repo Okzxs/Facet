@@ -153,6 +153,8 @@ class AppearanceProfileTest {
                 AppSettings.SECTION_CHARTS,
                 AppSettings.SECTION_GENRES,
                 AppSettings.SECTION_RECENT,
+                AppSettings.SECTION_FORGOTTEN,
+                AppSettings.SECTION_FRESH_LIKES,
                 AppSettings.SECTION_MEMORIES,
             ),
             profile.homeSectionOrder,
