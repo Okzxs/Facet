@@ -239,18 +239,15 @@ class PlayerController @Inject constructor(
                 return@launch
             }
             if (generation != playbackGeneration) return@launch
-            player.setMediaItems(mediaItems(effectiveQueue), effectiveIndex, 0L)
-            player.repeatMode = repeatMode()
-            player.shuffleModeEnabled = false
             val stream = playbackResolver.resolve(effectiveQueue[effectiveIndex]).getOrNull()
             if (generation != playbackGeneration) return@launch
-            if (stream != null) {
-                player.setMediaItems(
-                    mediaItems(effectiveQueue, effectiveIndex, stream.mimeType),
-                    effectiveIndex,
-                    0L,
-                )
-            }
+            player.setMediaItems(
+                mediaItems(effectiveQueue, effectiveIndex, stream?.mimeType),
+                effectiveIndex,
+                0L,
+            )
+            player.repeatMode = repeatMode()
+            player.shuffleModeEnabled = false
             applySourceSubstitution(effectiveQueue[effectiveIndex], stream)
             player.prepare()
             player.play()
@@ -342,8 +339,7 @@ class PlayerController @Inject constructor(
             ensurePlayerQueue(player, queue, index)
             val stream = playbackResolver.resolve(queue[index]).getOrNull()
             if (generation != playbackGeneration) return@launch
-            val currentMime = player.getMediaItemAt(index).localConfiguration?.mimeType
-            if (stream != null && stream.mimeType != currentMime) {
+            if (stream != null) {
                 player.setMediaItems(
                     mediaItems(queue, index, stream.mimeType),
                     index,
