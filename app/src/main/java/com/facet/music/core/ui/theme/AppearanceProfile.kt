@@ -42,6 +42,8 @@ data class AppearanceProfile(
     val skipSilence: Boolean = false,
     val libraryPlaylistLayout: String = AppSettings.LIBRARY_GRID,
     val preferUncensored: Boolean = true,
+    val fadeMs: Int = 0,
+    val audioBufferProfile: String = "MEDIUM",
 ) {
 
     fun sanitized(): AppearanceProfile = copy(
@@ -83,6 +85,10 @@ data class AppearanceProfile(
         progressStyle = progressStyle.takeIf { it in AppSettings.PROGRESS_STYLES }
             ?: AppSettings.PROGRESS_WAVE,
         lyricScale = lyricScale.coerceIn(0.85f, 1.25f),
+        fadeMs = com.facet.music.core.player.PlaybackAudioConfig.sanitizeFade(fadeMs),
+        audioBufferProfile = audioBufferProfile
+            .takeIf { it in AppSettings.AUDIO_BUFFER_PROFILES }
+            ?: "MEDIUM",
         libraryPlaylistLayout = libraryPlaylistLayout
             .takeIf { it in AppSettings.LIBRARY_LAYOUTS }
             ?: AppSettings.LIBRARY_GRID,
@@ -137,6 +143,8 @@ data class AppearanceProfile(
             skipSilence = settings.skipSilenceEnabled,
             libraryPlaylistLayout = settings.libraryPlaylistLayout,
             preferUncensored = settings.preferUncensored,
+            fadeMs = settings.fadeMs,
+            audioBufferProfile = settings.audioBufferProfile,
         ).sanitized()
 
         fun parse(json: String): AppearanceProfile? = runCatching {
@@ -182,4 +190,6 @@ suspend fun SettingsRepository.applyProfile(profile: AppearanceProfile) {
     setSkipSilenceEnabled(safe.skipSilence)
     setLibraryPlaylistLayout(safe.libraryPlaylistLayout)
     setPreferUncensored(safe.preferUncensored)
+    setFadeMs(safe.fadeMs)
+    setAudioBufferProfile(safe.audioBufferProfile)
 }

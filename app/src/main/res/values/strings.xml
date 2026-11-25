@@ -767,4 +767,17 @@
     <string name="track_censored">Censored</string>
     <string name="studio_prefer_uncensored">No censorship</string>
     <string name="studio_prefer_uncensored_hint">Prefer original and explicit versions over clean or radio edits</string>
+
+    <string name="studio_sound">Sound</string>
+    <string name="studio_sound_hint">Smooth transitions and streaming buffer</string>
+    <string name="studio_fade">Transition fade</string>
+    <string name="studio_fade_off">Off</string>
+    <string name="studio_fade_short">1.5 s</string>
+    <string name="studio_fade_medium">3 s</string>
+    <string name="studio_fade_long">6 s</string>
+    <string name="studio_buffer">Buffer</string>
+    <string name="studio_buffer_small">Small</string>
+    <string name="studio_buffer_medium">Medium</string>
+    <string name="studio_buffer_large">Large</string>
+    <string name="studio_buffer_hint">Applies the next time playback starts</string>
 </resources>

@@ -64,6 +64,8 @@ data class AppSettings(
     val equalizerCustomBands: List<Float> = DEFAULT_EQ_BANDS,
     val libraryPlaylistLayout: String = LIBRARY_GRID,
     val preferUncensored: Boolean = true,
+    val fadeMs: Int = 0,
+    val audioBufferProfile: String = "MEDIUM",
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -95,6 +97,8 @@ data class AppSettings(
         const val LIBRARY_GRID: String = "GRID"
         const val LIBRARY_LIST: String = "LIST"
         val LIBRARY_LAYOUTS = setOf(LIBRARY_GRID, LIBRARY_LIST)
+
+        val AUDIO_BUFFER_PROFILES = setOf("SMALL", "MEDIUM", "LARGE")
 
         const val EQ_MIN_DB: Float = -6f
         const val EQ_MAX_DB: Float = 6f
@@ -173,6 +177,8 @@ data class AppSettings(
 interface SettingsRepository {
 
     val settings: Flow<AppSettings>
+
+    val snapshot: AppSettings?
 
     suspend fun setDynamicCoverColors(enabled: Boolean)
 
@@ -271,6 +277,10 @@ interface SettingsRepository {
     suspend fun setLibraryPlaylistLayout(layout: String)
 
     suspend fun setPreferUncensored(enabled: Boolean)
+
+    suspend fun setFadeMs(ms: Int)
+
+    suspend fun setAudioBufferProfile(profile: String)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

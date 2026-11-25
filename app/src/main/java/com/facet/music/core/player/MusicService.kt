@@ -27,6 +27,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -105,7 +108,20 @@ class MusicService : MediaSessionService() {
         val limiter = PeakLimiterAudioProcessor()
         val silenceSkipping = androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor()
 
+        val buffer = PlaybackAudioConfig.bufferProfile(
+            settingsRepository.snapshot?.audioBufferProfile ?: "MEDIUM",
+        )
         val player = ExoPlayer.Builder(this)
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        buffer.minBufferMs,
+                        buffer.maxBufferMs,
+                        buffer.playBufferMs,
+                        buffer.rebufferMs,
+                    )
+                    .build(),
+            )
             .setMediaSourceFactory(mediaSourceFactory)
             .setRenderersFactory(FacetRenderersFactory(this, limiter, silenceSkipping))
             .setAudioAttributes(audioAttributes, true)
@@ -139,6 +155,7 @@ class MusicService : MediaSessionService() {
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 syncWidget(player)
+                updateFadeLoop(player)
             }
         })
 
@@ -293,6 +310,39 @@ class MusicService : MediaSessionService() {
             pauseAllPlayersAndStopSelf()
         }
         super.onTaskRemoved(rootIntent)
+    }
+
+    private var fadeJob: Job? = null
+
+    private fun updateFadeLoop(player: Player) {
+        fadeJob?.cancel()
+        if (!player.isPlaying) {
+            runCatching { player.volume = 1f }
+            return
+        }
+        fadeJob = scope.launch {
+            var applied = -1f
+            while (isActive && player.isPlaying) {
+                val fadeMs = settingsRepository.snapshot?.fadeMs ?: 0
+                val duration = player.duration
+                val volume = PlaybackAudioConfig.fadeVolume(
+                    positionMs = player.currentPosition,
+                    durationMs = if (duration == C.TIME_UNSET) 0L else duration,
+                    fadeMs = fadeMs,
+                    hasNext = player.hasNextMediaItem(),
+                )
+                if (kotlin.math.abs(volume - applied) > 0.01f) {
+                    applied = volume
+                    withContext(Dispatchers.Main) {
+                        runCatching { player.volume = volume }
+                    }
+                }
+                delay(50L)
+            }
+            withContext(Dispatchers.Main) {
+                runCatching { player.volume = 1f }
+            }
+        }
     }
 
     private fun syncWidget(player: Player) {

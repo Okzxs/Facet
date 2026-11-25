@@ -774,4 +774,17 @@
     <string name="track_censored">Цензура</string>
     <string name="studio_prefer_uncensored">Без цензуры</string>
     <string name="studio_prefer_uncensored_hint">Оригинальные и explicit-версии выше clean и radio edit</string>
+
+    <string name="studio_sound">Звук</string>
+    <string name="studio_sound_hint">Плавные переходы и буфер потока</string>
+    <string name="studio_fade">Плавные переходы</string>
+    <string name="studio_fade_off">Выкл</string>
+    <string name="studio_fade_short">1,5 с</string>
+    <string name="studio_fade_medium">3 с</string>
+    <string name="studio_fade_long">6 с</string>
+    <string name="studio_buffer">Буфер</string>
+    <string name="studio_buffer_small">Малый</string>
+    <string name="studio_buffer_medium">Средний</string>
+    <string name="studio_buffer_large">Большой</string>
+    <string name="studio_buffer_hint">Применяется при следующем запуске воспроизведения</string>
 </resources>

@@ -472,6 +472,42 @@ fun ThemeStudioScreen(
                     }
                 }
 
+                item(key = "sound") {
+                    StudioBlock(
+                        title = stringResource(R.string.studio_sound),
+                        hint = stringResource(R.string.studio_sound_hint),
+                    ) {
+                        StudioChipRow(
+                            title = stringResource(R.string.studio_fade),
+                            options = listOf(
+                                "0" to R.string.studio_fade_off,
+                                "1500" to R.string.studio_fade_short,
+                                "3000" to R.string.studio_fade_medium,
+                                "6000" to R.string.studio_fade_long,
+                            ),
+                            selected = settings.fadeMs.toString(),
+                            onSelect = { viewModel.setFadeMs(it.toInt()) },
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        StudioChipRow(
+                            title = stringResource(R.string.studio_buffer),
+                            options = listOf(
+                                "SMALL" to R.string.studio_buffer_small,
+                                "MEDIUM" to R.string.studio_buffer_medium,
+                                "LARGE" to R.string.studio_buffer_large,
+                            ),
+                            selected = settings.audioBufferProfile,
+                            onSelect = { viewModel.setAudioBufferProfile(it) },
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.studio_buffer_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
                 item(key = "lyrics") {
                     StudioBlock(
                         title = stringResource(R.string.studio_lyrics),

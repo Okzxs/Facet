@@ -231,6 +231,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setLyricBlur(enabled) }
     }
 
+    fun setFadeMs(ms: Int) {
+        viewModelScope.launch { settingsRepository.setFadeMs(ms) }
+    }
+
+    fun setAudioBufferProfile(profile: String) {
+        viewModelScope.launch { settingsRepository.setAudioBufferProfile(profile) }
+    }
+
     fun setPreferUncensored(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setPreferUncensored(enabled) }
     }

@@ -2,6 +2,7 @@ package com.facet.music.data.local
 
 import android.content.Context
 import com.facet.music.core.i18n.AppLocale
+import com.facet.music.core.player.PlaybackAudioConfig
 import com.facet.music.core.security.SecureStore
 import com.facet.music.core.text.CensorshipSettings
 import com.facet.music.core.service.ServiceType
@@ -41,6 +42,9 @@ class SettingsRepositoryImpl @Inject constructor(
     private val loaded = CompletableDeferred<Unit>()
     private val _settings = MutableStateFlow<AppSettings?>(null)
     override val settings: Flow<AppSettings> = _settings.filterNotNull()
+
+    override val snapshot: AppSettings?
+        get() = _settings.value
 
     init {
         scope.launch {
@@ -166,6 +170,10 @@ class SettingsRepositoryImpl @Inject constructor(
             ?.takeIf { it in AppSettings.LIBRARY_LAYOUTS }
             ?: AppSettings.LIBRARY_GRID,
         preferUncensored = prefs.getBoolean(KEY_PREFER_UNCENSORED, true),
+        fadeMs = PlaybackAudioConfig.sanitizeFade(prefs.getInt(KEY_FADE_MS, 0)),
+        audioBufferProfile = prefs.getString(KEY_AUDIO_BUFFER_PROFILE, null)
+            ?.takeIf { it in AppSettings.AUDIO_BUFFER_PROFILES }
+            ?: "MEDIUM",
     ).also { CensorshipSettings.preferUncensored = it.preferUncensored }
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -607,6 +615,22 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(preferUncensored = enabled) }
     }
 
+    override suspend fun setFadeMs(ms: Int) {
+        val normalized = PlaybackAudioConfig.sanitizeFade(ms)
+        withContext(Dispatchers.IO) {
+            prefs.edit().putInt(KEY_FADE_MS, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(fadeMs = normalized) }
+    }
+
+    override suspend fun setAudioBufferProfile(profile: String) {
+        val normalized = profile.takeIf { it in AppSettings.AUDIO_BUFFER_PROFILES } ?: "MEDIUM"
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_AUDIO_BUFFER_PROFILE, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(audioBufferProfile = normalized) }
+    }
+
     override suspend fun setSkipSilenceEnabled(enabled: Boolean) {        withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
         }
@@ -720,6 +744,10 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_LIBRARY_PLAYLIST_LAYOUT = "library_playlist_layout"
 
         const val KEY_PREFER_UNCENSORED = "prefer_uncensored"
+
+        const val KEY_FADE_MS = "fade_ms"
+
+        const val KEY_AUDIO_BUFFER_PROFILE = "audio_buffer_profile"
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC", "CUSTOM")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"
