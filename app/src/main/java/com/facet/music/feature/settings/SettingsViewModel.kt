@@ -231,6 +231,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setLyricBlur(enabled) }
     }
 
+    fun setLibraryPlaylistLayout(layout: String) {
+        viewModelScope.launch { settingsRepository.setLibraryPlaylistLayout(layout) }
+    }
+
     fun setEqualizerCustomBands(bands: List<Float>) {
         viewModelScope.launch {
             settingsRepository.setEqualizerCustomBands(bands)

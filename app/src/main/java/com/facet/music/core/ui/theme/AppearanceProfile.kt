@@ -40,6 +40,7 @@ data class AppearanceProfile(
     val eqCustomBands: List<Float> = AppSettings.DEFAULT_EQ_BANDS,
     val peakLimiter: Boolean = true,
     val skipSilence: Boolean = false,
+    val libraryPlaylistLayout: String = AppSettings.LIBRARY_GRID,
 ) {
 
     fun sanitized(): AppearanceProfile = copy(
@@ -81,6 +82,9 @@ data class AppearanceProfile(
         progressStyle = progressStyle.takeIf { it in AppSettings.PROGRESS_STYLES }
             ?: AppSettings.PROGRESS_WAVE,
         lyricScale = lyricScale.coerceIn(0.85f, 1.25f),
+        libraryPlaylistLayout = libraryPlaylistLayout
+            .takeIf { it in AppSettings.LIBRARY_LAYOUTS }
+            ?: AppSettings.LIBRARY_GRID,
         eqCustomBands = eqCustomBands
             .takeIf { it.size == AppSettings.DEFAULT_EQ_BANDS.size }
             ?.map { it.coerceIn(AppSettings.EQ_MIN_DB, AppSettings.EQ_MAX_DB) }
@@ -130,6 +134,7 @@ data class AppearanceProfile(
             eqCustomBands = settings.equalizerCustomBands,
             peakLimiter = settings.peakLimiterEnabled,
             skipSilence = settings.skipSilenceEnabled,
+            libraryPlaylistLayout = settings.libraryPlaylistLayout,
         ).sanitized()
 
         fun parse(json: String): AppearanceProfile? = runCatching {
@@ -173,4 +178,5 @@ suspend fun SettingsRepository.applyProfile(profile: AppearanceProfile) {
     setEqualizerCustomBands(safe.eqCustomBands)
     setPeakLimiterEnabled(safe.peakLimiter)
     setSkipSilenceEnabled(safe.skipSilence)
+    setLibraryPlaylistLayout(safe.libraryPlaylistLayout)
 }

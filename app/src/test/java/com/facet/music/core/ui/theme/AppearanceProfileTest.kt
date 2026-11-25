@@ -47,6 +47,7 @@ class AppearanceProfileTest {
             eqCustomBands = listOf(1f, 2f, 3f, 4f, 5f, 6f, -6f),
             peakLimiter = false,
             skipSilence = true,
+            libraryPlaylistLayout = AppSettings.LIBRARY_LIST,
         )
 
         val parsed = AppearanceProfile.parse(original.toJson())
@@ -76,6 +77,7 @@ class AppearanceProfileTest {
               "textScale": 4.5,
               "lyricScale": 3.7,
               "eqCustomBands": [99.0],
+              "libraryPlaylistLayout": "CAROUSEL",
               "progressStyle": "RADIAL"
             }
             """.trimIndent(),
@@ -101,6 +103,7 @@ class AppearanceProfileTest {
         assertEquals(1.25f, safe.lyricScale, 0.001f)
         assertTrue(safe.lyricBold)
         assertTrue(safe.lyricBlur)
+        assertEquals(AppSettings.LIBRARY_GRID, safe.libraryPlaylistLayout)
         assertEquals("FLAT", safe.eqPreset)
         assertEquals(AppSettings.DEFAULT_EQ_BANDS, safe.eqCustomBands)
         assertTrue(safe.peakLimiter)

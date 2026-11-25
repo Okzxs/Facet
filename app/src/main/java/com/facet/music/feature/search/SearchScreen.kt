@@ -132,6 +132,7 @@ import com.facet.music.core.ui.theme.StatusOnlineDark
 import com.facet.music.core.ui.theme.StatusOnlineLight
 import com.facet.music.core.ui.components.AddToPlaylistSheet
 import com.facet.music.core.ui.components.AppLoadingIndicator
+import com.facet.music.core.ui.components.EmptyState
 import com.facet.music.core.ui.components.TrackCard
 import com.facet.music.core.ui.components.TrackSourcesSheet
 import com.facet.music.navigation.LocalBottomDockHeight
@@ -1141,41 +1142,16 @@ private fun EmptyResultsState(
     query: String,
     serviceName: String,
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp)
             .padding(bottom = LocalBottomDockHeight.current),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            modifier = Modifier.size(88.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Rounded.SearchOff,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(38.dp),
-                )
-            }
-        }
-        Spacer(Modifier.height(20.dp))
-        Text(
-            text = stringResource(R.string.search_empty_title),
-            style = MaterialTheme.typography.titleLarge,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = stringResource(R.string.search_empty_message, query, serviceName),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
+        EmptyState(
+            icon = Icons.Rounded.SearchOff,
+            title = stringResource(R.string.search_empty_title),
+            message = stringResource(R.string.search_empty_message, query, serviceName),
         )
     }
 }
@@ -1185,55 +1161,22 @@ private fun ErrorState(
     message: String,
     onRetry: () -> Unit,
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp)
             .padding(bottom = LocalBottomDockHeight.current),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            modifier = Modifier.size(88.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.errorContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Rounded.CloudOff,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.size(38.dp),
-                )
-            }
-        }
-        Spacer(Modifier.height(20.dp))
-        Text(
-            text = stringResource(R.string.search_error_title),
-            style = MaterialTheme.typography.titleLarge,
+        EmptyState(
+            icon = Icons.Rounded.CloudOff,
+            title = stringResource(R.string.search_error_title),
+            message = message,
+            iconContainerColor = MaterialTheme.colorScheme.errorContainer,
+            iconTint = MaterialTheme.colorScheme.onErrorContainer,
+            actionLabel = stringResource(R.string.search_retry),
+            actionIcon = Icons.Rounded.Refresh,
+            onAction = onRetry,
         )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(18.dp))
-        FilledTonalButton(
-            onClick = onRetry,
-            shape = CircleShape,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Refresh,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.search_retry))
-        }
     }
 }
 

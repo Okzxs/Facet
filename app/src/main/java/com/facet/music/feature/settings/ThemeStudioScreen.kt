@@ -629,6 +629,23 @@ fun ThemeStudioScreen(
                     }
                 }
 
+                item(key = "media") {
+                    StudioBlock(
+                        title = stringResource(R.string.studio_library),
+                        hint = stringResource(R.string.studio_library_hint),
+                    ) {
+                        StudioChipRow(
+                            title = stringResource(R.string.studio_library_playlists),
+                            options = listOf(
+                                AppSettings.LIBRARY_GRID to R.string.studio_library_grid,
+                                AppSettings.LIBRARY_LIST to R.string.studio_library_list,
+                            ),
+                            selected = settings.libraryPlaylistLayout,
+                            onSelect = viewModel::setLibraryPlaylistLayout,
+                        )
+                    }
+                }
+
                 item(key = "styles") {
                     StudioBlock(
                         title = stringResource(R.string.studio_styles),

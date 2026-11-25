@@ -739,4 +739,10 @@
     <string name="equalizer_custom">Своя кривая</string>
     <string name="equalizer_custom_hint">Семь полос от 60 Гц до 12 кГц</string>
     <string name="equalizer_band_label">%1$d Гц</string>
+
+    <string name="studio_library">Медиатека</string>
+    <string name="studio_library_hint">Как показывать плейлисты</string>
+    <string name="studio_library_playlists">Плейлисты</string>
+    <string name="studio_library_grid">Сетка</string>
+    <string name="studio_library_list">Список</string>
 </resources>

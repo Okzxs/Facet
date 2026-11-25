@@ -90,12 +90,14 @@ import com.facet.music.core.ui.components.AppLoadingIndicator
 import com.facet.music.core.ui.components.CollectionChipCard
 import com.facet.music.core.ui.components.CollectionSummary
 import com.facet.music.core.ui.components.PlaylistCover
+import com.facet.music.core.ui.components.PlaylistListRow
 import com.facet.music.core.ui.components.PlaylistTile
 import com.facet.music.core.ui.components.SectionHeader
 import com.facet.music.core.ui.components.TrackCard
 import com.facet.music.core.ui.components.TrackDownloadButton
 import com.facet.music.data.model.Playlist
 import com.facet.music.data.model.Track
+import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.model.toTrack
 import com.facet.music.navigation.LocalBottomDockHeight
 import kotlinx.coroutines.launch
@@ -365,6 +367,18 @@ fun LibraryScreen(
                             showCreateDialog = true
                         },
                         onImport = onImportClick,
+                    )
+                }
+            } else if (appSettings.libraryPlaylistLayout == AppSettings.LIBRARY_LIST) {
+                items(items = playlists, key = { "playlist_${it.id}" }) { playlist ->
+                    PlaylistListRow(
+                        playlistName = playlist.name,
+                        coverUrl = playlist.coverUrl,
+                        trackCount = playlist.trackCount,
+                        onClick = { onPlaylistClick(playlist.id) },
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
                     )
                 }
             } else {

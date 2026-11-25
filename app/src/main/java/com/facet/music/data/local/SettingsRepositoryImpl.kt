@@ -161,6 +161,9 @@ class SettingsRepositoryImpl @Inject constructor(
             ?.takeIf { it.size == AppSettings.DEFAULT_EQ_BANDS.size }
             ?.map { it.coerceIn(AppSettings.EQ_MIN_DB, AppSettings.EQ_MAX_DB) }
             ?: AppSettings.DEFAULT_EQ_BANDS,
+        libraryPlaylistLayout = prefs.getString(KEY_LIBRARY_PLAYLIST_LAYOUT, null)
+            ?.takeIf { it in AppSettings.LIBRARY_LAYOUTS }
+            ?: AppSettings.LIBRARY_GRID,
     )
 
     private fun loadSearchSources(): Set<ServiceType> {
@@ -585,6 +588,15 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(equalizerCustomBands = normalized) }
     }
 
+    override suspend fun setLibraryPlaylistLayout(layout: String) {
+        val normalized = layout.takeIf { it in AppSettings.LIBRARY_LAYOUTS }
+            ?: AppSettings.LIBRARY_GRID
+        withContext(Dispatchers.IO) {
+            prefs.edit().putString(KEY_LIBRARY_PLAYLIST_LAYOUT, normalized).apply()
+        }
+        _settings.update { (it ?: AppSettings()).copy(libraryPlaylistLayout = normalized) }
+    }
+
     override suspend fun setSkipSilenceEnabled(enabled: Boolean) {        withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
         }
@@ -694,6 +706,8 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_LYRIC_BLUR = "lyric_blur"
 
         const val KEY_EQ_CUSTOM_BANDS = "eq_custom_bands"
+
+        const val KEY_LIBRARY_PLAYLIST_LAYOUT = "library_playlist_layout"
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC", "CUSTOM")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"
