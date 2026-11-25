@@ -751,4 +751,6 @@
 
     <string name="widget_state_playing">PLAYING</string>
     <string name="widget_state_paused">PAUSED</string>
+
+    <string name="search_local_section">In your library</string>
 </resources>

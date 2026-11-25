@@ -6,6 +6,7 @@ import com.facet.music.core.navigation.NavigationEvents
 import com.facet.music.core.navigation.SearchIntent
 import com.facet.music.core.network.ConnectivityObserver
 import com.facet.music.core.search.ArtistMerger
+import com.facet.music.core.search.LocalSearch
 import com.facet.music.core.search.SearchHistoryStore
 import com.facet.music.core.search.SearchSuggestions
 import com.facet.music.core.search.TrackMerger
@@ -20,7 +21,10 @@ import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
 import com.facet.music.data.model.TrackPage
 import com.facet.music.data.repository.CanonicalTrackRepository
+import com.facet.music.data.model.toTrack
 import com.facet.music.data.repository.DownloadRepository
+import com.facet.music.data.repository.LikedTracksRepository
+import com.facet.music.data.repository.PlayHistoryRepository
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
@@ -36,6 +40,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -65,6 +70,7 @@ data class SearchUiState(
     val suggestions: List<String> = emptyList(),
     val sourcesTrack: CanonicalTrack? = null,
     val sourcesLoading: Boolean = false,
+    val localResults: List<Track> = emptyList(),
 )
 
 private data class SearchRequest(
@@ -101,7 +107,9 @@ class SearchViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val searchSuggestions: SearchSuggestions,
     private val canonicalTrackRepository: CanonicalTrackRepository,
-    downloadRepository: DownloadRepository,
+    private val downloadRepository: DownloadRepository,
+    private val likedTracksRepository: LikedTracksRepository,
+    private val playHistoryRepository: PlayHistoryRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -111,6 +119,22 @@ class SearchViewModel @Inject constructor(
 
     val serviceStatuses: StateFlow<Map<ServiceType, ServiceHealth>> =
         serviceStatusManager.statuses
+
+    private val localCatalog: StateFlow<List<Track>> = combine(
+        likedTracksRepository.getLikedTracks(),
+        downloadRepository.observeDownloadedTracks(),
+        playHistoryRepository.getPlayHistory(),
+    ) { liked, downloaded, history ->
+        buildList {
+            addAll(liked)
+            addAll(downloaded.map { it.toTrack() })
+            addAll(history)
+        }.distinctBy { it.id }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList(),
+    )
 
     val downloadedIds: StateFlow<Set<String>> = downloadRepository.observeDownloadedIds()
         .stateIn(
@@ -136,6 +160,14 @@ class SearchViewModel @Inject constructor(
 
     init {
         serviceStatusManager.ensureFresh()
+
+        viewModelScope.launch {
+            localCatalog.collect { catalog ->
+                _uiState.update { state ->
+                    state.copy(localResults = LocalSearch.match(catalog, state.query))
+                }
+            }
+        }
 
         viewModelScope.launch {
             val sources = settingsRepository.settings.first().searchSources
@@ -184,6 +216,7 @@ class SearchViewModel @Inject constructor(
                 query = query,
                 error = null,
                 sourceHint = null,
+                localResults = LocalSearch.match(localCatalog.value, query),
                 suggestions = if (query.length < 2) emptyList() else it.suggestions,
             )
         }
@@ -198,6 +231,7 @@ class SearchViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     results = emptyList(),
+                    localResults = emptyList(),
                     artists = emptyList(),
                     featuredArtist = null,
                     artistTracks = emptyList(),
@@ -367,6 +401,7 @@ class SearchViewModel @Inject constructor(
                         isLoading = false,
                         error = OFFLINE_MESSAGE,
                         results = emptyList(),
+                    localResults = emptyList(),
                         artists = emptyList(),
                     )
                 } else {

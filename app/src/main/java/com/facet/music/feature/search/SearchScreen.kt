@@ -71,6 +71,7 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material3.Button
@@ -208,12 +209,13 @@ fun SearchScreen(
         }
     }
 
+    val hasRemote = state.results.isNotEmpty() || state.artists.isNotEmpty()
+    val hasLocal = state.localResults.isNotEmpty()
     val contentState = when {
+        hasRemote || hasLocal -> SearchContentState.Results
         state.isLoading -> SearchContentState.Loading
         state.error != null -> SearchContentState.Error
-        state.results.isEmpty() && state.artists.isEmpty() && state.query.length >= 2 ->
-            SearchContentState.Empty
-        state.results.isNotEmpty() || state.artists.isNotEmpty() -> SearchContentState.Results
+        state.query.length >= 2 -> SearchContentState.Empty
         else -> SearchContentState.Idle
     }
     val sourceName = if (state.selectedSources.size == ServiceType.entries.size) {
@@ -332,6 +334,7 @@ fun SearchScreen(
                     )
                     SearchContentState.Results -> ResultsList(
                         tracks = state.results,
+                        localResults = state.localResults,
                         artists = state.artists,
                         featuredArtist = state.featuredArtist,
                         artistTracks = state.artistTracks,
@@ -1181,8 +1184,65 @@ private fun ErrorState(
 }
 
 @Composable
+private fun LocalResultsSection(
+    tracks: List<Track>,
+    downloadedIds: Set<String>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    onAddToPlaylist: (Track) -> Unit,
+    onTrackArtistClick: (Track) -> Unit,
+    onPlayNext: (Track) -> Unit,
+    onAddToQueue: (Track) -> Unit,
+    onSourcesClick: (Track) -> Unit,
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 10.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.LibraryMusic,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.search_local_section),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "${tracks.size}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        tracks.forEach { track ->
+            TrackCard(
+                track = track,
+                isDownloaded = track.id in downloadedIds,
+                onClick = { onTrackClick(track, tracks) },
+                onAddToPlaylist = { onAddToPlaylist(track) },
+                onArtistClick = { onTrackArtistClick(track) },
+                onPlayNext = { onPlayNext(track) },
+                onAddToQueue = { onAddToQueue(track) },
+                onSourcesClick = if (track.sourceCount > 1) {
+                    { onSourcesClick(track) }
+                } else {
+                    null
+                },
+            )
+        }
+    }
+}
+
+@Composable
 private fun ResultsList(
     tracks: List<Track>,
+    localResults: List<Track>,
     artists: List<Artist>,
     featuredArtist: Artist?,
     artistTracks: List<Track>,
@@ -1210,37 +1270,52 @@ private fun ResultsList(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.search_results, sourceName),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.weight(1f))
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                Text(
-                    text = "${tracks.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                )
-            }
-        }
-
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            if (localResults.isNotEmpty()) {
+                item(key = "local_section") {
+                    LocalResultsSection(
+                        tracks = localResults,
+                        downloadedIds = downloadedIds,
+                        onTrackClick = onTrackClick,
+                        onAddToPlaylist = onAddToPlaylist,
+                        onTrackArtistClick = onTrackArtistClick,
+                        onPlayNext = onPlayNext,
+                        onAddToQueue = onAddToQueue,
+                        onSourcesClick = onSourcesClick,
+                    )
+                }
+            }
+            item(key = "remote_header") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.search_results, sourceName),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Text(
+                            text = "${tracks.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
             if (artists.isNotEmpty()) {
                 item(key = "artist_section") {
                     ArtistSection(

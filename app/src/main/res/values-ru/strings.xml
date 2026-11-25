@@ -758,4 +758,6 @@
 
     <string name="widget_state_playing">ИГРАЕТ</string>
     <string name="widget_state_paused">ПАУЗА</string>
+
+    <string name="search_local_section">В медиатеке</string>
 </resources>

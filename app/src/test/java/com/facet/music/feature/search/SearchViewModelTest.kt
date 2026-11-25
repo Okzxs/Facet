@@ -14,6 +14,8 @@ import com.facet.music.data.model.Track
 import com.facet.music.data.model.TrackPage
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.DownloadRepository
+import com.facet.music.data.repository.LikedTracksRepository
+import com.facet.music.data.repository.PlayHistoryRepository
 import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.SoundCloudRepository
 import com.facet.music.data.repository.YouTubeRepository
@@ -45,6 +47,8 @@ class SearchViewModelTest {
     private val statusManager = mockk<ServiceStatusManager>(relaxed = true)
     private val connectivity = mockk<ConnectivityObserver>()
     private val downloadRepository = mockk<DownloadRepository>()
+    private val likedTracksRepository = mockk<LikedTracksRepository>()
+    private val playHistoryRepository = mockk<PlayHistoryRepository>()
     private val settingsRepository = mockk<SettingsRepository>(relaxed = true)
     private val suggestions = mockk<SearchSuggestions>(relaxed = true)
 
@@ -146,6 +150,9 @@ class SearchViewModelTest {
         )
         every { connectivity.isOnline } returns MutableStateFlow(true)
         every { downloadRepository.observeDownloadedIds() } returns flowOf(emptySet())
+        every { downloadRepository.observeDownloadedTracks() } returns flowOf(emptyList())
+        every { likedTracksRepository.getLikedTracks() } returns flowOf(emptyList())
+        every { playHistoryRepository.getPlayHistory() } returns flowOf(emptyList())
         every { settingsRepository.settings } returns flowOf(AppSettings(searchSources = sources))
         coEvery { soundCloudRepository.searchPage(any(), any(), any()) } returns Result.success(TrackPage(emptyList()))
         coEvery { soundCloudRepository.searchArtists(any(), any()) } returns Result.success(emptyList())
@@ -167,6 +174,8 @@ class SearchViewModelTest {
         searchSuggestions = suggestions,
         canonicalTrackRepository = mockk(relaxed = true),
         downloadRepository = downloadRepository,
+        likedTracksRepository = likedTracksRepository,
+        playHistoryRepository = playHistoryRepository,
     )
 
     private fun track(id: String, artist: String, title: String, source: Source) = Track(
