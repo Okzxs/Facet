@@ -91,7 +91,6 @@ class SettingsRepositoryImpl @Inject constructor(
             ?.takeIf { it in EQUALIZER_PRESETS }
             ?: "FLAT",
         skipSilenceEnabled = prefs.getBoolean(KEY_SKIP_SILENCE, false),
-        peakLimiterEnabled = prefs.getBoolean(KEY_PEAK_LIMITER, true),
         paletteMode = prefs.getString(KEY_PALETTE_MODE, null)
             ?.takeIf { it in PALETTE_MODES }
             ?: "SIGNATURE",
@@ -637,13 +636,6 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(skipSilenceEnabled = enabled) }
     }
 
-    override suspend fun setPeakLimiterEnabled(enabled: Boolean) {
-        withContext(Dispatchers.IO) {
-            prefs.edit().putBoolean(KEY_PEAK_LIMITER, enabled).apply()
-        }
-        _settings.update { (it ?: AppSettings()).copy(peakLimiterEnabled = enabled) }
-    }
-
     override suspend fun setSearchSources(sources: Set<ServiceType>) {
         awaitLoaded()
         val normalized = sources.ifEmpty { ServiceType.entries.toSet() }
@@ -684,8 +676,6 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_EQUALIZER_PRESET = "equalizer_preset"
 
         const val KEY_SKIP_SILENCE = "skip_silence"
-
-        const val KEY_PEAK_LIMITER = "peak_limiter"
 
         const val KEY_PALETTE_MODE = "palette_mode"
 

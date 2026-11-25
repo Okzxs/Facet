@@ -38,7 +38,6 @@ data class AppearanceProfile(
     val lyricBlur: Boolean = true,
     val eqPreset: String = "FLAT",
     val eqCustomBands: List<Float> = AppSettings.DEFAULT_EQ_BANDS,
-    val peakLimiter: Boolean = true,
     val skipSilence: Boolean = false,
     val libraryPlaylistLayout: String = AppSettings.LIBRARY_GRID,
     val preferUncensored: Boolean = true,
@@ -139,7 +138,6 @@ data class AppearanceProfile(
             lyricBlur = settings.lyricBlur,
             eqPreset = settings.equalizerPreset,
             eqCustomBands = settings.equalizerCustomBands,
-            peakLimiter = settings.peakLimiterEnabled,
             skipSilence = settings.skipSilenceEnabled,
             libraryPlaylistLayout = settings.libraryPlaylistLayout,
             preferUncensored = settings.preferUncensored,
@@ -186,7 +184,6 @@ suspend fun SettingsRepository.applyProfile(profile: AppearanceProfile) {
     setLyricBlur(safe.lyricBlur)
     setEqualizerPreset(safe.eqPreset)
     setEqualizerCustomBands(safe.eqCustomBands)
-    setPeakLimiterEnabled(safe.peakLimiter)
     setSkipSilenceEnabled(safe.skipSilence)
     setLibraryPlaylistLayout(safe.libraryPlaylistLayout)
     setPreferUncensored(safe.preferUncensored)

@@ -337,10 +337,6 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setSkipSilenceEnabled(enabled) }
     }
 
-    fun setPeakLimiter(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.setPeakLimiterEnabled(enabled) }
-    }
-
     fun closeSources() {
         _uiState.update { it.copy(showSources = false, sourcesTrack = null, isSourcesLoading = false) }
     }

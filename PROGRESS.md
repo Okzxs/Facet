@@ -4,6 +4,15 @@
 
 ---
 
+## Сессия 90: пиковый лимитер удалён (25.11.2026)
+
+- Из проекта полностью убрана цепочка пикового лимитера: `PeakLimiterAudioProcessor`, `PeakLimiter`/`PeakLimiterState`, тест `PeakLimiterTest`, параметр в `FacetRenderersFactory`, настройка `peakLimiterEnabled` (SharedPreferences `peak_limiter`, сеттер, поле профиля оформления, тумблер в шторке эквалайзера, строки EN/RU).
+- Обработчик звука теперь — только `SilenceSkippingAudioProcessor` + `SonicAudioProcessor`; аудио-конвейер больше не содержит самописных процессоров, которые могли ломать буфер.
+- Проверка на A26: трек играет, позиция идёт, падений нет. Тесты: 83 suite / 494 теста, 0 failures (минус 4 теста лимитера).
+- Причина удаления: именно `queueInput` лимитера падал с `The source buffer is this buffer`, из-за чего любой трек мог не играть. Функция не стоила риска.
+
+---
+
 ## Сессия 89: найдена настоящая причина тишины — пиковый лимитер (25.11.2026)
 
 - **Корень проблемы.** `PeakLimiterAudioProcessor.queueInput` в ветке «лимитер выключен» делал `output.put(inputBuffer)`, а `BaseAudioProcessor.replaceOutputBuffer` в некоторых состояниях возвращает **тот же самый** `ByteBuffer`. Java кидает `IllegalArgumentException: The source buffer is this buffer`, аудио-конвейер падает, `PlayerController` показывает «Не удалось воспроизвести трек». Это не имело отношения к SoundCloud/HLS — ломался любой трек при выключенном лимитере; при включённом — та же ошибка на буферах, где input и output совпадали.

@@ -305,8 +305,6 @@
     <string name="equalizer_hint">Эквалайзер Android для аудиосессии плеера. Число полос зависит от устройства.</string>
     <string name="equalizer_skip_silence">Пропуск тишины</string>
     <string name="equalizer_skip_silence_hint">Перепрыгивает длинные паузы в треке.</string>
-    <string name="equalizer_limiter">Пиковый лимитер</string>
-    <string name="equalizer_limiter_hint">Защищает от клиппинга на громких треках.</string>
     <string name="equalizer_enabled">Включить эквалайзер</string>
     <string name="equalizer_preset_flat">Ровный</string>
     <string name="equalizer_preset_bass">Бас</string>

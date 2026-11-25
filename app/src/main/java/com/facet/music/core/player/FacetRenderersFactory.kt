@@ -11,7 +11,6 @@ import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 @UnstableApi
 class FacetRenderersFactory(
     context: Context,
-    private val limiter: PeakLimiterAudioProcessor,
     private val silenceSkipping: SilenceSkippingAudioProcessor,
 ) : DefaultRenderersFactory(context) {
 
@@ -21,7 +20,7 @@ class FacetRenderersFactory(
         enableAudioTrackPlaybackParams: Boolean,
     ): AudioSink {
         val chain = DefaultAudioSink.DefaultAudioProcessorChain(
-            arrayOf(limiter),
+            arrayOf(),
             silenceSkipping,
             SonicAudioProcessor(),
         )

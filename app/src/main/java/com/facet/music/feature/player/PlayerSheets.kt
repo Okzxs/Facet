@@ -266,12 +266,10 @@ internal fun EqualizerSheet(
     preset: String,
     customBands: List<Float>,
     skipSilence: Boolean,
-    limiterEnabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onPresetSelect: (String) -> Unit,
     onCustomBandsChange: (List<Float>) -> Unit,
     onSkipSilenceChange: (Boolean) -> Unit,
-    onLimiterChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var customExpanded by remember { mutableStateOf(preset == EqualizerCurve.CUSTOM_PRESET) }
@@ -314,12 +312,6 @@ internal fun EqualizerSheet(
                 hint = stringResource(R.string.equalizer_skip_silence_hint),
                 checked = skipSilence,
                 onCheckedChange = onSkipSilenceChange,
-            )
-            SoundToggleRow(
-                title = stringResource(R.string.equalizer_limiter),
-                hint = stringResource(R.string.equalizer_limiter_hint),
-                checked = limiterEnabled,
-                onCheckedChange = onLimiterChange,
             )
             Spacer(Modifier.height(8.dp))
             EqualizerPreset.entries.forEach { option ->

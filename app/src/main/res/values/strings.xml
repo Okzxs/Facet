@@ -304,8 +304,6 @@
     <string name="equalizer_hint">Android equalizer for the player audio session. Band count follows the device.</string>
     <string name="equalizer_skip_silence">Skip silence</string>
     <string name="equalizer_skip_silence_hint">Jumps over long silent gaps in the track.</string>
-    <string name="equalizer_limiter">Peak limiter</string>
-    <string name="equalizer_limiter_hint">Prevents clipping on loud tracks.</string>
     <string name="equalizer_enabled">Enable equalizer</string>
     <string name="equalizer_preset_flat">Flat</string>
     <string name="equalizer_preset_bass">Bass</string>

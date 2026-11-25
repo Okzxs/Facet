@@ -105,7 +105,6 @@ class MusicService : MediaSessionService() {
                 ?.generateAudioSessionId()
         }.getOrNull()?.takeIf { it > 0 } ?: 0
 
-        val limiter = PeakLimiterAudioProcessor()
         val silenceSkipping = androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor()
 
         val buffer = PlaybackAudioConfig.bufferProfile(
@@ -123,7 +122,7 @@ class MusicService : MediaSessionService() {
                     .build(),
             )
             .setMediaSourceFactory(mediaSourceFactory)
-            .setRenderersFactory(FacetRenderersFactory(this, limiter, silenceSkipping))
+            .setRenderersFactory(FacetRenderersFactory(this, silenceSkipping))
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -131,7 +130,6 @@ class MusicService : MediaSessionService() {
 
         scope.launch {
             settingsRepository.settings.collect { settings ->
-                limiter.enabled = settings.peakLimiterEnabled
                 silenceSkipping.setEnabled(settings.skipSilenceEnabled)
                 withContext(Dispatchers.Main) {
                     player.skipSilenceEnabled = settings.skipSilenceEnabled

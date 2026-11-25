@@ -36,7 +36,6 @@ data class AppSettings(
     val equalizerEnabled: Boolean = false,
     val equalizerPreset: String = "FLAT",
     val skipSilenceEnabled: Boolean = false,
-    val peakLimiterEnabled: Boolean = true,
     val paletteMode: String = "SIGNATURE",
     val serifDisplay: Boolean = true,
     val amoledBlack: Boolean = false,
@@ -221,8 +220,6 @@ interface SettingsRepository {
     suspend fun setEqualizerPreset(preset: String)
 
     suspend fun setSkipSilenceEnabled(enabled: Boolean)
-
-    suspend fun setPeakLimiterEnabled(enabled: Boolean)
 
     suspend fun setPaletteMode(mode: String)
 
