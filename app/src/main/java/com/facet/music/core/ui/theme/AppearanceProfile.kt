@@ -41,6 +41,7 @@ data class AppearanceProfile(
     val peakLimiter: Boolean = true,
     val skipSilence: Boolean = false,
     val libraryPlaylistLayout: String = AppSettings.LIBRARY_GRID,
+    val preferUncensored: Boolean = true,
 ) {
 
     fun sanitized(): AppearanceProfile = copy(
@@ -135,6 +136,7 @@ data class AppearanceProfile(
             peakLimiter = settings.peakLimiterEnabled,
             skipSilence = settings.skipSilenceEnabled,
             libraryPlaylistLayout = settings.libraryPlaylistLayout,
+            preferUncensored = settings.preferUncensored,
         ).sanitized()
 
         fun parse(json: String): AppearanceProfile? = runCatching {
@@ -179,4 +181,5 @@ suspend fun SettingsRepository.applyProfile(profile: AppearanceProfile) {
     setPeakLimiterEnabled(safe.peakLimiter)
     setSkipSilenceEnabled(safe.skipSilence)
     setLibraryPlaylistLayout(safe.libraryPlaylistLayout)
+    setPreferUncensored(safe.preferUncensored)
 }

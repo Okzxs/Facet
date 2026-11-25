@@ -770,4 +770,8 @@
     <string name="home_fresh_likes">Свежие лайки</string>
     <string name="studio_section_forgotten">Забытое</string>
     <string name="studio_section_fresh_likes">Свежие лайки</string>
+
+    <string name="track_censored">Цензура</string>
+    <string name="studio_prefer_uncensored">Без цензуры</string>
+    <string name="studio_prefer_uncensored_hint">Оригинальные и explicit-версии выше clean и radio edit</string>
 </resources>

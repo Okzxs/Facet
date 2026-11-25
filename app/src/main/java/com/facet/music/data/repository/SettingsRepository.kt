@@ -63,6 +63,7 @@ data class AppSettings(
     val lyricBlur: Boolean = true,
     val equalizerCustomBands: List<Float> = DEFAULT_EQ_BANDS,
     val libraryPlaylistLayout: String = LIBRARY_GRID,
+    val preferUncensored: Boolean = true,
 ) {
     val isSpotifyConfigured: Boolean
         get() = spotifyClientId.isNotBlank() && spotifyClientSecret.isNotBlank()
@@ -268,6 +269,8 @@ interface SettingsRepository {
     suspend fun setEqualizerCustomBands(bands: List<Float>)
 
     suspend fun setLibraryPlaylistLayout(layout: String)
+
+    suspend fun setPreferUncensored(enabled: Boolean)
 
     companion object {
         val DOWNLOAD_QUALITIES: List<Int> = listOf(128, 256, 320)

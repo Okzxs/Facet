@@ -1,5 +1,6 @@
 package com.facet.music.core.source
 
+import com.facet.music.core.text.CensorshipFilter
 import com.facet.music.data.model.Track
 import java.util.Locale
 import javax.inject.Inject
@@ -60,6 +61,8 @@ class TrackMatcher @Inject constructor() {
         score -= markerPenalty.coerceAtMost(MAX_MARKER_PENALTY)
 
         if (GOOD_MARKERS.any { candidateHaystack.contains(it) }) score += GOOD_MARKER_BONUS
+
+        score += CensorshipFilter.scoreDelta(candidate.title, candidate.genre)
 
         original.isrc?.takeIf { it.isNotBlank() }?.let { isrc ->
             if (candidate.title.contains(isrc, ignoreCase = true)) score += ISRC_MATCH

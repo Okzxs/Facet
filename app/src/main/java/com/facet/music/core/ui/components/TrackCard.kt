@@ -69,6 +69,8 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
+import com.facet.music.core.text.CensorshipFilter
+import com.facet.music.core.text.CensorshipVerdict
 import com.facet.music.data.model.Track
 import kotlin.math.PI
 import kotlin.math.abs
@@ -184,6 +186,26 @@ fun TrackCard(
                                 ) {
                                     Text(
                                         text = "+${track.sourceCount - 1}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(
+                                            horizontal = 6.dp,
+                                            vertical = 1.dp,
+                                        ),
+                                    )
+                                }
+                            }
+                            if (
+                                CensorshipFilter.verdict(track.title, track.genre) ==
+                                CensorshipVerdict.CENSORED
+                            ) {
+                                Spacer(Modifier.width(6.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.track_censored),
                                         style = MaterialTheme.typography.labelSmall,
                                         modifier = Modifier.padding(
                                             horizontal = 6.dp,

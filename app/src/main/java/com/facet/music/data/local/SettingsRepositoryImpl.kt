@@ -3,6 +3,7 @@ package com.facet.music.data.local
 import android.content.Context
 import com.facet.music.core.i18n.AppLocale
 import com.facet.music.core.security.SecureStore
+import com.facet.music.core.text.CensorshipSettings
 import com.facet.music.core.service.ServiceType
 import com.facet.music.core.wave.WaveMood
 import com.facet.music.data.repository.AppSettings
@@ -164,7 +165,8 @@ class SettingsRepositoryImpl @Inject constructor(
         libraryPlaylistLayout = prefs.getString(KEY_LIBRARY_PLAYLIST_LAYOUT, null)
             ?.takeIf { it in AppSettings.LIBRARY_LAYOUTS }
             ?: AppSettings.LIBRARY_GRID,
-    )
+        preferUncensored = prefs.getBoolean(KEY_PREFER_UNCENSORED, true),
+    ).also { CensorshipSettings.preferUncensored = it.preferUncensored }
 
     private fun loadSearchSources(): Set<ServiceType> {
         val stored = prefs.getString(KEY_SEARCH_SOURCES, null)
@@ -597,6 +599,14 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { (it ?: AppSettings()).copy(libraryPlaylistLayout = normalized) }
     }
 
+    override suspend fun setPreferUncensored(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            prefs.edit().putBoolean(KEY_PREFER_UNCENSORED, enabled).apply()
+        }
+        CensorshipSettings.preferUncensored = enabled
+        _settings.update { (it ?: AppSettings()).copy(preferUncensored = enabled) }
+    }
+
     override suspend fun setSkipSilenceEnabled(enabled: Boolean) {        withContext(Dispatchers.IO) {
             prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
         }
@@ -708,6 +718,8 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_EQ_CUSTOM_BANDS = "eq_custom_bands"
 
         const val KEY_LIBRARY_PLAYLIST_LAYOUT = "library_playlist_layout"
+
+        const val KEY_PREFER_UNCENSORED = "prefer_uncensored"
 
         val EQUALIZER_PRESETS = setOf("FLAT", "BASS", "VOCAL", "ROCK", "ELECTRONIC", "CUSTOM")
         const val KEY_LEGACY_SEARCH_SERVICE = "search_service"

@@ -462,6 +462,13 @@ fun ThemeStudioScreen(
                             checked = settings.miniPlayerProgress,
                             onCheckedChange = viewModel::setMiniPlayerProgress,
                         )
+                        Spacer(Modifier.height(10.dp))
+                        StudioSwitchRow(
+                            title = stringResource(R.string.studio_prefer_uncensored),
+                            hint = stringResource(R.string.studio_prefer_uncensored_hint),
+                            checked = settings.preferUncensored,
+                            onCheckedChange = viewModel::setPreferUncensored,
+                        )
                     }
                 }
 

@@ -1,5 +1,7 @@
 package com.facet.music.core.search
 
+import com.facet.music.core.text.CensorshipFilter
+import com.facet.music.core.text.CensorshipVerdict
 import com.facet.music.data.model.Track
 import java.util.Locale
 
@@ -52,7 +54,9 @@ object TrackMerger {
 
     private fun preferred(candidates: List<RankedTrack>): RankedTrack =
         candidates.firstOrNull {
-            !hasVersionWord(it.track) &&
+            CensorshipFilter.verdict(it.track.title, it.track.genre) !=
+                CensorshipVerdict.CENSORED &&
+                !hasVersionWord(it.track) &&
                 it.track.previewSeconds == null && !it.track.isSubscriptionOnly
         }
             ?: candidates.firstOrNull {
@@ -86,6 +90,7 @@ object TrackMerger {
         if (hasVersionWord(track) && queryTokens.none { token -> token in SearchConfig.VERSION_WORDS }) {
             score -= SearchConfig.VERSION_PENALTY
         }
+        score += CensorshipFilter.scoreDelta(track.title, track.genre)
         return score
     }
 

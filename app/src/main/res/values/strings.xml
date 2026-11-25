@@ -763,4 +763,8 @@
     <string name="home_fresh_likes">Fresh likes</string>
     <string name="studio_section_forgotten">Forgotten</string>
     <string name="studio_section_fresh_likes">Fresh likes</string>
+
+    <string name="track_censored">Censored</string>
+    <string name="studio_prefer_uncensored">No censorship</string>
+    <string name="studio_prefer_uncensored_hint">Prefer original and explicit versions over clean or radio edits</string>
 </resources>

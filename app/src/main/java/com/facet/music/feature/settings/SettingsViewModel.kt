@@ -231,6 +231,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setLyricBlur(enabled) }
     }
 
+    fun setPreferUncensored(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setPreferUncensored(enabled) }
+    }
+
     fun setLibraryPlaylistLayout(layout: String) {
         viewModelScope.launch { settingsRepository.setLibraryPlaylistLayout(layout) }
     }
