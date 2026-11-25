@@ -4,6 +4,15 @@
 
 ---
 
+## Сессия 88: валидация всех резолвов и собственный кэш (25.11.2026)
+
+- Валидация потока перенесена в общий путь `PlaybackResolver.resolve`: теперь проверяются и собственные источники (SoundCloud напрямую), а не только внешние матчи. HLS, отдающий M3U8 при `isHls=false`, принудительно переводится в HLS с `application/x-mpegURL`; не-аудио больше не кэшируется и не отдаётся.
+- `invalidate`/`invalidateHard` чистят и in-memory кэш резолвера, и `inFlight`, чтобы повторный резолв не возвращал старую версию потока.
+- Live на A26: HLS-плейлист и сегменты грузятся с 200 и правильными типами (`application/vnd.apple.mpegurl`, `audio/mp4`), но воспроизведение конкретного трека всё ещё завершается `ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED`. Значит остаётся слой создания MediaSource/выбора парсера — нужен лог MIME в момент `MediaItem` и `MediaSource`, а не в резолвере.
+- Тесты: 84 suite / 498 тестов, 0 failures, 1 skipped.
+
+---
+
 ## Сессия 87: резолв до создания MediaItem (25.11.2026)
 
 - В `PlayerController.setQueueAndPlay` и `playTrackAt` убран первый `setMediaItems` с дефолтными MIME: теперь сначала резолвится текущий трек и элементы создаются сразу с его `mimeType` (HLS → `application/x-mpegURL`), без сравнения с уже созданным progressive-источником.

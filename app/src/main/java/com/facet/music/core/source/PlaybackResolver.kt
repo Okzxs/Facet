@@ -67,10 +67,12 @@ class PlaybackResolver @Inject constructor(
 
     fun invalidate(trackId: String) {
         cache.remove(trackId)
+        inFlight.clear()
     }
 
     fun invalidateHard(trackId: String) {
         cache.remove(trackId)
+        inFlight.clear()
         cache.clear()
     }
 
@@ -97,8 +99,37 @@ class PlaybackResolver @Inject constructor(
                 return@withLock completed(it)
             }
             inFlight[key]?.takeIf { it.isActive } ?: scope.async {
-                resolveFresh(track, requireProgressive).onSuccess { stream ->
-                    cache[track.id] = CachedStream(stream, stream.expiresAtMs ?: defaultExpiry(stream))
+                val result = resolveFresh(track, requireProgressive)
+                val stream = result.getOrNull()
+                if (stream == null) {
+                    result
+                } else {
+                    val kind = streamValidator.kind(stream.url, stream.isHls)
+                    if (kind == StreamValidator.StreamKind.INVALID) {
+                        cache.remove(track.id)
+                        Result.failure(
+                            ResolveException(
+                                ResolveError.NotAvailable,
+                                "Источник отдал не-аудио вместо потока",
+                            ),
+                        )
+                    } else {
+                        val effective = if (
+                            kind == StreamValidator.StreamKind.HLS && !stream.isHls
+                        ) {
+                            stream.copy(
+                                isHls = true,
+                                mimeType = androidx.media3.common.MimeTypes.APPLICATION_M3U8,
+                            )
+                        } else {
+                            stream
+                        }
+                        cache[track.id] = CachedStream(
+                            effective,
+                            effective.expiresAtMs ?: defaultExpiry(effective),
+                        )
+                        Result.success(effective)
+                    }
                 }
             }.also { inFlight[key] = it }
         }
