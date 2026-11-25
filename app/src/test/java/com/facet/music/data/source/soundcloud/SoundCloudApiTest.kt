@@ -99,7 +99,7 @@ class SoundCloudApiTest {
         )
 
         assertTrue(stream.isHls)
-        assertEquals("audio/mp4", stream.mimeType)
+        assertEquals("application/x-mpegURL", stream.mimeType)
         assertEquals("https://cf-hls-opus.sndcdn.com/playlist.m3u8", stream.url)
         assertEquals(3, server.requestCount)
     }

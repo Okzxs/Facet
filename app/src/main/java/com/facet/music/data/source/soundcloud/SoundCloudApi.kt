@@ -149,7 +149,11 @@ class SoundCloudApi internal constructor(
                     return@withClientId SoundCloudStream(
                         url = streamUrl,
                         isHls = transcoding.isHls,
-                        mimeType = transcoding.mimeBase,
+                        mimeType = if (transcoding.isHls) {
+                            androidx.media3.common.MimeTypes.APPLICATION_M3U8
+                        } else {
+                            transcoding.mimeBase
+                        },
                         externalId = dto.id,
                     )
                 } catch (e: SoundCloudException) {

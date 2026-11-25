@@ -32,6 +32,7 @@ class PlaybackResolverTest {
 
     private fun allowAllValidator(): StreamValidator = mockk {
         coEvery { isPlayable(any(), any()) } returns true
+        coEvery { kind(any(), any()) } returns StreamValidator.StreamKind.PROGRESSIVE
     }
 
     @Test

@@ -14,39 +14,49 @@ class StreamValidator @Inject constructor(
     @MediaClient private val client: OkHttpClient,
 ) {
 
-    private data class Cached(val playable: Boolean, val expiresAtMs: Long)
+    enum class StreamKind { INVALID, PROGRESSIVE, HLS }
+
+    private data class Cached(val kind: StreamKind, val expiresAtMs: Long)
 
     private val cache = ConcurrentHashMap<String, Cached>()
 
-    suspend fun isPlayable(url: String, isHls: Boolean): Boolean {
-        if (url.isBlank()) return false
+    suspend fun isPlayable(url: String, isHls: Boolean): Boolean =
+        kind(url, isHls) != StreamKind.INVALID
+
+    suspend fun kind(url: String, isHls: Boolean): StreamKind {
+        if (url.isBlank()) return StreamKind.INVALID
         val now = System.currentTimeMillis()
-        cache[url]?.let { if (it.expiresAtMs > now) return it.playable }
-        val playable = withContext(Dispatchers.IO) { probe(url, isHls) }
-        cache[url] = Cached(playable, now + TTL_MS)
+        cache[url]?.let { if (it.expiresAtMs > now) return it.kind }
+        val kind = withContext(Dispatchers.IO) { probe(url, isHls) }
+        cache[url] = Cached(kind, now + TTL_MS)
         if (cache.size > MAX_CACHE) cache.clear()
-        return playable
+        return kind
     }
 
-    private fun probe(url: String, isHls: Boolean): Boolean = runCatching {
+    private fun probe(url: String, isHls: Boolean): StreamKind = runCatching {
         val request = Request.Builder()
             .url(url)
             .header("Range", "bytes=0-2047")
             .get()
             .build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return false
+            if (!response.isSuccessful) return StreamKind.INVALID
             val contentType = response.header("Content-Type").orEmpty().lowercase()
-            if (contentType.contains("text/html")) return false
+            if (contentType.contains("text/html")) return StreamKind.INVALID
             val body = response.peekBody(PROBE_BYTES).bytes()
-            val hls = isHls || contentType.contains("mpegurl") || url.contains(".m3u8")
-            if (hls) {
-                body.toString(Charsets.UTF_8).trimStart().startsWith("#EXTM3U")
-            } else {
-                looksLikeAudio(body, contentType)
+            val text = body.take(64).toByteArray().toString(Charsets.UTF_8).trimStart()
+            val playlist = isHls || contentType.contains("mpegurl") || url.contains(".m3u8") ||
+                text.startsWith("#EXTM3U")
+            if (playlist) {
+                return if (body.toString(Charsets.UTF_8).trimStart().startsWith("#EXTM3U")) {
+                    StreamKind.HLS
+                } else {
+                    StreamKind.INVALID
+                }
             }
+            if (looksLikeAudio(body, contentType)) StreamKind.PROGRESSIVE else StreamKind.INVALID
         }
-    }.getOrDefault(false)
+    }.getOrDefault(StreamKind.INVALID)
 
     companion object {
         const val PROBE_BYTES = 2048L
@@ -55,7 +65,6 @@ class StreamValidator @Inject constructor(
 
         fun looksLikeAudio(bytes: ByteArray, contentType: String): Boolean {
             val type = contentType.lowercase()
-            if (type.startsWith("audio/")) return true
             if (type.contains("mpegurl")) return true
             if (bytes.size < 4) return false
             if (bytes[0] == 'I'.code.toByte() &&

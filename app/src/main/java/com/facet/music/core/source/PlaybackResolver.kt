@@ -212,16 +212,25 @@ class PlaybackResolver @Inject constructor(
             result.exceptionOrNull()?.let { lastError = it.asResolveException(track) }
             val stream = result.getOrNull() ?: continue
             if (requireProgressive && stream.isHls) continue
-            if (!streamValidator.isPlayable(stream.url, stream.isHls)) {
+            val kind = streamValidator.kind(stream.url, stream.isHls)
+            if (kind == StreamValidator.StreamKind.INVALID) {
                 lastError = ResolveException(
                     ResolveError.NotAvailable,
                     "Источник отдал не-аудио вместо потока",
                 )
                 continue
             }
+            val effective = if (kind == StreamValidator.StreamKind.HLS && !stream.isHls) {
+                stream.copy(
+                    isHls = true,
+                    mimeType = androidx.media3.common.MimeTypes.APPLICATION_M3U8,
+                )
+            } else {
+                stream
+            }
 
             saveMatch(track, match)
-            return Result.success(stream)
+            return Result.success(effective)
         }
 
         return Result.failure(
@@ -251,9 +260,17 @@ class PlaybackResolver @Inject constructor(
         val result = retrying(original) { provider.resolveStream(candidate) }
         val stream = result.getOrNull() ?: return null
         if (requireProgressive && stream.isHls) return null
-        if (!streamValidator.isPlayable(stream.url, stream.isHls)) {
+        val kind = streamValidator.kind(stream.url, stream.isHls)
+        if (kind == StreamValidator.StreamKind.INVALID) {
             runCatching { matchDao.delete(original.id) }
             return null
+        }
+        if (kind == StreamValidator.StreamKind.HLS && !stream.isHls) {
+            if (requireProgressive) return null
+            return stream.copy(
+                isHls = true,
+                mimeType = androidx.media3.common.MimeTypes.APPLICATION_M3U8,
+            )
         }
         Log.d(TAG, "Использован сохранённый матч: ${saved.matchedSource}")
         return stream
