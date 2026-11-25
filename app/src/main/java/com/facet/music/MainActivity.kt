@@ -38,10 +38,12 @@ import com.facet.music.data.repository.SettingsRepository
 import com.facet.music.data.repository.ThemeMode
 import com.facet.music.core.analytics.AnalyticsEvents
 import com.facet.music.core.analytics.AnalyticsTracker
+import com.facet.music.core.widget.pushWidgetState
 import com.facet.music.data.repository.SpotifyAuthRepository
 import com.facet.music.feature.onboarding.OnboardingScreen
 import com.facet.music.navigation.AppNavGraph
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -63,6 +65,7 @@ class MainActivity : ComponentActivity() {
     lateinit var applicationScope: CoroutineScope
 
     private var appliedLanguage: String = AppLocale.LANGUAGE_SYSTEM
+    private val openPlayerRequests = MutableStateFlow(false)
 
     override fun attachBaseContext(newBase: Context) {
         appliedLanguage = AppLocale.savedLanguage(newBase)
@@ -72,12 +75,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        requestOpenPlayer(intent)
         if (savedInstanceState == null) {
             analyticsTracker.track(AnalyticsEvents.APP_OPEN)
             handleSpotifyRedirect(intent)
         }
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
+            val openPlayerRequest by openPlayerRequests.collectAsState()
             var settingsLoaded by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) {
                 settingsRepository.settings.first()
@@ -172,7 +177,11 @@ class MainActivity : ComponentActivity() {
 
                     !settings.onboardingCompleted -> OnboardingScreen()
 
-                    else -> AppNavGraph(settings = settings)
+                    else -> AppNavGraph(
+                        settings = settings,
+                        openPlayerRequest = openPlayerRequest,
+                        onOpenPlayerHandled = { openPlayerRequests.value = false },
+                    )
                 }
             }
         }
@@ -181,7 +190,19 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        requestOpenPlayer(intent)
         handleSpotifyRedirect(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applicationScope.launch { runCatching { pushWidgetState(this@MainActivity) } }
+    }
+
+    private fun requestOpenPlayer(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) != true) return
+        intent.removeExtra(EXTRA_OPEN_PLAYER)
+        openPlayerRequests.value = true
     }
 
     private fun handleSpotifyRedirect(intent: Intent?) {
@@ -192,5 +213,9 @@ class MainActivity : ComponentActivity() {
         applicationScope.launch {
             spotifyAuthRepository.completeAuthorization(data)
         }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_PLAYER = "com.facet.music.extra.OPEN_PLAYER"
     }
 }

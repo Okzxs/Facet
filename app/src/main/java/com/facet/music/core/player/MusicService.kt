@@ -1,11 +1,15 @@
 package com.facet.music.core.player
 
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
+import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -15,9 +19,14 @@ import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionResult
 import com.facet.music.MainActivity
 import com.facet.music.core.di.ApplicationScope
+import com.facet.music.core.network.MediaClient
+import com.facet.music.core.widget.ACTION_WIDGET_LIKE
+import com.facet.music.core.widget.WidgetArtworkStore
 import com.facet.music.core.widget.WidgetSnapshotStore
+import com.facet.music.core.widget.hasWidgets
 import com.facet.music.core.widget.pushWidgetState
 import com.facet.music.core.widget.WidgetSnapshot
+import com.facet.music.data.model.Track
 import com.facet.music.core.source.PlaybackResolver
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.QueueRepository
@@ -34,6 +43,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import javax.inject.Inject
 
 @UnstableApi
@@ -68,12 +78,34 @@ class MusicService : MediaSessionService() {
     lateinit var coordinator: PlaybackSessionCoordinator
 
     @Inject
+    @MediaClient
+    lateinit var mediaClient: OkHttpClient
+
+    @Inject
     @ApplicationScope
     lateinit var scope: CoroutineScope
+
+    @Volatile
+    private var widgetSnapshot = WidgetSnapshot()
+    private var widgetTicker: Job? = null
+    private var widgetArtworkJob: Job? = null
+    private var widgetLikedJob: Job? = null
+    private var widgetLikedTrackId: String? = null
+    private var widgetArtworkTrackId: String? = null
+    @Volatile
+    private var widgetTrack: Track? = null
+    private var widgetThemeKey = ""
 
     private var exoPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     private lateinit var sessionActivity: PendingIntent
+
+    private val widgetCommandReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ACTION_WIDGET_LIKE) return
+            handleWidgetLike()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -86,6 +118,23 @@ class MusicService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         coordinator.start()
+        widgetSnapshot = WidgetSnapshotStore.read(this)
+        ContextCompat.registerReceiver(
+            this,
+            widgetCommandReceiver,
+            IntentFilter(ACTION_WIDGET_LIKE),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    private fun handleWidgetLike() {
+        scope.launch {
+            val track = withContext(Dispatchers.Main.immediate) {
+                exoPlayer?.let { TrackMediaItem.trackOf(it.currentMediaItem) }
+            } ?: return@launch
+            trackLikeManager.toggle(track)
+            mediaSession?.let(::updateLikeButton)
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -134,6 +183,19 @@ class MusicService : MediaSessionService() {
                 withContext(Dispatchers.Main) {
                     player.skipSilenceEnabled = settings.skipSilenceEnabled
                 }
+                val themeKey = listOf(
+                    settings.themeMode.name,
+                    settings.amoledBlack,
+                    settings.customAccentColor,
+                    settings.accentEnabled,
+                    settings.paletteMode,
+                    settings.shapeStyle,
+                    settings.serifDisplay,
+                ).joinToString("|")
+                if (widgetThemeKey.isNotEmpty() && themeKey != widgetThemeKey && widgetSnapshot.hasTrack) {
+                    scope.launch { runCatching { pushWidgetState(this@MusicService) } }
+                }
+                widgetThemeKey = themeKey
             }
         }
 
@@ -154,6 +216,14 @@ class MusicService : MediaSessionService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 syncWidget(player)
                 updateFadeLoop(player)
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                syncWidget(player)
             }
         })
 
@@ -340,25 +410,109 @@ class MusicService : MediaSessionService() {
     }
 
     private fun syncWidget(player: Player) {
-        val metadata = player.currentMediaItem?.mediaMetadata
-        val title = metadata?.title?.toString().orEmpty()
-        val artist = metadata?.artist?.toString().orEmpty()
-        WidgetSnapshotStore.write(
-            this,
+        val item = player.currentMediaItem
+        val track = TrackMediaItem.trackOf(item)
+        val trackChanged = track?.id != widgetSnapshot.trackId
+        pushWidget(
             WidgetSnapshot(
-                title = title,
-                artist = artist,
+                trackId = track?.id.orEmpty(),
+                title = item?.mediaMetadata?.title?.toString().orEmpty(),
+                artist = item?.mediaMetadata?.artist?.toString().orEmpty(),
+                artworkUrl = track?.artworkUrl.orEmpty(),
+                artToken = if (trackChanged) "" else widgetSnapshot.artToken,
                 isPlaying = player.isPlaying,
+                isLiked = if (trackChanged) false else widgetSnapshot.isLiked,
+                positionMs = player.currentPosition.coerceAtLeast(0L),
+                durationMs = playerDuration(player, track),
             ),
         )
-        scope.launch {
-            runCatching {
-                pushWidgetState(
-                    this@MusicService,
-                    WidgetSnapshot(
-                        title = title,
-                        artist = artist,
-                        isPlaying = player.isPlaying,
+        widgetTrack = track
+        if (track != null) {
+            observeWidgetLiked(track)
+            if (trackChanged) widgetArtworkTrackId = null
+            if (trackChanged || !widgetSnapshot.hasArtwork) refreshWidgetArtwork(track)
+        }
+        updateWidgetTicker(player)
+    }
+
+    private fun playerDuration(player: Player, track: Track?): Long {
+        val current = player.duration
+        return if (current != C.TIME_UNSET && current > 0L) {
+            current
+        } else {
+            track?.durationMs ?: 0L
+        }
+    }
+
+    private fun pushWidget(snapshot: WidgetSnapshot) {
+        widgetSnapshot = snapshot
+        WidgetSnapshotStore.write(this, snapshot)
+        scope.launch { runCatching { pushWidgetState(this@MusicService) } }
+    }
+
+    private fun observeWidgetLiked(track: Track) {
+        if (widgetLikedTrackId == track.id) return
+        widgetLikedTrackId = track.id
+        widgetLikedJob?.cancel()
+        widgetLikedJob = scope.launch {
+            likedTracksRepository.isLiked(track.id).collect { liked ->
+                val current = widgetSnapshot
+                if (current.trackId == track.id && current.isLiked != liked) {
+                    pushWidget(current.copy(isLiked = liked))
+                }
+            }
+        }
+    }
+
+    private fun refreshWidgetArtwork(track: Track) {
+        if (widgetArtworkTrackId == track.id) return
+        val url = track.artworkUrl?.takeIf { it.isNotBlank() } ?: return
+        widgetArtworkTrackId = track.id
+        widgetArtworkJob?.cancel()
+        widgetArtworkJob = scope.launch {
+            if (!hasWidgets(this@MusicService)) {
+                widgetArtworkTrackId = null
+                return@launch
+            }
+            val changed = runCatching {
+                WidgetArtworkStore.refresh(
+                    context = this@MusicService,
+                    trackId = track.id,
+                    artworkUrl = url,
+                    client = mediaClient,
+                )
+            }.getOrDefault(false)
+            if (changed && widgetSnapshot.trackId == track.id) {
+                pushWidget(widgetSnapshot.copy(artToken = track.id))
+            }
+        }
+    }
+
+    private fun updateWidgetTicker(player: Player) {
+        if (!player.isPlaying) {
+            widgetTicker?.cancel()
+            widgetTicker = null
+            return
+        }
+        if (widgetTicker?.isActive == true) return
+        widgetTicker = scope.launch {
+            while (isActive) {
+                delay(WIDGET_TICK_MS)
+                if (!hasWidgets(this@MusicService)) continue
+                val track = widgetTrack
+                if (track != null && !widgetSnapshot.hasArtwork) refreshWidgetArtwork(track)
+                val position = withContext(Dispatchers.Main.immediate) {
+                    if (player.isPlaying) player.currentPosition.coerceAtLeast(0L) else null
+                } ?: break
+                val duration = withContext(Dispatchers.Main.immediate) {
+                    playerDuration(player, null)
+                }
+                val current = widgetSnapshot
+                pushWidget(
+                    current.copy(
+                        positionMs = position,
+                        durationMs = if (duration > 0L) duration else current.durationMs,
+                        isPlaying = true,
                     ),
                 )
             }
@@ -366,6 +520,13 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        widgetTicker?.cancel()
+        widgetTicker = null
+        widgetArtworkJob?.cancel()
+        widgetArtworkJob = null
+        widgetLikedJob?.cancel()
+        widgetLikedJob = null
+        runCatching { unregisterReceiver(widgetCommandReceiver) }
         exoPlayer?.release()
         exoPlayer = null
         mediaSession?.release()
@@ -374,6 +535,8 @@ class MusicService : MediaSessionService() {
     }
 
     private companion object {
+        const val WIDGET_TICK_MS = 10_000L
+
         val SAFE_CONTROLLER_COMMANDS: Player.Commands = Player.Commands.Builder()
             .addAll(
                 Player.COMMAND_PLAY_PAUSE,

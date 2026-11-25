@@ -738,14 +738,17 @@
     <string name="studio_library_list">List</string>
 
     <string name="widget_name">Facet player</string>
-    <string name="widget_description">Now playing with controls</string>
+    <string name="widget_description">Artwork, live progress and controls</string>
     <string name="widget_no_track">Facet</string>
     <string name="widget_hint">Open the app and press play</string>
+    <string name="widget_open">Open Facet</string>
+    <string name="widget_like_cd">Like</string>
+    <string name="widget_unlike_cd">Remove like</string>
 
     <string name="studio_system">System</string>
     <string name="studio_system_hint">Widgets and home screen integration</string>
     <string name="studio_widget_add">Add player widget</string>
-    <string name="studio_widget_hint">4×2 and 2×2 with play, previous and next</string>
+    <string name="studio_widget_hint">Resizable: artwork, progress, like and controls</string>
 
     <string name="widget_state_playing">PLAYING</string>
     <string name="widget_state_paused">PAUSED</string>

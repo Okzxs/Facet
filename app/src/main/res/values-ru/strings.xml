@@ -745,14 +745,17 @@
     <string name="studio_library_list">Список</string>
 
     <string name="widget_name">Плеер Facet</string>
-    <string name="widget_description">Сейчас играет и управление</string>
+    <string name="widget_description">Обложка, живой прогресс и управление</string>
     <string name="widget_no_track">Facet</string>
     <string name="widget_hint">Откройте приложение и включите музыку</string>
+    <string name="widget_open">Открыть Facet</string>
+    <string name="widget_like_cd">Нравится</string>
+    <string name="widget_unlike_cd">Убрать лайк</string>
 
     <string name="studio_system">Система</string>
     <string name="studio_system_hint">Виджеты и интеграция с рабочим столом</string>
     <string name="studio_widget_add">Добавить виджет плеера</string>
-    <string name="studio_widget_hint">4×2 и 2×2 с play, назад и вперёд</string>
+    <string name="studio_widget_hint">Любой размер: обложка, прогресс, лайк и управление</string>
 
     <string name="widget_state_playing">ИГРАЕТ</string>
     <string name="widget_state_paused">ПАУЗА</string>

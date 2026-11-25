@@ -84,11 +84,16 @@ import com.facet.music.feature.search.SearchScreen
 import com.facet.music.feature.settings.SettingsScreen
 import com.facet.music.feature.settings.ThemeStudioScreen
 import com.facet.music.feature.wave.WaveScreen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun AppNavGraph(settings: AppSettings) {
+fun AppNavGraph(
+    settings: AppSettings,
+    openPlayerRequest: Boolean = false,
+    onOpenPlayerHandled: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
@@ -147,6 +152,19 @@ fun AppNavGraph(settings: AppSettings) {
         if (currentTrack != null) lastTrack = currentTrack
     }
     val miniTrack = currentTrack ?: lastTrack
+
+    LaunchedEffect(openPlayerRequest, miniTrack) {
+        if (openPlayerRequest && miniTrack != null) {
+            isPlayerOpen = true
+            onOpenPlayerHandled()
+        }
+    }
+    LaunchedEffect(openPlayerRequest) {
+        if (openPlayerRequest) {
+            delay(2000L)
+            onOpenPlayerHandled()
+        }
+    }
 
     var isMiniPlayerDismissed by remember { mutableStateOf(false) }
     LaunchedEffect(currentTrack) {

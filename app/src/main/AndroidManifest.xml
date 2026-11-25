@@ -55,6 +55,14 @@
                 android:resource="@xml/facet_widget_info" />
         </receiver>
 
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".core.player.MusicService"
             android:exported="true"
