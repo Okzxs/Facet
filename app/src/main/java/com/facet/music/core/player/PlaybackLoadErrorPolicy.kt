@@ -6,6 +6,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import com.facet.music.core.source.PlaybackResolver
 import java.util.concurrent.ConcurrentHashMap
@@ -22,10 +23,11 @@ class PlaybackLoadErrorPolicy @Inject constructor(
     private val invalidations = ConcurrentHashMap<String, Int>()
 
     override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
-        val code = (loadErrorInfo.exception as? HttpDataSource.InvalidResponseCodeException)
-            ?.responseCode
-            ?: return super.getRetryDelayMsFor(loadErrorInfo)
-        if (code !in EXPIRED_CODES) return super.getRetryDelayMsFor(loadErrorInfo)
+        val exception = loadErrorInfo.exception
+        val code = (exception as? HttpDataSource.InvalidResponseCodeException)?.responseCode
+        val isFormatError = exception is UnrecognizedInputFormatException
+        val retryable = isFormatError || (code != null && code in EXPIRED_CODES)
+        if (!retryable) return super.getRetryDelayMsFor(loadErrorInfo)
 
         val dataSpec = loadErrorInfo.loadEventInfo.dataSpec
         val trackId = PlaybackUri.trackId(dataSpec.uri)

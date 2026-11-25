@@ -3,6 +3,7 @@ package com.facet.music.core.player
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import com.facet.music.core.error.UiError
@@ -50,6 +51,9 @@ class PlayerController @Inject constructor(
     private var errorStreak = 0
 
     @Volatile
+    private var formatRetries = 0
+
+    @Volatile
     private var resolving = false
 
     @Volatile
@@ -81,6 +85,8 @@ class PlayerController @Inject constructor(
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             errorPositionMs = 0L
+            errorStreak = 0
+            formatRetries = 0
             syncFromPlayer()
         }
 
@@ -566,6 +572,21 @@ class PlayerController @Inject constructor(
     private fun handlePlayerError(error: PlaybackException) {
         val player = attachedPlayer
         errorPositionMs = player?.currentPosition?.coerceAtLeast(0L) ?: 0L
+        val track = _state.value.currentTrack
+        if (
+            player != null &&
+            track != null &&
+            error.cause is UnrecognizedInputFormatException &&
+            formatRetries < MAX_FORMAT_RETRIES
+        ) {
+            formatRetries++
+            playbackResolver.invalidate(track.id)
+            _state.update { it.copy(error = null, isBuffering = true, isLoading = true) }
+            Log.w(tag, "Формат потока не распознан, повтор ${formatRetries} для ${track.id}")
+            player.prepare()
+            player.play()
+            return
+        }
         errorStreak++
         val canAdvance = player != null &&
             (player.hasNextMediaItem() || player.repeatMode == Player.REPEAT_MODE_ALL)
@@ -849,6 +870,8 @@ class PlayerController @Inject constructor(
 
     private companion object {
         const val MAX_CONSECUTIVE_ERRORS = 3
+
+        const val MAX_FORMAT_RETRIES = 2
         const val FOCUS_RESUME_WINDOW_MS = 15 * 60 * 1000L
     }
 }
