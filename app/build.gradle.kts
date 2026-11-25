@@ -95,6 +95,7 @@ ksp {
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.11.00"))
+    implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")

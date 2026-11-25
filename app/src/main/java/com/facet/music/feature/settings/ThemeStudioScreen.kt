@@ -646,6 +646,26 @@ fun ThemeStudioScreen(
                     }
                 }
 
+                item(key = "system") {
+                    StudioBlock(
+                        title = stringResource(R.string.studio_system),
+                        hint = stringResource(R.string.studio_system_hint),
+                    ) {
+                        OutlinedButton(
+                            onClick = { pinPlayerWidget(context) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.studio_widget_add))
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.studio_widget_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
                 item(key = "styles") {
                     StudioBlock(
                         title = stringResource(R.string.studio_styles),
@@ -1273,6 +1293,17 @@ private fun SaveStyleDialog(
             }
         },
     )
+}
+
+private fun pinPlayerWidget(context: Context) {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
+    val manager = android.appwidget.AppWidgetManager.getInstance(context)
+    if (!manager.isRequestPinAppWidgetSupported) return
+    val provider = android.content.ComponentName(
+        context,
+        com.facet.music.core.widget.FacetWidgetReceiver::class.java,
+    )
+    runCatching { manager.requestPinAppWidget(provider, null, null) }
 }
 
 private fun copyToClipboard(context: Context, text: String) {

@@ -1,6 +1,17 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 25.11.2026 (библиотека сеткой и списком)
+## Последнее обновление: 25.11.2026 (виджет плеера 4×2 / 2×2)
+
+---
+
+## Сессия 78: виджет плеера 4×2 / 2×2 (25.11.2026)
+
+- **Glance-виджет** (`core/widget/FacetWidget.kt`): адаптивные размеры 250×110dp (4×2) и 150×150dp (2×2), фон Ink `#12141A`, латунный акцент, подпись FACET и состояние «ИГРАЕТ/ПАУЗА», название и исполнитель, кнопки «назад / play-pause / вперёд». Тап по виджету открывает приложение.
+- **Управление из виджета** идёт через `PendingIntent` на `MediaButtonReceiver` (KeyEvent → ACTION_MEDIA_BUTTON): Glance-ActionCallback не может `bindService` из broadcast-контекста (`ReceiverCallNotAllowedException`), поэтому прямое подключение `MediaController` не используется.
+- **Живое обновление.** Данные хранятся в Glance-состоянии (`PreferencesGlanceStateDefinition`): `MusicService` на смене трека и play/pause пишет снапшот и вызывает `pushWidgetState` для каждого `GlanceId`; при первом добавлении виджет добирает последний трек из `facet_widget` SharedPreferences. Попутно выяснилось, что `updateAll` без изменения Glance-состояния не перерисовывает RemoteViews — перешли на `updateAppWidgetState` + `update`.
+- **Добавление из приложения:** студия → «Система» → «Добавить виджет плеера» (`requestPinAppWidget`), при недоступности pin-диалога виджет добавляется вручную из лаунчера. Провайдер `FacetWidgetReceiver`, `res/xml/facet_widget_info.xml` (targetCell 4×2, resizeMode), собственные vector-иконки.
+- **Зависимости:** `androidx.glance:glance-appwidget:1.1.1`; APK вырос до 34 277 002 байт (в бюджете 40 МБ).
+- **Проверка:** live A26 — виджет добавлен через студию, показывает текущий трек, обновляется после «вперёд», состояние и иконка play/pause меняются; логика снапшота проверена по `facet_widget.xml`. Всего 80 suite / 466 тестов, 0 failures, 1 skipped. APK 34 277 002 байта, SHA-256 `64fd66b01642bae07e14a628a8c5bc9246fa6e8978aef6ba109d25f389bc9964`.
 
 ---
 

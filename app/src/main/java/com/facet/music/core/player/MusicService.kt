@@ -15,6 +15,9 @@ import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionResult
 import com.facet.music.MainActivity
 import com.facet.music.core.di.ApplicationScope
+import com.facet.music.core.widget.WidgetSnapshotStore
+import com.facet.music.core.widget.pushWidgetState
+import com.facet.music.core.widget.WidgetSnapshot
 import com.facet.music.core.source.PlaybackResolver
 import com.facet.music.data.repository.LikedTracksRepository
 import com.facet.music.data.repository.QueueRepository
@@ -131,6 +134,11 @@ class MusicService : MediaSessionService() {
                 reason: Int,
             ) {
                 mediaSession?.let(::updateLikeButton)
+                syncWidget(player)
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                syncWidget(player)
             }
         })
 
@@ -285,6 +293,32 @@ class MusicService : MediaSessionService() {
             pauseAllPlayersAndStopSelf()
         }
         super.onTaskRemoved(rootIntent)
+    }
+
+    private fun syncWidget(player: Player) {
+        val metadata = player.currentMediaItem?.mediaMetadata
+        val title = metadata?.title?.toString().orEmpty()
+        val artist = metadata?.artist?.toString().orEmpty()
+        WidgetSnapshotStore.write(
+            this,
+            WidgetSnapshot(
+                title = title,
+                artist = artist,
+                isPlaying = player.isPlaying,
+            ),
+        )
+        scope.launch {
+            runCatching {
+                pushWidgetState(
+                    this@MusicService,
+                    WidgetSnapshot(
+                        title = title,
+                        artist = artist,
+                        isPlaying = player.isPlaying,
+                    ),
+                )
+            }
+        }
     }
 
     override fun onDestroy() {
