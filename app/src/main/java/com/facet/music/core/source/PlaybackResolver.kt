@@ -39,6 +39,7 @@ class PlaybackResolver @Inject constructor(
     private val matcher: TrackMatcher,
     private val matchDao: ResolvedMatchDao,
     private val canonicalTrackRepository: CanonicalTrackRepository,
+    private val streamValidator: StreamValidator,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -211,6 +212,13 @@ class PlaybackResolver @Inject constructor(
             result.exceptionOrNull()?.let { lastError = it.asResolveException(track) }
             val stream = result.getOrNull() ?: continue
             if (requireProgressive && stream.isHls) continue
+            if (!streamValidator.isPlayable(stream.url, stream.isHls)) {
+                lastError = ResolveException(
+                    ResolveError.NotAvailable,
+                    "Источник отдал не-аудио вместо потока",
+                )
+                continue
+            }
 
             saveMatch(track, match)
             return Result.success(stream)
@@ -243,6 +251,10 @@ class PlaybackResolver @Inject constructor(
         val result = retrying(original) { provider.resolveStream(candidate) }
         val stream = result.getOrNull() ?: return null
         if (requireProgressive && stream.isHls) return null
+        if (!streamValidator.isPlayable(stream.url, stream.isHls)) {
+            runCatching { matchDao.delete(original.id) }
+            return null
+        }
         Log.d(TAG, "Использован сохранённый матч: ${saved.matchedSource}")
         return stream
     }

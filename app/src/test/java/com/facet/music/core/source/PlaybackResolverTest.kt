@@ -30,6 +30,10 @@ import java.util.concurrent.atomic.AtomicInteger
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaybackResolverTest {
 
+    private fun allowAllValidator(): StreamValidator = mockk {
+        coEvery { isPlayable(any(), any()) } returns true
+    }
+
     @Test
     fun `metadata track matches soundcloud and stores match`() = runTest {
         val candidate = track(
@@ -220,6 +224,7 @@ class PlaybackResolverTest {
             matcher = TrackMatcher(),
             matchDao = mockk(relaxed = true),
             canonicalTrackRepository = canonicalFallback(),
+            streamValidator = allowAllValidator(),
             scope = this,
         )
 
@@ -445,6 +450,7 @@ class PlaybackResolverTest {
             matcher = TrackMatcher(),
             matchDao = dao,
             canonicalTrackRepository = canonicalFallback(variant),
+            streamValidator = allowAllValidator(),
             scope = this,
         )
 
@@ -466,6 +472,7 @@ class PlaybackResolverTest {
             matcher = TrackMatcher(),
             matchDao = dao,
             canonicalTrackRepository = canonicalFallback(),
+            streamValidator = allowAllValidator(),
             scope = this,
         )
     }
