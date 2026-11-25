@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.rounded.AddLink
+import androidx.compose.material3.Text
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Refresh
@@ -75,8 +76,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.R
@@ -250,10 +253,37 @@ fun LibraryScreen(
         topBar = {
             LargeTopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.library_title),
-                        style = MaterialTheme.typography.headlineMediumEmphasized,
-                    )
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "FACET",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 2.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .width(22.dp)
+                                    .height(1.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                    ),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = stringResource(R.string.library_overline),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.library_title),
+                            style = MaterialTheme.typography.displaySmall,
+                        )
+                    }
                 },
                 scrollBehavior = topBarScrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -351,6 +381,7 @@ fun LibraryScreen(
             item(key = "library_playlists_header") {
                 SectionHeader(
                     title = stringResource(R.string.library_tab_playlists),
+                    index = 1,
                     actionLabel = stringResource(R.string.library_import_short),
                     actionIcon = Icons.Rounded.AddLink,
                     onAction = onImportClick,
@@ -412,6 +443,7 @@ fun LibraryScreen(
                 item(key = "library_spotify_header") {
                     SectionHeader(
                         title = stringResource(R.string.spotify_import_row),
+                        index = 2,
                         actionIcon = Icons.Rounded.Refresh,
                         onAction = viewModel::refreshSpotifyPlaylists,
                     )
@@ -451,7 +483,10 @@ fun LibraryScreen(
             }
 
             item(key = "library_downloaded_header") {
-                SectionHeader(title = stringResource(R.string.library_tab_downloaded))
+                SectionHeader(
+                    title = stringResource(R.string.library_tab_downloaded),
+                    index = if (spotifyConnected) 3 else 2,
+                )
             }
             if (downloadedTracks.isEmpty()) {
                 item(key = "library_downloaded_empty") {

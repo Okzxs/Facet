@@ -753,4 +753,9 @@
     <string name="widget_state_paused">PAUSED</string>
 
     <string name="search_local_section">In your library</string>
+
+    <string name="library_overline">LIBRARY</string>
+
+    <string name="search_overline">SEARCH</string>
+    <string name="settings_overline">SETTINGS</string>
 </resources>

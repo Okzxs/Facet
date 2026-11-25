@@ -760,4 +760,9 @@
     <string name="widget_state_paused">ПАУЗА</string>
 
     <string name="search_local_section">В медиатеке</string>
+
+    <string name="library_overline">КОЛЛЕКЦИЯ</string>
+
+    <string name="search_overline">ПОИСК</string>
+    <string name="settings_overline">НАСТРОЙКИ</string>
 </resources>

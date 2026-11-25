@@ -54,6 +54,7 @@ import kotlin.math.abs
 fun SectionHeader(
     title: String,
     modifier: Modifier = Modifier,
+    index: Int? = null,
     actionLabel: String? = null,
     actionIcon: ImageVector? = null,
     onAction: (() -> Unit)? = null,
@@ -67,6 +68,14 @@ fun SectionHeader(
             .padding(start = 16.dp, end = 4.dp, top = 24.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (index != null) {
+            Text(
+                text = index.toString().padStart(2, '0'),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(10.dp))
+        }
         Text(
             text = title,
             style = MaterialTheme.typography.titleLargeEmphasized,

@@ -126,6 +126,43 @@ fun HomeScreen(
     val homeListState = rememberLazyListState()
     val recommendationsListState = rememberLazyListState()
 
+    val sectionNumbers = remember(
+        sections,
+        heroTrack,
+        showWavePromo,
+        uiState.isExtrasLoading,
+        uiState.newReleases,
+        uiState.charts,
+        uiState.genreSections,
+        recentTracks,
+        uiState.memories,
+        uiState.likedTracks,
+    ) {
+        var number = 0
+        val numbers = mutableMapOf<String, Int>()
+        sections.forEach { section ->
+            val visible = when (section) {
+                AppSettings.SECTION_HERO -> heroTrack != null
+                AppSettings.SECTION_WAVE -> showWavePromo
+                AppSettings.SECTION_NEW_RELEASES ->
+                    uiState.isExtrasLoading || uiState.newReleases.isNotEmpty()
+                AppSettings.SECTION_CHARTS ->
+                    uiState.isExtrasLoading || uiState.charts.isNotEmpty()
+                AppSettings.SECTION_GENRES -> uiState.genreSections.isNotEmpty()
+                AppSettings.SECTION_RECOMMENDATIONS -> true
+                AppSettings.SECTION_RECENT -> recentTracks.isNotEmpty()
+                AppSettings.SECTION_MEMORIES ->
+                    uiState.memories.isNotEmpty() || uiState.likedTracks.isNotEmpty()
+                else -> false
+            }
+            if (visible) {
+                number += 1
+                numbers[section] = number
+            }
+        }
+        numbers
+    }
+
     LaunchedEffect(Unit) {
         viewModel.openPlayer.collect { (track, queue) -> onTrackClick(track, queue) }
     }
@@ -166,6 +203,7 @@ fun HomeScreen(
                                     track = heroTrack,
                                     queue = recentTracks,
                                     compact = heroStyle == AppSettings.HERO_MINIMAL,
+                                    index = sectionNumbers[section] ?: 0,
                                     onTrackClick = onTrackClick,
                                 )
                             }
@@ -198,6 +236,7 @@ fun HomeScreen(
                                 NewReleasesBlock(
                                     releases = uiState.newReleases,
                                     onClick = viewModel::playRelease,
+                                    index = sectionNumbers[section] ?: 0,
                                 )
                             }
                         } else if (
@@ -208,6 +247,7 @@ fun HomeScreen(
                                 ChartsBlock(
                                     tracks = uiState.charts,
                                     onTrackClick = onTrackClick,
+                                    index = sectionNumbers[section] ?: 0,
                                 )
                             }
                         }
@@ -218,6 +258,7 @@ fun HomeScreen(
                             GenrePlaylistsBlock(
                                 sections = uiState.genreSections,
                                 onTrackClick = onTrackClick,
+                                index = sectionNumbers[section] ?: 0,
                             )
                         }
                     }
@@ -231,6 +272,7 @@ fun HomeScreen(
                                 listState = recommendationsListState,
                                 onTrackClick = onTrackClick,
                                 onRetry = viewModel::refresh,
+                                index = sectionNumbers[section] ?: 0,
                             )
                         }
                     }
@@ -241,6 +283,7 @@ fun HomeScreen(
                                 RecentBlock(
                                     tracks = recentTracks,
                                     onTrackClick = onTrackClick,
+                                    index = sectionNumbers[section] ?: 0,
                                 )
                             }
                         }
@@ -252,6 +295,7 @@ fun HomeScreen(
                                 Column {
                                     HomeSectionHeader(
                                         title = stringResource(R.string.home_memories),
+                                        index = sectionNumbers[section] ?: 0,
                                     )
                                     MemoryCard(
                                         memories = uiState.memories,
@@ -267,6 +311,7 @@ fun HomeScreen(
                                 Column {
                                     HomeSectionHeader(
                                         title = stringResource(R.string.home_favourites),
+                                        index = sectionNumbers[section] ?: 0,
                                     )
                                     LikedCard(
                                         tracks = uiState.likedTracks,
@@ -341,18 +386,36 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "FACET",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp,
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .width(22.dp)
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = dateLabel.uppercase(locale),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = greeting,
-                style = MaterialTheme.typography.headlineMediumEmphasized,
+                style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = dateLabel,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -416,9 +479,10 @@ private fun WavePromoCard(onClick: () -> Unit) {
 private fun NewReleasesBlock(
     releases: List<DeezerRelease>,
     onClick: (DeezerRelease) -> Unit,
+    index: Int,
 ) {
     Column {
-        HomeSectionHeader(title = stringResource(R.string.home_new_releases))
+        HomeSectionHeader(title = stringResource(R.string.home_new_releases), index = index)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(items = releases, key = { it.id }) { release ->
                 Column(
@@ -458,9 +522,10 @@ private fun NewReleasesBlock(
 private fun ChartsBlock(
     tracks: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
+    index: Int,
 ) {
     Column {
-        HomeSectionHeader(title = stringResource(R.string.home_charts))
+        HomeSectionHeader(title = stringResource(R.string.home_charts), index = index)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(items = tracks, key = { it.id }) { track ->
                 Column(
@@ -515,9 +580,10 @@ private fun ChartsBlock(
 private fun GenrePlaylistsBlock(
     sections: List<GenreSection>,
     onTrackClick: (Track, List<Track>) -> Unit,
+    index: Int,
 ) {
     Column {
-        HomeSectionHeader(title = stringResource(R.string.home_genre_playlists))
+        HomeSectionHeader(title = stringResource(R.string.home_genre_playlists), index = index)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(items = sections, key = { it.genre }) { section ->
                 Surface(
@@ -578,15 +644,35 @@ private fun ExtrasSkeleton() {
 }
 
 @Composable
-private fun HomeSectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleLarge,
-        color = MaterialTheme.colorScheme.onSurface,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(bottom = 12.dp),
-    )
+private fun HomeSectionHeader(title: String, index: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = index.toString().padStart(2, '0'),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .width(40.dp)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant),
+        )
+    }
 }
 
 @Composable
@@ -595,6 +681,7 @@ private fun ContinueListeningCard(
     queue: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
     compact: Boolean = false,
+    index: Int = 1,
 ) {
     val continueCd = stringResource(R.string.home_continue_cd, track.title)
     val shape = MaterialTheme.shapes.extraLarge
@@ -602,6 +689,7 @@ private fun ContinueListeningCard(
         CompactContinueCard(
             track = track,
             continueCd = continueCd,
+            index = index,
             onClick = { onTrackClick(track, queue) },
         )
         return
@@ -683,6 +771,14 @@ private fun ContinueListeningCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            Text(
+                text = index.toString().padStart(2, '0'),
+                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.sp),
+                color = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(20.dp),
+            )
             FilledIconButton(
                 onClick = { onTrackClick(track, queue) },
                 modifier = Modifier
@@ -708,6 +804,7 @@ private fun ContinueListeningCard(
 private fun CompactContinueCard(
     track: Track,
     continueCd: String,
+    index: Int,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -743,6 +840,12 @@ private fun CompactContinueCard(
                         text = stringResource(R.string.home_continue),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = index.toString().padStart(2, '0'),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Spacer(Modifier.height(3.dp))
@@ -785,9 +888,10 @@ private fun RecommendationsBlock(
     listState: LazyListState,
     onTrackClick: (Track, List<Track>) -> Unit,
     onRetry: () -> Unit,
+    index: Int,
 ) {
     Column {
-        HomeSectionHeader(title = stringResource(R.string.home_for_you))
+        HomeSectionHeader(title = stringResource(R.string.home_for_you), index = index)
         when {
             tracks.isNotEmpty() -> RecommendationsRow(
                 tracks = tracks,
@@ -974,9 +1078,10 @@ private fun RecommendationsMessage(
 private fun RecentBlock(
     tracks: List<Track>,
     onTrackClick: (Track, List<Track>) -> Unit,
+    index: Int,
 ) {
     Column {
-        HomeSectionHeader(title = stringResource(R.string.home_recent))
+        HomeSectionHeader(title = stringResource(R.string.home_recent), index = index)
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
