@@ -576,7 +576,7 @@ class PlayerController @Inject constructor(
             formatRetries < MAX_FORMAT_RETRIES
         ) {
             formatRetries++
-            playbackResolver.invalidate(track.id)
+            playbackResolver.invalidateHard(track.id)
             _state.update { it.copy(error = null, isBuffering = true, isLoading = true) }
             Log.w(tag, "Формат потока не распознан, повтор ${formatRetries} для ${track.id}")
             player.prepare()

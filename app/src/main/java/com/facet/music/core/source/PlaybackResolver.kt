@@ -69,6 +69,11 @@ class PlaybackResolver @Inject constructor(
         cache.remove(trackId)
     }
 
+    fun invalidateHard(trackId: String) {
+        cache.remove(trackId)
+        cache.clear()
+    }
+
     fun isKnownTrack(trackId: String): Boolean = knownTracks.containsKey(trackId)
 
     suspend fun resolveById(trackId: String): Result<ResolvedStream> {
