@@ -93,6 +93,7 @@ import coil3.request.crossfade
 import com.facet.music.R
 import com.facet.music.core.ui.components.formatDuration
 import com.facet.music.core.ui.theme.PillShape
+import com.facet.music.core.ui.theme.cloudPress
 import com.facet.music.core.util.SeasonProvider
 import com.facet.music.data.model.SeasonMemory
 import com.facet.music.data.model.Track
@@ -383,12 +384,12 @@ private fun RevealBlock(
     LaunchedEffect(Unit) {
         if (revealed) return@LaunchedEffect
 
-        delay(index * 40L)
+        delay(index * 55L)
         progress.animateTo(
             targetValue = 1f,
             animationSpec = spring(
-                dampingRatio = 0.78f,
-                stiffness = Spring.StiffnessLow,
+                dampingRatio = 0.68f,
+                stiffness = 340f,
             ),
         )
         revealed = true
@@ -399,7 +400,7 @@ private fun RevealBlock(
             .fillMaxWidth()
             .graphicsLayer {
                 alpha = progress.value
-                translationY = (1f - progress.value) * 16.dp.toPx()
+                translationY = (1f - progress.value) * 28.dp.toPx()
             },
     ) {
         content()
@@ -484,11 +485,13 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
 
 @Composable
 private fun WavePromoCard(onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
     Surface(
         onClick = onClick,
+        interactionSource = interactionSource,
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().cloudPress(interactionSource),
     ) {
         Row(
             modifier = Modifier.padding(24.dp),
@@ -532,10 +535,16 @@ private fun NewReleasesBlock(
         HomeSectionHeader(title = stringResource(R.string.home_new_releases), index = index)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items = releases, key = { it.id }) { release ->
+                val interactionSource = remember { MutableInteractionSource() }
                 Column(
                     modifier = Modifier
                         .width(136.dp)
-                        .clickable { onClick(release) },
+                        .cloudPress(interactionSource)
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null,
+                            onClick = { onClick(release) },
+                        ),
                 ) {
                     AsyncImage(
                         model = release.coverUrl,
@@ -575,10 +584,16 @@ private fun ChartsBlock(
         HomeSectionHeader(title = stringResource(R.string.home_charts), index = index)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items = tracks, key = { it.id }) { track ->
+                val interactionSource = remember { MutableInteractionSource() }
                 Column(
                     modifier = Modifier
                         .width(136.dp)
-                        .clickable { onTrackClick(track, tracks) },
+                        .cloudPress(interactionSource)
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null,
+                            onClick = { onTrackClick(track, tracks) },
+                        ),
                 ) {
                     Box {
                         AsyncImage(
@@ -633,11 +648,13 @@ private fun GenrePlaylistsBlock(
         HomeSectionHeader(title = stringResource(R.string.home_genre_playlists), index = index)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items = sections, key = { it.genre }) { section ->
+                val interactionSource = remember { MutableInteractionSource() }
                 Surface(
                     onClick = { onTrackClick(section.tracks.first(), section.tracks) },
+                    interactionSource = interactionSource,
                     shape = MaterialTheme.shapes.extraLarge,
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    modifier = Modifier.width(176.dp),
+                    modifier = Modifier.width(176.dp).cloudPress(interactionSource),
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         Text(
@@ -854,11 +871,18 @@ private fun CompactContinueCard(
     index: Int,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.extraLarge)
-            .clickable(role = Role.Button, onClick = onClick)
+            .cloudPress(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
             .semantics { contentDescription = continueCd },
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,

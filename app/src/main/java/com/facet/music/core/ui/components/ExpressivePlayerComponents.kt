@@ -1,10 +1,12 @@
 package com.facet.music.core.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -62,6 +64,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
 import com.facet.music.R
+import com.facet.music.core.ui.theme.Motion
 
 @Composable
 fun rememberPressScale(interactionSource: InteractionSource): Float {
@@ -161,12 +164,12 @@ fun PlayerControlIsland(
                         onClick = onSpeedClick,
                         interactionSource = speedInteraction,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(width = 52.dp, height = 40.dp)
                             .graphicsLayer {
                                 scaleX = speedScale
                                 scaleY = speedScale
                             },
-                        shape = CircleShape,
+                        shape = MaterialTheme.shapes.extraLarge,
                         color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = contentColor,
                     ) {
@@ -240,12 +243,12 @@ fun PlayerControlIsland(
                         onClick = onQueueClick,
                         interactionSource = queueInteraction,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(width = 52.dp, height = 40.dp)
                             .graphicsLayer {
                                 scaleX = queueScale
                                 scaleY = queueScale
                             },
-                        shape = CircleShape,
+                        shape = MaterialTheme.shapes.extraLarge,
                         color = MaterialTheme.colorScheme.surfaceContainerHighest,
                         contentColor = contentColor,
                     ) {
@@ -278,11 +281,16 @@ private fun PlayMorphButton(
     }
     val morphProgress by animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0f,
-        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f),
         label = "playMorphProgress",
     )
     val interaction = remember { MutableInteractionSource() }
     val scale = rememberPressScale(interaction)
+    val pop = remember { Animatable(1f) }
+    LaunchedEffect(isPlaying) {
+        pop.snapTo(0.88f)
+        pop.animateTo(1f, Motion.bounce())
+    }
 
     FilledIconButton(
         onClick = onClick,
@@ -291,8 +299,8 @@ private fun PlayMorphButton(
         modifier = Modifier
             .size(64.dp)
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                scaleX = scale * pop.value
+                scaleY = scale * pop.value
             },
         shape = PlayMorphShape(morph, morphProgress),
         colors = IconButtonDefaults.filledIconButtonColors(

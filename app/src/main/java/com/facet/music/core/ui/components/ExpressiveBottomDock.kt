@@ -2,6 +2,7 @@ package com.facet.music.core.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -32,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -157,6 +159,11 @@ private fun DockItem(
         DockLabels.SELECTED -> selected
         DockLabels.NEVER -> false
     }
+    val selectionScale by animateFloatAsState(
+        targetValue = if (selected) 1.08f else 1f,
+        animationSpec = Motion.bounce(),
+        label = "dockSelectionScale",
+    )
     Column(
         modifier = modifier
             .clip(MaterialTheme.shapes.large)
@@ -174,6 +181,10 @@ private fun DockItem(
         Box(
             modifier = Modifier
                 .size(width = 44.dp, height = 30.dp)
+                .graphicsLayer {
+                    scaleX = selectionScale
+                    scaleY = selectionScale
+                }
                 .clip(CircleShape)
                 .background(
                     if (selected) {

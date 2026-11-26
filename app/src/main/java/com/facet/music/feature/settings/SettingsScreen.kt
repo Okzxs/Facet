@@ -388,7 +388,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+                    .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
             ) {
                 FilledTonalButton(
                     onClick = {
@@ -626,7 +626,7 @@ private fun SettingsSectionTitle(
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier
-            .padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 8.dp)
+            .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 8.dp)
             .then(anchorModifier),
     )
 }
@@ -641,7 +641,7 @@ private fun Modifier.settingsAnchor(
 @Composable
 private fun SettingsDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp),
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
     )
 }

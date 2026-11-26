@@ -689,7 +689,7 @@ private fun ServiceStatusButton(
             shadowElevation = 0.dp,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
             ) {
                 Text(
                     text = stringResource(R.string.search_status_title),
@@ -1009,7 +1009,7 @@ private fun ExpressiveSearchField(
 @Composable
 private fun SuggestionChips(onSuggestion: (String) -> Unit) {
     Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
     ) {
         Text(
             text = stringResource(R.string.search_try),
@@ -1054,7 +1054,7 @@ private fun RecentQueriesRow(
     onClear: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp),
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1712,7 +1712,7 @@ private fun ShimmerTrackRow() {
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ShimmerBlock(

@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.PersonOff
 import androidx.compose.material.icons.rounded.Radio
@@ -203,6 +204,9 @@ internal fun ExpressiveHeroZone(
     onPrevious: () -> Unit,
     previousArtworkUrl: String?,
     nextArtworkUrl: String?,
+    nextTitle: String?,
+    nextArtist: String?,
+    onOpenQueue: () -> Unit,
     onArtworkBoundsChanged: (Rect?) -> Unit,
     isDismissDragging: Boolean = false,
     onSeekToLine: (Long) -> Unit,
@@ -558,6 +562,70 @@ internal fun ExpressiveHeroZone(
                             idleContainerColor = actionIdleContainer,
                             onToggleDislike = onToggleDislike,
                         )
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    Surface(
+                        onClick = onOpenQueue,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.62f),
+                        tonalElevation = 0.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(MaterialTheme.shapes.medium)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            ) {
+                                ArtworkImage(
+                                    artworkUrl = nextArtworkUrl,
+                                    shape = MaterialTheme.shapes.medium,
+                                    notePainter = notePainter,
+                                    placeholderPainter = placeholderPainter,
+                                )
+                            }
+                            Spacer(Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(
+                                        if (nextTitle != null) R.string.player_up_next
+                                        else R.string.player_queue_end,
+                                    ),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = nextTitle ?: stringResource(R.string.player_open_queue),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (nextTitle != null && !nextArtist.isNullOrBlank()) {
+                                    Text(
+                                        text = nextArtist,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                                contentDescription = stringResource(R.string.queue_title),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
                     }
                     Spacer(Modifier.height(24.dp))
                 }

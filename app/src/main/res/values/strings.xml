@@ -263,6 +263,9 @@
     <string name="player_now_playing">Now playing</string>
     <string name="player_menu_cd">Menu</string>
     <string name="player_no_track">No track</string>
+    <string name="player_up_next">Up next</string>
+    <string name="player_queue_end">End of queue</string>
+    <string name="player_open_queue">Open queue</string>
     <string name="player_permission_settings">Settings</string>
     <string name="player_permission_allow">Allow</string>
     <string name="player_lyrics_auto_timing">Auto-time plain lyrics</string>
@@ -446,6 +449,8 @@
     <string name="import_track_line">%1$s — %2$s</string>
     <string name="import_success">Playlist «%1$s» imported</string>
     <string name="import_screen_title">Import</string>
+    <string name="import_empty_cloud_title">Your music will live here</string>
+    <string name="import_empty_cloud_hint">Import playlists and likes from streaming services — they will appear in your library.</string>
     <string name="import_tab_profile">Profile</string>
     <string name="import_tab_youtube">YouTube</string>
     <string name="import_yt_profile_title">YouTube Music profile</string>

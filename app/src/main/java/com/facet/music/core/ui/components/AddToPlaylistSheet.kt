@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.facet.music.R
+import com.facet.music.core.ui.theme.cloudSheetEntrance
 import com.facet.music.data.model.Playlist
 import com.facet.music.data.model.Track
 import com.facet.music.feature.playlist.AddToPlaylistViewModel
@@ -80,6 +81,7 @@ fun AddToPlaylistSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .cloudSheetEntrance()
                 .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {

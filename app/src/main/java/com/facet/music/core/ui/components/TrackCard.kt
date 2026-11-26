@@ -109,7 +109,7 @@ fun TrackCard(
         label = "trackCardContainer",
     )
     val pressedScale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
+        targetValue = if (pressed) 0.92f else 1f,
         animationSpec = Motion.press(),
         label = "trackCardScale",
     )

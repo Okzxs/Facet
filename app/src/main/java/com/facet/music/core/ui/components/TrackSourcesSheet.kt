@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.facet.music.R
+import com.facet.music.core.ui.theme.cloudSheetEntrance
 import com.facet.music.data.model.CanonicalTrack
 import com.facet.music.data.model.Source
 import com.facet.music.data.model.Track
@@ -49,7 +50,8 @@ fun TrackSourcesSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .cloudSheetEntrance()
+                .padding(horizontal = 24.dp)
                 .padding(bottom = 28.dp),
         ) {
             Text(

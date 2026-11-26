@@ -264,6 +264,9 @@
     <string name="player_now_playing">Сейчас играет</string>
     <string name="player_menu_cd">Меню</string>
     <string name="player_no_track">Нет трека</string>
+    <string name="player_up_next">Далее</string>
+    <string name="player_queue_end">Очередь закончилась</string>
+    <string name="player_open_queue">Открыть очередь</string>
     <string name="player_permission_settings">Настройки</string>
     <string name="player_permission_allow">Разрешить</string>
     <string name="player_lyrics_auto_timing">Подобрать тайминг текста</string>
@@ -451,6 +454,8 @@
     <string name="import_track_line">%1$s — %2$s</string>
     <string name="import_success">Плейлист «%1$s» импортирован</string>
     <string name="import_screen_title">Импорт</string>
+    <string name="import_empty_cloud_title">Твоя музыка будет здесь</string>
+    <string name="import_empty_cloud_hint">Импортируй плейлисты и лайки из сервисов — они появятся в медиатеке.</string>
     <string name="import_tab_profile">Профиль</string>
     <string name="import_tab_youtube">YouTube</string>
     <string name="import_yt_profile_title">Профиль YouTube Music</string>

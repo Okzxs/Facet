@@ -184,8 +184,8 @@ internal fun DownloadSquircle(
 
     FilledTonalIconButton(
         onClick = onClick,
-        modifier = Modifier.size(48.dp),
-        shape = CircleShape,
+        modifier = Modifier.size(width = 64.dp, height = 44.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = containerColor,
             contentColor = contentColor,
@@ -248,8 +248,8 @@ internal fun LikeSquircle(
 ) {
     FilledTonalIconButton(
         onClick = onToggleLike,
-        modifier = Modifier.size(48.dp),
-        shape = CircleShape,
+        modifier = Modifier.size(width = 64.dp, height = 44.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = if (isLiked) primaryContainerColor else idleContainerColor,
             contentColor = if (isLiked) primaryColor else MaterialTheme.colorScheme.onSurface,
@@ -272,8 +272,8 @@ internal fun DislikeSquircle(
     val error = MaterialTheme.colorScheme.error
     FilledTonalIconButton(
         onClick = onToggleDislike,
-        modifier = Modifier.size(48.dp),
-        shape = CircleShape,
+        modifier = Modifier.size(width = 64.dp, height = 44.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = if (isDisliked) {
                 MaterialTheme.colorScheme.errorContainer

@@ -941,6 +941,9 @@ fun PlayerScreen(
                         },
                         previousArtworkUrl = playerState.queue.getOrNull(playerState.currentIndex - 1)?.artworkUrl,
                         nextArtworkUrl = playerState.queue.getOrNull(playerState.currentIndex + 1)?.artworkUrl,
+                        nextTitle = playerState.queue.getOrNull(playerState.currentIndex + 1)?.title,
+                        nextArtist = playerState.queue.getOrNull(playerState.currentIndex + 1)?.artist,
+                        onOpenQueue = { showQueueSheet = true },
                         onArtworkBoundsChanged = {
                             artworkBounds.value = it
                             if (it != null) {
@@ -982,7 +985,7 @@ fun PlayerScreen(
                             onAction = { onPermissionBannerAction() },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
+                                .padding(horizontal = 24.dp)
                                 .padding(bottom = 6.dp),
                         )
                     }
@@ -1039,7 +1042,7 @@ fun PlayerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(panelModifier)
-                            .padding(horizontal = 16.dp)
+                            .padding(horizontal = 24.dp)
                             .onGloballyPositioned { controlIslandBounds.value = it.boundsInRoot() }
                             .padding(top = 8.dp),
                     ) {

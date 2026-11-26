@@ -620,13 +620,16 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
 ): EnterTransition {
     val direction = tabDirection(items)
     if (direction == 0) {
-        return fadeIn(animationSpec = Motion.effectsFast())
+        return fadeIn(animationSpec = Motion.effectsDefault()) + scaleIn(
+            initialScale = 0.96f,
+            animationSpec = Motion.spatialDefault(),
+        )
     }
     return slideInHorizontally(
-        initialOffsetX = { width -> direction * width / 3 },
+        initialOffsetX = { width -> direction * width / 2 },
         animationSpec = Motion.spatialDefault(),
     ) + scaleIn(
-        initialScale = 0.98f,
+        initialScale = 0.94f,
         animationSpec = Motion.spatialDefault(),
     ) + fadeIn(
         animationSpec = Motion.effectsDefault(),
@@ -638,13 +641,16 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(
 ): ExitTransition {
     val direction = tabDirection(items)
     if (direction == 0) {
-        return fadeOut(animationSpec = Motion.effectsFast())
+        return fadeOut(animationSpec = Motion.effectsFast()) + scaleOut(
+            targetScale = 0.98f,
+            animationSpec = Motion.spatialDefault(),
+        )
     }
     return slideOutHorizontally(
-        targetOffsetX = { width -> -direction * width / 3 },
+        targetOffsetX = { width -> -direction * width / 2 },
         animationSpec = Motion.spatialDefault(),
     ) + scaleOut(
-        targetScale = 0.98f,
+        targetScale = 0.96f,
         animationSpec = Motion.spatialDefault(),
     ) + fadeOut(
         animationSpec = Motion.effectsDefault(),

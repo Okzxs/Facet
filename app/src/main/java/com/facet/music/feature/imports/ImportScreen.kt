@@ -9,7 +9,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.AddLink
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Button
@@ -65,6 +68,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -188,8 +192,8 @@ private fun LikesSection(
     subtitle: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 if (subtitle != null) {
@@ -228,7 +232,7 @@ private fun LikesTrackRow(
 private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewModel) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "profile_link") {
@@ -477,6 +481,51 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                 }
             }
         }
+
+        if (state.playlists.isEmpty() && !state.isLoading) {
+            item(key = "profile_empty_cloud") {
+                ImportCloudHint()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportCloudHint() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .clip(MaterialTheme.shapes.extraLarge)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CloudDownload,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(38.dp),
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.import_empty_cloud_title),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.import_empty_cloud_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
     }
 }
 
@@ -489,7 +538,7 @@ private fun YouTubeImportContent(state: ImportUiState, viewModel: ImportViewMode
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "yt_profile") {
@@ -597,7 +646,7 @@ private fun YouTubeImportContent(state: ImportUiState, viewModel: ImportViewMode
 private fun LinkImportContent(state: ImportUiState, viewModel: ImportViewModel) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "playlist_link") {
@@ -711,7 +760,7 @@ private fun LinkImportContent(state: ImportUiState, viewModel: ImportViewModel) 
 private fun TextImportContent(state: ImportUiState, viewModel: ImportViewModel) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "text_input") {

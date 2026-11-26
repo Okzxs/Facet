@@ -223,9 +223,10 @@ com.facet.music
 - **Палитра.** Светлая: background `#F7F7FC`, surface `#FFFFFF`, containers `#F1F1F9…#DDDDEA`, primary seed `#5B63D6`. Тёмная: background `#0F1016`, surface `#12131A`, containers `#17181F…#292A35`, primary `#BCC2FF`. Dynamic Color сохраняется, но `withAiryNeutrals` перекрывает нейтрали облачными; AMOLED по-прежнему чёрный.
 - **Типографика.** Только `GoogleSansFlex` (400/500/600), `AppTypography` с увеличенными lineHeight; `Bold` в UI не используется. `serifDisplay` по умолчанию false, Playfair остаётся опцией студии.
 - **Формы.** `AppShapes` = 8/12/16/24/32, `PillShape` для кнопок; `FacetShapeStyle.SOFT/DEFAULT/ROUND` обновлены.
-- **Движение.** `Motion.press()` = 0.75/500, `Motion.reveal()` = 0.78/Low, `Motion.bounce()` = 0.60/MediumLow; `CloudReveal` даёт fade + slide и stagger 40 мс, `Modifier.cloudPress` — scale 0.96.
+- **Движение.** `Motion.press()` = 0.62/650, `Motion.reveal()` = 0.68/340, `Motion.bounce()` = 0.55/500; `CloudReveal` даёт fade + подъём 28dp и stagger 55 мс, `Modifier.cloudPress` — scale 0.92 + alpha 0.94. `cloudSheetEntrance()` добавляет scale 0.9→1 с alpha. Play/Pause подпрыгивает (`Animatable` 0.88→1), выбранная вкладка дока — scale 1.08.
 - **Сетка.** `CloudSpacing.Screen = 24`, `Section = 32`, `Card = 16/20`; списки и карточки не липнут к краям. Тяжёлые тени и стекло запрещены; только `surfaceContainer*`.
-- **Атомы.** TrackCard — 64dp обложка, радиус 24; док — плавающая капсула 32; мини-плеер — капсула 28 на `surfaceContainerHighest`; CollectionChipCard — тональная без градиента.
+- **Атомы.** TrackCard — 64dp обложка, радиус 24; док — плавающая капсула 32; мини-плеер — капсула 28 на `surfaceContainerHighest`; CollectionChipCard — тональная без градиента; EmptyState — многослойная облачная иллюстрация.
+- **Плеер.** Под обложкой — облачная карточка «Далее» с следующей обложкой/треком и переходом в очередь; action-кнопки 64×44 pill, speed/queue 52×40 pill. Синусоида слайдера (`ExpressivePlayerSlider`/`PlayerProgressSection`) неприкосновенна.
 - **Плеер.** Для ахроматичной обложки `PlayerDynamicColors.withCloudAccent` подставляет primary темы вместо серого; это сохраняет читаемость и фирменный ирис.
 
 ## Жёсткие правила

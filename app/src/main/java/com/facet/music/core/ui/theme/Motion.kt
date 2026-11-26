@@ -22,19 +22,19 @@ object Motion {
     const val EnterMillis = 460
     const val ExitMillis = 240
 
-    const val PressDamping = 0.75f
-    const val PressStiffness = 500f
-    const val RevealDamping = 0.78f
-    const val RevealStiffness = Spring.StiffnessLow
-    const val BounceDamping = 0.6f
-    const val BounceStiffness = Spring.StiffnessMediumLow
+    const val PressDamping = 0.62f
+    const val PressStiffness = 650f
+    const val RevealDamping = 0.68f
+    const val RevealStiffness = 340f
+    const val BounceDamping = 0.55f
+    const val BounceStiffness = 500f
 
-    const val SpatialFastDamping = 0.75f
-    const val SpatialFastStiffness = 500f
-    const val SpatialDefaultDamping = 0.78f
-    const val SpatialDefaultStiffness = Spring.StiffnessLow
-    const val SpatialSlowDamping = 0.8f
-    const val SpatialSlowStiffness = 200f
+    const val SpatialFastDamping = 0.66f
+    const val SpatialFastStiffness = 620f
+    const val SpatialDefaultDamping = 0.68f
+    const val SpatialDefaultStiffness = 360f
+    const val SpatialSlowDamping = 0.72f
+    const val SpatialSlowStiffness = 220f
 
     const val EffectsFastDamping = 1.0f
     const val EffectsFastStiffness = 3800f

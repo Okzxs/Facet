@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -130,8 +131,8 @@ fun EmptyState(
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
     actionIcon: ImageVector? = null,
-    iconContainerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
-    iconTint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    iconContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    iconTint: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     onAction: (() -> Unit)? = null,
 ) {
     Box(
@@ -139,18 +140,45 @@ fun EmptyState(
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(
-                modifier = Modifier.size(112.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = iconContainerColor,
+            Box(
+                modifier = Modifier.size(148.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = iconTint,
-                        modifier = Modifier.size(40.dp),
-                    )
+                Box(
+                    modifier = Modifier
+                        .size(132.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-10).dp, y = 12.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(x = 12.dp, y = (-8).dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.tertiaryContainer),
+                )
+                Surface(
+                    modifier = Modifier.size(92.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = iconContainerColor,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = iconTint,
+                            modifier = Modifier.size(38.dp),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(24.dp))
