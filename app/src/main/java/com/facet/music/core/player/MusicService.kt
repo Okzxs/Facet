@@ -10,6 +10,8 @@ import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -21,7 +23,12 @@ import com.facet.music.MainActivity
 import com.facet.music.core.di.ApplicationScope
 import com.facet.music.core.network.MediaClient
 import com.facet.music.core.widget.ACTION_WIDGET_LIKE
+import com.facet.music.core.widget.FacetWidgetReceiver
 import com.facet.music.core.widget.WidgetArtworkStore
+import com.facet.music.core.widget.WidgetFormat
+import com.facet.music.core.widget.WidgetWave
+import com.facet.music.core.widget.WidgetWaveSpecStore
+import com.facet.music.core.widget.waveRemoteViews
 import com.facet.music.core.widget.WidgetSnapshotStore
 import com.facet.music.core.widget.hasWidgets
 import com.facet.music.core.widget.pushWidgetState
@@ -496,25 +503,60 @@ class MusicService : MediaSessionService() {
         }
         if (widgetTicker?.isActive == true) return
         widgetTicker = scope.launch {
+            var ticks = 0
             while (isActive) {
                 delay(WIDGET_TICK_MS)
                 if (!hasWidgets(this@MusicService)) continue
-                val track = widgetTrack
-                if (track != null && !widgetSnapshot.hasArtwork) refreshWidgetArtwork(track)
-                val position = withContext(Dispatchers.Main.immediate) {
-                    if (player.isPlaying) player.currentPosition.coerceAtLeast(0L) else null
+                if (!isScreenInteractive()) continue
+                val state = withContext(Dispatchers.Main.immediate) {
+                    if (!player.isPlaying) {
+                        null
+                    } else {
+                        player.currentPosition.coerceAtLeast(0L) to playerDuration(player, null)
+                    }
                 } ?: break
-                val duration = withContext(Dispatchers.Main.immediate) {
-                    playerDuration(player, null)
-                }
                 val current = widgetSnapshot
-                pushWidget(
-                    current.copy(
-                        positionMs = position,
-                        durationMs = if (duration > 0L) duration else current.durationMs,
-                        isPlaying = true,
-                    ),
-                )
+                val duration = if (state.second > 0L) state.second else current.durationMs
+                updateWidgetWave(state.first, duration)
+                ticks++
+                if (ticks % FULL_SYNC_TICKS == 0) {
+                    val track = widgetTrack
+                    if (track != null && !current.hasArtwork) refreshWidgetArtwork(track)
+                    pushWidget(
+                        current.copy(
+                            positionMs = state.first,
+                            durationMs = duration,
+                            isPlaying = true,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun isScreenInteractive(): Boolean =
+        getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
+
+    private fun updateWidgetWave(positionMs: Long, durationMs: Long) {
+        val manager = android.appwidget.AppWidgetManager.getInstance(this)
+        val ids = manager.getAppWidgetIds(
+            android.content.ComponentName(this, FacetWidgetReceiver::class.java),
+        )
+        if (ids.isEmpty()) return
+        val progress = WidgetFormat.fraction(positionMs, durationMs)
+        val specs = WidgetWaveSpecStore.read(this)
+        ids.forEach { id ->
+            val spec = specs[id] ?: return@forEach
+            val bitmap = WidgetWave.render(
+                context = this,
+                width = spec.widthDp.dp,
+                height = spec.heightDp.dp,
+                progress = progress,
+                accent = Color(spec.accent),
+                track = Color(spec.track),
+            ) ?: return@forEach
+            runCatching {
+                manager.partiallyUpdateAppWidget(id, waveRemoteViews(this, bitmap))
             }
         }
     }
@@ -535,7 +577,8 @@ class MusicService : MediaSessionService() {
     }
 
     private companion object {
-        const val WIDGET_TICK_MS = 10_000L
+        const val WIDGET_TICK_MS = 1_000L
+        const val FULL_SYNC_TICKS = 10
 
         val SAFE_CONTROLLER_COMMANDS: Player.Commands = Player.Commands.Builder()
             .addAll(

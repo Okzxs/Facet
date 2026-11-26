@@ -5,13 +5,17 @@ import android.content.Intent
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import androidx.glance.appwidget.AndroidRemoteViews
+import androidx.glance.appwidget.AppWidgetId
 import androidx.glance.LocalContext
+import androidx.glance.LocalGlanceId
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
 import androidx.glance.action.ActionParameters
@@ -176,13 +180,10 @@ private fun WideLayout(
                         modifier = GlanceModifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = WidgetFormat.time(snapshot.positionMs),
-                            style = TextStyle(
-                                color = ColorProvider(palette.muted),
-                                fontSize = 9.sp,
-                                fontFamily = FontFamily.SansSerif,
-                            ),
+                        WidgetElapsed(
+                            positionMs = snapshot.positionMs,
+                            isPlaying = snapshot.isPlaying,
+                            palette = palette,
                         )
                         Spacer(GlanceModifier.defaultWeight())
                         Text(
@@ -196,7 +197,12 @@ private fun WideLayout(
                     }
                     Spacer(GlanceModifier.height(5.dp))
                 }
-                WidgetProgress(snapshot.progress, columnWidth, palette, if (large) 12.dp else 10.dp)
+                WidgetProgress(
+                    progress = snapshot.progress,
+                    width = columnWidth,
+                    palette = palette,
+                    height = if (large) 12.dp else 10.dp,
+                )
                 Spacer(GlanceModifier.height(if (large) 8.dp else 2.dp))
                 WidgetControls(
                     isPlaying = snapshot.isPlaying,
@@ -640,6 +646,19 @@ private fun WidgetProgress(
     height: Dp,
 ) {
     val context = LocalContext.current
+    val appWidgetId = (LocalGlanceId.current as? AppWidgetId)?.appWidgetId
+    if (appWidgetId != null) {
+        WidgetWaveSpecStore.update(
+            context = context,
+            appWidgetId = appWidgetId,
+            spec = WidgetWaveSpec(
+                widthDp = width.value,
+                heightDp = height.value,
+                accent = palette.accent.toArgb(),
+                track = palette.track.toArgb(),
+            ),
+        )
+    }
     val bitmap = WidgetWave.render(
         context = context,
         width = width,
@@ -648,14 +667,23 @@ private fun WidgetProgress(
         accent = palette.accent,
         track = palette.track,
     )
-    if (bitmap != null) {
-        Image(
-            provider = ImageProvider(bitmap),
-            contentDescription = null,
-            modifier = GlanceModifier.width(width).height(height),
-            contentScale = ContentScale.FillBounds,
-        )
-    }
+    AndroidRemoteViews(
+        remoteViews = waveRemoteViews(context, bitmap),
+        modifier = GlanceModifier.width(width).height(height),
+    )
+}
+
+@Composable
+private fun WidgetElapsed(
+    positionMs: Long,
+    isPlaying: Boolean,
+    palette: WidgetPalette,
+) {
+    val context = LocalContext.current
+    AndroidRemoteViews(
+        remoteViews = elapsedRemoteViews(context, positionMs, isPlaying, palette),
+        modifier = GlanceModifier.width(46.dp),
+    )
 }
 
 @Composable
