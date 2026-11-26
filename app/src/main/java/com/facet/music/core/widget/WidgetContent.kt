@@ -147,7 +147,7 @@ private fun WideLayout(
                     Spacer(GlanceModifier.defaultWeight())
                     WidgetLikeButton(snapshot.isLiked, palette, likeSize)
                 }
-                Spacer(GlanceModifier.height(if (large) 8.dp else 3.dp))
+                Spacer(GlanceModifier.height(if (large) 8.dp else 2.dp))
                 Text(
                     text = snapshot.title,
                     maxLines = titleLines,
@@ -196,8 +196,8 @@ private fun WideLayout(
                     }
                     Spacer(GlanceModifier.height(5.dp))
                 }
-                WidgetProgress(snapshot.progress, columnWidth, palette, if (large) 4.dp else 3.dp)
-                Spacer(GlanceModifier.height(if (large) 10.dp else 4.dp))
+                WidgetProgress(snapshot.progress, columnWidth, palette, if (large) 12.dp else 10.dp)
+                Spacer(GlanceModifier.height(if (large) 8.dp else 2.dp))
                 WidgetControls(
                     isPlaying = snapshot.isPlaying,
                     palette = palette,
@@ -292,8 +292,8 @@ private fun NarrowLayout(
         }
         Spacer(GlanceModifier.defaultWeight())
         Column {
-            WidgetProgress(snapshot.progress, width, palette, 3.dp)
-            Spacer(GlanceModifier.height(if (tall) 10.dp else 6.dp))
+            WidgetProgress(snapshot.progress, width, palette, if (tall) 12.dp else 10.dp)
+            Spacer(GlanceModifier.height(if (tall) 8.dp else 4.dp))
             WidgetControls(
                 isPlaying = snapshot.isPlaying,
                 palette = palette,
@@ -319,63 +319,89 @@ private fun BarLayout(
     val coverSize = if (tall) 44.dp else 34.dp
     val playSize = if (tall) 32.dp else 26.dp
     val sideSize = if (tall) 22.dp else 18.dp
+    val likeSize = if (tall) 20.dp else 18.dp
     val titleSize = if (tall) 13.sp else 12.sp
+    val progressHeight = if (tall) 10.dp else 8.dp
+    val progressGap = if (tall) 4.dp else 2.dp
     val width = (size.width - padding * 2).coerceAtLeast(1.dp)
 
     if (size.width >= NarrowWidth) {
-        Column(modifier = GlanceModifier.fillMaxSize().padding(padding)) {
-            Row(
-                modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                WidgetCover(cover, coverSize, palette, false)
-                Spacer(GlanceModifier.width(if (tall) 12.dp else 8.dp))
-                Column(modifier = GlanceModifier.defaultWeight()) {
-                    Text(
-                        text = snapshot.title,
-                        maxLines = 1,
-                        style = TextStyle(
-                            color = ColorProvider(palette.onBackground),
-                            fontSize = titleSize,
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily.SansSerif,
-                        ),
+        val likeReserve = likeSize + if (tall) 10.dp else 8.dp
+        val contentWidth = (width - likeReserve).coerceAtLeast(1.dp)
+        val coverGap = if (tall) 12.dp else 8.dp
+        val controlsGap = if (tall) 8.dp else 4.dp
+        val textWidth = (
+            contentWidth - coverSize - coverGap - 8.dp -
+                sideSize - controlsGap - playSize - controlsGap - sideSize
+            ).coerceAtLeast(40.dp)
+        val rowHeight = (
+            size.height - padding * 2 - progressHeight -
+                if (showProgress) progressGap else 0.dp
+            ).coerceAtLeast(1.dp)
+        Box(
+            modifier = GlanceModifier.fillMaxSize().padding(padding),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            Column(modifier = GlanceModifier.fillMaxSize().padding(end = likeReserve)) {
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth().height(rowHeight),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WidgetCover(cover, coverSize, palette, false)
+                    Spacer(GlanceModifier.width(coverGap))
+                    Column(modifier = GlanceModifier.width(textWidth)) {
+                        Text(
+                            text = snapshot.title,
+                            maxLines = 1,
+                            style = TextStyle(
+                                color = ColorProvider(palette.onBackground),
+                                fontSize = titleSize,
+                                fontWeight = FontWeight.Medium,
+                                fontFamily = FontFamily.SansSerif,
+                            ),
+                        )
+                        Text(
+                            text = snapshot.artist,
+                            maxLines = 1,
+                            style = TextStyle(
+                                color = ColorProvider(palette.muted),
+                                fontSize = if (tall) 10.sp else 9.sp,
+                                fontFamily = FontFamily.SansSerif,
+                            ),
+                        )
+                    }
+                    Spacer(GlanceModifier.width(8.dp))
+                    WidgetIconButton(
+                        iconRes = R.drawable.ic_widget_previous,
+                        contentDescription = context.getString(R.string.common_previous_cd),
+                        action = ACTION_PREVIOUS,
+                        tint = palette.muted,
+                        target = sideSize,
+                        icon = sideSize,
                     )
-                    Text(
-                        text = snapshot.artist,
-                        maxLines = 1,
-                        style = TextStyle(
-                            color = ColorProvider(palette.muted),
-                            fontSize = if (tall) 10.sp else 9.sp,
-                            fontFamily = FontFamily.SansSerif,
-                        ),
+                    Spacer(GlanceModifier.width(controlsGap))
+                    WidgetPlayButton(snapshot.isPlaying, palette, context, playSize)
+                    Spacer(GlanceModifier.width(controlsGap))
+                    WidgetIconButton(
+                        iconRes = R.drawable.ic_widget_next,
+                        contentDescription = context.getString(R.string.common_next_cd),
+                        action = ACTION_NEXT,
+                        tint = palette.muted,
+                        target = sideSize,
+                        icon = sideSize,
                     )
                 }
-                Spacer(GlanceModifier.width(8.dp))
-                WidgetIconButton(
-                    iconRes = R.drawable.ic_widget_previous,
-                    contentDescription = context.getString(R.string.common_previous_cd),
-                    action = ACTION_PREVIOUS,
-                    tint = palette.muted,
-                    target = sideSize,
-                    icon = sideSize,
-                )
-                Spacer(GlanceModifier.width(if (tall) 8.dp else 4.dp))
-                WidgetPlayButton(snapshot.isPlaying, palette, context, playSize)
-                Spacer(GlanceModifier.width(if (tall) 8.dp else 4.dp))
-                WidgetIconButton(
-                    iconRes = R.drawable.ic_widget_next,
-                    contentDescription = context.getString(R.string.common_next_cd),
-                    action = ACTION_NEXT,
-                    tint = palette.muted,
-                    target = sideSize,
-                    icon = sideSize,
-                )
+                if (showProgress) {
+                    Spacer(GlanceModifier.height(progressGap))
+                    WidgetProgress(
+                        progress = snapshot.progress,
+                        width = contentWidth,
+                        palette = palette,
+                        height = progressHeight,
+                    )
+                }
             }
-            if (showProgress) {
-                Spacer(GlanceModifier.height(4.dp))
-                WidgetProgress(snapshot.progress, width, palette, 2.dp)
-            }
+            WidgetLikeButton(snapshot.isLiked, palette, likeSize)
         }
     } else {
         Column(modifier = GlanceModifier.fillMaxSize().padding(padding)) {
@@ -385,7 +411,11 @@ private fun BarLayout(
             ) {
                 WidgetCover(cover, coverSize, palette, false)
                 Spacer(GlanceModifier.width(8.dp))
-                Column(modifier = GlanceModifier.defaultWeight()) {
+                Column(
+                    modifier = GlanceModifier.width(
+                        (width - coverSize - 8.dp).coerceAtLeast(1.dp),
+                    ),
+                ) {
                     Text(
                         text = snapshot.title,
                         maxLines = 1,
@@ -409,16 +439,45 @@ private fun BarLayout(
             }
             Spacer(GlanceModifier.defaultWeight())
             if (showProgress) {
-                WidgetProgress(snapshot.progress, width, palette, 2.dp)
+                WidgetProgress(
+                    progress = snapshot.progress,
+                    width = width,
+                    palette = palette,
+                    height = 8.dp,
+                )
                 Spacer(GlanceModifier.defaultWeight())
             }
-            WidgetControls(
-                isPlaying = snapshot.isPlaying,
-                palette = palette,
-                context = context,
-                playSize = playSize,
-                sideSize = sideSize,
-            )
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WidgetIconButton(
+                    iconRes = R.drawable.ic_widget_previous,
+                    contentDescription = context.getString(R.string.common_previous_cd),
+                    action = ACTION_PREVIOUS,
+                    tint = palette.muted,
+                    target = sideSize,
+                    icon = sideSize,
+                )
+                Spacer(GlanceModifier.width(if (playSize >= 32.dp) 6.dp else 4.dp))
+                WidgetPlayButton(snapshot.isPlaying, palette, context, playSize)
+                Spacer(GlanceModifier.width(if (playSize >= 32.dp) 6.dp else 4.dp))
+                WidgetIconButton(
+                    iconRes = R.drawable.ic_widget_next,
+                    contentDescription = context.getString(R.string.common_next_cd),
+                    action = ACTION_NEXT,
+                    tint = palette.muted,
+                    target = sideSize,
+                    icon = sideSize,
+                )
+                Spacer(GlanceModifier.width(if (playSize >= 32.dp) 6.dp else 4.dp))
+                WidgetLikeButton(
+                    liked = snapshot.isLiked,
+                    palette = palette,
+                    size = if (playSize >= 32.dp) 18.dp else 16.dp,
+                )
+            }
         }
     }
 }
@@ -580,24 +639,22 @@ private fun WidgetProgress(
     palette: WidgetPalette,
     height: Dp,
 ) {
-    val filled = (width.value * progress.coerceIn(0f, 1f)).dp
-    Box(
-        modifier = GlanceModifier
-            .width(width)
-            .height(height)
-            .cornerRadius(height / 2)
-            .background(ColorProvider(palette.track)),
-    ) {
-        if (progress > 0.001f) {
-            Box(
-                modifier = GlanceModifier
-                    .width(filled)
-                    .height(height)
-                    .cornerRadius(height / 2)
-                    .background(ColorProvider(palette.accent)),
-            ) {
-            }
-        }
+    val context = LocalContext.current
+    val bitmap = WidgetWave.render(
+        context = context,
+        width = width,
+        height = height,
+        progress = progress,
+        accent = palette.accent,
+        track = palette.track,
+    )
+    if (bitmap != null) {
+        Image(
+            provider = ImageProvider(bitmap),
+            contentDescription = null,
+            modifier = GlanceModifier.width(width).height(height),
+            contentScale = ContentScale.FillBounds,
+        )
     }
 }
 
