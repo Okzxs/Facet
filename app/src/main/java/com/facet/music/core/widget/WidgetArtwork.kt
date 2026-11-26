@@ -9,6 +9,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
+import androidx.palette.graphics.Palette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -24,6 +25,7 @@ object WidgetArtworkStore {
     private const val COVER_NAME = "cover.png"
     private const val BACKDROP_NAME = "backdrop.png"
     private const val TOKEN_NAME = "token"
+    private const val ACCENT_NAME = "accent.txt"
     private const val MAX_BYTES = 3 * 1024 * 1024
     private const val DECODE_LIMIT = 512
     private const val COVER_PX = 192
@@ -39,12 +41,29 @@ object WidgetArtworkStore {
     @Volatile
     private var backdropCache: Cached? = null
 
+    @Volatile
+    private var accentCache: Pair<Long, Int>? = null
+
     fun cover(context: Context): Bitmap? = decodeCached(coverFile(context), isCover = true)
 
     fun backdrop(context: Context): Bitmap? = decodeCached(backdropFile(context), isCover = false)
 
     fun hasArtwork(context: Context): Boolean =
         coverFile(context).exists() && backdropFile(context).exists()
+
+    fun coverAccent(context: Context): Int? {
+        val file = accentFile(context)
+        if (!file.exists()) return null
+        val modified = file.lastModified()
+        accentCache?.let { cached ->
+            if (cached.first == modified) return cached.second.takeIf { it != 0 }
+        }
+        val value = runCatching { file.readText().trim().toIntOrNull() }
+            .getOrNull()
+            ?: 0
+        accentCache = modified to value
+        return value.takeIf { it != 0 }
+    }
 
     suspend fun refresh(
         context: Context,
@@ -59,6 +78,7 @@ object WidgetArtworkStore {
         val source = runCatching { download(client, artworkUrl) }.getOrNull()
             ?: return@withContext false
         runCatching {
+            val accent = accentOf(source)
             val cover = renderSquare(source, COVER_PX, 0.22f)
             val backdrop = renderBackdrop(source, BACKDROP_WIDTH, BACKDROP_HEIGHT, 0.16f)
             save(coverFile(context), cover)
@@ -67,6 +87,8 @@ object WidgetArtworkStore {
             if (backdrop !== source) backdrop.recycle()
             source.recycle()
             tokenFile(context).writeText(trackId)
+            accentFile(context).writeText((accent ?: 0).toString())
+            accentCache = null
             coverCache = null
             backdropCache = null
             true
@@ -81,8 +103,20 @@ object WidgetArtworkStore {
 
     private fun tokenFile(context: Context): File = File(directory(context), TOKEN_NAME)
 
+    private fun accentFile(context: Context): File = File(directory(context), ACCENT_NAME)
+
     private fun readToken(context: Context): String =
         runCatching { tokenFile(context).readText() }.getOrDefault("")
+
+    private fun accentOf(bitmap: Bitmap): Int? = runCatching {
+        val palette = Palette.from(bitmap).generate()
+        (palette.vibrantSwatch
+            ?: palette.lightVibrantSwatch
+            ?: palette.dominantSwatch
+            ?: palette.mutedSwatch
+            ?: palette.lightMutedSwatch
+            ?: palette.darkVibrantSwatch)?.rgb
+    }.getOrNull()
 
     private fun decodeCached(file: File, isCover: Boolean): Bitmap? {
         if (!file.exists()) return null

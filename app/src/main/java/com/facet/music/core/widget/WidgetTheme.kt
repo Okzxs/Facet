@@ -99,7 +99,14 @@ object WidgetTheme {
         val palette = prefs.getString(KEY_PALETTE_MODE, null)
         val shapeStyle = prefs.getString(KEY_SHAPE_STYLE, null) ?: "DEFAULT"
         val serif = prefs.getBoolean(KEY_SERIF_DISPLAY, true)
-        val seed = customAccent?.let { Color(it) } ?: seedFor(context, palette, dark)
+        val coverAccent = if (WidgetArtworkStore.hasArtwork(context)) {
+            runCatching { WidgetArtworkStore.coverAccent(context) }.getOrNull()
+        } else {
+            null
+        }
+        val seed = customAccent?.let { Color(it) }
+            ?: coverAccent?.let { Color(it) }
+            ?: seedFor(context, palette, dark)
         val key = "$dark|$amoled|${seed.value}|$shapeStyle|$serif"
         synchronized(cacheLock) {
             if (key == cachedKey) cachedPalette?.let { return it }

@@ -2,6 +2,7 @@ package com.facet.music.core.player
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
+import android.os.SystemClock
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -27,6 +28,7 @@ import com.facet.music.core.widget.FacetWidgetReceiver
 import com.facet.music.core.widget.WidgetArtworkStore
 import com.facet.music.core.widget.WidgetFormat
 import com.facet.music.core.widget.WidgetWave
+import com.facet.music.core.widget.WidgetWaveSpec
 import com.facet.music.core.widget.WidgetWaveSpecStore
 import com.facet.music.core.widget.waveRemoteViews
 import com.facet.music.core.widget.WidgetSnapshotStore
@@ -99,6 +101,11 @@ class MusicService : MediaSessionService() {
     private var widgetLikedJob: Job? = null
     private var widgetLikedTrackId: String? = null
     private var widgetArtworkTrackId: String? = null
+    private var widgetFrameManager: android.appwidget.AppWidgetManager? = null
+    private var widgetFrameIds: IntArray = IntArray(0)
+    private var widgetFrameSpecs: Map<Int, WidgetWaveSpec> = emptyMap()
+    private var widgetFrameAt = 0L
+    private var widgetFrameScreenOn = true
     @Volatile
     private var widgetTrack: Track? = null
     private var widgetThemeKey = ""
@@ -506,8 +513,8 @@ class MusicService : MediaSessionService() {
             var ticks = 0
             while (isActive) {
                 delay(WIDGET_TICK_MS)
-                if (!hasWidgets(this@MusicService)) continue
-                if (!isScreenInteractive()) continue
+                refreshWidgetFrameCache()
+                if (widgetFrameIds.isEmpty() || !widgetFrameScreenOn) continue
                 val state = withContext(Dispatchers.Main.immediate) {
                     if (!player.isPlaying) {
                         null
@@ -534,24 +541,33 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    private fun isScreenInteractive(): Boolean =
-        getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
-
-    private fun updateWidgetWave(positionMs: Long, durationMs: Long) {
-        val manager = android.appwidget.AppWidgetManager.getInstance(this)
-        val ids = manager.getAppWidgetIds(
+    private fun refreshWidgetFrameCache() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - widgetFrameAt < FRAME_CACHE_MS) return
+        widgetFrameAt = now
+        val manager = widgetFrameManager
+            ?: android.appwidget.AppWidgetManager.getInstance(this)
+                .also { widgetFrameManager = it }
+        widgetFrameIds = manager.getAppWidgetIds(
             android.content.ComponentName(this, FacetWidgetReceiver::class.java),
         )
-        if (ids.isEmpty()) return
+        widgetFrameSpecs = WidgetWaveSpecStore.read(this)
+        widgetFrameScreenOn =
+            getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
+    }
+
+    private fun updateWidgetWave(positionMs: Long, durationMs: Long) {
+        val manager = widgetFrameManager ?: return
         val progress = WidgetFormat.fraction(positionMs, durationMs)
-        val specs = WidgetWaveSpecStore.read(this)
-        ids.forEach { id ->
-            val spec = specs[id] ?: return@forEach
+        val phase = WidgetWave.phase(positionMs)
+        widgetFrameIds.forEach { id ->
+            val spec = widgetFrameSpecs[id] ?: return@forEach
             val bitmap = WidgetWave.render(
                 context = this,
                 width = spec.widthDp.dp,
                 height = spec.heightDp.dp,
                 progress = progress,
+                phase = phase,
                 accent = Color(spec.accent),
                 track = Color(spec.track),
             ) ?: return@forEach
@@ -577,8 +593,9 @@ class MusicService : MediaSessionService() {
     }
 
     private companion object {
-        const val WIDGET_TICK_MS = 1_000L
-        const val FULL_SYNC_TICKS = 10
+        const val WIDGET_TICK_MS = 50L
+        const val FULL_SYNC_TICKS = 200
+        const val FRAME_CACHE_MS = 1_000L
 
         val SAFE_CONTROLLER_COMMANDS: Player.Commands = Player.Commands.Builder()
             .addAll(

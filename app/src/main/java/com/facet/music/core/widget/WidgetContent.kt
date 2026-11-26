@@ -202,6 +202,7 @@ private fun WideLayout(
                     width = columnWidth,
                     palette = palette,
                     height = if (large) 12.dp else 10.dp,
+                    phase = WidgetWave.phase(snapshot.positionMs),
                 )
                 Spacer(GlanceModifier.height(if (large) 8.dp else 2.dp))
                 WidgetControls(
@@ -298,7 +299,13 @@ private fun NarrowLayout(
         }
         Spacer(GlanceModifier.defaultWeight())
         Column {
-            WidgetProgress(snapshot.progress, width, palette, if (tall) 12.dp else 10.dp)
+            WidgetProgress(
+                progress = snapshot.progress,
+                width = width,
+                palette = palette,
+                height = if (tall) 12.dp else 10.dp,
+                phase = WidgetWave.phase(snapshot.positionMs),
+            )
             Spacer(GlanceModifier.height(if (tall) 8.dp else 4.dp))
             WidgetControls(
                 isPlaying = snapshot.isPlaying,
@@ -404,6 +411,7 @@ private fun BarLayout(
                         width = contentWidth,
                         palette = palette,
                         height = progressHeight,
+                        phase = WidgetWave.phase(snapshot.positionMs),
                     )
                 }
             }
@@ -450,6 +458,7 @@ private fun BarLayout(
                     width = width,
                     palette = palette,
                     height = 8.dp,
+                    phase = WidgetWave.phase(snapshot.positionMs),
                 )
                 Spacer(GlanceModifier.defaultWeight())
             }
@@ -644,6 +653,7 @@ private fun WidgetProgress(
     width: Dp,
     palette: WidgetPalette,
     height: Dp,
+    phase: Float,
 ) {
     val context = LocalContext.current
     val appWidgetId = (LocalGlanceId.current as? AppWidgetId)?.appWidgetId
@@ -664,6 +674,7 @@ private fun WidgetProgress(
         width = width,
         height = height,
         progress = progress,
+        phase = phase,
         accent = palette.accent,
         track = palette.track,
     )
