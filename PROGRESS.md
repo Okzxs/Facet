@@ -1,6 +1,16 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 26.11.2026 (виджет: плавная волна и цвет обложки)
+## Последнее обновление: 26.11.2026 (виджет: seek, кнопки и пауза)
+
+---
+
+## Сессия 95: перемотка, починка кнопок и плоская пауза (26.11.2026)
+
+- **Seek.** Волна накрыта прозрачным Row из 10 кликабельных сегментов; тап по волне отправляет `ACTION_WIDGET_SEEK` с долей длительности, `MusicService` делает `seekTo(duration * fraction)`. Проверено на паузе: тап по 5% → позиция 5.178 с при длительности 103.6 с.
+- **Кнопки.** Найдена причина: `MediaButtonReceiver` на API 26+ пишет `Ignore key event that is not a play command` и глотает prev/next. Переведены на внутренний broadcast: `mediaSession.player.seekToNext()/seekToPrevious()`; проверено — active item 3→4→3.
+- **Пауза.** `amplitudeFactor = 0` при `isPlaying = false`; волна становится ровной линией с точкой, как в `ExpressivePlayerSlider`. Проверено скриншотом.
+- **Лимит Glance.** Row не может иметь больше 10 детей; seek-оверлей был на 12 и ломал полную отрисовку (`Row container cannot have more than 10 elements`) — уменьшен до 10.
+- **Проверка.** 86 suite / 506 тестов, 0 failures (1 skipped); кнопки, seek, пауза и лайк проверены на A26.
 
 ---
 

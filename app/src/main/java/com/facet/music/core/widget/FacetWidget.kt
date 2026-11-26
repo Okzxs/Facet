@@ -75,17 +75,34 @@ class WidgetActionCallback : ActionCallback {
         parameters: ActionParameters,
     ) {
         val action = parameters[WidgetActionKey] ?: return
-        if (action == ACTION_LIKE) {
-            runCatching {
+        when (action) {
+            ACTION_LIKE -> runCatching {
                 context.sendBroadcast(
                     Intent(ACTION_WIDGET_LIKE).setPackage(context.packageName),
                 )
             }
-        } else {
-            sendMediaButton(context, action)
+            ACTION_SEEK -> {
+                val fraction = parameters[SeekFractionKey] ?: return
+                runCatching {
+                    context.sendBroadcast(
+                        Intent(ACTION_WIDGET_SEEK)
+                            .setPackage(context.packageName)
+                            .putExtra(EXTRA_SEEK_FRACTION, fraction),
+                    )
+                }
+            }
+            ACTION_NEXT -> sendWidgetCommand(context, ACTION_WIDGET_NEXT)
+            ACTION_PREVIOUS -> sendWidgetCommand(context, ACTION_WIDGET_PREVIOUS)
+            else -> sendMediaButton(context, action)
         }
         delay(REFRESH_DELAY_MS)
         runCatching { pushWidgetState(context) }
+    }
+
+    private fun sendWidgetCommand(context: Context, action: String) {
+        runCatching {
+            context.sendBroadcast(Intent(action).setPackage(context.packageName))
+        }
     }
 
     private fun sendMediaButton(context: Context, action: String) {

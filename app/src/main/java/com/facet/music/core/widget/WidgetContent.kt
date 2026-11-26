@@ -47,11 +47,15 @@ import com.facet.music.MainActivity
 import com.facet.music.R
 
 internal val WidgetActionKey = ActionParameters.Key<String>("widget_action")
+internal val SeekFractionKey = ActionParameters.Key<Float>("seek_fraction")
 
 internal const val ACTION_PREVIOUS = "previous"
 internal const val ACTION_NEXT = "next"
 internal const val ACTION_TOGGLE = "toggle"
 internal const val ACTION_LIKE = "like"
+internal const val ACTION_SEEK = "seek"
+
+private const val SEEK_SEGMENTS = 10
 
 private val NarrowWidth = 240.dp
 private val BarHeight = 120.dp
@@ -203,6 +207,7 @@ private fun WideLayout(
                     palette = palette,
                     height = if (large) 12.dp else 10.dp,
                     phase = WidgetWave.phase(snapshot.positionMs),
+                    isPlaying = snapshot.isPlaying,
                 )
                 Spacer(GlanceModifier.height(if (large) 8.dp else 2.dp))
                 WidgetControls(
@@ -305,6 +310,7 @@ private fun NarrowLayout(
                 palette = palette,
                 height = if (tall) 12.dp else 10.dp,
                 phase = WidgetWave.phase(snapshot.positionMs),
+                isPlaying = snapshot.isPlaying,
             )
             Spacer(GlanceModifier.height(if (tall) 8.dp else 4.dp))
             WidgetControls(
@@ -412,6 +418,7 @@ private fun BarLayout(
                         palette = palette,
                         height = progressHeight,
                         phase = WidgetWave.phase(snapshot.positionMs),
+                    isPlaying = snapshot.isPlaying,
                     )
                 }
             }
@@ -459,6 +466,7 @@ private fun BarLayout(
                     palette = palette,
                     height = 8.dp,
                     phase = WidgetWave.phase(snapshot.positionMs),
+                    isPlaying = snapshot.isPlaying,
                 )
                 Spacer(GlanceModifier.defaultWeight())
             }
@@ -654,6 +662,7 @@ private fun WidgetProgress(
     palette: WidgetPalette,
     height: Dp,
     phase: Float,
+    isPlaying: Boolean,
 ) {
     val context = LocalContext.current
     val appWidgetId = (LocalGlanceId.current as? AppWidgetId)?.appWidgetId
@@ -675,13 +684,34 @@ private fun WidgetProgress(
         height = height,
         progress = progress,
         phase = phase,
+        amplitudeFactor = if (isPlaying) 1f else 0f,
         accent = palette.accent,
         track = palette.track,
     )
-    AndroidRemoteViews(
-        remoteViews = waveRemoteViews(context, bitmap),
-        modifier = GlanceModifier.width(width).height(height),
-    )
+    Box(modifier = GlanceModifier.width(width).height(height)) {
+        AndroidRemoteViews(
+            remoteViews = waveRemoteViews(context, bitmap),
+            modifier = GlanceModifier.fillMaxSize(),
+        )
+        Row(modifier = GlanceModifier.fillMaxSize()) {
+            repeat(SEEK_SEGMENTS) { index ->
+                Box(
+                    modifier = GlanceModifier
+                        .defaultWeight()
+                        .fillMaxHeight()
+                        .clickable(
+                            actionRunCallback<WidgetActionCallback>(
+                                actionParametersOf(
+                                    WidgetActionKey to ACTION_SEEK,
+                                    SeekFractionKey to ((index + 0.5f) / SEEK_SEGMENTS),
+                                ),
+                            ),
+                        ),
+                ) {
+                }
+            }
+        }
+    }
 }
 
 @Composable

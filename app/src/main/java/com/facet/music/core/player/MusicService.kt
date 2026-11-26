@@ -24,6 +24,10 @@ import com.facet.music.MainActivity
 import com.facet.music.core.di.ApplicationScope
 import com.facet.music.core.network.MediaClient
 import com.facet.music.core.widget.ACTION_WIDGET_LIKE
+import com.facet.music.core.widget.ACTION_WIDGET_NEXT
+import com.facet.music.core.widget.ACTION_WIDGET_PREVIOUS
+import com.facet.music.core.widget.ACTION_WIDGET_SEEK
+import com.facet.music.core.widget.EXTRA_SEEK_FRACTION
 import com.facet.music.core.widget.FacetWidgetReceiver
 import com.facet.music.core.widget.WidgetArtworkStore
 import com.facet.music.core.widget.WidgetFormat
@@ -116,8 +120,14 @@ class MusicService : MediaSessionService() {
 
     private val widgetCommandReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != ACTION_WIDGET_LIKE) return
-            handleWidgetLike()
+            when (intent?.action) {
+                ACTION_WIDGET_LIKE -> handleWidgetLike()
+                ACTION_WIDGET_SEEK -> handleWidgetSeek(
+                    intent.getFloatExtra(EXTRA_SEEK_FRACTION, -1f),
+                )
+                ACTION_WIDGET_NEXT -> handleWidgetSkip(next = true)
+                ACTION_WIDGET_PREVIOUS -> handleWidgetSkip(next = false)
+            }
         }
     }
 
@@ -136,9 +146,36 @@ class MusicService : MediaSessionService() {
         ContextCompat.registerReceiver(
             this,
             widgetCommandReceiver,
-            IntentFilter(ACTION_WIDGET_LIKE),
+            IntentFilter().apply {
+                addAction(ACTION_WIDGET_LIKE)
+                addAction(ACTION_WIDGET_SEEK)
+                addAction(ACTION_WIDGET_NEXT)
+                addAction(ACTION_WIDGET_PREVIOUS)
+            },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+    }
+
+    private fun handleWidgetSkip(next: Boolean) {
+        scope.launch {
+            withContext(Dispatchers.Main.immediate) {
+                val player = mediaSession?.player ?: exoPlayer ?: return@withContext
+                if (next) player.seekToNext() else player.seekToPrevious()
+            }
+        }
+    }
+
+    private fun handleWidgetSeek(fraction: Float) {
+        if (fraction < 0f || fraction > 1f) return
+        scope.launch {
+            withContext(Dispatchers.Main.immediate) {
+                val player = exoPlayer ?: return@withContext
+                val duration = player.duration
+                if (duration == C.TIME_UNSET || duration <= 0L) return@withContext
+                val target = (duration * fraction).toLong().coerceIn(0L, duration)
+                player.seekTo(target)
+            }
+        }
     }
 
     private fun handleWidgetLike() {
@@ -568,6 +605,7 @@ class MusicService : MediaSessionService() {
                 height = spec.heightDp.dp,
                 progress = progress,
                 phase = phase,
+                amplitudeFactor = 1f,
                 accent = Color(spec.accent),
                 track = Color(spec.track),
             ) ?: return@forEach

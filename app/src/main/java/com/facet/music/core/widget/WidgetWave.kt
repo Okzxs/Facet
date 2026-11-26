@@ -34,6 +34,7 @@ object WidgetWave {
         height: Dp,
         progress: Float,
         phase: Float,
+        amplitudeFactor: Float,
         accent: Color,
         track: Color,
     ): Bitmap? {
@@ -43,12 +44,20 @@ object WidgetWave {
         val clamped = progress.coerceIn(0f, 1f)
         val roundedPhase = (phase * 100f).roundToInt()
         val key = "$widthPx|$heightPx|${(clamped * 500f).roundToInt()}|$roundedPhase|" +
-            "${accent.toArgb()}|${track.toArgb()}"
+            "${(amplitudeFactor * 100f).roundToInt()}|${accent.toArgb()}|${track.toArgb()}"
         synchronized(lock) {
             if (key == cacheKey) cached?.let { return it }
         }
         val bitmap = runCatching {
-            draw(widthPx, heightPx, clamped, phase, accent.toArgb(), track.toArgb())
+            draw(
+                width = widthPx,
+                height = heightPx,
+                progress = clamped,
+                phase = phase,
+                amplitudeFactor = amplitudeFactor.coerceIn(0f, 1f),
+                accent = accent.toArgb(),
+                track = track.toArgb(),
+            )
         }.getOrNull()
         synchronized(lock) {
             cacheKey = key
@@ -62,6 +71,7 @@ object WidgetWave {
         height: Int,
         progress: Float,
         phase: Float,
+        amplitudeFactor: Float,
         accent: Int,
         track: Int,
     ): Bitmap {
@@ -73,7 +83,7 @@ object WidgetWave {
         val right = width - inset
         val span = (right - left).coerceAtLeast(1f)
         val stroke = max(2f, height * 0.16f)
-        val amplitude = height * 0.26f
+        val amplitude = height * 0.26f * amplitudeFactor
         val wavelength = max(height * 3.6f, 10f)
 
         val path = Path()
