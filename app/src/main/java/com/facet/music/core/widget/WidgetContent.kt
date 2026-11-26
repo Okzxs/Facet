@@ -55,7 +55,9 @@ internal const val ACTION_TOGGLE = "toggle"
 internal const val ACTION_LIKE = "like"
 internal const val ACTION_SEEK = "seek"
 
-private const val SEEK_SEGMENTS = 10
+private const val SEEK_GROUPS = 3
+private const val SEEK_GROUP_SIZE = 10
+private const val SEEK_SEGMENTS = SEEK_GROUPS * SEEK_GROUP_SIZE
 
 private val NarrowWidth = 240.dp
 private val BarHeight = 120.dp
@@ -206,10 +208,14 @@ private fun WideLayout(
                     width = columnWidth,
                     palette = palette,
                     height = if (large) 12.dp else 10.dp,
+                    seekHeight = when {
+                        huge -> 34.dp
+                        large -> 26.dp
+                        else -> 12.dp
+                    },
                     phase = WidgetWave.phase(snapshot.positionMs),
                     isPlaying = snapshot.isPlaying,
                 )
-                Spacer(GlanceModifier.height(if (large) 8.dp else 2.dp))
                 WidgetControls(
                     isPlaying = snapshot.isPlaying,
                     palette = palette,
@@ -309,10 +315,10 @@ private fun NarrowLayout(
                 width = width,
                 palette = palette,
                 height = if (tall) 12.dp else 10.dp,
+                seekHeight = if (tall) 24.dp else 18.dp,
                 phase = WidgetWave.phase(snapshot.positionMs),
                 isPlaying = snapshot.isPlaying,
             )
-            Spacer(GlanceModifier.height(if (tall) 8.dp else 4.dp))
             WidgetControls(
                 isPlaying = snapshot.isPlaying,
                 palette = palette,
@@ -341,7 +347,7 @@ private fun BarLayout(
     val likeSize = if (tall) 20.dp else 18.dp
     val titleSize = if (tall) 13.sp else 12.sp
     val progressHeight = if (tall) 10.dp else 8.dp
-    val progressGap = if (tall) 4.dp else 2.dp
+    val seekHeight = if (tall) 20.dp else 16.dp
     val width = (size.width - padding * 2).coerceAtLeast(1.dp)
 
     if (size.width >= NarrowWidth) {
@@ -354,8 +360,7 @@ private fun BarLayout(
                 sideSize - controlsGap - playSize - controlsGap - sideSize
             ).coerceAtLeast(40.dp)
         val rowHeight = (
-            size.height - padding * 2 - progressHeight -
-                if (showProgress) progressGap else 0.dp
+            size.height - padding * 2 - if (showProgress) seekHeight else 0.dp
             ).coerceAtLeast(1.dp)
         Box(
             modifier = GlanceModifier.fillMaxSize().padding(padding),
@@ -411,14 +416,14 @@ private fun BarLayout(
                     )
                 }
                 if (showProgress) {
-                    Spacer(GlanceModifier.height(progressGap))
                     WidgetProgress(
                         progress = snapshot.progress,
                         width = contentWidth,
                         palette = palette,
                         height = progressHeight,
+                        seekHeight = seekHeight,
                         phase = WidgetWave.phase(snapshot.positionMs),
-                    isPlaying = snapshot.isPlaying,
+                        isPlaying = snapshot.isPlaying,
                     )
                 }
             }
@@ -465,6 +470,7 @@ private fun BarLayout(
                     width = width,
                     palette = palette,
                     height = 8.dp,
+                    seekHeight = 16.dp,
                     phase = WidgetWave.phase(snapshot.positionMs),
                     isPlaying = snapshot.isPlaying,
                 )
@@ -661,6 +667,7 @@ private fun WidgetProgress(
     width: Dp,
     palette: WidgetPalette,
     height: Dp,
+    seekHeight: Dp,
     phase: Float,
     isPlaying: Boolean,
 ) {
@@ -688,26 +695,39 @@ private fun WidgetProgress(
         accent = palette.accent,
         track = palette.track,
     )
-    Box(modifier = GlanceModifier.width(width).height(height)) {
+    Box(
+        modifier = GlanceModifier.width(width).height(seekHeight),
+        contentAlignment = Alignment.Center,
+    ) {
         AndroidRemoteViews(
             remoteViews = waveRemoteViews(context, bitmap),
-            modifier = GlanceModifier.fillMaxSize(),
+            modifier = GlanceModifier.width(width).height(height),
         )
         Row(modifier = GlanceModifier.fillMaxSize()) {
-            repeat(SEEK_SEGMENTS) { index ->
-                Box(
-                    modifier = GlanceModifier
-                        .defaultWeight()
-                        .fillMaxHeight()
-                        .clickable(
-                            actionRunCallback<WidgetActionCallback>(
-                                actionParametersOf(
-                                    WidgetActionKey to ACTION_SEEK,
-                                    SeekFractionKey to ((index + 0.5f) / SEEK_SEGMENTS),
-                                ),
-                            ),
-                        ),
+            repeat(SEEK_GROUPS) { group ->
+                Column(
+                    modifier = GlanceModifier.defaultWeight().fillMaxHeight(),
                 ) {
+                    Row(modifier = GlanceModifier.fillMaxSize()) {
+                        repeat(SEEK_GROUP_SIZE) { index ->
+                            val slot = group * SEEK_GROUP_SIZE + index
+                            val fraction = (slot + 0.5f) / SEEK_SEGMENTS.toFloat()
+                            Box(
+                                modifier = GlanceModifier
+                                    .defaultWeight()
+                                    .fillMaxHeight()
+                                    .clickable(
+                                        actionRunCallback<WidgetActionCallback>(
+                                            actionParametersOf(
+                                                WidgetActionKey to ACTION_SEEK,
+                                                SeekFractionKey to fraction,
+                                            ),
+                                        ),
+                                    ),
+                            ) {
+                            }
+                        }
+                    }
                 }
             }
         }
