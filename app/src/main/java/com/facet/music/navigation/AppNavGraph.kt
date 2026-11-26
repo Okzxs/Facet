@@ -625,6 +625,9 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
     return slideInHorizontally(
         initialOffsetX = { width -> direction * width / 3 },
         animationSpec = Motion.spatialDefault(),
+    ) + scaleIn(
+        initialScale = 0.98f,
+        animationSpec = Motion.spatialDefault(),
     ) + fadeIn(
         animationSpec = Motion.effectsDefault(),
     )
@@ -639,6 +642,9 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(
     }
     return slideOutHorizontally(
         targetOffsetX = { width -> -direction * width / 3 },
+        animationSpec = Motion.spatialDefault(),
+    ) + scaleOut(
+        targetScale = 0.98f,
         animationSpec = Motion.spatialDefault(),
     ) + fadeOut(
         animationSpec = Motion.effectsDefault(),

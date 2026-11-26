@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -97,6 +98,7 @@ import com.facet.music.core.ui.components.PlaylistListRow
 import com.facet.music.core.ui.components.PlaylistTile
 import com.facet.music.core.ui.components.SectionHeader
 import com.facet.music.core.ui.components.TrackCard
+import com.facet.music.core.ui.theme.CloudReveal
 import com.facet.music.core.ui.components.TrackDownloadButton
 import com.facet.music.data.model.Playlist
 import com.facet.music.data.model.Track
@@ -258,7 +260,7 @@ fun LibraryScreen(
                             Text(
                                 text = "FACET",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.Medium,
                                     letterSpacing = 2.sp,
                                 ),
                                 color = MaterialTheme.colorScheme.primary,
@@ -281,7 +283,9 @@ fun LibraryScreen(
                         }
                         Text(
                             text = stringResource(R.string.library_title),
-                            style = MaterialTheme.typography.displaySmall,
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontWeight = FontWeight.Normal,
+                            ),
                         )
                     }
                 },
@@ -326,8 +330,8 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(
-                bottom = (if (showImportFab) 96.dp else 24.dp) +
-                    LocalBottomDockHeight.current,
+                bottom = (if (showImportFab) 96.dp else 32.dp) +
+                    96.dp + LocalBottomDockHeight.current,
             ),
         ) {
             item(key = "library_summary") {
@@ -338,23 +342,25 @@ fun LibraryScreen(
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
                 )
             }
 
             item(key = "library_favorites") {
-                CollectionChipCard(
-                    title = stringResource(R.string.library_favorites),
-                    subtitle = likedTracksSubtitle(likedTracks),
-                    icon = Icons.Filled.Favorite,
-                    onClick = onLikedTracksClick,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
+                CloudReveal(index = 0) {
+                    CollectionChipCard(
+                        title = stringResource(R.string.library_favorites),
+                        subtitle = likedTracksSubtitle(likedTracks),
+                        icon = Icons.Filled.Favorite,
+                        onClick = onLikedTracksClick,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
+                    )
+                }
             }
 
             if (showSpotifyImport) {
                 item(key = "library_import_likes") {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)) {
                         AssistChip(
                             onClick = { viewModel.importSpotifyLikes() },
                             enabled = !spotifyLikesLoading,
@@ -401,25 +407,31 @@ fun LibraryScreen(
                     )
                 }
             } else if (appSettings.libraryPlaylistLayout == AppSettings.LIBRARY_LIST) {
-                items(items = playlists, key = { "playlist_${it.id}" }) { playlist ->
-                    PlaylistListRow(
-                        playlistName = playlist.name,
-                        coverUrl = playlist.coverUrl,
-                        trackCount = playlist.trackCount,
-                        onClick = { onPlaylistClick(playlist.id) },
-                        modifier = Modifier
-                            .animateItem()
-                            .padding(horizontal = 20.dp, vertical = 4.dp),
-                    )
+                itemsIndexed(
+                    items = playlists,
+                    key = { _, playlist -> "playlist_${playlist.id}" },
+                ) { index, playlist ->
+                    CloudReveal(index = index) {
+                        PlaylistListRow(
+                            playlistName = playlist.name,
+                            coverUrl = playlist.coverUrl,
+                            trackCount = playlist.trackCount,
+                            onClick = { onPlaylistClick(playlist.id) },
+                            modifier = Modifier
+                                .animateItem()
+                                .padding(horizontal = 24.dp, vertical = 4.dp),
+                        )
+                    }
                 }
             } else {
                 playlists.chunked(PLAYLIST_GRID_COLUMNS).forEachIndexed { index, row ->
                     item(key = "library_playlists_row_$index") {
+                        CloudReveal(index = index) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .animateItem()
-                                .padding(horizontal = 20.dp, vertical = 6.dp),
+                                .padding(horizontal = 24.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             row.forEach { playlist ->
@@ -434,6 +446,7 @@ fun LibraryScreen(
                             if (row.size < PLAYLIST_GRID_COLUMNS) {
                                 Spacer(Modifier.weight(1f))
                             }
+                        }
                         }
                     }
                 }
@@ -468,7 +481,7 @@ fun LibraryScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp),
+                                .padding(horizontal = 24.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             spotifyPlaylists.forEach { playlist ->

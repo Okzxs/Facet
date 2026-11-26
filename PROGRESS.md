@@ -1,6 +1,20 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 27.11.2026 (виджет: большой хитбокс seek)
+## Последнее обновление: 27.11.2026 (Cloud UI 1.1.0)
+
+---
+
+## Сессия 97: экспериментальный редизайн Cloud UI (27.11.2026)
+
+- **Ветка.** Создана `redesign-experimental`; все изменения только в ней, `main` не затрагивался.
+- **Фундамент.** `Color.kt`, `Type.kt`, `Shape.kt`, `Motion.kt`, `Theme.kt` переписаны: облачные нейтрали, перивинкловый ирис, Google Sans Flex 400/500/600 с воздушными lineHeight, формы 8/12/16/24/32, пружины press/reveal/bounce. Dynamic Color сохранён, но нейтрали перекрываются облачными. `serifDisplay` по умолчанию false.
+- **Анимации.** Добавлены `CloudSpacing`, `CloudReveal` (fade + slide 16dp, шаг 40 мс) и `Modifier.cloudPress` (scale 0.96). Переходы вкладок получили M3 Emphasized + scale 0.98.
+- **Атомы.** TrackCard (обложка 64, радиус 24, press 0.96), док (капсула 32 без тени), мини-плеер (капсула 28, surfaceContainerHighest), CollectionChipCard (тональная, без градиента), EmptyState, SectionHeader; из Search убрана тень dropdown.
+- **Экраны.** Home: сетка 24, заголовок 30/Normal, воздушные отступы; Search: поле 60dp, 24dp, stagger результатов; Library: 24dp, reveal карточек; Settings/Artist/Import: 24dp и новые заголовки; Player: ахроматичные обложки получают акцент темы, убраны тени HUD.
+- **Проверка.** Light и dark (AMOLED off) на A26: Home, Search, Library, Settings, Player, lyrics, очередь и seek. Debug собирается, 86 suite / 506 тестов, 0 failures (1 skipped). На время скриншотов системный `font_weight_adjustment` был 0 и тема LIGHT; после проверки настройки пользователя восстановлены (SYSTEM/AMOLED/жирный текст 300).
+- **APK.** 35 755 304 байт, SHA-256 `cb9e4c81aa3c7792bb963899996349b08ffd818eddd46160db8cfce52b6b28ec`.
+- **Ограничение.** Полный drag в виджете по-прежнему невозможен (RemoteViews), это не входит в текущий редизайн.
+
 
 ---
 

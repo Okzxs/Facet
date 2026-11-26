@@ -394,8 +394,8 @@ internal fun ExpressiveHeroZone(
                                             shape = MaterialTheme.shapes.large,
                                             color = MaterialTheme.colorScheme.surfaceContainerHigh
                                                 .copy(alpha = 0.94f),
-                                            tonalElevation = 4.dp,
-                                            shadowElevation = 10.dp,
+                                            tonalElevation = 0.dp,
+                                            shadowElevation = 0.dp,
                                         ) {
                                             Row(
                                                 modifier = Modifier.padding(
@@ -449,7 +449,7 @@ internal fun ExpressiveHeroZone(
                                         Text(
                                             text = state.title,
                                             style = MaterialTheme.typography.headlineSmall,
-                                            fontWeight = FontWeight.Bold,
+                                            fontWeight = FontWeight.Medium,
                                             color = Color.White,
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis,

@@ -218,6 +218,16 @@ com.facet.music
 
 ---
 
+## Cloud UI 1.1.0 (ветка `redesign-experimental`)
+
+- **Палитра.** Светлая: background `#F7F7FC`, surface `#FFFFFF`, containers `#F1F1F9…#DDDDEA`, primary seed `#5B63D6`. Тёмная: background `#0F1016`, surface `#12131A`, containers `#17181F…#292A35`, primary `#BCC2FF`. Dynamic Color сохраняется, но `withAiryNeutrals` перекрывает нейтрали облачными; AMOLED по-прежнему чёрный.
+- **Типографика.** Только `GoogleSansFlex` (400/500/600), `AppTypography` с увеличенными lineHeight; `Bold` в UI не используется. `serifDisplay` по умолчанию false, Playfair остаётся опцией студии.
+- **Формы.** `AppShapes` = 8/12/16/24/32, `PillShape` для кнопок; `FacetShapeStyle.SOFT/DEFAULT/ROUND` обновлены.
+- **Движение.** `Motion.press()` = 0.75/500, `Motion.reveal()` = 0.78/Low, `Motion.bounce()` = 0.60/MediumLow; `CloudReveal` даёт fade + slide и stagger 40 мс, `Modifier.cloudPress` — scale 0.96.
+- **Сетка.** `CloudSpacing.Screen = 24`, `Section = 32`, `Card = 16/20`; списки и карточки не липнут к краям. Тяжёлые тени и стекло запрещены; только `surfaceContainer*`.
+- **Атомы.** TrackCard — 64dp обложка, радиус 24; док — плавающая капсула 32; мини-плеер — капсула 28 на `surfaceContainerHighest`; CollectionChipCard — тональная без градиента.
+- **Плеер.** Для ахроматичной обложки `PlayerDynamicColors.withCloudAccent` подставляет primary темы вместо серого; это сохраняет читаемость и фирменный ирис.
+
 ## Жёсткие правила
 
 ### Версии

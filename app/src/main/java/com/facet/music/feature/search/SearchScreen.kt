@@ -57,6 +57,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -129,6 +130,7 @@ import com.facet.music.R
 import com.facet.music.core.ui.components.DockAwareSnackbarHost
 import com.facet.music.core.service.ServiceHealth
 import com.facet.music.core.service.ServiceType
+import com.facet.music.core.ui.theme.CloudReveal
 import com.facet.music.core.ui.theme.StatusOnlineDark
 import com.facet.music.core.ui.theme.StatusOnlineLight
 import com.facet.music.core.ui.components.AddToPlaylistSheet
@@ -228,7 +230,7 @@ fun SearchScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.statusBars,
         snackbarHost = { DockAwareSnackbarHost(snackbarHostState) },
     ) { padding ->
@@ -243,7 +245,7 @@ fun SearchScreen(
             ExpressiveSearchField(
                 query = state.query,
                 onQueryChange = viewModel::onQueryChange,
-                modifier = Modifier.padding(horizontal = 20.dp),
+                modifier = Modifier.padding(horizontal = 24.dp),
             )
 
             AnimatedVisibility(
@@ -257,7 +259,7 @@ fun SearchScreen(
                 SearchSuggestionList(
                     suggestions = state.suggestions,
                     onSelect = viewModel::onSuggestionSelected,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
             }
 
@@ -269,7 +271,7 @@ fun SearchScreen(
                 onRefreshStatuses = viewModel::refreshStatuses,
                 onStatusOpened = viewModel::onStatusPanelOpened,
                 sourceHint = state.sourceHint,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp),
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp),
             )
 
             AnimatedVisibility(
@@ -277,7 +279,7 @@ fun SearchScreen(
                 enter = fadeIn(tween(180)) + expandVertically(),
                 exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
             ) {
-                OfflineBanner(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                OfflineBanner(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             }
 
             AnimatedVisibility(
@@ -393,13 +395,13 @@ fun SearchScreen(
 @Composable
 private fun SearchHeader() {
     Column(
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "FACET",
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Medium,
                     letterSpacing = 2.sp,
                 ),
                 color = MaterialTheme.colorScheme.primary,
@@ -421,9 +423,11 @@ private fun SearchHeader() {
         Spacer(Modifier.height(6.dp))
         Text(
             text = stringResource(R.string.search_title),
-            style = MaterialTheme.typography.displaySmall,
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.Normal,
+            ),
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = stringResource(R.string.search_subtitle),
             style = MaterialTheme.typography.bodyMedium,
@@ -681,12 +685,8 @@ private fun ServiceStatusButton(
             offset = DpOffset(x = 0.dp, y = 6.dp),
             shape = MaterialTheme.shapes.extraLarge,
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 4.dp,
-            shadowElevation = 12.dp,
-            border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-            ),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -927,19 +927,19 @@ private fun ExpressiveSearchField(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp),
+            .heightIn(min = 60.dp),
         shape = shape,
         color = containerColor,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .padding(horizontal = 8.dp),
+                .heightIn(min = 60.dp)
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(40.dp),
                 shape = CircleShape,
                 color = iconContainerColor,
             ) {
@@ -1120,32 +1120,25 @@ private fun IdleState(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 32.dp)
-            .padding(bottom = LocalBottomDockHeight.current),
+            .padding(bottom = LocalBottomDockHeight.current + 88.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Box(
             modifier = Modifier
-                .size(104.dp)
+                .size(88.dp)
                 .clip(MaterialTheme.shapes.extraLarge)
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.colorScheme.tertiaryContainer,
-                        ),
-                    ),
-                ),
+                .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Rounded.Search,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(46.dp),
+                modifier = Modifier.size(38.dp),
             )
         }
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(18.dp))
         Text(
             text = stringResource(R.string.search_idle_title),
             style = MaterialTheme.typography.titleLarge,
@@ -1172,7 +1165,7 @@ private fun EmptyResultsState(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(bottom = LocalBottomDockHeight.current),
+            .padding(bottom = LocalBottomDockHeight.current + 88.dp),
         contentAlignment = Alignment.Center,
     ) {
         EmptyState(
@@ -1191,7 +1184,7 @@ private fun ErrorState(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(bottom = LocalBottomDockHeight.current),
+            .padding(bottom = LocalBottomDockHeight.current + 88.dp),
         contentAlignment = Alignment.Center,
     ) {
         EmptyState(
@@ -1297,8 +1290,8 @@ private fun ResultsList(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp + LocalBottomDockHeight.current),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = PaddingValues(bottom = 96.dp + LocalBottomDockHeight.current),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (localResults.isNotEmpty()) {
                 item(key = "local_section") {
@@ -1374,25 +1367,27 @@ private fun ResultsList(
                     }
                 }
             }
-            items(
+            itemsIndexed(
                 items = tracks,
-                key = { it.id },
-            ) { track ->
-                TrackCard(
-                    track = track,
-                    modifier = Modifier.animateItem(),
-                    isDownloaded = track.id in downloadedIds,
-                    onClick = { onTrackClick(track, tracks) },
-                    onAddToPlaylist = { onAddToPlaylist(track) },
-                    onArtistClick = { onTrackArtistClick(track) },
-                    onPlayNext = { onPlayNext(track) },
-                    onAddToQueue = { onAddToQueue(track) },
-                    onSourcesClick = if (track.sourceCount > 1) {
-                        { onSourcesClick(track) }
-                    } else {
-                        null
-                    },
-                )
+                key = { _, track -> track.id },
+            ) { index, track ->
+                CloudReveal(index = index) {
+                    TrackCard(
+                        track = track,
+                        modifier = Modifier.animateItem(),
+                        isDownloaded = track.id in downloadedIds,
+                        onClick = { onTrackClick(track, tracks) },
+                        onAddToPlaylist = { onAddToPlaylist(track) },
+                        onArtistClick = { onTrackArtistClick(track) },
+                        onPlayNext = { onPlayNext(track) },
+                        onAddToQueue = { onAddToQueue(track) },
+                        onSourcesClick = if (track.sourceCount > 1) {
+                            { onSourcesClick(track) }
+                        } else {
+                            null
+                        },
+                    )
+                }
             }
             if (isLoadingMore) {
                 item(key = "load_more") {
@@ -1426,7 +1421,7 @@ private fun ArtistSection(
         Spacer(Modifier.height(10.dp))
         LazyRow(
             modifier = Modifier.height(116.dp),
-            contentPadding = PaddingValues(horizontal = 20.dp),
+            contentPadding = PaddingValues(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(artists, key = { it.id }) { artist ->

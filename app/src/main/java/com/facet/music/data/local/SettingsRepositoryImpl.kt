@@ -94,7 +94,7 @@ class SettingsRepositoryImpl @Inject constructor(
         paletteMode = prefs.getString(KEY_PALETTE_MODE, null)
             ?.takeIf { it in PALETTE_MODES }
             ?: "SIGNATURE",
-        serifDisplay = prefs.getBoolean(KEY_SERIF_DISPLAY, true),
+        serifDisplay = prefs.getBoolean(KEY_SERIF_DISPLAY, false),
         amoledBlack = prefs.getBoolean(KEY_AMOLED_BLACK, false),
         shapeStyle = prefs.getString(KEY_SHAPE_STYLE, null)
             ?.takeIf { it in SHAPE_STYLES }

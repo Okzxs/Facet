@@ -14,7 +14,7 @@ data class AppearanceProfile(
     val customAccentColor: Int? = null,
     val accentEnabled: Boolean = false,
     val amoledBlack: Boolean = false,
-    val serifDisplay: Boolean = true,
+    val serifDisplay: Boolean = false,
     val textScale: Float = 1f,
     val shapeStyle: String = "DEFAULT",
     val dockStyle: String = AppSettings.DOCK_FLOATING,

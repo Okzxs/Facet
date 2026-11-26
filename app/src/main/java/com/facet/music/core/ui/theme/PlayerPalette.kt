@@ -3,6 +3,7 @@ package com.facet.music.core.ui.theme
 import android.graphics.Bitmap
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
 import coil3.BitmapImage
@@ -30,6 +31,28 @@ data class PlayerDynamicColors(
 )
 
 private const val MAX_CACHE_ENTRIES = 32
+
+private fun PlayerDynamicColors.withCloudAccent(
+    defaultPrimary: Color,
+    defaultOnPrimary: Color,
+    defaultPrimaryContainer: Color,
+    defaultOnPrimaryContainer: Color,
+    defaultSurface: Color,
+): PlayerDynamicColors {
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(primary.toArgb(), hsl)
+    if (hsl[1] >= ACHROMATIC_SATURATION_THRESHOLD) return this
+    return copy(
+        dominant = defaultPrimary,
+        primary = defaultPrimary,
+        onPrimary = defaultOnPrimary,
+        primaryContainer = defaultPrimaryContainer,
+        onPrimaryContainer = defaultOnPrimaryContainer,
+        secondaryContainer = defaultPrimaryContainer,
+        onSecondaryContainer = defaultPrimary,
+        surfaceContainerHigh = defaultSurface,
+    )
+}
 
 private val paletteCache = object :
     LinkedHashMap<String, PlayerDynamicColors>(MAX_CACHE_ENTRIES, 0.75f, true) {
@@ -86,17 +109,26 @@ fun rememberPlayerDynamicColors(
         return fallback
     }
 
-    cachedPalette(artworkUrl)?.let { return it }
+    val accentArgs: (PlayerDynamicColors) -> PlayerDynamicColors = { colors ->
+        colors.withCloudAccent(
+            defaultPrimary = defaultPrimary,
+            defaultOnPrimary = defaultOnPrimary,
+            defaultPrimaryContainer = defaultPrimaryContainer,
+            defaultOnPrimaryContainer = defaultOnPrimaryContainer,
+            defaultSurface = defaultSurface,
+        )
+    }
+    cachedPalette(artworkUrl)?.let { return accentArgs(it) }
 
     var dynamicColors by remember(artworkUrl) { mutableStateOf(fallback.copy(isLoading = true)) }
 
     LaunchedEffect(artworkUrl) {
         cachedPalette(artworkUrl)?.let {
-            dynamicColors = it
+            dynamicColors = accentArgs(it)
             return@LaunchedEffect
         }
         dynamicColors = fallback.copy(isLoading = true)
-        dynamicColors = computePlayerColors(context, artworkUrl) ?: fallback
+        dynamicColors = accentArgs(computePlayerColors(context, artworkUrl) ?: fallback)
     }
 
     return dynamicColors

@@ -284,7 +284,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = stringResource(R.string.settings_language_hint),
@@ -307,7 +307,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = stringResource(R.string.settings_lyrics_translation_hint),
@@ -344,7 +344,7 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -427,7 +427,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = stringResource(R.string.settings_battery_hint),
@@ -455,7 +455,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = stringResource(R.string.settings_quality_title),
@@ -486,7 +486,7 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .settingsAnchor(ANCHOR_CACHE, anchorPositions)
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -541,7 +541,7 @@ fun SettingsScreen(
                             )
                         }
                     }
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -674,7 +674,7 @@ private fun StudioEntryRow(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
+            .padding(horizontal = 24.dp, vertical = 4.dp),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -731,7 +731,7 @@ private fun SettingsSwitchRow(
                 role = Role.Switch,
                 onValueChange = onCheckedChange,
             )
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -819,7 +819,7 @@ private fun SettingsHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FilledTonalIconButton(
@@ -840,7 +840,7 @@ private fun SettingsHeader(
                 Text(
                     text = "FACET",
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Medium,
                         letterSpacing = 2.sp,
                     ),
                     color = MaterialTheme.colorScheme.primary,
@@ -859,10 +859,12 @@ private fun SettingsHeader(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.settings_title),
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontWeight = FontWeight.Normal,
+                ),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(2.dp))
@@ -901,7 +903,7 @@ private fun SettingsSearchField(
         onValueChange = onQueryChange,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 24.dp)
             .heightIn(min = 56.dp),
         placeholder = { Text(stringResource(R.string.settings_search_hint)) },
         leadingIcon = {
@@ -947,7 +949,7 @@ private fun SettingsSearchResults(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 32.dp),
+                .padding(horizontal = 24.dp, vertical = 32.dp),
         ) {
             Text(
                 text = stringResource(R.string.settings_search_empty),
@@ -961,7 +963,7 @@ private fun SettingsSearchResults(
         modifier = modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 24.dp, vertical = 12.dp),
     ) {
         results.forEach { entry ->
             Surface(
@@ -1392,7 +1394,7 @@ private fun SpotifyIntegrationCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 24.dp, vertical = 8.dp),
     ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(

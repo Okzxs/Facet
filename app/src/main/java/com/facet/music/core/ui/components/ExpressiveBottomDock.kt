@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +23,11 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ripple
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +38,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.facet.music.core.ui.theme.Motion
+import com.facet.music.core.ui.theme.cloudPress
 import com.facet.music.navigation.BottomNavItem
 
 enum class DockLabels {
@@ -59,7 +64,7 @@ fun ExpressiveBottomDock(
     if (attached) {
         Surface(
             modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
@@ -69,7 +74,7 @@ fun ExpressiveBottomDock(
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .selectableGroup()
-                    .padding(horizontal = 6.dp, vertical = 8.dp),
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -88,20 +93,20 @@ fun ExpressiveBottomDock(
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
         ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 tonalElevation = 0.dp,
-                shadowElevation = 8.dp,
+                shadowElevation = 0.dp,
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .selectableGroup()
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -128,13 +133,14 @@ private fun DockItem(
     labels: DockLabels,
     modifier: Modifier = Modifier,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     val iconColor by animateColorAsState(
         targetValue = if (selected) {
             MaterialTheme.colorScheme.onSecondaryContainer
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = spring(),
+        animationSpec = Motion.spatialFast(),
         label = "dockIconColor",
     )
     val labelColor by animateColorAsState(
@@ -143,7 +149,7 @@ private fun DockItem(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = spring(),
+        animationSpec = Motion.spatialFast(),
         label = "dockLabelColor",
     )
     val showLabel = when (labels) {
@@ -156,9 +162,12 @@ private fun DockItem(
             .clip(MaterialTheme.shapes.large)
             .selectable(
                 selected = selected,
+                interactionSource = interactionSource,
+                indication = ripple(),
                 role = Role.Tab,
                 onClick = onClick,
             )
+            .cloudPress(interactionSource)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -184,8 +193,8 @@ private fun DockItem(
         }
         AnimatedVisibility(
             visible = showLabel,
-            enter = expandVertically(animationSpec = spring()),
-            exit = shrinkVertically(animationSpec = spring()),
+            enter = expandVertically(animationSpec = Motion.spatialFast()),
+            exit = shrinkVertically(animationSpec = Motion.spatialFast()),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(3.dp))

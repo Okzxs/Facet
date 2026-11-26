@@ -106,7 +106,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private val ScreenPadding = 16.dp
+private val ScreenPadding = 24.dp
 private val BlockGap = 32.dp
 private const val MEMORY_PREVIEW_LIMIT = 3
 
@@ -196,8 +196,8 @@ fun HomeScreen(
             contentPadding = PaddingValues(
                 start = ScreenPadding,
                 end = ScreenPadding,
-                top = 20.dp,
-                bottom = 24.dp + LocalBottomDockHeight.current,
+                top = 28.dp,
+                bottom = 96.dp + LocalBottomDockHeight.current,
             ),
             verticalArrangement = Arrangement.spacedBy(BlockGap),
         ) {
@@ -383,12 +383,12 @@ private fun RevealBlock(
     LaunchedEffect(Unit) {
         if (revealed) return@LaunchedEffect
 
-        delay(index * 35L)
+        delay(index * 40L)
         progress.animateTo(
             targetValue = 1f,
             animationSpec = spring(
-                dampingRatio = 0.8f,
-                stiffness = Spring.StiffnessMediumLow,
+                dampingRatio = 0.78f,
+                stiffness = Spring.StiffnessLow,
             ),
         )
         revealed = true
@@ -399,7 +399,7 @@ private fun RevealBlock(
             .fillMaxWidth()
             .graphicsLayer {
                 alpha = progress.value
-                translationY = (1f - progress.value) * 12.dp.toPx()
+                translationY = (1f - progress.value) * 16.dp.toPx()
             },
     ) {
         content()
@@ -435,7 +435,7 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
                 Text(
                     text = "FACET",
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Medium,
                         letterSpacing = 2.sp,
                     ),
                     color = MaterialTheme.colorScheme.primary,
@@ -459,7 +459,9 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Text(
                 text = greeting,
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontWeight = FontWeight.Normal,
+                ),
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -468,8 +470,8 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         Spacer(Modifier.width(12.dp))
         FilledTonalIconButton(
             onClick = onSettingsClick,
-            modifier = Modifier.size(40.dp),
-            shape = CircleShape,
+            modifier = Modifier.size(44.dp),
+            shape = MaterialTheme.shapes.extraLarge,
         ) {
             Icon(
                 imageVector = Icons.Rounded.Settings,
@@ -484,37 +486,37 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
 private fun WavePromoCard(onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.secondaryContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(24.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = Icons.Rounded.Waves,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(30.dp),
             )
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(18.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stringResource(R.string.home_wave_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
                 Text(
                     text = stringResource(R.string.home_wave_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
                 )
             }
             Icon(
                 imageVector = Icons.Rounded.PlayArrow,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
     }
@@ -528,11 +530,11 @@ private fun NewReleasesBlock(
 ) {
     Column {
         HomeSectionHeader(title = stringResource(R.string.home_new_releases), index = index)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items = releases, key = { it.id }) { release ->
                 Column(
                     modifier = Modifier
-                        .width(132.dp)
+                        .width(136.dp)
                         .clickable { onClick(release) },
                 ) {
                     AsyncImage(
@@ -571,11 +573,11 @@ private fun ChartsBlock(
 ) {
     Column {
         HomeSectionHeader(title = stringResource(R.string.home_charts), index = index)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items = tracks, key = { it.id }) { track ->
                 Column(
                     modifier = Modifier
-                        .width(132.dp)
+                        .width(136.dp)
                         .clickable { onTrackClick(track, tracks) },
                 ) {
                     Box {
@@ -629,18 +631,18 @@ private fun GenrePlaylistsBlock(
 ) {
     Column {
         HomeSectionHeader(title = stringResource(R.string.home_genre_playlists), index = index)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items = sections, key = { it.genre }) { section ->
                 Surface(
                     onClick = { onTrackClick(section.tracks.first(), section.tracks) },
                     shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.width(164.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    modifier = Modifier.width(176.dp),
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(20.dp)) {
                         Text(
                             text = section.genre,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             maxLines = 1,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -650,7 +652,7 @@ private fun GenrePlaylistsBlock(
                                 R.string.home_genre_tracks,
                                 section.tracks.size,
                             ),
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -802,7 +804,7 @@ private fun ContinueListeningCard(
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Normal,
                     color = Color.White,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -862,13 +864,13 @@ private fun CompactContinueCard(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Artwork(
                 url = track.artworkUrl,
                 contentDescription = null,
-                modifier = Modifier.size(72.dp),
+                modifier = Modifier.size(76.dp),
                 shape = MaterialTheme.shapes.large,
             )
             Spacer(Modifier.width(14.dp))
@@ -897,7 +899,6 @@ private fun CompactContinueCard(
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

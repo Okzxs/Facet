@@ -71,6 +71,7 @@ import coil3.request.crossfade
 import com.facet.music.R
 import com.facet.music.core.text.CensorshipFilter
 import com.facet.music.core.text.CensorshipVerdict
+import com.facet.music.core.ui.theme.Motion
 import com.facet.music.data.model.Track
 import kotlin.math.PI
 import kotlin.math.abs
@@ -85,8 +86,8 @@ fun TrackCard(
     isDownloaded: Boolean = false,
     isPlaying: Boolean = false,
     isPaused: Boolean = false,
-    artworkSize: Int = 56,
-    artworkCornerDp: Int = 12,
+    artworkSize: Int = 64,
+    artworkCornerDp: Int = 18,
     trailingContent: @Composable (() -> Unit)? = null,
     onAddToPlaylist: (() -> Unit)? = null,
     onArtistClick: (() -> Unit)? = null,
@@ -96,7 +97,7 @@ fun TrackCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val shape = MaterialTheme.shapes.medium
+    val shape = MaterialTheme.shapes.large
 
     val containerColor by animateColorAsState(
         targetValue = when {
@@ -104,15 +105,12 @@ fun TrackCard(
             isPlaying -> MaterialTheme.colorScheme.surfaceContainerHigh
             else -> MaterialTheme.colorScheme.surfaceContainerLow
         },
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = tween(durationMillis = 160),
         label = "trackCardContainer",
     )
     val pressedScale by animateFloatAsState(
-        targetValue = if (pressed) 0.985f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.7f,
-            stiffness = Spring.StiffnessMedium,
-        ),
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = Motion.press(),
         label = "trackCardScale",
     )
 
@@ -141,7 +139,7 @@ fun TrackCard(
         )
     }
 
-    Box(modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Box(modifier = modifier.padding(horizontal = 24.dp, vertical = 5.dp)) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()

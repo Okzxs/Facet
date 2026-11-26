@@ -108,7 +108,15 @@ fun ImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.import_screen_title)) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.import_screen_title),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -129,7 +137,7 @@ fun ImportScreen(
         ) {
             PrimaryScrollableTabRow(
                 selectedTabIndex = state.tab.ordinal,
-                edgePadding = 0.dp,
+                edgePadding = 24.dp,
                 containerColor = MaterialTheme.colorScheme.background,
                 contentColor = MaterialTheme.colorScheme.primary,
             ) {

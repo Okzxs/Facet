@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Совпадает с Background из core/ui/theme/Color.kt (0xFFFAFAFA). -->
-    <color name="window_background">#FAFAFA</color>
+    <color name="window_background">#F7F7FC</color>
     <!-- Фон адаптивной иконки: графит, одинаковый в светлой и тёмной теме. -->
     <color name="ic_launcher_background">#141318</color>
 </resources>

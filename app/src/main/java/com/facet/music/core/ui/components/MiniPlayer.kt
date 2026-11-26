@@ -3,6 +3,7 @@ package com.facet.music.core.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ripple
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,7 +44,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
@@ -65,18 +66,20 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
+import com.facet.music.core.ui.theme.CloudPanelShape
 import com.facet.music.core.ui.theme.Motion
 import com.facet.music.core.ui.theme.PillShape
+import com.facet.music.core.ui.theme.cloudPress
 import com.facet.music.data.model.Track
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-internal val MiniPlayerIslandHeight = 64.dp
+internal val MiniPlayerIslandHeight = 68.dp
 
-internal val MiniPlayerHorizontalMargin = 16.dp
+internal val MiniPlayerHorizontalMargin = 20.dp
 
-internal val MiniPlayerGap = 12.dp
+internal val MiniPlayerGap = 10.dp
 
 private const val SwipeThresholdFraction = 0.3f
 
@@ -111,8 +114,9 @@ internal fun FloatingMiniPlayer(
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val shape = MaterialTheme.shapes.extraLarge
-    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val shape = CloudPanelShape
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val interactionSource = remember { MutableInteractionSource() }
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }
 
@@ -145,7 +149,6 @@ internal fun FloatingMiniPlayer(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = MiniPlayerIslandHeight)
-            .shadow(6.dp, shape)
             .background(surfaceColor, shape)
             .clip(shape)
             .onSizeChanged { widthState.floatValue = it.width.toFloat() }
@@ -171,7 +174,13 @@ internal fun FloatingMiniPlayer(
                     }
                 },
             )
-            .clickable(role = Role.Button, onClick = onExpandClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                role = Role.Button,
+                onClick = onExpandClick,
+            )
+            .cloudPress(interactionSource)
             .semantics {
                 stateDescription = stateText
                 customActions = listOf(
@@ -184,7 +193,7 @@ internal fun FloatingMiniPlayer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
@@ -200,9 +209,9 @@ internal fun FloatingMiniPlayer(
             ) {
                 Surface(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(50.dp)
                         .then(coverModifier),
-                    shape = MaterialTheme.shapes.small,
+                    shape = MaterialTheme.shapes.medium,
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
                     if (!track.artworkUrl.isNullOrBlank()) {
@@ -220,7 +229,7 @@ internal fun FloatingMiniPlayer(
                             error = notePainter,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(MaterialTheme.shapes.small),
+                                .clip(MaterialTheme.shapes.medium),
                         )
                     } else {
                         Box(

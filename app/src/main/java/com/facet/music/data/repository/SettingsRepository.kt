@@ -37,7 +37,7 @@ data class AppSettings(
     val equalizerPreset: String = "FLAT",
     val skipSilenceEnabled: Boolean = false,
     val paletteMode: String = "SIGNATURE",
-    val serifDisplay: Boolean = true,
+    val serifDisplay: Boolean = false,
     val amoledBlack: Boolean = false,
     val shapeStyle: String = "DEFAULT",
     val textScale: Float = 1f,

@@ -4,6 +4,7 @@ package com.facet.music.core.ui.theme
 
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -16,15 +17,22 @@ object Motion {
     val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
     val Standard = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
-    const val ShortMillis = 150
-    const val MediumMillis = 200
-    const val EnterMillis = 450
-    const val ExitMillis = 200
+    const val ShortMillis = 180
+    const val MediumMillis = 280
+    const val EnterMillis = 460
+    const val ExitMillis = 240
 
-    const val SpatialFastDamping = 0.6f
-    const val SpatialFastStiffness = 800f
-    const val SpatialDefaultDamping = 0.8f
-    const val SpatialDefaultStiffness = 380f
+    const val PressDamping = 0.75f
+    const val PressStiffness = 500f
+    const val RevealDamping = 0.78f
+    const val RevealStiffness = Spring.StiffnessLow
+    const val BounceDamping = 0.6f
+    const val BounceStiffness = Spring.StiffnessMediumLow
+
+    const val SpatialFastDamping = 0.75f
+    const val SpatialFastStiffness = 500f
+    const val SpatialDefaultDamping = 0.78f
+    const val SpatialDefaultStiffness = Spring.StiffnessLow
     const val SpatialSlowDamping = 0.8f
     const val SpatialSlowStiffness = 200f
 
@@ -34,6 +42,15 @@ object Motion {
     const val EffectsDefaultStiffness = 1600f
     const val EffectsSlowDamping = 1.0f
     const val EffectsSlowStiffness = 800f
+
+    fun <T> press(): SpringSpec<T> =
+        spring(dampingRatio = PressDamping, stiffness = PressStiffness)
+
+    fun <T> reveal(): SpringSpec<T> =
+        spring(dampingRatio = RevealDamping, stiffness = RevealStiffness)
+
+    fun <T> bounce(): SpringSpec<T> =
+        spring(dampingRatio = BounceDamping, stiffness = BounceStiffness)
 
     fun <T> spatialFast(): SpringSpec<T> =
         spring(dampingRatio = SpatialFastDamping, stiffness = SpatialFastStiffness)
