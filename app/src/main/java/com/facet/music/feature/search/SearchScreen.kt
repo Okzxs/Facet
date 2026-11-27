@@ -22,6 +22,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -37,6 +39,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -57,6 +60,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -66,6 +73,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Person
@@ -78,11 +92,14 @@ import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -131,6 +148,7 @@ import com.facet.music.core.ui.components.DockAwareSnackbarHost
 import com.facet.music.core.service.ServiceHealth
 import com.facet.music.core.service.ServiceType
 import com.facet.music.core.ui.theme.CloudReveal
+import com.facet.music.core.ui.theme.cloudPress
 import com.facet.music.core.ui.theme.StatusOnlineDark
 import com.facet.music.core.ui.theme.StatusOnlineLight
 import com.facet.music.core.ui.components.AddToPlaylistSheet
@@ -138,6 +156,7 @@ import com.facet.music.core.ui.components.AppLoadingIndicator
 import com.facet.music.core.ui.components.EmptyState
 import com.facet.music.core.ui.components.TrackCard
 import com.facet.music.core.ui.components.TrackSourcesSheet
+import com.facet.music.core.ui.components.formatDuration
 import com.facet.music.navigation.LocalBottomDockHeight
 import com.facet.music.data.model.Artist
 import com.facet.music.data.model.Source
@@ -240,7 +259,7 @@ fun SearchScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            SearchHeader()
+            CloudSearchHeader(compact = state.query.isNotBlank())
 
             ExpressiveSearchField(
                 query = state.query,
@@ -263,16 +282,24 @@ fun SearchScreen(
                 )
             }
 
-            SourceSwitcher(
-                selectedSources = state.selectedSources,
-                statuses = serviceStatuses,
-                onToggle = viewModel::onSourceToggle,
-                onSelectAll = viewModel::onAllSourcesSelected,
-                onRefreshStatuses = viewModel::refreshStatuses,
-                onStatusOpened = viewModel::onStatusPanelOpened,
-                sourceHint = state.sourceHint,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp),
-            )
+            AnimatedVisibility(
+                visible = state.query.isBlank(),
+                enter = fadeIn(tween(200)) + expandVertically(),
+                exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
+            ) {
+                CloudSourceCard {
+                    SourceSwitcher(
+                        selectedSources = state.selectedSources,
+                        statuses = serviceStatuses,
+                        onToggle = viewModel::onSourceToggle,
+                        onSelectAll = viewModel::onAllSourcesSelected,
+                        onRefreshStatuses = viewModel::refreshStatuses,
+                        onStatusOpened = viewModel::onStatusPanelOpened,
+                        sourceHint = state.sourceHint,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
 
             AnimatedVisibility(
                 visible = state.isOffline,
@@ -334,7 +361,7 @@ fun SearchScreen(
                         query = state.query,
                         serviceName = sourceName,
                     )
-                    SearchContentState.Results -> ResultsList(
+                    SearchContentState.Results -> CloudResultsGrid(
                         tracks = state.results,
                         localResults = state.localResults,
                         artists = state.artists,
@@ -496,6 +523,7 @@ private fun SourceSwitcher(
                 FilterChip(
                     selected = allSelected,
                     onClick = onSelectAll,
+                    modifier = Modifier.height(48.dp),
                     label = {
                         Text(
                             text = stringResource(R.string.search_all_sources),
@@ -516,6 +544,7 @@ private fun SourceSwitcher(
                         selected = service in selectedSources,
                         enabled = health.isConfigured || service in selectedSources,
                         onClick = { onToggle(service) },
+                        modifier = Modifier.height(48.dp),
                         label = {
                             Text(
                                 text = service.displayName,
@@ -1489,37 +1518,49 @@ private fun FeaturedArtistCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 24.dp, vertical = 10.dp),
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ArtistAvatar(artist = artist, size = 96.dp)
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = artist.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = artist.source.shortName(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onOpen) {
-                        Text(stringResource(R.string.search_artist_open))
-                    }
-                    OutlinedButton(onClick = onListen, enabled = canListen) {
-                        Text(stringResource(R.string.search_artist_listen))
-                    }
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ArtistAvatar(artist = artist, size = 88.dp)
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = artist.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = artist.source.shortName(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = onOpen,
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Text(stringResource(R.string.search_artist_open), maxLines = 1)
+                }
+                OutlinedButton(
+                    onClick = onListen,
+                    enabled = canListen,
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Text(stringResource(R.string.search_artist_listen), maxLines = 1)
                 }
             }
         }
@@ -1773,6 +1814,538 @@ private fun ShimmerBlock(
                         ),
                     ),
                 ),
+        )
+    }
+}
+
+
+@Composable
+private fun CloudSearchHeader(compact: Boolean) {
+    Column(
+        modifier = Modifier.padding(
+            start = 24.dp,
+            end = 24.dp,
+            top = if (compact) 8.dp else 16.dp,
+            bottom = if (compact) 4.dp else 8.dp,
+        ),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "FACET",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 2.sp,
+                ),
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .width(22.dp)
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = stringResource(R.string.search_overline),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
+        Text(
+            text = stringResource(R.string.search_title),
+            style = if (compact) {
+                MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Normal)
+            } else {
+                MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Normal)
+            },
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (!compact) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.search_subtitle),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudSourceCard(content: @Composable () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 10.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+    ) {
+        Box(modifier = Modifier.padding(16.dp)) {
+            content()
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CloudResultsGrid(
+    tracks: List<Track>,
+    localResults: List<Track>,
+    artists: List<Artist>,
+    featuredArtist: Artist?,
+    artistTracks: List<Track>,
+    artistTracksLoading: Boolean,
+    downloadedIds: Set<String>,
+    sourceName: String,
+    isLoadingMore: Boolean,
+    onLoadMore: () -> Unit,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    onAddToPlaylist: (Track) -> Unit,
+    onArtistClick: (Artist) -> Unit,
+    onTrackArtistClick: (Track) -> Unit,
+    onArtistListen: (List<Track>) -> Unit,
+    onPlayNext: (Track) -> Unit,
+    onAddToQueue: (Track) -> Unit,
+    onSourcesClick: (Track) -> Unit,
+) {
+    val gridState = rememberLazyGridState()
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        state = gridState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 24.dp,
+            end = 24.dp,
+            top = 8.dp,
+            bottom = 96.dp + LocalBottomDockHeight.current,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (localResults.isNotEmpty()) {
+            item(key = "cloud_local_header", span = { GridItemSpan(maxLineSpan) }) {
+                BentoSectionLabel(
+                    title = stringResource(R.string.search_local_section),
+                    count = localResults.size,
+                )
+            }
+            localResults.forEachIndexed { index, track ->
+                item(
+                    key = "cloud_local_${track.id}",
+                    span = {
+                        GridItemSpan(
+                            if (localResults.size == 1) maxLineSpan else 1,
+                        )
+                    },
+                ) {
+                    CloudReveal(index = index) {
+                        CloudTrackBentoCard(
+                            track = track,
+                            isDownloaded = track.id in downloadedIds,
+                            hero = localResults.size == 1,
+                            onClick = { onTrackClick(track, localResults) },
+                            onAddToPlaylist = { onAddToPlaylist(track) },
+                            onArtistClick = { onTrackArtistClick(track) },
+                            onPlayNext = { onPlayNext(track) },
+                            onAddToQueue = { onAddToQueue(track) },
+                            onSourcesClick = if (track.sourceCount > 1) {
+                                { onSourcesClick(track) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        item(key = "cloud_remote_header", span = { GridItemSpan(maxLineSpan) }) {
+            BentoResultsHeader(sourceName = sourceName, count = tracks.size)
+        }
+
+        if (artists.isNotEmpty()) {
+            item(key = "cloud_artists", span = { GridItemSpan(maxLineSpan) }) {
+                ArtistSection(
+                    artists = artists.filter { it.id != featuredArtist?.id }.take(10),
+                    onArtistClick = onArtistClick,
+                )
+            }
+        }
+
+        if (featuredArtist != null) {
+            item(key = "cloud_featured", span = { GridItemSpan(maxLineSpan) }) {
+                FeaturedArtistCard(
+                    artist = featuredArtist,
+                    canListen = artistTracks.isNotEmpty(),
+                    onOpen = { onArtistClick(featuredArtist) },
+                    onListen = { onArtistListen(artistTracks) },
+                )
+            }
+            if (artistTracksLoading || artistTracks.isNotEmpty()) {
+                item(key = "cloud_artist_tracks", span = { GridItemSpan(maxLineSpan) }) {
+                    ArtistTracksSection(
+                        artist = featuredArtist,
+                        tracks = artistTracks,
+                        isLoading = artistTracksLoading,
+                        downloadedIds = downloadedIds,
+                        onTrackClick = onTrackClick,
+                        onArtistClick = { onArtistClick(featuredArtist) },
+                        onAddToPlaylist = onAddToPlaylist,
+                        onPlayNext = onPlayNext,
+                        onAddToQueue = onAddToQueue,
+                        onSourcesClick = onSourcesClick,
+                    )
+                }
+            }
+        }
+
+        tracks.forEachIndexed { index, track ->
+            val hero = index == 0
+            item(
+                key = "cloud_track_${track.id}",
+                span = { GridItemSpan(if (hero) maxLineSpan else 1) },
+            ) {
+                CloudReveal(index = index) {
+                    CloudTrackBentoCard(
+                        track = track,
+                        isDownloaded = track.id in downloadedIds,
+                        hero = hero,
+                        onClick = { onTrackClick(track, tracks) },
+                        onAddToPlaylist = { onAddToPlaylist(track) },
+                        onArtistClick = { onTrackArtistClick(track) },
+                        onPlayNext = { onPlayNext(track) },
+                        onAddToQueue = { onAddToQueue(track) },
+                        onSourcesClick = if (track.sourceCount > 1) {
+                            { onSourcesClick(track) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        }
+
+        if (tracks.isNotEmpty()) {
+            item(key = "cloud_load_more", span = { GridItemSpan(maxLineSpan) }) {
+                LaunchedEffect(tracks.size) { onLoadMore() }
+                if (isLoadingMore) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 20.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        AppLoadingIndicator(size = 24.dp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BentoSectionLabel(title: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.weight(1f))
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun BentoResultsHeader(sourceName: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.search_results, sourceName),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun CloudTrackBentoCard(
+    track: Track,
+    isDownloaded: Boolean,
+    hero: Boolean,
+    onClick: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onArtistClick: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onSourcesClick: (() -> Unit)?,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    var menuExpanded by remember { mutableStateOf(false) }
+    val shape = MaterialTheme.shapes.extraLarge
+
+    Box {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .cloudPress(interactionSource)
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClickLabel = stringResource(R.string.common_play_cd),
+                    onLongClickLabel = stringResource(R.string.track_actions_cd),
+                    onLongClick = { menuExpanded = true },
+                    onClick = onClick,
+                ),
+            shape = shape,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 0.dp,
+        ) {
+            if (hero) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BentoArtwork(
+                        track = track,
+                        onMenuClick = { menuExpanded = true },
+                        onPlayClick = onClick,
+                        modifier = Modifier.size(128.dp),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = track.title,
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = track.artist,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            BentoMetaChip(
+                                text = buildString {
+                                    if (track.durationMs > 0) append(formatDuration(track.durationMs))
+                                    if (track.genre.isNullOrBlank().not()) {
+                                        if (isNotEmpty()) append(" · ")
+                                        append(track.genre)
+                                    }
+                                },
+                            )
+                            if (isDownloaded) {
+                                Spacer(Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.DownloadDone,
+                                    contentDescription = stringResource(R.string.track_downloaded_cd),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Column {
+                    BentoArtwork(
+                        track = track,
+                        onMenuClick = { menuExpanded = true },
+                        onPlayClick = onClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f),
+                    )
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = track.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = track.artist,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (track.durationMs > 0) {
+                                BentoMetaChip(text = formatDuration(track.durationMs))
+                            }
+                            if (isDownloaded) {
+                                Spacer(Modifier.weight(1f))
+                                Icon(
+                                    imageVector = Icons.Rounded.DownloadDone,
+                                    contentDescription = stringResource(R.string.track_downloaded_cd),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(17.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            shape = MaterialTheme.shapes.extraLarge,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.queue_play_next)) },
+                leadingIcon = { Icon(Icons.Rounded.PlayArrow, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onPlayNext()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.queue_add)) },
+                leadingIcon = { Icon(Icons.Rounded.QueueMusic, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onAddToQueue()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.playlist_add_to_cd)) },
+                leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onAddToPlaylist()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.artist_open)) },
+                leadingIcon = { Icon(Icons.Rounded.Person, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onArtistClick()
+                },
+            )
+            if (onSourcesClick != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.sources_sheet_title)) },
+                    leadingIcon = { Icon(Icons.Rounded.MusicNote, contentDescription = null) },
+                    onClick = {
+                        menuExpanded = false
+                        onSourcesClick()
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BentoArtwork(
+    track: Track,
+    onMenuClick: () -> Unit,
+    onPlayClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        AsyncImage(
+            model = track.artworkUrl,
+            contentDescription = stringResource(R.string.track_artwork_cd, track.title),
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        IconButton(
+            onClick = onMenuClick,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(6.dp)
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f)),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.MoreVert,
+                contentDescription = stringResource(R.string.track_actions_cd),
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        FilledIconButton(
+            onClick = onPlayClick,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(10.dp)
+                .size(44.dp),
+            shape = CircleShape,
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun BentoMetaChip(text: String) {
+    if (text.isBlank()) return
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         )
     }
 }

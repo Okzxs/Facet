@@ -235,11 +235,7 @@ internal fun ExpressiveHeroZone(
     val artworkShape: Shape = coverShapeOverride ?: MaterialTheme.shapes.extraLarge
     val immersiveLayout = layout == AppSettings.LAYOUT_IMMERSIVE
     val compactLayout = layout == AppSettings.LAYOUT_SIDE
-    val coverFraction = when {
-        immersiveLayout -> 0.94f
-        compactLayout -> 0.62f
-        else -> 0.82f
-    } * if (coverSize == AppSettings.COVER_MEDIUM) 0.9f else 1f
+    val coverFraction = 0.94f
     val display = remember(trackKey, title, artist, artworkUrl) {
         TrackDisplay(trackKey, title, artist, artworkUrl)
     }
@@ -287,10 +283,10 @@ internal fun ExpressiveHeroZone(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(heroScroll)
-                        .padding(horizontal = 24.dp),
+                        .padding(horizontal = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(8.dp))
                     AnimatedContent(
                         targetState = display,
                         transitionSpec = {
@@ -469,7 +465,7 @@ internal fun ExpressiveHeroZone(
                                 }
                             }
                             if (!immersiveLayout) {
-                                Spacer(Modifier.height(24.dp))
+                                Spacer(Modifier.height(16.dp))
                                 Text(
                                     text = state.title,
                                 style = MaterialTheme.typography.titleLarge,
@@ -534,7 +530,7 @@ internal fun ExpressiveHeroZone(
                             }
                         }
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,

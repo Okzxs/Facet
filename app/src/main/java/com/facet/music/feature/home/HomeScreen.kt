@@ -1,19 +1,16 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+
 package com.facet.music.feature.home
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,42 +28,44 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Waves
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
@@ -74,44 +73,33 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
-import com.facet.music.core.ui.components.formatDuration
-import com.facet.music.core.ui.theme.PillShape
-import com.facet.music.core.ui.theme.cloudPress
-import com.facet.music.core.util.SeasonProvider
-import com.facet.music.data.model.SeasonMemory
-import com.facet.music.data.model.Track
 import com.facet.music.core.home.SmartCollections
+import com.facet.music.core.ui.theme.CloudReveal
+import com.facet.music.core.ui.theme.cloudPress
+import com.facet.music.core.ui.theme.cloudScrollScale
+import com.facet.music.data.model.Track
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.source.external.DeezerRelease
 import com.facet.music.navigation.LocalBottomDockHeight
-import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.sin
 
-private val ScreenPadding = 24.dp
-private val BlockGap = 32.dp
-private const val MEMORY_PREVIEW_LIMIT = 3
+private val HomePadding = 24.dp
+private val HomeGap = 32.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onTrackClick: (Track, List<Track>) -> Unit,
@@ -120,32 +108,37 @@ fun HomeScreen(
     sections: List<String> = AppSettings.DEFAULT_HOME_SECTION_ORDER,
     heroStyle: String = AppSettings.HERO_EDITORIAL,
     showWavePromo: Boolean = true,
-    viewModel: HomeViewModel = hiltViewModel(),
+    viewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val recentTracks = uiState.recentTracks
     val heroTrack = recentTracks.firstOrNull()
-    val homeListState = rememberLazyListState()
-    val recommendationsListState = rememberLazyListState()
-
-    val sectionNumbers = remember(
+    val recentIds = remember(recentTracks) { recentTracks.map { it.id }.toSet() }
+    val freshLikes = remember(uiState.likedTracks) {
+        SmartCollections.freshLikes(uiState.likedTracks)
+    }
+    val forgotten = remember(uiState.likedTracks, recentIds, freshLikes) {
+        SmartCollections.forgotten(
+            liked = uiState.likedTracks,
+            recentIds = recentIds,
+            excludeIds = freshLikes.map { it.id }.toSet(),
+        )
+    }
+    val orderedSections = remember(
         sections,
         heroTrack,
         showWavePromo,
-        uiState.isExtrasLoading,
         uiState.newReleases,
         uiState.charts,
         uiState.genreSections,
         recentTracks,
         uiState.memories,
-        uiState.likedTracks,
+        freshLikes,
+        forgotten,
     ) {
-        var number = 0
-        val numbers = mutableMapOf<String, Int>()
-        sections.forEach { section ->
-            val visible = when (section) {
+        sections.filter { section ->
+            section != AppSettings.SECTION_WAVE && when (section) {
                 AppSettings.SECTION_HERO -> heroTrack != null
-                AppSettings.SECTION_WAVE -> showWavePromo
                 AppSettings.SECTION_NEW_RELEASES ->
                     uiState.isExtrasLoading || uiState.newReleases.isNotEmpty()
                 AppSettings.SECTION_CHARTS ->
@@ -153,31 +146,14 @@ fun HomeScreen(
                 AppSettings.SECTION_GENRES -> uiState.genreSections.isNotEmpty()
                 AppSettings.SECTION_RECOMMENDATIONS -> true
                 AppSettings.SECTION_RECENT -> recentTracks.isNotEmpty()
-                AppSettings.SECTION_FORGOTTEN -> uiState.likedTracks.isNotEmpty()
-                AppSettings.SECTION_FRESH_LIKES -> uiState.likedTracks.isNotEmpty()
-                AppSettings.SECTION_MEMORIES ->
-                    uiState.memories.isNotEmpty() || uiState.likedTracks.isNotEmpty()
+                AppSettings.SECTION_MEMORIES -> uiState.memories.isNotEmpty()
+                AppSettings.SECTION_FRESH_LIKES -> freshLikes.isNotEmpty()
+                AppSettings.SECTION_FORGOTTEN -> forgotten.isNotEmpty()
                 else -> false
             }
-            if (visible) {
-                number += 1
-                numbers[section] = number
-            }
         }
-        numbers
     }
-
-    val recentIds = remember(recentTracks) { recentTracks.map { it.id }.toSet() }
-    val freshLikes = remember(uiState.likedTracks) {
-        SmartCollections.freshLikes(uiState.likedTracks)
-    }
-    val forgottenTracks = remember(uiState.likedTracks, recentIds, freshLikes) {
-        SmartCollections.forgotten(
-            liked = uiState.likedTracks,
-            recentIds = recentIds,
-            excludeIds = freshLikes.map { it.id }.toSet(),
-        )
-    }
+    val homeListState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         viewModel.openPlayer.collect { (track, queue) -> onTrackClick(track, queue) }
@@ -195,176 +171,104 @@ fun HomeScreen(
             state = homeListState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                start = ScreenPadding,
-                end = ScreenPadding,
+                start = HomePadding,
+                end = HomePadding,
                 top = 28.dp,
-                bottom = 96.dp + LocalBottomDockHeight.current,
+                bottom = 120.dp + LocalBottomDockHeight.current,
             ),
-            verticalArrangement = Arrangement.spacedBy(BlockGap),
+            verticalArrangement = Arrangement.spacedBy(HomeGap),
         ) {
-            var extrasSkeletonShown = false
-
-            item(key = "header") {
-                RevealBlock(index = 0) {
-                    HomeHeader(onSettingsClick = onSettingsClick)
+            item(key = "cloud_header") {
+                CloudReveal(index = 0) {
+                    CloudHomeHeader(onSettingsClick = onSettingsClick)
                 }
             }
 
-            sections.forEachIndexed { index, section ->
-                when (section) {
-                    AppSettings.SECTION_HERO -> if (heroTrack != null) {
-                        item(key = "hero") {
-                            RevealBlock(index = index) {
-                                ContinueListeningCard(
-                                    track = heroTrack,
+            if (showWavePromo) {
+                item(key = "wave_hero") {
+                    CloudReveal(index = 1) {
+                        CloudWaveHero(onClick = onWaveClick)
+                    }
+                }
+            }
+
+            orderedSections.forEachIndexed { index, section ->
+                item(key = "cloud_section_$section") {
+                    CloudReveal(index = index + 2) {
+                        when (section) {
+                            AppSettings.SECTION_HERO -> heroTrack?.let { track ->
+                                CloudContinueCard(
+                                    track = track,
                                     queue = recentTracks,
+                                    onClick = { onTrackClick(track, recentTracks) },
                                     compact = heroStyle == AppSettings.HERO_MINIMAL,
-                                    index = sectionNumbers[section] ?: 0,
-                                    onTrackClick = onTrackClick,
                                 )
                             }
-                        }
-                    }
 
-                    AppSettings.SECTION_WAVE -> if (showWavePromo) {
-                        item(key = "wave_promo") {
-                            RevealBlock(index = index) {
-                                WavePromoCard(onClick = onWaveClick)
-                            }
-                        }
-                    }
+                            AppSettings.SECTION_CHARTS -> CloudChartsBlock(
+                                tracks = uiState.charts,
+                                isLoading = uiState.isExtrasLoading,
+                                onTrackClick = onTrackClick,
+                                index = index + 1,
+                                listState = homeListState,
+                                sectionKey = section,
+                            )
 
-                    AppSettings.SECTION_NEW_RELEASES,
-                    AppSettings.SECTION_CHARTS,
-                    -> {
-                        if (uiState.isExtrasLoading) {
-                            if (!extrasSkeletonShown) {
-                                extrasSkeletonShown = true
-                                item(key = "extras_skeleton") {
-                                    ExtrasSkeleton()
-                                }
-                            }
-                        } else if (
-                            section == AppSettings.SECTION_NEW_RELEASES &&
-                            uiState.newReleases.isNotEmpty()
-                        ) {
-                            item(key = "new_releases") {
-                                NewReleasesBlock(
-                                    releases = uiState.newReleases,
-                                    onClick = viewModel::playRelease,
-                                    index = sectionNumbers[section] ?: 0,
-                                )
-                            }
-                        } else if (
-                            section == AppSettings.SECTION_CHARTS &&
-                            uiState.charts.isNotEmpty()
-                        ) {
-                            item(key = "charts") {
-                                ChartsBlock(
-                                    tracks = uiState.charts,
-                                    onTrackClick = onTrackClick,
-                                    index = sectionNumbers[section] ?: 0,
-                                )
-                            }
-                        }
-                    }
+                            AppSettings.SECTION_NEW_RELEASES -> CloudReleasesBlock(
+                                releases = uiState.newReleases,
+                                isLoading = uiState.isExtrasLoading,
+                                onClick = viewModel::playRelease,
+                                index = index + 1,
+                                listState = homeListState,
+                                sectionKey = section,
+                            )
 
-                    AppSettings.SECTION_GENRES -> if (uiState.genreSections.isNotEmpty()) {
-                        item(key = "genre_playlists") {
-                            GenrePlaylistsBlock(
+                            AppSettings.SECTION_GENRES -> CloudGenresBlock(
                                 sections = uiState.genreSections,
                                 onTrackClick = onTrackClick,
-                                index = sectionNumbers[section] ?: 0,
+                                index = index + 1,
                             )
-                        }
-                    }
 
-                    AppSettings.SECTION_RECOMMENDATIONS -> item(key = "recommendations") {
-                        RevealBlock(index = index) {
-                            RecommendationsBlock(
+                            AppSettings.SECTION_RECOMMENDATIONS -> CloudRecommendationsBlock(
                                 tracks = uiState.recommendations,
                                 isLoading = uiState.isRecommendationsLoading,
                                 error = uiState.recommendationsError,
-                                listState = recommendationsListState,
                                 onTrackClick = onTrackClick,
                                 onRetry = viewModel::refresh,
-                                index = sectionNumbers[section] ?: 0,
+                                index = index + 1,
                             )
-                        }
-                    }
 
-                    AppSettings.SECTION_RECENT -> if (recentTracks.isNotEmpty()) {
-                        item(key = "recent") {
-                            RevealBlock(index = index) {
-                                RecentBlock(
-                                    tracks = recentTracks,
-                                    onTrackClick = onTrackClick,
-                                    index = sectionNumbers[section] ?: 0,
-                                )
-                            }
-                        }
-                    }
+                            AppSettings.SECTION_RECENT -> CloudTracksBlock(
+                                title = stringResource(R.string.home_recent),
+                                tracks = recentTracks,
+                                onTrackClick = onTrackClick,
+                                index = index + 1,
+                                sectionKey = section,
+                            )
 
-                    AppSettings.SECTION_FORGOTTEN -> {
-                        if (forgottenTracks.isNotEmpty()) {
-                            item(key = "forgotten") {
-                                RevealBlock(index = index) {
-                                    CoverRowBlock(
-                                        title = stringResource(R.string.home_forgotten),
-                                        tracks = forgottenTracks,
-                                        onTrackClick = onTrackClick,
-                                        index = sectionNumbers[section] ?: 0,
-                                    )
-                                }
-                            }
-                        }
-                    }
+                            AppSettings.SECTION_MEMORIES -> CloudTracksBlock(
+                                title = stringResource(R.string.home_memories),
+                                tracks = uiState.memories.map { it.track },
+                                onTrackClick = onTrackClick,
+                                index = index + 1,
+                                sectionKey = section,
+                            )
 
-                    AppSettings.SECTION_FRESH_LIKES -> {
-                        if (freshLikes.isNotEmpty()) {
-                            item(key = "fresh_likes") {
-                                RevealBlock(index = index) {
-                                    CoverRowBlock(
-                                        title = stringResource(R.string.home_fresh_likes),
-                                        tracks = freshLikes,
-                                        onTrackClick = onTrackClick,
-                                        index = sectionNumbers[section] ?: 0,
-                                    )
-                                }
-                            }
-                        }
-                    }
+                            AppSettings.SECTION_FRESH_LIKES -> CloudTracksBlock(
+                                title = stringResource(R.string.home_fresh_likes),
+                                tracks = freshLikes,
+                                onTrackClick = onTrackClick,
+                                index = index + 1,
+                                sectionKey = section,
+                            )
 
-                    AppSettings.SECTION_MEMORIES -> if (uiState.memories.isNotEmpty()) {
-                        item(key = "memory") {
-                            RevealBlock(index = index) {
-                                Column {
-                                    HomeSectionHeader(
-                                        title = stringResource(R.string.home_memories),
-                                        index = sectionNumbers[section] ?: 0,
-                                    )
-                                    MemoryCard(
-                                        memories = uiState.memories,
-                                        season = uiState.memorySeason,
-                                        onTrackClick = onTrackClick,
-                                    )
-                                }
-                            }
-                        }
-                    } else if (uiState.likedTracks.isNotEmpty()) {
-                        item(key = "liked") {
-                            RevealBlock(index = index) {
-                                Column {
-                                    HomeSectionHeader(
-                                        title = stringResource(R.string.home_favourites),
-                                        index = sectionNumbers[section] ?: 0,
-                                    )
-                                    LikedCard(
-                                        tracks = uiState.likedTracks,
-                                        onTrackClick = onTrackClick,
-                                    )
-                                }
-                            }
+                            AppSettings.SECTION_FORGOTTEN -> CloudTracksBlock(
+                                title = stringResource(R.string.home_forgotten),
+                                tracks = forgotten,
+                                onTrackClick = onTrackClick,
+                                index = index + 1,
+                                sectionKey = section,
+                            )
                         }
                     }
                 }
@@ -374,42 +278,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun RevealBlock(
-    index: Int,
-    content: @Composable () -> Unit,
-) {
-    var revealed by rememberSaveable { mutableStateOf(false) }
-    val progress = remember { Animatable(if (revealed) 1f else 0f) }
-
-    LaunchedEffect(Unit) {
-        if (revealed) return@LaunchedEffect
-
-        delay(index * 55L)
-        progress.animateTo(
-            targetValue = 1f,
-            animationSpec = spring(
-                dampingRatio = 0.68f,
-                stiffness = 340f,
-            ),
-        )
-        revealed = true
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                alpha = progress.value
-                translationY = (1f - progress.value) * 28.dp.toPx()
-            },
-    ) {
-        content()
-    }
-}
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun HomeHeader(onSettingsClick: () -> Unit) {
+private fun CloudHomeHeader(onSettingsClick: () -> Unit) {
     val configuration = LocalConfiguration.current
     val locale = remember(configuration) { configuration.locales[0] }
     val dateLabel = remember(locale) {
@@ -417,519 +286,206 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
             .format(Date())
             .replaceFirstChar { it.uppercase(locale) }
     }
-    val greetingKey = remember {
+    val greeting = stringResource(
         when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
             in 5..11 -> R.string.home_greeting_morning
             in 12..17 -> R.string.home_greeting_day
             in 18..22 -> R.string.home_greeting_evening
             else -> R.string.home_greeting_night
-        }
-    }
-    val greeting = stringResource(greetingKey)
+        },
+    )
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "FACET",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 2.sp,
-                    ),
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.width(10.dp))
-                Box(
-                    modifier = Modifier
-                        .width(22.dp)
-                        .height(1.dp)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = dateLabel.uppercase(locale),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = greeting,
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Normal,
+                text = "FACET",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 2.4.sp,
                 ),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(12.dp))
+            Box(
+                modifier = Modifier
+                    .width(28.dp)
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = dateLabel.uppercase(locale),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.weight(1f))
+            FilledTonalIconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier.size(48.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = stringResource(R.string.home_settings_cd),
+                    modifier = Modifier.size(21.dp),
+                )
+            }
         }
-        Spacer(Modifier.width(12.dp))
-        FilledTonalIconButton(
-            onClick = onSettingsClick,
-            modifier = Modifier.size(44.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Settings,
-                contentDescription = stringResource(R.string.home_settings_cd),
-                modifier = Modifier.size(20.dp),
-            )
-        }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            text = greeting,
+            style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Normal),
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
 @Composable
-private fun WavePromoCard(onClick: () -> Unit) {
+private fun CloudWaveHero(onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     Surface(
         onClick = onClick,
         interactionSource = interactionSource,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.fillMaxWidth().cloudPress(interactionSource),
-    ) {
-        Row(
-            modifier = Modifier.padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Waves,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(30.dp),
-            )
-            Spacer(Modifier.width(18.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.home_wave_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-                Text(
-                    text = stringResource(R.string.home_wave_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
-                )
-            }
-            Icon(
-                imageVector = Icons.Rounded.PlayArrow,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-        }
-    }
-}
-
-@Composable
-private fun NewReleasesBlock(
-    releases: List<DeezerRelease>,
-    onClick: (DeezerRelease) -> Unit,
-    index: Int,
-) {
-    Column {
-        HomeSectionHeader(title = stringResource(R.string.home_new_releases), index = index)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(items = releases, key = { it.id }) { release ->
-                val interactionSource = remember { MutableInteractionSource() }
-                Column(
-                    modifier = Modifier
-                        .width(136.dp)
-                        .cloudPress(interactionSource)
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = null,
-                            onClick = { onClick(release) },
-                        ),
-                ) {
-                    AsyncImage(
-                        model = release.coverUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(MaterialTheme.shapes.large),
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = release.title,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = release.artist,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChartsBlock(
-    tracks: List<Track>,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    index: Int,
-) {
-    Column {
-        HomeSectionHeader(title = stringResource(R.string.home_charts), index = index)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(items = tracks, key = { it.id }) { track ->
-                val interactionSource = remember { MutableInteractionSource() }
-                Column(
-                    modifier = Modifier
-                        .width(136.dp)
-                        .cloudPress(interactionSource)
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = null,
-                            onClick = { onTrackClick(track, tracks) },
-                        ),
-                ) {
-                    Box {
-                        AsyncImage(
-                            model = track.artworkUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .clip(MaterialTheme.shapes.large),
-                        )
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(6.dp),
-                        ) {
-                            Text(
-                                text = (tracks.indexOf(track) + 1).toString().padStart(2, '0'),
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = track.title,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = track.artist,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GenrePlaylistsBlock(
-    sections: List<GenreSection>,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    index: Int,
-) {
-    Column {
-        HomeSectionHeader(title = stringResource(R.string.home_genre_playlists), index = index)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(items = sections, key = { it.genre }) { section ->
-                val interactionSource = remember { MutableInteractionSource() }
-                Surface(
-                    onClick = { onTrackClick(section.tracks.first(), section.tracks) },
-                    interactionSource = interactionSource,
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    modifier = Modifier.width(176.dp).cloudPress(interactionSource),
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = section.genre,
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(
-                                R.string.home_genre_tracks,
-                                section.tracks.size,
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExtrasSkeleton() {
-    val transition = rememberInfiniteTransition(label = "extrasSkeleton")
-    val alpha by transition.animateFloat(
-        initialValue = 0.10f,
-        targetValue = 0.22f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "extrasSkeletonAlpha",
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        repeat(2) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                repeat(3) {
-                    Box(
-                        modifier = Modifier
-                            .size(width = 132.dp, height = 132.dp)
-                            .clip(MaterialTheme.shapes.large)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeSectionHeader(title: String, index: Int) {
-    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = index.toString().padStart(2, '0'),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(12.dp))
-        Box(
-            modifier = Modifier
-                .width(40.dp)
-                .height(1.dp)
-                .background(MaterialTheme.colorScheme.outlineVariant),
-        )
-    }
-}
-
-@Composable
-private fun ContinueListeningCard(
-    track: Track,
-    queue: List<Track>,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    compact: Boolean = false,
-    index: Int = 1,
-) {
-    val continueCd = stringResource(R.string.home_continue_cd, track.title)
-    val shape = MaterialTheme.shapes.extraLarge
-    if (compact) {
-        CompactContinueCard(
-            track = track,
-            continueCd = continueCd,
-            index = index,
-            onClick = { onTrackClick(track, queue) },
-        )
-        return
-    }
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .clickable(role = Role.Button, onClick = { onTrackClick(track, queue) })
-            .semantics { contentDescription = continueCd },
-        shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = Color.White,
+            .height(232.dp)
+            .cloudPress(interactionSource),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.primaryContainer,
         tonalElevation = 0.dp,
     ) {
-        Box(modifier = Modifier
-            .fillMaxWidth()
-            .height(212.dp)) {
-            Artwork(
-                url = track.artworkUrl,
-                contentDescription = null,
+        Box(modifier = Modifier.fillMaxSize()) {
+            WavePattern(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
                 modifier = Modifier.matchParentSize(),
-                shape = MaterialTheme.shapes.extraLarge,
             )
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.08f),
-                            0.42f to Color.Black.copy(alpha = 0.28f),
-                            1f to Color.Black.copy(alpha = 0.86f),
-                        ),
-                    ),
-            )
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(16.dp),
-                shape = CircleShape,
-                color = Color.White.copy(alpha = 0.18f),
-                contentColor = Color.White,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.home_continue),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
-            }
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 18.dp, end = 92.dp, bottom = 18.dp),
+                    .fillMaxSize()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    text = track.title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Normal,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = track.artist,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.82f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = index.toString().padStart(2, '0'),
-                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.sp),
-                color = Color.White.copy(alpha = 0.7f),
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(20.dp),
-            )
-            FilledIconButton(
-                onClick = { onTrackClick(track, queue) },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-                    .size(56.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Color.Black,
-                ),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = stringResource(R.string.common_play_cd),
-                    modifier = Modifier.size(28.dp),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.Waves,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    FilledIconButton(
+                        onClick = onClick,
+                        modifier = Modifier.size(52.dp),
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            contentColor = MaterialTheme.colorScheme.primaryContainer,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = stringResource(R.string.home_wave_title),
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                }
+                Column {
+                    Text(
+                        text = stringResource(R.string.home_wave_title),
+                        style = MaterialTheme.typography.displaySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.home_wave_subtitle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CompactContinueCard(
+private fun WavePattern(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val base = size.height * 0.58f
+        val amplitude = size.height * 0.11f
+        repeat(3) { wave ->
+            val path = Path()
+            val step = 12f
+            var x = 0f
+            while (x <= size.width) {
+                val y = base + wave * 26.dp.toPx() +
+                    sin((x / size.width) * PI * 3.2 + wave * 1.1).toFloat() * amplitude
+                if (x == 0f) path.moveTo(x, y) else path.lineTo(x, y)
+                x += step
+            }
+            drawPath(
+                path = path,
+                color = color,
+                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudContinueCard(
     track: Track,
-    continueCd: String,
-    index: Int,
+    queue: List<Track>,
     onClick: () -> Unit,
+    compact: Boolean,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val height = if (compact) 104.dp else 128.dp
     Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.extraLarge)
-            .cloudPress(interactionSource)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .semantics { contentDescription = continueCd },
+            .height(height)
+            .cloudPress(interactionSource),
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Artwork(
+            CloudArtwork(
                 url = track.artworkUrl,
-                contentDescription = null,
-                modifier = Modifier.size(76.dp),
+                modifier = Modifier.size(if (compact) 72.dp else 88.dp),
                 shape = MaterialTheme.shapes.large,
             )
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = stringResource(R.string.home_continue),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = index.toString().padStart(2, '0'),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = stringResource(R.string.home_continue),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = track.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = track.artist,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -938,475 +494,12 @@ private fun CompactContinueCard(
             Spacer(Modifier.width(10.dp))
             FilledIconButton(
                 onClick = onClick,
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(52.dp),
+                shape = CircleShape,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecommendationsBlock(
-    tracks: List<Track>,
-    isLoading: Boolean,
-    error: String?,
-    listState: LazyListState,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    onRetry: () -> Unit,
-    index: Int,
-) {
-    Column {
-        HomeSectionHeader(title = stringResource(R.string.home_for_you), index = index)
-        when {
-            tracks.isNotEmpty() -> RecommendationsRow(
-                tracks = tracks,
-                listState = listState,
-                onTrackClick = onTrackClick,
-            )
-            isLoading -> RecommendationsSkeleton()
-            error != null -> RecommendationsMessage(
-                title = stringResource(R.string.home_recs_error),
-                message = error,
-                actionLabel = stringResource(R.string.home_retry),
-                onAction = onRetry,
-            )
-            else -> RecommendationsMessage(
-                title = stringResource(R.string.home_recs_empty),
-                message = stringResource(R.string.home_recs_empty_hint),
-                actionLabel = stringResource(R.string.home_refresh),
-                onAction = onRetry,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecommendationsRow(
-    tracks: List<Track>,
-    listState: LazyListState,
-    onTrackClick: (Track, List<Track>) -> Unit,
-) {
-    LazyRow(
-        state = listState,
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(
-            items = tracks,
-            key = { it.id },
-        ) { track ->
-            RecommendationCard(
-                track = track,
-                onClick = { onTrackClick(track, tracks) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecommendationCard(
-    track: Track,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val playCd = stringResource(R.string.home_play_recommendation_cd, track.title, track.artist)
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "recommendationScale",
-    )
-
-    Column(modifier = Modifier.width(140.dp)) {
-        Box(
-            modifier = Modifier
-                .size(140.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .clip(MaterialTheme.shapes.medium)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = LocalIndication.current,
-                    role = Role.Button,
-                    onClick = onClick,
-                )
-                .semantics {
-                    contentDescription = playCd
-                },
-        ) {
-            Artwork(
-                url = track.artworkUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                shape = MaterialTheme.shapes.medium,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = track.title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            minLines = 2,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = track.artist,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun RecommendationsSkeleton() {
-    val placeholder = MaterialTheme.colorScheme.surfaceContainerHigh
-
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        userScrollEnabled = false,
-    ) {
-        repeat(4) {
-            item {
-                Column(modifier = Modifier.width(140.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(140.dp)
-                            .clip(MaterialTheme.shapes.medium)
-                            .background(placeholder),
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.92f)
-                            .height(14.dp)
-                            .clip(PillShape)
-                            .background(placeholder),
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.58f)
-                            .height(10.dp)
-                            .clip(PillShape)
-                            .background(placeholder.copy(alpha = 0.7f)),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecommendationsMessage(
-    title: String,
-    message: String,
-    actionLabel: String,
-    onAction: () -> Unit,
-) {
-    Column {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(4.dp))
-        TextButton(
-            onClick = onAction,
-            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
-        ) {
-            Text(actionLabel)
-        }
-    }
-}
-
-@Composable
-private fun RecentBlock(
-    tracks: List<Track>,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    index: Int,
-) = CoverRowBlock(
-    title = stringResource(R.string.home_recent),
-    tracks = tracks,
-    onTrackClick = onTrackClick,
-    index = index,
-)
-
-@Composable
-private fun CoverRowBlock(
-    title: String,
-    tracks: List<Track>,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    index: Int,
-) {
-    Column {
-        HomeSectionHeader(title = title, index = index)
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            items(
-                items = tracks.take(10),
-                key = { it.id },
-            ) { track ->
-                RecentCover(
-                    track = track,
-                    onClick = { onTrackClick(track, tracks) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecentCover(
-    track: Track,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val playCd = stringResource(R.string.home_play_track_cd, track.title)
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "recentScale",
-    )
-
-    val coverShape = MaterialTheme.shapes.medium
-
-    Column(modifier = Modifier.width(132.dp)) {
-        Box(
-            modifier = Modifier
-                .size(132.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .clip(coverShape)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = LocalIndication.current,
-                    role = Role.Button,
-                    onClick = onClick,
-                )
-                .semantics {
-                    contentDescription = playCd
-                },
-        ) {
-            Artwork(
-                url = track.artworkUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                shape = coverShape,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = track.title,
-            style = MaterialTheme.typography.titleSmall.copy(
-                fontSize = 13.sp,
-                lineHeight = 17.sp,
-            ),
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = track.artist,
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 11.sp,
-                lineHeight = 14.sp,
-                letterSpacing = 0.2.sp,
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun MemoryCard(
-    memories: List<SeasonMemory>,
-    season: String,
-    onTrackClick: (Track, List<Track>) -> Unit,
-) {
-    val memoryTracks = remember(memories) { memories.map { it.track } }
-    val preview = remember(memories) { memories.take(MEMORY_PREVIEW_LIMIT) }
-    val firstTrack = memoryTracks.firstOrNull() ?: return
-    val subtitle = pluralStringResource(
-        R.plurals.home_memories_subtitle,
-        memories.size,
-        seasonName(season),
-        memories.size,
-    )
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 0.dp,
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.home_memories),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                FilledIconButton(
-                    onClick = { onTrackClick(firstTrack, memoryTracks) },
-                    modifier = Modifier.size(48.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = stringResource(R.string.home_play_memories_cd),
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            preview.forEach { memory ->
-                MemoryTrackRow(
-                    track = memory.track,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    onClick = { onTrackClick(memory.track, memoryTracks) },
-                )
-            }
-            if (memories.size > preview.size) {
-                Text(
-                    text = stringResource(R.string.home_more, memories.size - preview.size),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 56.dp, top = 4.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MemoryTrackRow(
-    track: Track,
-    contentColor: Color,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Artwork(
-            url = track.artworkUrl,
-            contentDescription = null,
-            modifier = Modifier.size(40.dp),
-            shape = MaterialTheme.shapes.small,
-        )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = buildAnnotatedString {
-                append(track.title)
-                if (track.artist.isNotBlank()) {
-                    append(" — ")
-                    withStyle(SpanStyle(color = contentColor.copy(alpha = 0.68f))) {
-                        append(track.artist)
-                    }
-                }
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = contentColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(10.dp))
-        if (track.durationMs > 0) {
-            Text(
-                text = formatDuration(track.durationMs),
-                style = MaterialTheme.typography.labelMedium,
-                color = contentColor.copy(alpha = 0.68f),
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LikedCard(
-    tracks: List<Track>,
-    onTrackClick: (Track, List<Track>) -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 0.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.home_favourites),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = pluralStringResource(R.plurals.track_count, tracks.size, tracks.size),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            FilledIconButton(
-                onClick = { onTrackClick(tracks.first(), tracks) },
-                modifier = Modifier.size(48.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = stringResource(R.string.home_play_favourites_cd),
+                    contentDescription = stringResource(R.string.home_continue),
                     modifier = Modifier.size(24.dp),
                 )
             }
@@ -1415,90 +508,536 @@ private fun LikedCard(
 }
 
 @Composable
-private fun PlayBadge(
-    containerColor: Color,
-    contentColor: Color,
-    onClick: (() -> Unit)? = null,
-    contentDescription: String = stringResource(R.string.common_play_cd),
-    size: Dp = 44.dp,
+private fun CloudChartsBlock(
+    tracks: List<Track>,
+    isLoading: Boolean,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    index: Int,
+    listState: LazyListState,
+    sectionKey: String,
 ) {
-    val baseModifier = Modifier
-        .size(size)
-        .clip(PillShape)
-        .background(containerColor)
-    val modifier = if (onClick == null) {
-        baseModifier
-    } else {
-        baseModifier
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics {
-                this.contentDescription = contentDescription
-            }
+    Column {
+        CloudSectionHeader(
+            title = stringResource(R.string.home_charts),
+            index = index,
+            count = tracks.size,
+        )
+        Spacer(Modifier.height(16.dp))
+        when {
+            tracks.isNotEmpty() -> CloudTrackRow(
+                tracks = tracks,
+                onTrackClick = onTrackClick,
+                showRank = true,
+            )
+            isLoading -> CloudSkeletonRow()
+        }
     }
+}
 
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center,
+@Composable
+private fun CloudReleasesBlock(
+    releases: List<DeezerRelease>,
+    isLoading: Boolean,
+    onClick: (DeezerRelease) -> Unit,
+    index: Int,
+    listState: LazyListState,
+    sectionKey: String,
+) {
+    Column {
+        CloudSectionHeader(
+            title = stringResource(R.string.home_new_releases),
+            index = index,
+            count = releases.size,
+        )
+        Spacer(Modifier.height(16.dp))
+        when {
+            releases.isNotEmpty() -> {
+                val rowState = rememberLazyListState()
+                LazyRow(
+                    state = rowState,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    itemsIndexed(items = releases, key = { _, item -> item.id }) { i, release ->
+                        CloudReleaseCard(
+                            release = release,
+                            width = if (i == 0) 224.dp else 168.dp,
+                            state = rowState,
+                            onClick = { onClick(release) },
+                        )
+                    }
+                }
+            }
+            isLoading -> CloudSkeletonRow()
+        }
+    }
+}
+
+@Composable
+private fun CloudReleaseCard(
+    release: DeezerRelease,
+    width: Dp,
+    state: LazyListState,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Column(
+        modifier = Modifier
+            .width(width)
+            .cloudScrollScale(state, release.id)
+            .cloudPress(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
     ) {
-        Icon(
-            imageVector = Icons.Rounded.PlayArrow,
-            contentDescription = null,
-            tint = contentColor,
-            modifier = Modifier.size(size * 0.5f),
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.82f)
+                .clip(MaterialTheme.shapes.extraLarge),
+        ) {
+            CloudArtwork(
+                url = release.coverUrl,
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(0.dp),
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.5f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.8f),
+                        ),
+                    ),
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp),
+            ) {
+                Text(
+                    text = release.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = release.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.78f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudGenresBlock(
+    sections: List<GenreSection>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    index: Int,
+) {
+    Column {
+        CloudSectionHeader(
+            title = stringResource(R.string.home_genre_playlists),
+            index = index,
+            count = sections.size,
+        )
+        Spacer(Modifier.height(16.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            sections.chunked(2).forEachIndexed { rowIndex, row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    row.forEach { section ->
+                        val track = section.tracks.firstOrNull() ?: return@forEach
+                        CloudGenreCard(
+                            section = section,
+                            height = if (rowIndex == 0) 148.dp else 124.dp,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onTrackClick(track, section.tracks) },
+                        )
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudGenreCard(
+    section: GenreSection,
+    height: Dp,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier
+            .height(height)
+            .cloudPress(interactionSource),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.GraphicEq,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp),
+            )
+            Column {
+                Text(
+                    text = section.genre,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = pluralStringResource(
+                        R.plurals.track_count,
+                        section.tracks.size,
+                        section.tracks.size,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudRecommendationsBlock(
+    tracks: List<Track>,
+    isLoading: Boolean,
+    error: String?,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    onRetry: () -> Unit,
+    index: Int,
+) {
+    Column {
+        CloudSectionHeader(
+            title = stringResource(R.string.home_for_you),
+            index = index,
+            count = tracks.size,
+        )
+        Spacer(Modifier.height(16.dp))
+        when {
+            tracks.isNotEmpty() -> CloudTrackRow(
+                tracks = tracks,
+                onTrackClick = onTrackClick,
+                showRank = false,
+            )
+            isLoading -> CloudSkeletonRow()
+            else -> CloudMessageCard(
+                title = stringResource(
+                    if (error != null) R.string.home_recs_error else R.string.home_recs_empty,
+                ),
+                message = error ?: stringResource(R.string.home_recs_empty_hint),
+                actionLabel = stringResource(
+                    if (error != null) R.string.home_retry else R.string.home_refresh,
+                ),
+                onAction = onRetry,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudTracksBlock(
+    title: String,
+    tracks: List<Track>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    index: Int,
+    sectionKey: String,
+) {
+    Column {
+        CloudSectionHeader(title = title, index = index, count = tracks.size)
+        Spacer(Modifier.height(16.dp))
+        CloudTrackRow(
+            tracks = tracks,
+            onTrackClick = onTrackClick,
+            showRank = false,
         )
     }
 }
 
 @Composable
-private fun Artwork(
+private fun CloudTrackRow(
+    tracks: List<Track>,
+    onTrackClick: (Track, List<Track>) -> Unit,
+    showRank: Boolean,
+) {
+    val rowState = rememberLazyListState()
+    LazyRow(
+        state = rowState,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        itemsIndexed(items = tracks, key = { _, track -> track.id }) { index, track ->
+            CloudTrackCard(
+                track = track,
+                rank = if (showRank) index + 1 else null,
+                width = if (index == 0) 224.dp else 164.dp,
+                state = rowState,
+                onClick = { onTrackClick(track, tracks) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudTrackCard(
+    track: Track,
+    rank: Int?,
+    width: Dp,
+    state: LazyListState,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Column(
+        modifier = Modifier
+            .width(width)
+            .cloudScrollScale(state, track.id)
+            .cloudPress(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.82f)
+                .clip(MaterialTheme.shapes.extraLarge),
+        ) {
+            CloudArtwork(
+                url = track.artworkUrl,
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(0.dp),
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.45f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.84f),
+                        ),
+                    ),
+            )
+            if (rank != null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    Text(
+                        text = rank.toString().padStart(2, '0'),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp),
+            ) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = track.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.78f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudSectionHeader(
+    title: String,
+    index: Int,
+    count: Int,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = index.toString().padStart(2, '0'),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudSkeletonRow() {
+    val transition = rememberInfiniteTransition(label = "cloudSkeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "cloudSkeletonAlpha",
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        listOf(224.dp, 164.dp).forEach { width ->
+            Box(
+                modifier = Modifier
+                    .width(width)
+                    .aspectRatio(0.82f)
+                    .clip(MaterialTheme.shapes.extraLarge)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = alpha),
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudMessageCard(
+    title: String,
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.Start,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CloudOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+            FilledTonalButton(
+                onClick = onAction,
+                shape = MaterialTheme.shapes.extraLarge,
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(actionLabel)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudArtwork(
     url: String?,
-    contentDescription: String?,
-    modifier: Modifier = Modifier,
-    shape: Shape = MaterialTheme.shapes.medium,
+    modifier: Modifier,
+    shape: androidx.compose.ui.graphics.Shape,
 ) {
     val context = LocalContext.current
-    val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
-    val placeholderPainter = remember(placeholderColor) { ColorPainter(placeholderColor) }
-    val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
-    val model = remember(url) {
+    val placeholderColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val placeholder = remember(placeholderColor) { ColorPainter(placeholderColor) }
+    val note = rememberVectorPainter(Icons.Rounded.MusicNote)
+    val request = remember(url) {
         url?.takeIf { it.isNotBlank() }?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(220)
                 .build()
         }
     }
-
     Box(
         modifier = modifier
             .clip(shape)
             .background(placeholderColor),
         contentAlignment = Alignment.Center,
     ) {
-        if (model == null) {
+        if (request == null) {
             Icon(
                 imageVector = Icons.Rounded.MusicNote,
-                contentDescription = contentDescription,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(28.dp),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(36.dp),
             )
         } else {
             AsyncImage(
-                model = model,
-                contentDescription = contentDescription,
+                model = request,
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
-                placeholder = placeholderPainter,
-                error = notePainter,
+                placeholder = placeholder,
+                error = note,
                 modifier = Modifier.fillMaxSize(),
             )
         }
     }
-}
-
-@Composable
-private fun seasonName(season: String): String = when (season) {
-    SeasonProvider.WINTER -> stringResource(R.string.home_season_winter)
-    SeasonProvider.SPRING -> stringResource(R.string.home_season_spring)
-    SeasonProvider.SUMMER -> stringResource(R.string.home_season_summer)
-    else -> stringResource(R.string.home_season_autumn)
 }

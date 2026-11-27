@@ -226,7 +226,8 @@ com.facet.music
 - **Движение.** `Motion.press()` = 0.62/650, `Motion.reveal()` = 0.68/340, `Motion.bounce()` = 0.55/500; `CloudReveal` даёт fade + подъём 28dp и stagger 55 мс, `Modifier.cloudPress` — scale 0.92 + alpha 0.94. `cloudSheetEntrance()` добавляет scale 0.9→1 с alpha. Play/Pause подпрыгивает (`Animatable` 0.88→1), выбранная вкладка дока — scale 1.08.
 - **Сетка.** `CloudSpacing.Screen = 24`, `Section = 32`, `Card = 16/20`; списки и карточки не липнут к краям. Тяжёлые тени и стекло запрещены; только `surfaceContainer*`.
 - **Атомы.** TrackCard — 64dp обложка, радиус 24; док — плавающая капсула 32; мини-плеер — капсула 28 на `surfaceContainerHighest`; CollectionChipCard — тональная без градиента; EmptyState — многослойная облачная иллюстрация.
-- **Плеер.** Под обложкой — облачная карточка «Далее» с следующей обложкой/треком и переходом в очередь; action-кнопки 64×44 pill, speed/queue 52×40 pill. Синусоида слайдера (`ExpressivePlayerSlider`/`PlayerProgressSection`) неприкосновенна.
+- **Плеер.** В радикальной версии (сессия 99) обложка почти на всю ширину, снизу full-width cloud-панель с progress и большими pill-кнопками; action-кнопки 64×44 pill, speed/queue 52×40 pill. Синусоида слайдера (`ExpressivePlayerSlider`/`PlayerProgressSection`) неприкосновенна.
+- **Экраны.** Home — Bento с гигантской Wave-карточкой и крупными carousel; Search — компактный заголовок при запросе + Bento-сетка; Library — Bento-фавориты/плейлисты; Settings — cloud-hero + быстрые 2×2 переходы; Artist — кинематографичный hero с fallback-монограммой; Import — pill-вкладки и облачные пустые состояния. `cloudScrollScale` даёт iOS-подобное уменьшение карточек у краёв carousel.
 - **Плеер.** Для ахроматичной обложки `PlayerDynamicColors.withCloudAccent` подставляет primary темы вместо серого; это сохраняет читаемость и фирменный ирис.
 
 ## Жёсткие правила

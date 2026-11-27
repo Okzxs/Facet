@@ -6,10 +6,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,10 +40,18 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.rounded.AddLink
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +59,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -72,6 +84,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -82,7 +95,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
 import com.facet.music.R
 import com.facet.music.core.ui.components.DockAwareSnackbarHost
 import com.facet.music.core.download.DownloadState
@@ -99,6 +114,7 @@ import com.facet.music.core.ui.components.PlaylistTile
 import com.facet.music.core.ui.components.SectionHeader
 import com.facet.music.core.ui.components.TrackCard
 import com.facet.music.core.ui.theme.CloudReveal
+import com.facet.music.core.ui.theme.cloudPress
 import com.facet.music.core.ui.components.TrackDownloadButton
 import com.facet.music.data.model.Playlist
 import com.facet.music.data.model.Track
@@ -330,9 +346,11 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(
+                top = 8.dp,
                 bottom = (if (showImportFab) 96.dp else 32.dp) +
                     96.dp + LocalBottomDockHeight.current,
             ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item(key = "library_summary") {
                 Text(
@@ -342,44 +360,44 @@ fun LibraryScreen(
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                 )
             }
 
             item(key = "library_favorites") {
                 CloudReveal(index = 0) {
-                    CollectionChipCard(
-                        title = stringResource(R.string.library_favorites),
+                    LibraryFavoritesBento(
                         subtitle = likedTracksSubtitle(likedTracks),
-                        icon = Icons.Filled.Favorite,
                         onClick = onLikedTracksClick,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
                     )
                 }
             }
 
             if (showSpotifyImport) {
                 item(key = "library_import_likes") {
-                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)) {
-                        AssistChip(
-                            onClick = { viewModel.importSpotifyLikes() },
-                            enabled = !spotifyLikesLoading,
-                            label = { Text(stringResource(R.string.library_import_likes)) },
-                            leadingIcon = {
-                                if (spotifyLikesLoading) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Filled.Favorite,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
-                            },
-                        )
+                    CloudReveal(index = 1) {
+                        Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                            AssistChip(
+                                onClick = { viewModel.importSpotifyLikes() },
+                                enabled = !spotifyLikesLoading,
+                                shape = MaterialTheme.shapes.extraLarge,
+                                label = { Text(stringResource(R.string.library_import_likes)) },
+                                leadingIcon = {
+                                    if (spotifyLikesLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Filled.Favorite,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -396,6 +414,7 @@ fun LibraryScreen(
                     onSecondaryAction = { showImportDialog = true },
                 )
             }
+
             if (playlists.isEmpty()) {
                 item(key = "library_playlists_empty") {
                     PlaylistsEmptyCard(
@@ -424,29 +443,36 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                playlists.chunked(PLAYLIST_GRID_COLUMNS).forEachIndexed { index, row ->
-                    item(key = "library_playlists_row_$index") {
-                        CloudReveal(index = index) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .animateItem()
-                                .padding(horizontal = 24.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            row.forEach { playlist ->
-                                PlaylistTile(
-                                    playlistName = playlist.name,
-                                    coverUrl = playlist.coverUrl,
-                                    trackCount = playlist.trackCount,
-                                    onClick = { onPlaylistClick(playlist.id) },
-                                    modifier = Modifier.weight(1f),
-                                )
+                playlists.chunked(2).forEachIndexed { rowIndex, row ->
+                    item(key = "library_playlists_row_$rowIndex") {
+                        CloudReveal(index = rowIndex) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .animateItem()
+                                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                row.forEachIndexed { columnIndex, playlist ->
+                                    val weight = when {
+                                        row.size == 1 -> 1.4f
+                                        rowIndex % 2 == 0 && columnIndex == 0 -> 1.35f
+                                        rowIndex % 2 == 1 && columnIndex == 1 -> 1.35f
+                                        else -> 1f
+                                    }
+                                    PlaylistTile(
+                                        playlistName = playlist.name,
+                                        coverUrl = playlist.coverUrl,
+                                        trackCount = playlist.trackCount,
+                                        onClick = { onPlaylistClick(playlist.id) },
+                                        modifier = Modifier.weight(weight),
+                                    )
+                                }
+                                if (row.size == 1) {
+                                    Spacer(Modifier.weight(0.6f))
+                                }
                             }
-                            if (row.size < PLAYLIST_GRID_COLUMNS) {
-                                Spacer(Modifier.weight(1f))
-                            }
-                        }
                         }
                     }
                 }
@@ -466,23 +492,23 @@ fun LibraryScreen(
                         spotifyLoading -> Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 16.dp),
+                                .padding(vertical = 20.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             AppLoadingIndicator(size = 28.dp)
                         }
                         spotifyPlaylists.isEmpty() -> Text(
                             text = stringResource(R.string.spotify_import_empty),
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                         )
                         else -> Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
                                 .padding(horizontal = 24.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
                             spotifyPlaylists.forEach { playlist ->
                                 SpotifyPlaylistTile(
@@ -501,36 +527,28 @@ fun LibraryScreen(
                     index = if (spotifyConnected) 3 else 2,
                 )
             }
+
             if (downloadedTracks.isEmpty()) {
                 item(key = "library_downloaded_empty") {
                     DownloadsEmptyCard(onOpenSearch = onOpenSearch)
                 }
             } else {
-                items(items = downloadedTracks.map { it.toTrack() }, key = { it.id }) { track ->
-                    TrackCard(
-                        track = track,
-                        isDownloaded = true,
-                        artworkSize = 60,
-                        artworkCornerDp = 16,
-                        onClick = {
-                            onTrackClick(track, downloadedTracks.map { it.toTrack() })
-                        },
-                        onAddToPlaylist = { playlistTrack = track },
-                        onArtistClick = { onArtistClick(track) },
-                        onPlayNext = { handlePlayNext(track) },
-                        onAddToQueue = { handleAddToQueue(track) },
-                        trailingContent = {
-                            IconButton(onClick = { pendingDelete = track }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = stringResource(
-                                        R.string.library_downloaded_menu,
-                                    ),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        },
-                    )
+                val downloadedQueue = downloadedTracks.map { it.toTrack() }
+                itemsIndexed(
+                    items = downloadedQueue,
+                    key = { _, track -> track.id },
+                ) { index, track ->
+                    CloudReveal(index = index) {
+                        LibraryDownloadBentoCard(
+                            track = track,
+                            onClick = { onTrackClick(track, downloadedQueue) },
+                            onAddToPlaylist = { playlistTrack = track },
+                            onArtistClick = { onArtistClick(track) },
+                            onPlayNext = { handlePlayNext(track) },
+                            onAddToQueue = { handleAddToQueue(track) },
+                            onDelete = { pendingDelete = track },
+                        )
+                    }
                 }
             }
         }
@@ -630,11 +648,11 @@ private fun PlaylistsEmptyCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = MaterialTheme.shapes.medium,
+            .padding(horizontal = 24.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
@@ -656,7 +674,10 @@ private fun PlaylistsEmptyCard(
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = onCreate, shape = CircleShape) {
+                FilledTonalButton(
+                    onClick = onCreate,
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
                     Text(stringResource(R.string.playlist_create))
                 }
                 TextButton(onClick = onImport) {
@@ -672,11 +693,11 @@ private fun DownloadsEmptyCard(onOpenSearch: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = MaterialTheme.shapes.medium,
+            .padding(horizontal = 24.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Rounded.DownloadDone,
@@ -697,7 +718,10 @@ private fun DownloadsEmptyCard(onOpenSearch: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
-            FilledTonalButton(onClick = onOpenSearch, shape = CircleShape) {
+            FilledTonalButton(
+                onClick = onOpenSearch,
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
                 Icon(
                     imageVector = Icons.Rounded.Search,
                     contentDescription = null,
@@ -913,3 +937,224 @@ private fun importErrorRes(error: ImportError): Int = when (error) {
 private const val PREVIEW_TRACK_COUNT = 10
 
 private const val PLAYLIST_GRID_COLUMNS = 2
+
+@Composable
+private fun LibraryFavoritesBento(
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 6.dp)
+            .cloudPress(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .clip(MaterialTheme.shapes.extraLarge)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Favorite,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(42.dp),
+                )
+            }
+            Spacer(Modifier.width(18.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.library_favorites),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            FilledIconButton(
+                onClick = onClick,
+                modifier = Modifier.size(width = 52.dp, height = 44.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = stringResource(R.string.home_play_favourites_cd),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun LibraryDownloadBentoCard(
+    track: Track,
+    onClick: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onArtistClick: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 3.dp)) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .cloudPress(interactionSource)
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onLongClickLabel = stringResource(R.string.track_actions_cd),
+                    onLongClick = { menuExpanded = true },
+                    onClick = onClick,
+                ),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 0.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                ) {
+                    AsyncImage(
+                        model = track.artworkUrl,
+                        contentDescription = stringResource(
+                            R.string.track_artwork_cd,
+                            track.title,
+                        ),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = track.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = track.artist,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.DownloadDone,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = stringResource(R.string.library_downloaded_menu),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreVert,
+                        contentDescription = stringResource(R.string.track_actions_cd),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            shape = MaterialTheme.shapes.extraLarge,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.queue_play_next)) },
+                leadingIcon = { Icon(Icons.Rounded.PlayArrow, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onPlayNext()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.queue_add)) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.QueueMusic, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onAddToQueue()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.playlist_add_to_cd)) },
+                leadingIcon = { Icon(Icons.Rounded.PlaylistAdd, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onAddToPlaylist()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.artist_open)) },
+                leadingIcon = { Icon(Icons.Rounded.Person, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onArtistClick()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.library_delete_title)) },
+                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onDelete()
+                },
+            )
+        }
+    }
+}

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -68,13 +70,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.facet.music.R
 import com.facet.music.core.ui.components.DockAwareSnackbarHost
+import com.facet.music.core.ui.theme.CloudReveal
 import com.facet.music.core.import.ImportError
 import com.facet.music.core.import.ImportService
 
@@ -111,25 +116,7 @@ fun ImportScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.import_screen_title),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                },
-                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back),
-                        )
-                    }
-                },
-            )
+            ImportHeader(onBack = onBack)
         },
         snackbarHost = { DockAwareSnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
@@ -139,33 +126,10 @@ fun ImportScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            PrimaryScrollableTabRow(
-                selectedTabIndex = state.tab.ordinal,
-                edgePadding = 24.dp,
-                containerColor = MaterialTheme.colorScheme.background,
-                contentColor = MaterialTheme.colorScheme.primary,
-            ) {
-                Tab(
-                    selected = state.tab == ImportTab.PROFILE,
-                    onClick = { viewModel.setTab(ImportTab.PROFILE) },
-                    text = { Text(stringResource(R.string.import_tab_profile), maxLines = 1) },
-                )
-                Tab(
-                    selected = state.tab == ImportTab.LINK,
-                    onClick = { viewModel.setTab(ImportTab.LINK) },
-                    text = { Text(stringResource(R.string.import_tab_link), maxLines = 1) },
-                )
-                Tab(
-                    selected = state.tab == ImportTab.YOUTUBE,
-                    onClick = { viewModel.setTab(ImportTab.YOUTUBE) },
-                    text = { Text(stringResource(R.string.import_tab_youtube), maxLines = 1) },
-                )
-                Tab(
-                    selected = state.tab == ImportTab.TEXT,
-                    onClick = { viewModel.setTab(ImportTab.TEXT) },
-                    text = { Text(stringResource(R.string.import_tab_text), maxLines = 1) },
-                )
-            }
+            ImportTabs(
+                selected = state.tab,
+                onSelect = viewModel::setTab,
+            )
 
             AnimatedContent(
                 targetState = state.tab,
@@ -187,19 +151,123 @@ fun ImportScreen(
 }
 
 @Composable
+private fun ImportHeader(onBack: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            onClick = onBack,
+            modifier = Modifier.size(44.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.common_back),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "FACET",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 2.sp,
+                ),
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = stringResource(R.string.import_screen_title),
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontWeight = FontWeight.Normal,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Surface(
+            modifier = Modifier.size(48.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.CloudDownload,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportTabs(
+    selected: ImportTab,
+    onSelect: (ImportTab) -> Unit,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(ImportTab.entries) { tab ->
+            FilterChip(
+                selected = tab == selected,
+                onClick = { onSelect(tab) },
+                modifier = Modifier.height(44.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                label = {
+                    Text(
+                        text = stringResource(
+                            when (tab) {
+                                ImportTab.PROFILE -> R.string.import_tab_profile
+                                ImportTab.LINK -> R.string.import_tab_link
+                                ImportTab.YOUTUBE -> R.string.import_tab_youtube
+                                ImportTab.TEXT -> R.string.import_tab_text
+                            },
+                        ),
+                        maxLines = 1,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
 private fun LikesSection(
     title: String,
     subtitle: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
                 if (subtitle != null) {
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -218,8 +286,13 @@ private fun LikesTrackRow(
     onToggle: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(track.artworkUrl, contentDescription = null, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
-        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+        AsyncImage(
+            track.artworkUrl,
+            contentDescription = null,
+            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)),
+            contentScale = ContentScale.Crop,
+        )
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
             Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -240,6 +313,7 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                 icon = Icons.Rounded.Person,
                 title = stringResource(R.string.import_profile_card_title),
                 subtitle = stringResource(R.string.import_profile_hint),
+                revealIndex = 0,
             ) {
                 OutlinedTextField(
                     value = state.link,
@@ -275,6 +349,7 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                     icon = Icons.Rounded.Favorite,
                     title = stringResource(R.string.import_sc_likes_title),
                     subtitle = stringResource(R.string.import_sc_likes_hint),
+                    revealIndex = 1,
                 ) {
                     Button(
                         onClick = viewModel::loadSoundCloudLikes,
@@ -454,6 +529,7 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
                         state.playlists.size,
                         state.selectedCount,
                     ),
+                    revealIndex = 2,
                 ) {
                     state.playlists.forEach { playlist ->
                         ProfilePlaylistRow(
@@ -484,7 +560,7 @@ private fun ProfileImportContent(state: ImportUiState, viewModel: ImportViewMode
 
         if (state.playlists.isEmpty() && !state.isLoading) {
             item(key = "profile_empty_cloud") {
-                ImportCloudHint()
+                CloudReveal(index = 3) { ImportCloudHint() }
             }
         }
     }
@@ -495,36 +571,55 @@ private fun ImportCloudHint() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 24.dp),
+            .padding(top = 28.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            modifier = Modifier
-                .size(88.dp)
-                .clip(MaterialTheme.shapes.extraLarge)
-                .background(MaterialTheme.colorScheme.primaryContainer),
+            modifier = Modifier.size(132.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = Icons.Rounded.CloudDownload,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(38.dp),
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow),
             )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 10.dp, end = 4.dp)
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondaryContainer),
+            )
+            Surface(
+                modifier = Modifier.size(84.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.CloudDownload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
         Text(
             text = stringResource(R.string.import_empty_cloud_title),
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = stringResource(R.string.import_empty_cloud_hint),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 24.dp),
+            modifier = Modifier.padding(horizontal = 16.dp),
         )
     }
 }
@@ -546,6 +641,7 @@ private fun YouTubeImportContent(state: ImportUiState, viewModel: ImportViewMode
                 icon = Icons.Rounded.Person,
                 title = stringResource(R.string.import_yt_profile_title),
                 subtitle = stringResource(R.string.import_yt_profile_hint),
+                revealIndex = 0,
             ) {
                 OutlinedTextField(
                     value = state.link,
@@ -606,6 +702,7 @@ private fun YouTubeImportContent(state: ImportUiState, viewModel: ImportViewMode
                 icon = Icons.Rounded.Favorite,
                 title = stringResource(R.string.import_yt_takeout_title),
                 subtitle = stringResource(R.string.import_yt_takeout_hint),
+                revealIndex = 1,
             ) {
                 Button(
                     onClick = {
@@ -639,6 +736,12 @@ private fun YouTubeImportContent(state: ImportUiState, viewModel: ImportViewMode
                 )
             }
         }
+
+        if (state.playlists.isEmpty() && !state.isLoading) {
+            item(key = "yt_empty_cloud") {
+                CloudReveal(index = 2) { ImportCloudHint() }
+            }
+        }
     }
 }
 
@@ -654,6 +757,7 @@ private fun LinkImportContent(state: ImportUiState, viewModel: ImportViewModel) 
                 icon = Icons.Rounded.AddLink,
                 title = stringResource(R.string.import_link_card_title),
                 subtitle = stringResource(R.string.import_link_hint),
+                revealIndex = 0,
             ) {
                 OutlinedTextField(
                     value = state.playlistLink,
@@ -694,6 +798,7 @@ private fun LinkImportContent(state: ImportUiState, viewModel: ImportViewModel) 
                         preview.tracks.size,
                         preview.tracks.size,
                     ),
+                    revealIndex = 1,
                 ) {
                     preview.tracks.take(10).forEach { track ->
                         Row(
@@ -704,11 +809,11 @@ private fun LinkImportContent(state: ImportUiState, viewModel: ImportViewModel) 
                                 track.artworkUrl,
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(10.dp)),
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(14.dp)),
                                 contentScale = ContentScale.Crop,
                             )
-                            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                 Text(
                                     track.title,
                                     maxLines = 1,
@@ -753,6 +858,12 @@ private fun LinkImportContent(state: ImportUiState, viewModel: ImportViewModel) 
                 }
             }
         }
+
+        if (preview == null && !state.playlistLoading) {
+            item(key = "link_empty_cloud") {
+                CloudReveal(index = 2) { ImportCloudHint() }
+            }
+        }
     }
 }
 
@@ -768,6 +879,7 @@ private fun TextImportContent(state: ImportUiState, viewModel: ImportViewModel) 
                 icon = Icons.AutoMirrored.Rounded.FormatListBulleted,
                 title = stringResource(R.string.import_text_card_title),
                 subtitle = stringResource(R.string.import_text_hint),
+                revealIndex = 0,
             ) {
                 OutlinedTextField(
                     value = state.text,
@@ -815,6 +927,7 @@ private fun TextImportContent(state: ImportUiState, viewModel: ImportViewModel) 
                         state.textFound.size,
                         state.textQueries.size,
                     ),
+                    revealIndex = 1,
                 ) {
                     if (state.textMissing > 0) {
                         Text(
@@ -829,6 +942,12 @@ private fun TextImportContent(state: ImportUiState, viewModel: ImportViewModel) 
                 }
             }
         }
+
+        if (state.textQueries.isEmpty() && !state.isLoading) {
+            item(key = "text_empty_cloud") {
+                CloudReveal(index = 2) { ImportCloudHint() }
+            }
+        }
     }
 }
 
@@ -837,43 +956,64 @@ private fun ImportCard(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
+    revealIndex: Int = -1,
     content: @Composable () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+    val card: @Composable () -> Unit = {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize(),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 0.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        modifier = Modifier.size(48.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (subtitle != null) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                content()
             }
-            if (subtitle != null) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            content()
         }
+    }
+    if (revealIndex >= 0) {
+        CloudReveal(index = revealIndex) { card() }
+    } else {
+        card()
     }
 }
 
@@ -885,7 +1025,7 @@ private fun ProfilePlaylistRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = playlist.selected, onCheckedChange = { onToggle() })
@@ -894,14 +1034,14 @@ private fun ProfilePlaylistRow(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(10.dp)),
+                .size(52.dp)
+                .clip(RoundedCornerShape(16.dp)),
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = playlist.name,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

@@ -41,6 +41,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Favorite
@@ -144,6 +148,7 @@ import com.facet.music.core.ui.components.TrackSourcesSheet
 import com.facet.music.feature.player.EqualizerSheet
 import com.facet.music.feature.player.LyricsProviderSheet
 import com.facet.music.core.ui.theme.Motion
+import com.facet.music.core.ui.theme.cloudPress
 import com.facet.music.core.ui.theme.PillShape
 import com.facet.music.core.ui.theme.bestContentColor
 import com.facet.music.core.ui.theme.contrastContentColor
@@ -1009,7 +1014,7 @@ fun PlayerScreen(
                         exit = fadeOut(tween(160)) +
                             slideOutVertically(tween(200)) { it / 3 },
                     ) {
-                    PlayerControlIsland(
+                    CloudPlayerPanel(
                         isPlaying = playerState.isPlaying,
                         isBuffering = isBuffering,
                         playbackSpeed = playerState.playbackSpeed,
@@ -1025,7 +1030,6 @@ fun PlayerScreen(
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         accentColor = coverAccent,
                         onAccentColor = onCoverAccent,
-                        borderColor = Color.Transparent,
                         onPlayPause = { viewModel.togglePlayPause() },
                         onPrev = { viewModel.playPrevious(force = true) },
                         onNext = { viewModel.playNext() },
@@ -1359,4 +1363,227 @@ private fun MenuLabel(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp),
     )
+}
+
+@Composable
+private fun CloudPlayerPanel(
+    isPlaying: Boolean,
+    isBuffering: Boolean,
+    playbackSpeed: Float,
+    containerColor: Color,
+    contentColor: Color,
+    accentColor: Color,
+    onAccentColor: Color,
+    onPlayPause: () -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onSpeedClick: () -> Unit,
+    onQueueClick: () -> Unit,
+    isLyricsMode: Boolean = false,
+    onLyricsClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    progressContent: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(32.dp),
+        color = containerColor.copy(alpha = 0.95f),
+        tonalElevation = 0.dp,
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            progressContent()
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CloudPillIconButton(
+                    icon = Icons.Filled.SkipPrevious,
+                    contentDescription = stringResource(R.string.common_previous_cd),
+                    onClick = onPrev,
+                    contentColor = contentColor,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp),
+                )
+                CloudPlayPill(
+                    isPlaying = isPlaying,
+                    isBuffering = isBuffering,
+                    accentColor = accentColor,
+                    onAccentColor = onAccentColor,
+                    onClick = onPlayPause,
+                    modifier = Modifier
+                        .weight(1.5f)
+                        .height(62.dp),
+                )
+                CloudPillIconButton(
+                    icon = Icons.Filled.SkipNext,
+                    contentDescription = stringResource(R.string.common_next_cd),
+                    onClick = onNext,
+                    contentColor = contentColor,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CloudTextPill(
+                    text = if (playbackSpeed == 1f) "1×" else "${playbackSpeed}×",
+                    onClick = onSpeedClick,
+                    contentColor = contentColor,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp),
+                )
+                if (onLyricsClick != null) {
+                    CloudTextPill(
+                        text = stringResource(
+                            if (isLyricsMode) R.string.player_cover else R.string.player_lyrics,
+                        ),
+                        icon = Icons.Rounded.Lyrics,
+                        onClick = onLyricsClick,
+                        contentColor = contentColor,
+                        modifier = Modifier
+                            .weight(1.4f)
+                            .height(44.dp),
+                    )
+                }
+                CloudPillIconButton(
+                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                    contentDescription = stringResource(R.string.queue_title),
+                    onClick = onQueueClick,
+                    contentColor = contentColor,
+                    modifier = Modifier
+                        .width(54.dp)
+                        .height(44.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudPlayPill(
+    isPlaying: Boolean,
+    isBuffering: Boolean,
+    accentColor: Color,
+    onAccentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pop = remember { Animatable(1f) }
+    LaunchedEffect(isPlaying) {
+        pop.snapTo(0.9f)
+        pop.animateTo(1f, Motion.bounce())
+    }
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier
+            .cloudPress(interactionSource)
+            .graphicsLayer {
+                scaleX = pop.value
+                scaleY = pop.value
+            },
+        shape = MaterialTheme.shapes.extraLarge,
+        color = accentColor,
+        contentColor = onAccentColor,
+        tonalElevation = 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (isBuffering) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(26.dp),
+                    color = onAccentColor,
+                    strokeWidth = 3.dp,
+                )
+            } else {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = stringResource(
+                        if (isPlaying) R.string.common_pause_cd else R.string.common_play_cd,
+                    ),
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudPillIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier.cloudPress(interactionSource),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = contentColor,
+        tonalElevation = 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudTextPill(
+    text: String,
+    onClick: () -> Unit,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier.cloudPress(interactionSource),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = contentColor,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }

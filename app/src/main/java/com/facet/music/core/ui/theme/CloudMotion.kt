@@ -9,8 +9,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +22,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -53,6 +56,32 @@ fun Modifier.cloudPress(
         scaleX = scale
         scaleY = scale
         this.alpha = alpha
+    }
+}
+
+@Composable
+fun Modifier.cloudScrollScale(
+    state: LazyListState,
+    key: Any,
+    minScale: Float = 0.92f,
+): Modifier {
+    val scale by remember(state, key) {
+        derivedStateOf {
+            val layout = state.layoutInfo
+            val item = layout.visibleItemsInfo.firstOrNull { it.key == key }
+                ?: return@derivedStateOf 1f
+            val viewport = (layout.viewportEndOffset - layout.viewportStartOffset)
+                .toFloat()
+                .coerceAtLeast(1f)
+            val center = item.offset + item.size / 2f
+            val viewportCenter = layout.viewportStartOffset + viewport / 2f
+            val distance = abs(center - viewportCenter) / (viewport / 2f)
+            (1f - distance * (1f - minScale)).coerceIn(minScale, 1f)
+        }
+    }
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
     }
 }
 

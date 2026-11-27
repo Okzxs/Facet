@@ -34,6 +34,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
@@ -88,6 +91,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -95,6 +99,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -116,6 +121,7 @@ import com.facet.music.core.ui.theme.AccentOption
 import com.facet.music.core.ui.theme.AccentOptions
 import com.facet.music.core.spotify.SpotifyAuthState
 import com.facet.music.core.ui.components.TrackArtwork
+import com.facet.music.core.ui.theme.cloudPress
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.repository.ThemeMode
 import kotlinx.coroutines.launch
@@ -215,14 +221,23 @@ fun SettingsScreen(
             .systemBarsPadding(),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            SettingsHeader(
-                onBack = onBack,
-                searchActive = searchActive,
-                onSearchToggle = {
-                    searchActive = !searchActive
-                    if (!searchActive) searchQuery = ""
-                },
-            )
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 8.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                tonalElevation = 0.dp,
+            ) {
+                SettingsHeader(
+                    onBack = onBack,
+                    searchActive = searchActive,
+                    onSearchToggle = {
+                        searchActive = !searchActive
+                        if (!searchActive) searchQuery = ""
+                    },
+                )
+            }
 
             if (searchActive) {
                 SettingsSearchField(
@@ -255,6 +270,13 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .verticalScroll(settingsScroll),
             ) {
+                CloudSettingsQuickGrid(
+                    onAppearance = { pendingAnchor = ANCHOR_APPEARANCE },
+                    onLanguage = { pendingAnchor = ANCHOR_LANGUAGE },
+                    onIntegrations = { pendingAnchor = ANCHOR_INTEGRATIONS },
+                    onPlayback = { pendingAnchor = ANCHOR_BACKGROUND },
+                )
+
                 SettingsSectionTitle(
                     R.string.settings_appearance,
                     anchor = ANCHOR_APPEARANCE,
@@ -809,6 +831,111 @@ internal fun paletteLabel(palette: com.facet.music.core.ui.theme.FacetPalette): 
         com.facet.music.core.ui.theme.FacetPalette.PAPER -> R.string.palette_paper
         com.facet.music.core.ui.theme.FacetPalette.MONO -> R.string.palette_mono
     }
+
+@Composable
+private fun CloudSettingsQuickGrid(
+    onAppearance: () -> Unit,
+    onLanguage: () -> Unit,
+    onIntegrations: () -> Unit,
+    onPlayback: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CloudSettingsTile(
+                icon = Icons.Rounded.Palette,
+                title = stringResource(R.string.settings_appearance),
+                subtitle = stringResource(R.string.settings_theme_hint),
+                onClick = onAppearance,
+                modifier = Modifier.weight(1f),
+            )
+            CloudSettingsTile(
+                icon = Icons.Rounded.Translate,
+                title = stringResource(R.string.settings_language_section),
+                subtitle = stringResource(R.string.settings_language_hint),
+                onClick = onLanguage,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CloudSettingsTile(
+                icon = Icons.Rounded.Hub,
+                title = stringResource(R.string.settings_integrations),
+                subtitle = "Spotify, YouTube, SoundCloud",
+                onClick = onIntegrations,
+                modifier = Modifier.weight(1f),
+            )
+            CloudSettingsTile(
+                icon = Icons.Rounded.GraphicEq,
+                title = stringResource(R.string.settings_background_section),
+                subtitle = stringResource(R.string.settings_focus_resume_title),
+                onClick = onPlayback,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CloudSettingsTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier
+            .height(124.dp)
+            .cloudPress(interactionSource),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Surface(
+                modifier = Modifier.size(38.dp),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun SettingsHeader(
