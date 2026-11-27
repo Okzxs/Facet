@@ -8,6 +8,7 @@ import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
 import coil3.BitmapImage
 import coil3.ImageLoader
+import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
@@ -63,8 +64,6 @@ private val paletteCache = object :
 
 private val paletteLock = Any()
 
-@Volatile
-private var sharedImageLoader: ImageLoader? = null
 
 private fun cachedPalette(url: String): PlayerDynamicColors? =
     synchronized(paletteLock) { paletteCache[url] }
@@ -74,9 +73,7 @@ private fun putPalette(url: String, colors: PlayerDynamicColors) {
 }
 
 private fun imageLoader(context: android.content.Context): ImageLoader =
-    sharedImageLoader ?: synchronized(paletteLock) {
-        sharedImageLoader ?: ImageLoader(context.applicationContext).also { sharedImageLoader = it }
-    }
+    SingletonImageLoader.get(context)
 
 @Composable
 fun rememberPlayerDynamicColors(

@@ -58,71 +58,26 @@ fun ExpressiveBottomDock(
     selectedRoute: String?,
     onSelect: (BottomNavItem) -> Unit,
     modifier: Modifier = Modifier,
-    attached: Boolean = false,
     labels: DockLabels = DockLabels.ALWAYS,
 ) {
     val fontScale = LocalDensity.current.fontScale
     val effectiveLabels = if (fontScale >= LARGE_FONT_SCALE) DockLabels.NEVER else labels
-    if (attached) {
-        Surface(
-            modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .selectableGroup()
-                    .padding(horizontal = 10.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                items.forEach { item ->
-                    DockItem(
-                        item = item,
-                        selected = item.screen.route == selectedRoute,
-                        onClick = { onSelect(item) },
-                        labels = effectiveLabels,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-    } else {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectableGroup()
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    items.forEach { item ->
-                        DockItem(
-                            item = item,
-                            selected = item.screen.route == selectedRoute,
-                            onClick = { onSelect(item) },
-                            labels = effectiveLabels,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .selectableGroup()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items.forEach { item ->
+            DockItem(
+                item = item,
+                selected = item.screen.route == selectedRoute,
+                onClick = { onSelect(item) },
+                labels = effectiveLabels,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -147,7 +102,7 @@ private fun DockItem(
     )
     val labelColor by animateColorAsState(
         targetValue = if (selected) {
-            MaterialTheme.colorScheme.onSurface
+            MaterialTheme.colorScheme.onSecondaryContainer
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
@@ -160,13 +115,27 @@ private fun DockItem(
         DockLabels.NEVER -> false
     }
     val selectionScale by animateFloatAsState(
-        targetValue = if (selected) 1.08f else 1f,
+        targetValue = if (selected) 1.06f else 1f,
         animationSpec = Motion.bounce(),
         label = "dockSelectionScale",
     )
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            androidx.compose.ui.graphics.Color.Transparent
+        },
+        animationSpec = Motion.spatialFast(),
+        label = "dockContainer",
+    )
     Column(
         modifier = modifier
-            .clip(MaterialTheme.shapes.large)
+            .graphicsLayer {
+                scaleX = selectionScale
+                scaleY = selectionScale
+            }
+            .clip(RoundedCornerShape(percent = 50))
+            .background(containerColor)
             .selectable(
                 selected = selected,
                 interactionSource = interactionSource,
@@ -175,24 +144,12 @@ private fun DockItem(
                 onClick = onClick,
             )
             .cloudPress(interactionSource)
-            .padding(vertical = 6.dp),
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
-                .size(width = 44.dp, height = 30.dp)
-                .graphicsLayer {
-                    scaleX = selectionScale
-                    scaleY = selectionScale
-                }
-                .clip(CircleShape)
-                .background(
-                    if (selected) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        androidx.compose.ui.graphics.Color.Transparent
-                    },
-                ),
+                .size(width = 44.dp, height = 28.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

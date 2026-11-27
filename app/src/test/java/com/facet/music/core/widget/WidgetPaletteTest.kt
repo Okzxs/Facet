@@ -21,7 +21,7 @@ class WidgetPaletteTest {
         assertTrue(palette.dark)
         assertTrue(palette.onBackground.luminance() > palette.background.luminance())
         assertEquals(true, palette.serifTitle)
-        assertEquals(24.dp, palette.cornerRadius)
+        assertEquals(28.dp, palette.cornerRadius)
     }
 
     @Test
@@ -68,9 +68,9 @@ class WidgetPaletteTest {
         ).cornerRadius
 
         assertEquals(20.dp, radius("SOFT"))
-        assertEquals(24.dp, radius("DEFAULT"))
+        assertEquals(28.dp, radius("DEFAULT"))
         assertEquals(32.dp, radius("ROUND"))
-        assertEquals(24.dp, radius("UNKNOWN"))
+        assertEquals(28.dp, radius("UNKNOWN"))
     }
 
     @Test

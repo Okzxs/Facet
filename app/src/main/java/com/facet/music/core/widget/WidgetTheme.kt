@@ -48,12 +48,12 @@ data class WidgetPalette(
                 accent = scheme.primary,
                 onAccent = scheme.onPrimary,
                 accentSoft = scheme.primaryContainer,
-                track = onBackground.copy(alpha = 0.16f),
+                track = onBackground.copy(alpha = 0.32f),
                 scrim = background.copy(alpha = if (dark) 0.74f else 0.84f),
                 cornerRadius = when (shapeStyle.uppercase()) {
                     "SOFT" -> 20.dp
                     "ROUND" -> 32.dp
-                    else -> 24.dp
+                    else -> 28.dp
                 },
                 serifTitle = serifTitle,
             )
@@ -98,7 +98,7 @@ object WidgetTheme {
         }
         val palette = prefs.getString(KEY_PALETTE_MODE, null)
         val shapeStyle = prefs.getString(KEY_SHAPE_STYLE, null) ?: "DEFAULT"
-        val serif = prefs.getBoolean(KEY_SERIF_DISPLAY, true)
+        val serif = prefs.getBoolean(KEY_SERIF_DISPLAY, false)
         val coverAccent = if (WidgetArtworkStore.hasArtwork(context)) {
             runCatching { WidgetArtworkStore.coverAccent(context) }.getOrNull()
         } else {

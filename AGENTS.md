@@ -227,6 +227,9 @@ com.facet.music
 - **Сетка.** `CloudSpacing.Screen = 24`, `Section = 32`, `Card = 16/20`; списки и карточки не липнут к краям. Тяжёлые тени и стекло запрещены; только `surfaceContainer*`.
 - **Атомы.** TrackCard — 64dp обложка, радиус 24; док — плавающая капсула 32; мини-плеер — капсула 28 на `surfaceContainerHighest`; CollectionChipCard — тональная без градиента; EmptyState — многослойная облачная иллюстрация.
 - **Плеер.** В радикальной версии (сессия 99) обложка почти на всю ширину, снизу full-width cloud-панель с progress и большими pill-кнопками; action-кнопки 64×44 pill, speed/queue 52×40 pill. Синусоида слайдера (`ExpressivePlayerSlider`/`PlayerProgressSection`) неприкосновенна.
+- **Док.** `CloudBottomShelf` объединяет мини-плеер и док в одну капсулу; выбранная вкладка — большая `secondaryContainer`-капсула с bounce 1.06. Старый `ExpressiveBottomDock` с отдельными поверхностями удалён.
+- **Виджет.** Wide: title 1 строка, padding 12, wave 16dp, seek 22–30dp, play 44dp, corner 28; serif выключен, track alpha 0.32. Проверены 4×2, 4×1, 2×2 на Mi 8 Evolution X.
+- **Скорость.** `FacetApp` — `SingletonImageLoader.Factory` (25 % RAM / 256 МБ disk); `playBufferMs` 1000; `PlaybackCache` в `noBackupFilesDir/media3_cache_v3`; range-чтение/prefetch следующего — ещё не внедрены, см. `docs/playback-performance.md`.
 - **Экраны.** Home — Bento с гигантской Wave-карточкой и крупными carousel; Search — компактный заголовок при запросе + Bento-сетка; Library — Bento-фавориты/плейлисты; Settings — cloud-hero + быстрые 2×2 переходы; Artist — кинематографичный hero с fallback-монограммой; Import — pill-вкладки и облачные пустые состояния. `cloudScrollScale` даёт iOS-подобное уменьшение карточек у краёв carousel.
 - **Плеер.** Для ахроматичной обложки `PlayerDynamicColors.withCloudAccent` подставляет primary темы вместо серого; это сохраняет читаемость и фирменный ирис.
 

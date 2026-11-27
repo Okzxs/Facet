@@ -21,7 +21,7 @@ class PlaybackCache @Inject constructor(
 
     val cache: SimpleCache by lazy {
         SimpleCache(
-            File(context.cacheDir, DIRECTORY),
+            File(context.noBackupFilesDir, DIRECTORY),
             LeastRecentlyUsedCacheEvictor(MAX_BYTES),
             databaseProvider,
         )
@@ -47,7 +47,7 @@ class PlaybackCache @Inject constructor(
     }
 
     private companion object {
-        const val DIRECTORY = "media3_cache_v2"
+        const val DIRECTORY = "media3_cache_v3"
         const val MAX_BYTES = 1024L * 1024 * 1024
     }
 }

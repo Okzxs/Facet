@@ -23,19 +23,19 @@ object PlaybackAudioConfig {
         "SMALL" -> BufferProfile(
             minBufferMs = 15_000,
             maxBufferMs = 30_000,
-            playBufferMs = 2_000,
+            playBufferMs = 1_000,
             rebufferMs = 3_000,
         )
         "LARGE" -> BufferProfile(
             minBufferMs = 60_000,
             maxBufferMs = 120_000,
-            playBufferMs = 4_000,
+            playBufferMs = 1_500,
             rebufferMs = 8_000,
         )
         else -> BufferProfile(
             minBufferMs = 50_000,
             maxBufferMs = 50_000,
-            playBufferMs = 2_500,
+            playBufferMs = 1_000,
             rebufferMs = 5_000,
         )
     }

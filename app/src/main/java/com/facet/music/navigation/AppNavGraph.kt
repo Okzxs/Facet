@@ -58,13 +58,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.facet.music.core.ui.components.CloudBottomShelf
 import com.facet.music.core.ui.components.DockLabels
-import com.facet.music.core.ui.components.ExpressiveBottomDock
 import com.facet.music.core.ui.components.ExpressiveNavigationRail
-import com.facet.music.core.ui.components.FloatingMiniPlayer
-import com.facet.music.core.ui.components.MiniPlayerGap
-import com.facet.music.core.ui.components.MiniPlayerHorizontalMargin
-import com.facet.music.core.ui.components.MiniPlayerIslandHeight
 import com.facet.music.core.ui.theme.Motion
 import com.facet.music.core.ui.theme.prewarmPlayerPalette
 import com.facet.music.data.model.Artist
@@ -234,23 +230,8 @@ fun AppNavGraph(
         (navBarHeightPx > 0 || isLikedTracksScreen) &&
         !isMiniPlayerDismissed
 
-    val miniPlayerReserve by animateDpAsState(
-        targetValue = if (showMiniPlayer) MiniPlayerIslandHeight + MiniPlayerGap else 0.dp,
-        animationSpec = Motion.spatialDefault(),
-        label = "miniPlayerReserve",
-    )
     val wideLayout = LocalConfiguration.current.screenWidthDp >= 600
-    val bottomDockHeight = if (wideLayout) miniPlayerReserve else navBarHeight + miniPlayerReserve
-
-    val miniPlayerBottom by animateDpAsState(
-        targetValue = if (showBottomBar && !wideLayout) {
-            navBarHeight + MiniPlayerGap
-        } else {
-            navigationBarInset + MiniPlayerGap
-        },
-        animationSpec = Motion.spatialDefault(),
-        label = "miniPlayerBottom",
-    )
+    val bottomDockHeight = navBarHeight
 
     Box(
         modifier = Modifier
@@ -340,7 +321,7 @@ fun AppNavGraph(
                         onArtistClick = { track -> openArtist(track) },
                         onPlayNext = { track -> playerViewModel.playNext(track) },
                         onAddToQueue = { track -> playerViewModel.addToQueue(track) },
-                        bottomInset = miniPlayerReserve,
+                        bottomInset = bottomDockHeight,
                     )
                 }
                 composable(
@@ -419,30 +400,6 @@ fun AppNavGraph(
             }
         }
 
-        AnimatedVisibility(
-            visible = showBottomBar && !wideLayout,
-            enter = slideInVertically(
-                animationSpec = Motion.spatialDefault(),
-            ) { height -> height } + fadeIn(animationSpec = Motion.effectsDefault()),
-            exit = slideOutVertically(
-                animationSpec = Motion.spatialDefault(),
-            ) { height -> height } + fadeOut(animationSpec = Motion.effectsDefault()),
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) {
-            ExpressiveBottomDock(
-                items = navItems,
-                selectedRoute = selectedRoute,
-                onSelect = onTabSelect,
-                attached = settings.dockStyle == AppSettings.DOCK_ATTACHED,
-                labels = when (settings.dockLabels) {
-                    AppSettings.LABELS_NEVER -> DockLabels.NEVER
-                    AppSettings.LABELS_SELECTED -> DockLabels.SELECTED
-                    else -> DockLabels.ALWAYS
-                },
-                modifier = Modifier.onSizeChanged { size -> navBarHeightPx = size.height },
-            )
-        }
-
         if (wideLayout) {
             ExpressiveNavigationRail(
                 items = navItems,
@@ -458,7 +415,7 @@ fun AppNavGraph(
             val sharedScope = this
             Box(modifier = Modifier.fillMaxSize()) {
                 AnimatedVisibility(
-                    visible = showMiniPlayer,
+                    visible = (showBottomBar && !wideLayout) || showMiniPlayer,
                     enter = fadeIn(animationSpec = Motion.effectsDefault()) + scaleIn(
                         initialScale = 0.96f,
                         transformOrigin = TransformOrigin(0.5f, 1f),
@@ -471,11 +428,7 @@ fun AppNavGraph(
                     ),
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(
-                            start = if (wideLayout) 88.dp else MiniPlayerHorizontalMargin,
-                            end = MiniPlayerHorizontalMargin,
-                            bottom = miniPlayerBottom,
-                        ),
+                        .onSizeChanged { size -> navBarHeightPx = size.height },
                 ) {
                     val animatedScope = this
                     val coverModifier = with(sharedScope) {
@@ -485,25 +438,34 @@ fun AppNavGraph(
                             boundsTransform = { _, _ -> Motion.spatialDefault<Rect>() },
                         )
                     }
-                    miniTrack?.let { track ->
-                        FloatingMiniPlayer(
-                            track = track,
-                            isPlaying = playerState.isPlaying,
-                            isBuffering = playerState.isBuffering || playerState.isLoading,
-                            onExpandClick = onMiniPlayerExpand,
-                            onPlayPauseClick = { playerViewModel.togglePlayPause() },
-                            onNext = { playerViewModel.playNext() },
-                            onPrevious = { playerViewModel.playPrevious(force = true) },
-                            onCloseClick = {
-                                isMiniPlayerDismissed = true
-                                playerViewModel.clearQueue()
-                            },
-                            currentFraction = { playerViewModel.currentFraction() },
-                            coverModifier = coverModifier,
-                            showClose = settings.miniPlayerClose,
-                            showProgress = settings.miniPlayerProgress,
-                        )
-                    }
+                    CloudBottomShelf(
+                        items = navItems,
+                        selectedRoute = selectedRoute,
+                        onSelect = onTabSelect,
+                        labels = when (settings.dockLabels) {
+                            AppSettings.LABELS_NEVER -> DockLabels.NEVER
+                            AppSettings.LABELS_SELECTED -> DockLabels.SELECTED
+                            else -> DockLabels.ALWAYS
+                        },
+                        showDock = showBottomBar && !wideLayout,
+                        showMiniPlayer = showMiniPlayer,
+                        track = miniTrack,
+                        isPlaying = playerState.isPlaying,
+                        isBuffering = playerState.isBuffering || playerState.isLoading,
+                        onExpandClick = onMiniPlayerExpand,
+                        onPlayPauseClick = { playerViewModel.togglePlayPause() },
+                        onNext = { playerViewModel.playNext() },
+                        onPrevious = { playerViewModel.playPrevious(force = true) },
+                        onCloseClick = {
+                            isMiniPlayerDismissed = true
+                            playerViewModel.clearQueue()
+                        },
+                        currentFraction = { playerViewModel.currentFraction() },
+                        coverModifier = coverModifier,
+                        showClose = settings.miniPlayerClose,
+                        showProgress = settings.miniPlayerProgress,
+                        attached = settings.dockStyle == AppSettings.DOCK_ATTACHED,
+                    )
                 }
 
                 val playerEnter = fadeIn(
@@ -621,16 +583,16 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnterTransition
     val direction = tabDirection(items)
     if (direction == 0) {
         return fadeIn(animationSpec = Motion.effectsDefault()) + scaleIn(
-            initialScale = 0.96f,
-            animationSpec = Motion.spatialDefault(),
+            initialScale = 0.95f,
+            animationSpec = Motion.nav(),
         )
     }
     return slideInHorizontally(
         initialOffsetX = { width -> direction * width / 2 },
-        animationSpec = Motion.spatialDefault(),
+        animationSpec = Motion.nav(),
     ) + scaleIn(
-        initialScale = 0.94f,
-        animationSpec = Motion.spatialDefault(),
+        initialScale = 0.92f,
+        animationSpec = Motion.nav(),
     ) + fadeIn(
         animationSpec = Motion.effectsDefault(),
     )
@@ -643,14 +605,14 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExitTransition(
     if (direction == 0) {
         return fadeOut(animationSpec = Motion.effectsFast()) + scaleOut(
             targetScale = 0.98f,
-            animationSpec = Motion.spatialDefault(),
+            animationSpec = Motion.nav(),
         )
     }
     return slideOutHorizontally(
         targetOffsetX = { width -> -direction * width / 2 },
-        animationSpec = Motion.spatialDefault(),
+        animationSpec = Motion.nav(),
     ) + scaleOut(
-        targetScale = 0.96f,
+        targetScale = 0.95f,
         animationSpec = Motion.spatialDefault(),
     ) + fadeOut(
         animationSpec = Motion.effectsDefault(),

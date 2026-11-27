@@ -239,33 +239,15 @@ fun PlayerScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var hasLocationPermission by remember {
-        mutableStateOf(LocationPermissions.hasPermission(context))
-    }
-    var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var pendingLike by rememberSaveable { mutableStateOf(false) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
-    ) { result ->
-        permissionRequested = true
-        hasLocationPermission = result.values.any { it } ||
-            LocationPermissions.hasPermission(context)
+    ) {
         if (pendingLike) {
             pendingLike = false
             viewModel.toggleLike()
         }
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                hasLocationPermission = LocationPermissions.hasPermission(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     fun toggleLikeWithPermission() {
@@ -274,14 +256,6 @@ fun PlayerScreen(
             locationPermissionLauncher.launch(LocationPermissions.permissions)
         } else {
             viewModel.toggleLike()
-        }
-    }
-
-    fun onPermissionBannerAction() {
-        if (permissionRequested && !LocationPermissions.hasPermission(context)) {
-            LocationPermissions.openAppSettings(context)
-        } else {
-            locationPermissionLauncher.launch(LocationPermissions.permissions)
         }
     }
 
@@ -980,21 +954,6 @@ fun PlayerScreen(
                             .weight(1f),
                     )
 
-                    if (!hasLocationPermission && !isLyricsMode) {
-                        LocationPermissionBanner(
-                            actionLabel = if (permissionRequested) {
-                                stringResource(R.string.player_permission_settings)
-                            } else {
-                                stringResource(R.string.player_permission_allow)
-                            },
-                            onAction = { onPermissionBannerAction() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                                .padding(bottom = 6.dp),
-                        )
-                    }
-
                     val isPlayerReady = playerState.playbackState == androidx.media3.common.Player.STATE_READY
                     val error = if (isPlayerReady) null else (uiState.error ?: playerState.error)
 
@@ -1241,53 +1200,6 @@ fun PlayerScreen(
             },
             onDismiss = { showSleepTimer = false },
         )
-    }
-}
-
-@Composable
-private fun LocationPermissionBanner(
-    actionLabel: String,
-    onAction: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.LocationOff,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.player_location_off),
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                )
-                Text(
-                    text = stringResource(R.string.player_location_off_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            TextButton(
-                onClick = onAction,
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                Text(
-                    text = actionLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-        }
     }
 }
 

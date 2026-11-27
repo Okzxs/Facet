@@ -110,12 +110,17 @@ internal fun FloatingMiniPlayer(
     coverModifier: Modifier = Modifier,
     showClose: Boolean = true,
     showProgress: Boolean = true,
+    embedded: Boolean = false,
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val shape = CloudPanelShape
-    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val surfaceColor = if (embedded) {
+        androidx.compose.ui.graphics.Color.Transparent
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    }
     val interactionSource = remember { MutableInteractionSource() }
     val notePainter = rememberVectorPainter(Icons.Rounded.MusicNote)
     val placeholderPainter = remember(surfaceColor) { ColorPainter(surfaceColor) }

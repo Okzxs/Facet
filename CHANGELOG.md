@@ -31,6 +31,12 @@
 - EmptyState получил мягкую многослойную иллюстрацию; в Import добавлена облачная подсказка «Твоя музыка будет здесь», отступы 24.
 - Радикальный редизайн UI-слоя: Home переписан на Bento с огромной карточкой «Волна», крупными carousel-карточками и scroll-scale; Player — full-width обложка + нижняя cloud-панель с большими pill-кнопками вместо островка; Search — компактный заголовок при запросе и Bento-сетка результатов; Library — Bento-фавориты и карточки скачанного; Settings — cloud-hero и сетка быстрых переходов; Artist — кинематографичный hero с fallback-монограммой; Import — pill-вкладки и облачные пустые состояния.
 - В Home/Search/Artist/Import/Library сохранены все ViewModel-вызовы, стейты, диалоги, листы и long-press действия; синусоида слайдера плеера не изменялась.
+- Док и мини-плеер объединены в единый `CloudBottomShelf`: мини-плеер внутри общей облачной капсулы, выбранная вкладка — большая капсула с bounce; старые ветки дока удалены.
+- «Моя волна» переписана с нуля: кинематографичный hero с огромным Play 112dp, облачные pill-чипсы настроения, Bento-очередь 1+2, сохранены все `WaveViewModel`-состояния, объяснения, cold start и debug.
+- Виджет доведён под Pixel на Mi 8 (Evolution X): 4×2/4×1/2×2, title в одну строку, padding 12, wave 16dp, seek 22–30dp, controls больше не обрезаются, sans-заголовок вместо serif, corner 28, blur-фон сохранён.
+- Скорость: Coil singleton-кэш 25 % RAM / 256 МБ disk, `playBufferMs` 2500→1000, аудио-кэш в `noBackupFilesDir/media3_cache_v3`; добавлен `docs/playback-performance.md` с разбором rx-playa (range/prefetch — следующий шаг).
+- Переходы вкладок: slide 1/2 + scale 0.92 + fade с пружиной 0.64/380.
+
 - Производительность: убран `cloudSheetEntrance` — шторки снова используют штатную M3-физику; scale/press карточек объединены в один `graphicsLayer` (`cloudCardMotion`), scroll-scale считается через `derivedStateOf` и читается только в layer; из списков Search/Library/Artist убраны per-item `CloudReveal`.
 - Чистка: удалены неиспользуемые `ResultsList`, `SearchHeader`, `SourceButton`, `UnavailableServiceWarning`, `LocalResultsSection`, `RecentColorDot`, `brandColor`, `toHexString`.
 - Замер: Home-скролл после прогрева — 1.49% janky (90th 12 мс, 99th 14 мс); первый проход 7.07% из-за reveal/Coil.

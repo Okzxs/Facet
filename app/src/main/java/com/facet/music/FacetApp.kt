@@ -1,6 +1,7 @@
 package com.facet.music
 
 import android.app.Application
+import android.content.Context
 import android.os.StrictMode
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -11,15 +12,20 @@ import com.facet.music.core.di.ApplicationScope
 import com.facet.music.core.network.NewPipeDownloader
 import com.facet.music.core.player.PlaybackCache
 import com.facet.music.data.source.soundcloud.SoundCloudClientIdProvider
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import okio.Path.Companion.toOkioPath
 import org.schabi.newpipe.extractor.NewPipe
 import java.io.File
 import javax.inject.Inject
 
 @HiltAndroidApp
-class FacetApp : Application() {
+class FacetApp : Application(), SingletonImageLoader.Factory {
 
     @Inject
     lateinit var newPipeDownloader: NewPipeDownloader
@@ -35,6 +41,21 @@ class FacetApp : Application() {
     lateinit var applicationScope: CoroutineScope
 
     private var warmedClientId = false
+
+    override fun newImageLoader(context: Context): ImageLoader =
+        ImageLoader.Builder(context)
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(context, 0.25)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(File(cacheDir, "image_cache").toOkioPath())
+                    .maxSizeBytes(256L * 1024L * 1024L)
+                    .build()
+            }
+            .build()
 
     override fun onCreate() {
         super.onCreate()

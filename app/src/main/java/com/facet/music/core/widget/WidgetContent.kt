@@ -111,15 +111,15 @@ private fun WideLayout(
 ) {
     val large = size.height >= 165.dp
     val huge = size.height >= 200.dp
-    val padding = (size.height * 0.08f).coerceIn(8.dp, 20.dp)
-    val gap = if (large) 18.dp else 10.dp
-    val coverSize = (size.height * 0.44f).coerceIn(44.dp, 112.dp)
+    val padding = (size.height * 0.06f).coerceIn(8.dp, 16.dp)
+    val gap = if (large) 16.dp else 10.dp
+    val coverSize = (size.height * 0.42f).coerceIn(44.dp, 108.dp)
     val titleSize = if (large) 20.sp else 14.sp
     val artistSize = if (large) 13.sp else 10.sp
     val playSize = if (large) 44.dp else 28.dp
     val sideSize = if (large) 26.dp else 20.dp
     val likeSize = if (large) 22.dp else 16.dp
-    val titleLines = if (huge) 2 else 1
+    val titleLines = 1
     val columnWidth = (size.width - padding * 2 - coverSize - gap).coerceAtLeast(1.dp)
 
     Row(
@@ -201,16 +201,16 @@ private fun WideLayout(
                             ),
                         )
                     }
-                    Spacer(GlanceModifier.height(5.dp))
+                    Spacer(GlanceModifier.height(4.dp))
                 }
                 WidgetProgress(
                     progress = snapshot.progress,
                     width = columnWidth,
                     palette = palette,
-                    height = if (large) 12.dp else 10.dp,
+                    height = if (large) 16.dp else 10.dp,
                     seekHeight = when {
-                        huge -> 34.dp
-                        large -> 26.dp
+                        huge -> 30.dp
+                        large -> 22.dp
                         else -> 12.dp
                     },
                     phase = WidgetWave.phase(snapshot.positionMs),

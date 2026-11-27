@@ -52,6 +52,9 @@ object Motion {
     fun <T> bounce(): SpringSpec<T> =
         spring(dampingRatio = BounceDamping, stiffness = BounceStiffness)
 
+    fun <T> nav(): SpringSpec<T> =
+        spring(dampingRatio = 0.64f, stiffness = 380f)
+
     fun <T> spatialFast(): SpringSpec<T> =
         spring(dampingRatio = SpatialFastDamping, stiffness = SpatialFastStiffness)
 

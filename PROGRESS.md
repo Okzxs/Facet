@@ -1,6 +1,19 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 27.11.2026 (Cloud UI 1.1.0: плавность и чистка)
+## Последнее обновление: 27.11.2026 (тотальный редизайн и Pixel-виджет)
+
+---
+
+## Сессия 101: док-капсула, новая волна, виджет и скорость (27.11.2026)
+
+- **Док + мини-плеер.** `CloudBottomShelf`: единая облачная капсула, внутри мини-плеер и док; выбранная вкладка — большая капсула `secondaryContainer` с bounce 1.06; старые ветки `ExpressiveBottomDock` удалены. Шторки на штатной M3-физике.
+- **Волна.** `WaveScreen` переписан: hero с облаками, огромная Play 112dp, pill-чипсы настроения, Bento-очередь 1+2, сохранены все `WaveViewModel`-методы, explanation/cold start/debug, состояния.
+- **Виджет на Mi 8 (Evolution X).** Протестированы 4×2, 4×1, 2×2. Исправлено обрезание play-кнопки: padding 12, title 1 строка, wave 16dp, seek 22–30dp; serif выключен по умолчанию для виджета, track alpha 0.32, radius 28. Blur-фон сохранён; шторка SystemUI показывает системный Pixel-плеер.
+- **Скорость.** Глобальный Coil `SingletonImageLoader` (memory 25 %, disk 256 МБ), `PlayerPalette` на том же loader; `playBufferMs` 2500→1000; аудио-кэш в `noBackupFilesDir/media3_cache_v3`. `docs/playback-performance.md` — сравнение с rx-playa: Go-бэкенд к YouTube/SC не относится; главный разрыв — range-чтение и байтовый prefetch.
+- **Переходы.** Slide 1/2 + scale 0.92 + fade, пружина `Motion.nav()` 0.64/380.
+- **Проверка.** Mi 8 192.168.0.102:40765 (Evolution X): Home, Wave, Player, dock/мини, виджет 4×2/4×1/2×2. 86 suite / 506 тестов, 0 failures (1 skipped). APK 34 234 464 байт, SHA-256 `a783ecd333ff5db5b65223110815d81d78e298163e0c2db51c3913e501525ef0`.
+- **Не тронуто.** `ExpressivePlayerSlider`/`PlayerProgressSection`, ViewModel/навигация/бизнес-логика; A26 не использовался.
+
 
 ---
 
