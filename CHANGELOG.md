@@ -37,7 +37,7 @@
 - Скорость: Coil singleton-кэш 25 % RAM / 256 МБ disk, `playBufferMs` 2500→1000, аудио-кэш в `noBackupFilesDir/media3_cache_v3`; добавлен `docs/playback-performance.md` с разбором rx-playa (range/prefetch — следующий шаг).
 - Переходы вкладок: slide 1/2 + scale 0.92 + fade с пружиной 0.64/380.
 - Компактность: глобальные отступы 16/24, Home-карусели 160dp, Wave-hero 180dp, Player 20dp, жанровые карточки 132/112dp.
-- Чарты: компактный пейджер по 5 строк с номерами/точками вместо крупных карточек; убран фильтр нулевых прослушиваний, регион `country=BY`; разбор Dotify — `docs/dotify-charts-analysis.md`.
+- Чарты: компактные горизонтальные страницы по 5 строк с номерами/точками вместо крупных карточек; убран фильтр нулевых прослушиваний, регион `country=BY`; разбор Dotify — `docs/dotify-charts-analysis.md`.
 - Скорость: `PlaybackPrefetcher` пишет 2 МБ следующего трека в `SimpleCache` за 15 с до конца; `PlaybackDataSpecResolver` использует sync-cached stream; постоянные `graphicsLayer` карточек убраны (layer только на press), секционные `CloudReveal` на Главной сняты, crossfade обложек списков убран.
 - Профиль: Mi8/A26 debug-скролл 7–23% janky в зависимости от прохода/120 Гц; main-thread p90 18.8 мс, GPU p90 8 мс, slow bitmap/draw = 0. Range-чтение остаётся главным незакрытым пунктом.
 

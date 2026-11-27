@@ -30,8 +30,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -528,21 +526,26 @@ private fun CloudChartsBlock(
         when {
             tracks.isNotEmpty() -> {
                 val pages = tracks.chunked(CHART_PAGE_SIZE)
-                val pagerState = rememberPagerState(pageCount = { pages.size })
-                HorizontalPager(
-                    state = pagerState,
-                    pageSpacing = 12.dp,
+                val chartRowState = rememberLazyListState()
+                LazyRow(
+                    state = chartRowState,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(288.dp),
-                ) { page ->
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        pages[page].forEachIndexed { position, track ->
-                            ChartRow(
-                                rank = page * CHART_PAGE_SIZE + position + 1,
-                                track = track,
-                                onClick = { onTrackClick(track, tracks) },
-                            )
+                ) {
+                    items(pages.size) { page ->
+                        Column(
+                            modifier = Modifier.fillParentMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            pages[page].forEachIndexed { position, track ->
+                                ChartRow(
+                                    rank = page * CHART_PAGE_SIZE + position + 1,
+                                    track = track,
+                                    onClick = { onTrackClick(track, tracks) },
+                                )
+                            }
                         }
                     }
                 }
@@ -555,10 +558,10 @@ private fun CloudChartsBlock(
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 3.dp)
-                                .size(if (pagerState.currentPage == dot) 14.dp else 6.dp)
+                                .size(if (chartRowState.firstVisibleItemIndex == dot) 14.dp else 6.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    if (pagerState.currentPage == dot) {
+                                    if (chartRowState.firstVisibleItemIndex == dot) {
                                         MaterialTheme.colorScheme.primary
                                     } else {
                                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
