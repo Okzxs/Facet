@@ -33,9 +33,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Piano
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
@@ -52,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
@@ -174,7 +180,7 @@ fun HomeScreen(
                 start = HomePadding,
                 end = HomePadding,
                 top = 24.dp,
-                bottom = 120.dp + LocalBottomDockHeight.current,
+                bottom = 24.dp + LocalBottomDockHeight.current,
             ),
             verticalArrangement = Arrangement.spacedBy(HomeGap),
         ) {
@@ -591,7 +597,7 @@ private fun ChartRow(
             .cloudPress(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
-                indication = null,
+                indication = ripple(),
                 onClick = onClick,
             )
             .padding(horizontal = 4.dp),
@@ -682,7 +688,7 @@ private fun CloudReleaseCard(
             .cloudPress(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
-                indication = null,
+                indication = ripple(),
                 onClick = onClick,
             ),
     ) {
@@ -744,22 +750,59 @@ private fun CloudGenresBlock(
             count = sections.size,
         )
         Spacer(Modifier.height(16.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            sections.chunked(2).forEachIndexed { rowIndex, row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    row.forEach { section ->
-                        val track = section.tracks.firstOrNull() ?: return@forEach
-                        CloudGenreCard(
-                            section = section,
-                            height = if (rowIndex == 0) 132.dp else 112.dp,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onTrackClick(track, section.tracks) },
-                        )
-                    }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val left = sections.filterIndexed { position, _ -> position % 2 == 0 }
+            val right = sections.filterIndexed { position, _ -> position % 2 == 1 }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                left.forEachIndexed { position, section ->
+                    val track = section.tracks.firstOrNull() ?: return@forEachIndexed
+                    CloudGenreCard(
+                        section = section,
+                        height = when (position % 3) {
+                            0 -> 156.dp
+                            1 -> 128.dp
+                            else -> 140.dp
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onTrackClick(track, section.tracks) },
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                right.forEachIndexed { position, section ->
+                    val track = section.tracks.firstOrNull() ?: return@forEachIndexed
+                    CloudGenreCard(
+                        section = section,
+                        height = when (position % 3) {
+                            0 -> 132.dp
+                            1 -> 148.dp
+                            else -> 120.dp
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onTrackClick(track, section.tracks) },
+                    )
                 }
             }
         }
+    }
+}
+
+private fun genreIcon(genre: String): ImageVector {
+    val key = genre.lowercase()
+    return when {
+        key.contains("electronic") || key.contains("dance") -> Icons.Rounded.Bolt
+        key.contains("dubstep") || key.contains("bass") -> Icons.Rounded.GraphicEq
+        key.contains("hip") || key.contains("rap") || key.contains("trap") -> Icons.Rounded.Mic
+        key.contains("jazz") || key.contains("classic") || key.contains("piano") -> Icons.Rounded.Piano
+        key.contains("rock") || key.contains("metal") -> Icons.Rounded.MusicNote
+        key.contains("pop") || key.contains("indie") -> Icons.Rounded.Album
+        else -> Icons.Rounded.Waves
     }
 }
 
@@ -787,12 +830,20 @@ private fun CloudGenreCard(
                 .padding(18.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Icon(
-                imageVector = Icons.Rounded.GraphicEq,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp),
-            )
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = genreIcon(section.genre),
+                        contentDescription = null,
+                        modifier = Modifier.size(21.dp),
+                    )
+                }
+            }
             Column {
                 Text(
                     text = section.genre,
@@ -909,7 +960,7 @@ private fun CloudTrackCard(
             .cloudPress(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
-                indication = null,
+                indication = ripple(),
                 onClick = onClick,
             ),
     ) {

@@ -40,6 +40,11 @@
 - Чарты: компактные горизонтальные страницы по 5 строк с номерами/точками вместо крупных карточек; убран фильтр нулевых прослушиваний, регион `country=BY`; разбор Dotify — `docs/dotify-charts-analysis.md`.
 - Скорость: `PlaybackPrefetcher` пишет 2 МБ следующего трека в `SimpleCache` за 15 с до конца; `PlaybackDataSpecResolver` использует sync-cached stream; постоянные `graphicsLayer` карточек убраны (layer только на press), секционные `CloudReveal` на Главной сняты, crossfade обложек списков убран.
 - Профиль: Mi8/A26 debug-скролл 7–23% janky в зависимости от прохода/120 Гц; main-thread p90 18.8 мс, GPU p90 8 мс, slow bitmap/draw = 0. Range-чтение остаётся главным незакрытым пунктом.
+- Плеер: ambient shadow под обложкой, гироскопический параллакс ±3.5°, панель `surfaceContainerHigh` 32dp с border 1dp/5%, глубокий градиент от цвета обложки к графиту; скрыт обрезанный ряд действий, панель компактнее.
+- Главная: жанры в masonry-колонках разной высоты, тематические иконки (Bolt/GraphicEq/Mic/Piano/...), нижний inset 120→24; заголовки секций с иконками.
+- Настройки: карточки-секции с иконками, switch-строки в `surfaceContainerLow`, SegmentedButton в карточке.
+- Медиатека: крупные `PlaylistTile` с градиентным скримом и текстом на обложке.
+- Типографика: пересобраны lineHeight/letterSpacing, ripple/state layer на карточках и плейлистах.
 
 - Производительность: убран `cloudSheetEntrance` — шторки снова используют штатную M3-физику; scale/press карточек объединены в один `graphicsLayer` (`cloudCardMotion`), scroll-scale считается через `derivedStateOf` и читается только в layer; из списков Search/Library/Artist убраны per-item `CloudReveal`.
 - Чистка: удалены неиспользуемые `ResultsList`, `SearchHeader`, `SourceButton`, `UnavailableServiceWarning`, `LocalResultsSection`, `RecentColorDot`, `brandColor`, `toHexString`.

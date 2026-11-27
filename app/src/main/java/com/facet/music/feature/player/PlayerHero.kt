@@ -63,6 +63,11 @@ import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -235,9 +240,30 @@ internal fun ExpressiveHeroZone(
     val artworkShape: Shape = coverShapeOverride ?: MaterialTheme.shapes.extraLarge
     val immersiveLayout = layout == AppSettings.LAYOUT_IMMERSIVE
     val compactLayout = layout == AppSettings.LAYOUT_SIDE
-    val coverFraction = 0.94f
+    val coverFraction = 0.88f
     val display = remember(trackKey, title, artist, artworkUrl) {
         TrackDisplay(trackKey, title, artist, artworkUrl)
+    }
+    val sensorContext = LocalContext.current
+    val tiltX = remember { mutableFloatStateOf(0f) }
+    val tiltY = remember { mutableFloatStateOf(0f) }
+    DisposableEffect(sensorContext) {
+        val manager = sensorContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val sensor = manager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val x = (event.values[0] / 9.81f).coerceIn(-1f, 1f)
+                val y = (event.values[1] / 9.81f).coerceIn(-1f, 1f)
+                tiltX.floatValue = tiltX.floatValue * 0.86f + x * 0.14f
+                tiltY.floatValue = tiltY.floatValue * 0.86f + y * 0.14f
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        if (sensor != null) {
+            manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+        }
+        onDispose { manager?.unregisterListener(listener) }
     }
 
     val haptics = LocalHapticFeedback.current
@@ -307,7 +333,19 @@ internal fun ExpressiveHeroZone(
                                 modifier = Modifier
                                     .fillMaxWidth(coverFraction)
                                     .aspectRatio(1f)
-                                    .graphicsLayer { alpha = coverAlpha }
+                                    .graphicsLayer {
+                                        alpha = coverAlpha
+                                        rotationY = tiltX.floatValue * 3.5f
+                                        rotationX = -tiltY.floatValue * 2.2f
+                                        cameraDistance = 14f * density
+                                    }
+                                    .shadow(
+                                        elevation = 26.dp,
+                                        shape = artworkShape,
+                                        clip = false,
+                                        ambientColor = palette.primary.copy(alpha = 0.32f),
+                                        spotColor = Color.Black.copy(alpha = 0.28f),
+                                    )
                                     .clip(artworkShape)
                                     .then(coverSwipeModifier)
                                     .onGloballyPositioned {

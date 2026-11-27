@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.ripple
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -232,7 +233,7 @@ fun CollectionChipCard(
             .clip(shape)
             .clickable(
                 interactionSource = interactionSource,
-                indication = null,
+                indication = ripple(),
                 onClick = onClick,
             )
             .cloudPress(interactionSource),
@@ -344,16 +345,15 @@ fun PlaylistTile(
     modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    Column(
+    Box(
         modifier = modifier
-            .clip(MaterialTheme.shapes.large)
+            .clip(RoundedCornerShape(24.dp))
             .clickable(
                 interactionSource = interactionSource,
-                indication = null,
+                indication = ripple(),
                 onClick = onClick,
             )
-            .cloudPress(interactionSource)
-            .padding(bottom = 6.dp),
+            .cloudPress(interactionSource),
     ) {
         PlaylistCover(
             name = playlistName,
@@ -361,20 +361,36 @@ fun PlaylistTile(
             modifier = Modifier.fillMaxWidth(),
             corner = 24.dp,
         )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = playlistName,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.42f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.82f),
+                    ),
+                ),
         )
-        Text(
-            text = pluralTrackCount(trackCount),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(14.dp),
+        ) {
+            Text(
+                text = playlistName,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = pluralTrackCount(trackCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.76f),
+                maxLines = 1,
+            )
+        }
     }
 }
 

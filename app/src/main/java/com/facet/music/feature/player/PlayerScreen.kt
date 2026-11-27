@@ -93,6 +93,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
@@ -363,17 +364,18 @@ fun PlayerScreen(
     val gradientBackdrop = dynamicColorsEnabled &&
         appSettings.playerBackdrop == AppSettings.BACKDROP_COVER
     val backgroundBrush = remember(gradientBackdrop, coverAccent, themeBackground) {
-        if (gradientBackdrop) {
-            Brush.verticalGradient(
-                colors = listOf(
-                    lerpColor(themeBackground, coverAccent, 0.28f),
-                    lerpColor(themeBackground, coverAccent, 0.14f),
-                    themeBackground,
-                ),
-            )
+        val deep = if (themeBackground.luminance() < 0.4f) {
+            Color(0xFF0B0C10)
         } else {
-            SolidColor(themeBackground)
+            themeBackground
         }
+        val topAlpha = if (gradientBackdrop) 0.62f else 0.18f
+        Brush.verticalGradient(
+            0f to coverAccent.copy(alpha = topAlpha).compositeOver(themeBackground),
+            0.3f to coverAccent.copy(alpha = topAlpha * 0.48f).compositeOver(themeBackground),
+            0.58f to lerpColor(themeBackground, deep, if (gradientBackdrop) 0.55f else 0.22f),
+            1f to deep,
+        )
     }
 
     val lyricsBackdrop by animateFloatAsState(
@@ -979,12 +981,12 @@ fun PlayerScreen(
                         playbackSpeed = playerState.playbackSpeed,
                         containerColor = if (dynamicColorsEnabled) {
                             lerpColor(
-                                MaterialTheme.colorScheme.surfaceContainerLow,
+                                MaterialTheme.colorScheme.surfaceContainerHigh,
                                 coverAccent,
-                                0.14f,
+                                0.10f,
                             )
                         } else {
-                            MaterialTheme.colorScheme.surfaceContainerLow
+                            MaterialTheme.colorScheme.surfaceContainerHigh
                         },
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         accentColor = coverAccent,
@@ -1299,12 +1301,16 @@ private fun CloudPlayerPanel(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        color = containerColor.copy(alpha = 0.95f),
+        color = containerColor.copy(alpha = 0.97f),
         tonalElevation = 0.dp,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+        ),
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             progressContent()
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1317,7 +1323,7 @@ private fun CloudPlayerPanel(
                     contentColor = contentColor,
                     modifier = Modifier
                         .weight(1f)
-                        .height(54.dp),
+                        .height(50.dp),
                 )
                 CloudPlayPill(
                     isPlaying = isPlaying,
@@ -1327,7 +1333,7 @@ private fun CloudPlayerPanel(
                     onClick = onPlayPause,
                     modifier = Modifier
                         .weight(1.5f)
-                        .height(62.dp),
+                        .height(58.dp),
                 )
                 CloudPillIconButton(
                     icon = Icons.Filled.SkipNext,
@@ -1336,10 +1342,10 @@ private fun CloudPlayerPanel(
                     contentColor = contentColor,
                     modifier = Modifier
                         .weight(1f)
-                        .height(54.dp),
+                        .height(50.dp),
                 )
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1351,7 +1357,7 @@ private fun CloudPlayerPanel(
                     contentColor = contentColor,
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp),
+                        .height(42.dp),
                 )
                 if (onLyricsClick != null) {
                     CloudTextPill(
@@ -1363,7 +1369,7 @@ private fun CloudPlayerPanel(
                         contentColor = contentColor,
                         modifier = Modifier
                             .weight(1.4f)
-                            .height(44.dp),
+                            .height(42.dp),
                     )
                 }
                 CloudPillIconButton(
@@ -1373,7 +1379,7 @@ private fun CloudPlayerPanel(
                     contentColor = contentColor,
                     modifier = Modifier
                         .width(54.dp)
-                        .height(44.dp),
+                        .height(42.dp),
                 )
             }
         }
