@@ -360,7 +360,7 @@ fun LibraryScreen(
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
 
@@ -376,7 +376,7 @@ fun LibraryScreen(
             if (showSpotifyImport) {
                 item(key = "library_import_likes") {
                     CloudReveal(index = 1) {
-                        Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                             AssistChip(
                                 onClick = { viewModel.importSpotifyLikes() },
                                 enabled = !spotifyLikesLoading,
@@ -437,7 +437,7 @@ fun LibraryScreen(
                         onClick = { onPlaylistClick(playlist.id) },
                         modifier = Modifier
                             .animateItem()
-                            .padding(horizontal = 24.dp, vertical = 4.dp),
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
                     )
 
                 }
@@ -449,7 +449,7 @@ fun LibraryScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .animateItem()
-                                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalAlignment = Alignment.Top,
                             ) {
@@ -500,13 +500,13 @@ fun LibraryScreen(
                             text = stringResource(R.string.spotify_import_empty),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         )
                         else -> Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 24.dp),
+                                .padding(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
                             spotifyPlaylists.forEach { playlist ->
@@ -646,7 +646,7 @@ private fun PlaylistsEmptyCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
@@ -691,7 +691,7 @@ private fun DownloadsEmptyCard(onOpenSearch: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
@@ -945,7 +945,7 @@ private fun LibraryFavoritesBento(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .cloudPress(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
@@ -1026,7 +1026,7 @@ private fun LibraryDownloadBentoCard(
     val interactionSource = remember { MutableInteractionSource() }
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 3.dp)) {
+    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 3.dp)) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()

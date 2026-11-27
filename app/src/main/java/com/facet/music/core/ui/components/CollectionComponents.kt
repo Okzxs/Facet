@@ -316,7 +316,7 @@ fun PlaylistCover(
         if (!coverUrl.isNullOrBlank()) {
             val request = ImageRequest.Builder(context)
                 .data(coverUrl)
-                .crossfade(200)
+
                 .build()
             AsyncImage(
                 model = request,

@@ -17,6 +17,8 @@ import com.facet.music.data.repository.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,7 @@ class PlayerController @Inject constructor(
     private val playbackResolver: PlaybackResolver,
     private val queueRepository: QueueRepository,
     private val settingsRepository: SettingsRepository,
+    private val prefetcher: PlaybackPrefetcher,
 ) {
 
     private val tag = "PlayerController"
@@ -43,6 +46,7 @@ class PlayerController @Inject constructor(
     private var resolveJob: Job? = null
     private var playbackGeneration = 0L
     private var preloadJob: Job? = null
+    private var prefetchJob: Job? = null
 
     @Volatile
     private var audioFocusPausedAt: Long? = null
@@ -795,8 +799,29 @@ class PlayerController @Inject constructor(
             } else {
                 applyMime(player, nextIndex, stream.mimeType)
             }
+            schedulePrefetch(state.queue[nextIndex])
         }
     }
+
+    private fun schedulePrefetch(track: Track) {
+        prefetchJob?.cancel()
+        prefetchJob = scope.launch {
+            repeat(PREFETCH_MAX_POLLS) {
+                if (!isActive) return@launch
+                val player = attachedPlayer ?: return@launch
+                val duration = player.duration
+                if (duration > 0L) {
+                    val remaining = duration - player.currentPosition
+                    if (remaining <= PREFETCH_BEFORE_END_MS) {
+                        prefetcher.prefetch(track)
+                        return@launch
+                    }
+                }
+                delay(PREFETCH_POLL_MS)
+            }
+        }
+    }
+
 
     private fun applyMime(player: Player, index: Int, mimeType: String?) {
         if (index !in 0 until player.mediaItemCount) return
@@ -869,6 +894,10 @@ class PlayerController @Inject constructor(
 
         const val MAX_FORMAT_RETRIES = 2
         const val FOCUS_RESUME_WINDOW_MS = 15 * 60 * 1000L
+
+        const val PREFETCH_BEFORE_END_MS = 15_000L
+        const val PREFETCH_POLL_MS = 2_000L
+        const val PREFETCH_MAX_POLLS = 30
     }
 }
 

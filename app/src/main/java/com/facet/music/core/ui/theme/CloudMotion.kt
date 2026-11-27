@@ -25,8 +25,8 @@ import kotlin.math.abs
 import kotlinx.coroutines.delay
 
 object CloudSpacing {
-    val Screen: Dp = 24.dp
-    val Section: Dp = 32.dp
+    val Screen: Dp = 16.dp
+    val Section: Dp = 24.dp
     val Item: Dp = 12.dp
     val Card: Dp = 16.dp
     val CardWide: Dp = 20.dp
@@ -49,6 +49,7 @@ fun Modifier.cloudPress(
         animationSpec = Motion.press(),
         label = "cloudPressAlpha",
     )
+    if (scale == 1f && alpha == 1f) return this
     return graphicsLayer {
         scaleX = scale
         scaleY = scale

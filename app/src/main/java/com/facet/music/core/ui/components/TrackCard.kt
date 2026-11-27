@@ -449,7 +449,7 @@ fun TrackArtwork(
             val imageRequest = remember(url) {
                 ImageRequest.Builder(context)
                     .data(url)
-                    .crossfade(200)
+
                     .build()
             }
 

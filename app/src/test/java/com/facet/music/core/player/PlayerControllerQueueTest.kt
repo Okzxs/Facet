@@ -166,6 +166,7 @@ class PlayerControllerQueueTest {
             playbackResolver = resolver,
             queueRepository = queueRepository,
             settingsRepository = settingsRepository,
+            prefetcher = mockk(relaxed = true),
         )
     }
 
@@ -486,6 +487,7 @@ class PlayerControllerQueueTest {
             playbackResolver = resolver,
             queueRepository = pendingQueueRepo,
             settingsRepository = settingsRepository,
+            prefetcher = mockk(relaxed = true),
         )
 
         pendingController.pauseOrResume()

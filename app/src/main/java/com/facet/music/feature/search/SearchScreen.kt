@@ -257,7 +257,7 @@ fun SearchScreen(
             ExpressiveSearchField(
                 query = state.query,
                 onQueryChange = viewModel::onQueryChange,
-                modifier = Modifier.padding(horizontal = 24.dp),
+                modifier = Modifier.padding(horizontal = 16.dp),
             )
 
             AnimatedVisibility(
@@ -271,7 +271,7 @@ fun SearchScreen(
                 SearchSuggestionList(
                     suggestions = state.suggestions,
                     onSelect = viewModel::onSuggestionSelected,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
 
@@ -299,7 +299,7 @@ fun SearchScreen(
                 enter = fadeIn(tween(180)) + expandVertically(),
                 exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
             ) {
-                OfflineBanner(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                OfflineBanner(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
 
             AnimatedVisibility(
@@ -617,7 +617,7 @@ private fun ServiceStatusButton(
             shadowElevation = 0.dp,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
                 Text(
                     text = stringResource(R.string.search_status_title),
@@ -887,7 +887,7 @@ private fun ExpressiveSearchField(
 @Composable
 private fun SuggestionChips(onSuggestion: (String) -> Unit) {
     Column(
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
     ) {
         Text(
             text = stringResource(R.string.search_try),
@@ -932,7 +932,7 @@ private fun RecentQueriesRow(
     onClear: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -997,7 +997,7 @@ private fun IdleState(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp)
+            .padding(horizontal = 24.dp)
             .padding(bottom = LocalBottomDockHeight.current + 88.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -1088,12 +1088,12 @@ private fun ArtistSection(
             text = stringResource(R.string.search_artists_section),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 24.dp),
+            modifier = Modifier.padding(horizontal = 16.dp),
         )
         Spacer(Modifier.height(10.dp))
         LazyRow(
             modifier = Modifier.height(116.dp),
-            contentPadding = PaddingValues(horizontal = 24.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(artists, key = { it.id }) { artist ->
@@ -1161,7 +1161,7 @@ private fun FeaturedArtistCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         tonalElevation = 0.dp,
@@ -1227,7 +1227,7 @@ private fun ArtistTracksSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 24.dp, end = 12.dp),
+                .padding(start = 16.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -1396,7 +1396,7 @@ private fun ShimmerTrackRow() {
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ShimmerBlock(
@@ -1466,8 +1466,8 @@ private fun ShimmerBlock(
 private fun CloudSearchHeader(compact: Boolean) {
     Column(
         modifier = Modifier.padding(
-            start = 24.dp,
-            end = 24.dp,
+            start = 16.dp,
+            end = 16.dp,
             top = if (compact) 8.dp else 16.dp,
             bottom = if (compact) 4.dp else 8.dp,
         ),
@@ -1521,7 +1521,7 @@ private fun CloudSourceCard(content: @Composable () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         tonalElevation = 0.dp,
@@ -1561,8 +1561,8 @@ private fun CloudResultsGrid(
         state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 24.dp,
-            end = 24.dp,
+            start = 16.dp,
+            end = 16.dp,
             top = 8.dp,
             bottom = 96.dp + LocalBottomDockHeight.current,
         ),

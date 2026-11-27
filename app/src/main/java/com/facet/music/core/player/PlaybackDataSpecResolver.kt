@@ -20,6 +20,15 @@ class PlaybackDataSpecResolver @Inject constructor(
     override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
         val trackId = PlaybackUri.trackId(dataSpec.uri) ?: return dataSpec
 
+        resolver.cached(trackId)?.let { stream ->
+            val cachedUri = runCatching { Uri.parse(stream.url) }.getOrNull()
+            if (cachedUri != null) {
+                return dataSpec
+                    .withUri(cachedUri)
+                    .withRequestHeaders(stream.headers)
+            }
+        }
+
         val stream = try {
             runBlocking {
                 withTimeout(RESOLVE_TIMEOUT_MS) {

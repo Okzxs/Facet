@@ -397,7 +397,7 @@ private fun WaveHero(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(20.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),

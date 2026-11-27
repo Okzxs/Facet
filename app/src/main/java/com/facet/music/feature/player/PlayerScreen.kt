@@ -962,7 +962,7 @@ fun PlayerScreen(
                             text = "⚠️ ${stringResource(error.messageRes)}",
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                         )
                     }
 
@@ -1005,7 +1005,7 @@ fun PlayerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(panelModifier)
-                            .padding(horizontal = 24.dp)
+                            .padding(horizontal = 20.dp)
                             .onGloballyPositioned { controlIslandBounds.value = it.boundsInRoot() }
                             .padding(top = 8.dp),
                     ) {

@@ -224,7 +224,7 @@ fun SettingsScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 8.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
                 tonalElevation = 0.dp,
@@ -306,7 +306,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = stringResource(R.string.settings_language_hint),
@@ -329,7 +329,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = stringResource(R.string.settings_lyrics_translation_hint),
@@ -366,7 +366,7 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -410,7 +410,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
+                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
             ) {
                 FilledTonalButton(
                     onClick = {
@@ -449,7 +449,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = stringResource(R.string.settings_battery_hint),
@@ -477,7 +477,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = stringResource(R.string.settings_quality_title),
@@ -508,7 +508,7 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .settingsAnchor(ANCHOR_CACHE, anchorPositions)
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -563,7 +563,7 @@ fun SettingsScreen(
                             )
                         }
                     }
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -648,7 +648,7 @@ private fun SettingsSectionTitle(
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier
-            .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 8.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 28.dp, bottom = 8.dp)
             .then(anchorModifier),
     )
 }
@@ -663,7 +663,7 @@ private fun Modifier.settingsAnchor(
 @Composable
 private fun SettingsDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp),
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
     )
 }
@@ -696,7 +696,7 @@ private fun StudioEntryRow(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -753,7 +753,7 @@ private fun SettingsSwitchRow(
                 role = Role.Switch,
                 onValueChange = onCheckedChange,
             )
-            .padding(horizontal = 24.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -842,7 +842,7 @@ private fun CloudSettingsQuickGrid(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -946,7 +946,7 @@ private fun SettingsHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 12.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FilledTonalIconButton(
@@ -1030,7 +1030,7 @@ private fun SettingsSearchField(
         onValueChange = onQueryChange,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = 16.dp)
             .heightIn(min = 56.dp),
         placeholder = { Text(stringResource(R.string.settings_search_hint)) },
         leadingIcon = {
@@ -1076,7 +1076,7 @@ private fun SettingsSearchResults(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 32.dp),
+                .padding(horizontal = 16.dp, vertical = 32.dp),
         ) {
             Text(
                 text = stringResource(R.string.settings_search_empty),
@@ -1090,7 +1090,7 @@ private fun SettingsSearchResults(
         modifier = modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         results.forEach { entry ->
             Surface(
@@ -1467,7 +1467,7 @@ private fun SpotifyIntegrationCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(

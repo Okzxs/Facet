@@ -32,8 +32,8 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
         const val CHART_NEW_AND_HOT = "NEW_AND_HOT"
         const val CHART_TOP_50 = "TOP_50"
 
-        private const val URL_NEW_AND_HOT = "https://soundcloud.com/charts/new"
-        private const val URL_TOP_50 = "https://soundcloud.com/charts/top"
+        private const val URL_NEW_AND_HOT = "https://soundcloud.com/charts/new?country=BY"
+        private const val URL_TOP_50 = "https://soundcloud.com/charts/top?country=BY"
 
         private const val CACHE_TTL_MS = 30 * 60 * 1000L
     }
@@ -117,11 +117,9 @@ class SoundCloudChartsRepositoryImpl @Inject constructor(
     }
 
     private fun filterJunk(items: List<StreamInfoItem>): List<StreamInfoItem> {
-        val hasViewData = items.any { it.viewCount > 0 }
         val filtered = items.filter { item ->
             val tooShort = item.duration in 1..29
-            val noPlays = hasViewData && item.viewCount == 0L
-            !tooShort && !noPlays
+            !tooShort
         }
         val removed = items.size - filtered.size
         if (removed > 0) {

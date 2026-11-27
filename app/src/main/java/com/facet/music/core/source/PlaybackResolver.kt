@@ -78,6 +78,8 @@ class PlaybackResolver @Inject constructor(
 
     fun isKnownTrack(trackId: String): Boolean = knownTracks.containsKey(trackId)
 
+    fun cached(trackId: String): ResolvedStream? = cachedStream(trackId, false)
+
     suspend fun resolveById(trackId: String): Result<ResolvedStream> {
         val track = knownTracks[trackId]
             ?: return Result.failure(

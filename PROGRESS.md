@@ -1,6 +1,20 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 27.11.2026 (тотальный редизайн и Pixel-виджет)
+## Последнее обновление: 28.11.2026 (компактность, prefetch, чарты)
+
+---
+
+## Сессия 102: профиль лагов, prefetch и разбор Dotify (28.11.2026)
+
+- **Компактность.** `CloudSpacing` 16/24, HomePadding 16, HomeGap 24; Home-карусели 160dp, Wave-hero 180dp, жанры 132/112dp; Search/Library/Artist/Import 16, Player 20.
+- **Чарты.** Home-блок стал пейджером по 5 строк (номер, 42dp обложка, название, артист, точки); убран фильтр `viewCount == 0`, добавлен `country=BY`; данные остаются SoundCloud Top 50.
+- **Dotify.** APK — Flutter (libapp.so), чарты идут с закрытого `api.dotify.fun/home` (`ChartCategory`, `charts_tracks`, `home.charts`), прямой curl даёт 444. UI: 4 страницы по 10 строк (треки/плейлисты/артисты/альбомы). Наш независимый источник и пейджер сохранены; отчёт `docs/dotify-charts-analysis.md`.
+- **Prefetch.** `PlaybackPrefetcher` за 15 с до конца пишет 2 МБ следующего трека в `SimpleCache` (`CacheWriter`), отмена при смене; HLS пропускается. `PlaybackDataSpecResolver` сначала читает `PlaybackResolver.cached`.
+- **Рендер.** `cloudPress` теперь добавляет `graphicsLayer` только на время press; у Home-секций убраны `CloudReveal`-обёртки; crossfade обложек списков убран; чарты получили фиксированную высоту пейджера.
+- **Профиль.** `gfxinfo`: main-thread p90 18.8 мс, GPU p50 3 / p90 8 / p99 10 мс, slow bitmap uploads/draw 0; debug-скролл 7–23% janky (Mi8/A26, 120 Гц) — узкое место в основном thread/render sync, не в draw commands.
+- **Проверка.** 86 suite / 506 тестов, 0 failures (1 skipped). APK 34 750 136 байт, SHA-256 `851794cae11ce30543ea33411378e984d0243def8e9d6f91820c15849df09e9d`. Установлен на Mi 8 и A26 (192.168.0.100:35403).
+- **Не тронуто.** Синусоида, ViewModel, навигация, бизнес-логика.
+
 
 ---
 

@@ -237,7 +237,7 @@ fun ArtistScreen(
                         item(key = "artist_releases_row") {
                             CloudReveal(index = 2) {
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 24.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(state.releases, key = { it.url }) { release ->
@@ -308,7 +308,7 @@ fun ArtistScreen(
                         item(key = "artist_playlists_row") {
                             CloudReveal(index = 3) {
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 24.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(state.playlists, key = { it.url }) { playlist ->
@@ -340,7 +340,7 @@ fun ArtistScreen(
                         item(key = "artist_related_row") {
                             CloudReveal(index = 4) {
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 24.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 items(state.related, key = { "${it.source}:${it.url}" }) { artist ->
@@ -459,7 +459,7 @@ private fun ArtistHero(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 64.dp, bottom = 8.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 64.dp, bottom = 8.dp),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -472,7 +472,7 @@ private fun ArtistHero(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(backdrop)
-                            .crossfade(300)
+
                             .build(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
@@ -691,7 +691,7 @@ private fun PopularSection(
     onArtistClick: (Track) -> Unit,
 ) {
     Column(
-        modifier = Modifier.padding(horizontal = 24.dp),
+        modifier = Modifier.padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         val featured = tracks.take(2)
@@ -1059,7 +1059,7 @@ private fun ReleaseTracksSheet(
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1073,7 +1073,7 @@ private fun ReleaseTracksSheet(
                     AppLoadingIndicator()
                 }
             } else {
-                LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
+                LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                     items(tracks, key = { it.id }) { track ->
                         TrackCard(
                             track = track,

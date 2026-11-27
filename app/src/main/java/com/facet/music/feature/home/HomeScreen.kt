@@ -30,6 +30,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -97,8 +99,8 @@ import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.sin
 
-private val HomePadding = 24.dp
-private val HomeGap = 32.dp
+private val HomePadding = 16.dp
+private val HomeGap = 24.dp
 
 @Composable
 fun HomeScreen(
@@ -173,7 +175,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(
                 start = HomePadding,
                 end = HomePadding,
-                top = 28.dp,
+                top = 24.dp,
                 bottom = 120.dp + LocalBottomDockHeight.current,
             ),
             verticalArrangement = Arrangement.spacedBy(HomeGap),
@@ -194,7 +196,7 @@ fun HomeScreen(
 
             orderedSections.forEachIndexed { index, section ->
                 item(key = "cloud_section_$section") {
-                    CloudReveal(index = index + 2) {
+                    androidx.compose.runtime.key(section) {
                         when (section) {
                             AppSettings.SECTION_HERO -> heroTrack?.let { track ->
                                 CloudContinueCard(
@@ -352,7 +354,7 @@ private fun CloudWaveHero(onClick: () -> Unit) {
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .height(232.dp)
+            .height(180.dp)
             .cloudPress(interactionSource),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -366,7 +368,7 @@ private fun CloudWaveHero(onClick: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(24.dp),
+                    .padding(20.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -522,17 +524,108 @@ private fun CloudChartsBlock(
             index = index,
             count = tracks.size,
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         when {
-            tracks.isNotEmpty() -> CloudTrackRow(
-                tracks = tracks,
-                onTrackClick = onTrackClick,
-                showRank = true,
-            )
+            tracks.isNotEmpty() -> {
+                val pages = tracks.chunked(CHART_PAGE_SIZE)
+                val pagerState = rememberPagerState(pageCount = { pages.size })
+                HorizontalPager(
+                    state = pagerState,
+                    pageSpacing = 12.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(288.dp),
+                ) { page ->
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        pages[page].forEachIndexed { position, track ->
+                            ChartRow(
+                                rank = page * CHART_PAGE_SIZE + position + 1,
+                                track = track,
+                                onClick = { onTrackClick(track, tracks) },
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    repeat(pages.size) { dot ->
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 3.dp)
+                                .size(if (pagerState.currentPage == dot) 14.dp else 6.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (pagerState.currentPage == dot) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                    },
+                                ),
+                        )
+                    }
+                }
+            }
             isLoading -> CloudSkeletonRow()
         }
     }
 }
+
+@Composable
+private fun ChartRow(
+    rank: Int,
+    track: Track,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(MaterialTheme.shapes.large)
+            .cloudPress(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = rank.toString().padStart(2, '0'),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.width(28.dp),
+        )
+        CloudArtwork(
+            url = track.artworkUrl,
+            modifier = Modifier.size(42.dp),
+            shape = RoundedCornerShape(12.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = track.artist,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private const val CHART_PAGE_SIZE = 5
 
 @Composable
 private fun CloudReleasesBlock(
@@ -560,7 +653,7 @@ private fun CloudReleasesBlock(
                     itemsIndexed(items = releases, key = { _, item -> item.id }) { i, release ->
                         CloudReleaseCard(
                             release = release,
-                            width = if (i == 0) 224.dp else 168.dp,
+                            width = 160.dp,
                             state = rowState,
                             onClick = { onClick(release) },
                         )
@@ -583,7 +676,7 @@ private fun CloudReleaseCard(
     Column(
         modifier = Modifier
             .width(width)
-            .cloudCardMotion(interactionSource, state, release.id)
+            .cloudPress(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -655,7 +748,7 @@ private fun CloudGenresBlock(
                         val track = section.tracks.firstOrNull() ?: return@forEach
                         CloudGenreCard(
                             section = section,
-                            height = if (rowIndex == 0) 148.dp else 124.dp,
+                            height = if (rowIndex == 0) 132.dp else 112.dp,
                             modifier = Modifier.weight(1f),
                             onClick = { onTrackClick(track, section.tracks) },
                         )
@@ -790,7 +883,7 @@ private fun CloudTrackRow(
             CloudTrackCard(
                 track = track,
                 rank = if (showRank) index + 1 else null,
-                width = if (index == 0) 224.dp else 164.dp,
+                width = 160.dp,
                 state = rowState,
                 onClick = { onTrackClick(track, tracks) },
             )
@@ -810,7 +903,7 @@ private fun CloudTrackCard(
     Column(
         modifier = Modifier
             .width(width)
-            .cloudCardMotion(interactionSource, state, track.id)
+            .cloudPress(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -929,7 +1022,7 @@ private fun CloudSkeletonRow() {
         label = "cloudSkeletonAlpha",
     )
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        listOf(224.dp, 164.dp).forEach { width ->
+        listOf(160.dp, 160.dp).forEach { width ->
             Box(
                 modifier = Modifier
                     .width(width)
@@ -957,7 +1050,7 @@ private fun CloudMessageCard(
         tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(20.dp),
             horizontalAlignment = Alignment.Start,
         ) {
             Icon(
@@ -1010,7 +1103,7 @@ private fun CloudArtwork(
         url?.takeIf { it.isNotBlank() }?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(220)
+
                 .build()
         }
     }

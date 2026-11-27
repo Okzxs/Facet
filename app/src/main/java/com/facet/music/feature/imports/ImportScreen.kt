@@ -156,7 +156,7 @@ private fun ImportHeader(onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 10.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Surface(
@@ -216,7 +216,7 @@ private fun ImportTabs(
     onSelect: (ImportTab) -> Unit,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(ImportTab.entries) { tab ->
