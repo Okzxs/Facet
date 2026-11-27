@@ -1371,60 +1371,6 @@ private fun parseHexColor(input: String): Color? {
     val rgb = hex.toLongOrNull(radix = 16) ?: return null
     return Color((rgb or 0xFF000000L).toInt())
 }
-
-@Composable
-internal fun RecentColorDot(
-    color: Color,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val dotSize by animateDpAsState(
-        targetValue = if (selected) 26.dp else 22.dp,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
-        label = "recentDotSize",
-    )
-
-    val hex = color.toHexString()
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .selectable(
-                selected = selected,
-                role = Role.RadioButton,
-                onClick = onClick,
-            )
-            .semantics { contentDescription = hex },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(dotSize)
-                .clip(CircleShape)
-                .background(color)
-                .border(
-                    width = 1.5.dp,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-                    },
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (selected) {
-                Icon(
-                    imageVector = Icons.Rounded.Check,
-                    contentDescription = null,
-                    tint = contrastContentColor(color),
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-        }
-    }
-}
-
 @Composable
 internal fun AccentDot(
     option: AccentOption,

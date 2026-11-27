@@ -182,13 +182,6 @@ private fun ServiceType.brandIconRes(): Int = when (this) {
     ServiceType.SOUNDCLOUD -> R.drawable.ic_brand_soundcloud
     ServiceType.SPOTIFY -> R.drawable.ic_brand_spotify
 }
-
-private fun ServiceType.brandColor(): Color = when (this) {
-    ServiceType.YOUTUBE -> YoutubeRed
-    ServiceType.SOUNDCLOUD -> SoundCloudOrange
-    ServiceType.SPOTIFY -> SpotifyGreen
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
@@ -417,52 +410,6 @@ fun SearchScreen(
         )
     }
 }
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun SearchHeader() {
-    Column(
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "FACET",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 2.sp,
-                ),
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(10.dp))
-            Box(
-                modifier = Modifier
-                    .width(22.dp)
-                    .height(1.dp)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = stringResource(R.string.search_overline),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = stringResource(R.string.search_title),
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontWeight = FontWeight.Normal,
-            ),
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = stringResource(R.string.search_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
 @Composable
 private fun OfflineBanner(modifier: Modifier = Modifier) {
     Surface(
@@ -585,54 +532,6 @@ private fun SourceSwitcher(
         }
     }
 }
-
-@Composable
-private fun SourceButton(
-    service: ServiceType,
-    selected: Boolean,
-    health: ServiceHealth,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val brand = service.brandColor()
-    val unavailable = !health.isAvailable && !health.isChecking
-    val configured = health.isConfigured
-    val sourceName = service.displayName
-    val contentDescription = stringResource(R.string.search_source_cd, sourceName)
-
-    val containerColor by animateColorAsState(
-        targetValue = brand.copy(alpha = if (selected) 0.25f else 0.15f),
-        animationSpec = tween(180),
-        label = "sourceButtonContainer",
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (selected) brand else Color.Transparent,
-        animationSpec = tween(180),
-        label = "sourceButtonBorder",
-    )
-
-    Surface(
-        onClick = onClick,
-        enabled = configured,
-        modifier = modifier.size(42.dp),
-        shape = MaterialTheme.shapes.medium,
-        color = containerColor,
-        contentColor = brand,
-        border = BorderStroke(2.dp, borderColor),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                painter = painterResource(service.brandIconRes()),
-                contentDescription = contentDescription,
-                tint = brand,
-                modifier = Modifier
-                    .size(23.dp)
-                    .alpha(if (!configured) 0.35f else if (unavailable) 0.4f else 1f),
-            )
-        }
-    }
-}
-
 @Composable
 private fun ServiceStatusButton(
     statuses: Map<ServiceType, ServiceHealth>,
@@ -859,56 +758,6 @@ private fun ServiceStatusRow(
         }
     }
 }
-
-@Composable
-private fun UnavailableServiceWarning(
-    service: ServiceType,
-    health: ServiceHealth,
-) {
-    AnimatedVisibility(
-        visible = !health.isAvailable && !health.isChecking,
-        enter = fadeIn(tween(180)) +
-            expandVertically(
-                expandFrom = Alignment.Top,
-                animationSpec = spring(
-                    dampingRatio = 0.8f,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            ),
-        exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
-            border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.error.copy(alpha = 0.35f),
-            ),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.CloudOff,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.search_service_unavailable, service.displayName),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                )
-            }
-        }
-    }
-}
-
 private fun serviceIcon(service: ServiceType) = when (service) {
     ServiceType.SOUNDCLOUD -> Icons.Rounded.Cloud
     ServiceType.YOUTUBE -> Icons.Rounded.SmartDisplay
@@ -1228,212 +1077,6 @@ private fun ErrorState(
         )
     }
 }
-
-@Composable
-private fun LocalResultsSection(
-    tracks: List<Track>,
-    downloadedIds: Set<String>,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    onAddToPlaylist: (Track) -> Unit,
-    onTrackArtistClick: (Track) -> Unit,
-    onPlayNext: (Track) -> Unit,
-    onAddToQueue: (Track) -> Unit,
-    onSourcesClick: (Track) -> Unit,
-) {
-    Column {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 24.dp, end = 24.dp, top = 10.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.LibraryMusic,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.search_local_section),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "${tracks.size}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        tracks.forEach { track ->
-            TrackCard(
-                track = track,
-                isDownloaded = track.id in downloadedIds,
-                onClick = { onTrackClick(track, tracks) },
-                onAddToPlaylist = { onAddToPlaylist(track) },
-                onArtistClick = { onTrackArtistClick(track) },
-                onPlayNext = { onPlayNext(track) },
-                onAddToQueue = { onAddToQueue(track) },
-                onSourcesClick = if (track.sourceCount > 1) {
-                    { onSourcesClick(track) }
-                } else {
-                    null
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ResultsList(
-    tracks: List<Track>,
-    localResults: List<Track>,
-    artists: List<Artist>,
-    featuredArtist: Artist?,
-    artistTracks: List<Track>,
-    artistTracksLoading: Boolean,
-    downloadedIds: Set<String>,
-    sourceName: String,
-    isLoadingMore: Boolean,
-    onLoadMore: () -> Unit,
-    onTrackClick: (Track, List<Track>) -> Unit,
-    onAddToPlaylist: (Track) -> Unit,
-    onArtistClick: (Artist) -> Unit,
-    onTrackArtistClick: (Track) -> Unit,
-    onArtistListen: (List<Track>) -> Unit,
-    onPlayNext: (Track) -> Unit,
-    onAddToQueue: (Track) -> Unit,
-    onSourcesClick: (Track) -> Unit,
-) {
-    val listState = rememberLazyListState()
-    LaunchedEffect(listState, tracks.size) {
-        snapshotFlow {
-            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-        }.collect { lastVisible ->
-            if (tracks.isNotEmpty() && lastVisible >= tracks.size - 3) onLoadMore()
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 96.dp + LocalBottomDockHeight.current),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            if (localResults.isNotEmpty()) {
-                item(key = "local_section") {
-                    LocalResultsSection(
-                        tracks = localResults,
-                        downloadedIds = downloadedIds,
-                        onTrackClick = onTrackClick,
-                        onAddToPlaylist = onAddToPlaylist,
-                        onTrackArtistClick = onTrackArtistClick,
-                        onPlayNext = onPlayNext,
-                        onAddToQueue = onAddToQueue,
-                        onSourcesClick = onSourcesClick,
-                    )
-                }
-            }
-            item(key = "remote_header") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(R.string.search_results, sourceName),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
-                        Text(
-                            text = "${tracks.size}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        )
-                    }
-                }
-            }
-            if (artists.isNotEmpty()) {
-                item(key = "artist_section") {
-                    ArtistSection(
-                        artists = artists.filter { it.id != featuredArtist?.id }.take(10),
-                        onArtistClick = onArtistClick,
-                    )
-                }
-            }
-            if (featuredArtist != null) {
-                item(key = "featured_artist") {
-                    FeaturedArtistCard(
-                        artist = featuredArtist,
-                        canListen = artistTracks.isNotEmpty(),
-                        onOpen = { onArtistClick(featuredArtist) },
-                        onListen = { onArtistListen(artistTracks) },
-                    )
-                }
-                if (artistTracksLoading || artistTracks.isNotEmpty()) {
-                    item(key = "artist_tracks") {
-                        ArtistTracksSection(
-                            artist = featuredArtist,
-                            tracks = artistTracks,
-                            isLoading = artistTracksLoading,
-                            downloadedIds = downloadedIds,
-                            onTrackClick = onTrackClick,
-                            onArtistClick = { onArtistClick(featuredArtist) },
-                            onAddToPlaylist = onAddToPlaylist,
-                            onPlayNext = onPlayNext,
-                            onAddToQueue = onAddToQueue,
-                            onSourcesClick = onSourcesClick,
-                        )
-                    }
-                }
-            }
-            itemsIndexed(
-                items = tracks,
-                key = { _, track -> track.id },
-            ) { index, track ->
-                CloudReveal(index = index) {
-                    TrackCard(
-                        track = track,
-                        modifier = Modifier.animateItem(),
-                        isDownloaded = track.id in downloadedIds,
-                        onClick = { onTrackClick(track, tracks) },
-                        onAddToPlaylist = { onAddToPlaylist(track) },
-                        onArtistClick = { onTrackArtistClick(track) },
-                        onPlayNext = { onPlayNext(track) },
-                        onAddToQueue = { onAddToQueue(track) },
-                        onSourcesClick = if (track.sourceCount > 1) {
-                            { onSourcesClick(track) }
-                        } else {
-                            null
-                        },
-                    )
-                }
-            }
-            if (isLoadingMore) {
-                item(key = "load_more") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 18.dp),
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        AppLoadingIndicator(size = 22.dp)
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun ArtistSection(
     artists: List<Artist>,
@@ -1942,23 +1585,22 @@ private fun CloudResultsGrid(
                         )
                     },
                 ) {
-                    CloudReveal(index = index) {
-                        CloudTrackBentoCard(
-                            track = track,
-                            isDownloaded = track.id in downloadedIds,
-                            hero = localResults.size == 1,
-                            onClick = { onTrackClick(track, localResults) },
-                            onAddToPlaylist = { onAddToPlaylist(track) },
-                            onArtistClick = { onTrackArtistClick(track) },
-                            onPlayNext = { onPlayNext(track) },
-                            onAddToQueue = { onAddToQueue(track) },
-                            onSourcesClick = if (track.sourceCount > 1) {
-                                { onSourcesClick(track) }
-                            } else {
-                                null
-                            },
-                        )
-                    }
+                                        CloudTrackBentoCard(
+                        track = track,
+                        isDownloaded = track.id in downloadedIds,
+                        hero = localResults.size == 1,
+                        onClick = { onTrackClick(track, localResults) },
+                        onAddToPlaylist = { onAddToPlaylist(track) },
+                        onArtistClick = { onTrackArtistClick(track) },
+                        onPlayNext = { onPlayNext(track) },
+                        onAddToQueue = { onAddToQueue(track) },
+                        onSourcesClick = if (track.sourceCount > 1) {
+                            { onSourcesClick(track) }
+                        } else {
+                            null
+                        },
+                    )
+
                 }
             }
         }
@@ -2009,23 +1651,22 @@ private fun CloudResultsGrid(
                 key = "cloud_track_${track.id}",
                 span = { GridItemSpan(if (hero) maxLineSpan else 1) },
             ) {
-                CloudReveal(index = index) {
-                    CloudTrackBentoCard(
-                        track = track,
-                        isDownloaded = track.id in downloadedIds,
-                        hero = hero,
-                        onClick = { onTrackClick(track, tracks) },
-                        onAddToPlaylist = { onAddToPlaylist(track) },
-                        onArtistClick = { onTrackArtistClick(track) },
-                        onPlayNext = { onPlayNext(track) },
-                        onAddToQueue = { onAddToQueue(track) },
-                        onSourcesClick = if (track.sourceCount > 1) {
-                            { onSourcesClick(track) }
-                        } else {
-                            null
-                        },
-                    )
-                }
+                                CloudTrackBentoCard(
+                    track = track,
+                    isDownloaded = track.id in downloadedIds,
+                    hero = hero,
+                    onClick = { onTrackClick(track, tracks) },
+                    onAddToPlaylist = { onAddToPlaylist(track) },
+                    onArtistClick = { onTrackArtistClick(track) },
+                    onPlayNext = { onPlayNext(track) },
+                    onAddToQueue = { onAddToQueue(track) },
+                    onSourcesClick = if (track.sourceCount > 1) {
+                        { onSourcesClick(track) }
+                    } else {
+                        null
+                    },
+                )
+
             }
         }
 

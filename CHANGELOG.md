@@ -31,6 +31,9 @@
 - EmptyState получил мягкую многослойную иллюстрацию; в Import добавлена облачная подсказка «Твоя музыка будет здесь», отступы 24.
 - Радикальный редизайн UI-слоя: Home переписан на Bento с огромной карточкой «Волна», крупными carousel-карточками и scroll-scale; Player — full-width обложка + нижняя cloud-панель с большими pill-кнопками вместо островка; Search — компактный заголовок при запросе и Bento-сетка результатов; Library — Bento-фавориты и карточки скачанного; Settings — cloud-hero и сетка быстрых переходов; Artist — кинематографичный hero с fallback-монограммой; Import — pill-вкладки и облачные пустые состояния.
 - В Home/Search/Artist/Import/Library сохранены все ViewModel-вызовы, стейты, диалоги, листы и long-press действия; синусоида слайдера плеера не изменялась.
+- Производительность: убран `cloudSheetEntrance` — шторки снова используют штатную M3-физику; scale/press карточек объединены в один `graphicsLayer` (`cloudCardMotion`), scroll-scale считается через `derivedStateOf` и читается только в layer; из списков Search/Library/Artist убраны per-item `CloudReveal`.
+- Чистка: удалены неиспользуемые `ResultsList`, `SearchHeader`, `SourceButton`, `UnavailableServiceWarning`, `LocalResultsSection`, `RecentColorDot`, `brandColor`, `toHexString`.
+- Замер: Home-скролл после прогрева — 1.49% janky (90th 12 мс, 99th 14 мс); первый проход 7.07% из-за reveal/Coil.
 
 ## 1.1.0 — 12.11.2026
 

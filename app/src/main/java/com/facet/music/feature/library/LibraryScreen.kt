@@ -430,17 +430,16 @@ fun LibraryScreen(
                     items = playlists,
                     key = { _, playlist -> "playlist_${playlist.id}" },
                 ) { index, playlist ->
-                    CloudReveal(index = index) {
-                        PlaylistListRow(
-                            playlistName = playlist.name,
-                            coverUrl = playlist.coverUrl,
-                            trackCount = playlist.trackCount,
-                            onClick = { onPlaylistClick(playlist.id) },
-                            modifier = Modifier
-                                .animateItem()
-                                .padding(horizontal = 24.dp, vertical = 4.dp),
-                        )
-                    }
+                                        PlaylistListRow(
+                        playlistName = playlist.name,
+                        coverUrl = playlist.coverUrl,
+                        trackCount = playlist.trackCount,
+                        onClick = { onPlaylistClick(playlist.id) },
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = 24.dp, vertical = 4.dp),
+                    )
+
                 }
             } else {
                 playlists.chunked(2).forEachIndexed { rowIndex, row ->
@@ -538,17 +537,16 @@ fun LibraryScreen(
                     items = downloadedQueue,
                     key = { _, track -> track.id },
                 ) { index, track ->
-                    CloudReveal(index = index) {
-                        LibraryDownloadBentoCard(
-                            track = track,
-                            onClick = { onTrackClick(track, downloadedQueue) },
-                            onAddToPlaylist = { playlistTrack = track },
-                            onArtistClick = { onArtistClick(track) },
-                            onPlayNext = { handlePlayNext(track) },
-                            onAddToQueue = { handleAddToQueue(track) },
-                            onDelete = { pendingDelete = track },
-                        )
-                    }
+                                        LibraryDownloadBentoCard(
+                        track = track,
+                        onClick = { onTrackClick(track, downloadedQueue) },
+                        onAddToPlaylist = { playlistTrack = track },
+                        onArtistClick = { onArtistClick(track) },
+                        onPlayNext = { handlePlayNext(track) },
+                        onAddToQueue = { handleAddToQueue(track) },
+                        onDelete = { pendingDelete = track },
+                    )
+
                 }
             }
         }

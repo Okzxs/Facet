@@ -259,18 +259,17 @@ fun ArtistScreen(
                             items = state.allTracks.take(state.visibleTrackCount),
                             key = { _, track -> track.id },
                         ) { index, track ->
-                            CloudReveal(index = index) {
-                                TrackCard(
-                                    track = track,
-                                    isPlaying = track.id == currentTrackId,
-                                    isPaused = track.id == currentTrackId && !isPlaying,
-                                    artworkSize = 64,
-                                    onClick = { onTrackClick(track, state.allTracks) },
-                                    onArtistClick = { onTrackArtistClick(track) },
-                                    onPlayNext = { handlePlayNext(track) },
-                                    onAddToQueue = { handleAddToQueue(track) },
-                                )
-                            }
+                                                        TrackCard(
+                                track = track,
+                                isPlaying = track.id == currentTrackId,
+                                isPaused = track.id == currentTrackId && !isPlaying,
+                                artworkSize = 64,
+                                onClick = { onTrackClick(track, state.allTracks) },
+                                onArtistClick = { onTrackArtistClick(track) },
+                                onPlayNext = { handlePlayNext(track) },
+                                onAddToQueue = { handleAddToQueue(track) },
+                            )
+
                         }
                         if (state.visibleTrackCount < state.allTracks.size || state.hasMore) {
                             item(key = "artist_tracks_more") {

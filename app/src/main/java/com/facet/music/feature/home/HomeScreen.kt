@@ -85,7 +85,7 @@ import com.facet.music.R
 import com.facet.music.core.home.SmartCollections
 import com.facet.music.core.ui.theme.CloudReveal
 import com.facet.music.core.ui.theme.cloudPress
-import com.facet.music.core.ui.theme.cloudScrollScale
+import com.facet.music.core.ui.theme.cloudCardMotion
 import com.facet.music.data.model.Track
 import com.facet.music.data.repository.AppSettings
 import com.facet.music.data.source.external.DeezerRelease
@@ -583,8 +583,7 @@ private fun CloudReleaseCard(
     Column(
         modifier = Modifier
             .width(width)
-            .cloudScrollScale(state, release.id)
-            .cloudPress(interactionSource)
+            .cloudCardMotion(interactionSource, state, release.id)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -811,8 +810,7 @@ private fun CloudTrackCard(
     Column(
         modifier = Modifier
             .width(width)
-            .cloudScrollScale(state, track.id)
-            .cloudPress(interactionSource)
+            .cloudCardMotion(interactionSource, state, track.id)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

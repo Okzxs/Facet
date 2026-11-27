@@ -32,7 +32,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.facet.music.R
-import com.facet.music.core.ui.theme.cloudSheetEntrance
 import com.facet.music.core.player.SleepTimerPresetsMinutes
 import com.facet.music.core.player.SleepTimerState
 import com.facet.music.core.player.sleepTimerRemainingMinutes
@@ -64,7 +63,6 @@ fun SleepTimerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .cloudSheetEntrance()
                 .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {

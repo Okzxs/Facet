@@ -1,6 +1,18 @@
 # PROGRESS.md — История разработки
 
-## Последнее обновление: 27.11.2026 (Cloud UI 1.1.0: радикальный UI-слой)
+## Последнее обновление: 27.11.2026 (Cloud UI 1.1.0: плавность и чистка)
+
+---
+
+## Сессия 100: плавность шторок/каруселей и чистка UI (27.11.2026)
+
+- **Шторки.** Убран `cloudSheetEntrance` из `PlayerQueueSheet`, `SleepTimerSheet`, `TrackSourcesSheet`, `AddToPlaylistSheet`; сам модификатор удалён. Шторки используют штатную M3-физику, без конкурирующей пружины.
+- **Карточки.** `cloudScrollScale` переведён на общий `rememberScrollScale` (derivedStateOf). Для carousel Home добавлен `cloudCardMotion`: press и scroll-scale считаются в одном `graphicsLayer`, без второго слоя и без изменения `Modifier.size`.
+- **Списки.** Из Search-сетки, Library-плейлистов/скачанного и Artist-треков убраны per-item `CloudReveal`; reveal остался на секциях/заголовках.
+- **Чистка.** Удалены `ResultsList`, `SearchHeader`, `SourceButton`, `UnavailableServiceWarning`, `LocalResultsSection`, `RecentColorDot`, `ServiceType.brandColor`, `Color.toHexString`; неиспользуемые private-функции в Home/Player/Search/Library/Artist/Import отсутствуют.
+- **Проверка.** 86 suite / 506 тестов, 0 failures (1 skipped). Home-скролл: первый проход 7.07% janky (90th 16 мс), после прогрева 1.49% (90th 12 мс, 99th 14 мс), 0 missed vsync. APK 34 385 899 байт, SHA-256 `998dc72bf84b5f0d2f27dafd295f69c1389452d18d9480af54665e3c2c8eb54b`.
+- **Не тронуто.** `ExpressivePlayerSlider`/`PlayerProgressSection` и ViewModel/навигация не менялись.
+
 
 ---
 

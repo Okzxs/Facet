@@ -37,7 +37,6 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.facet.music.R
-import com.facet.music.core.ui.theme.cloudSheetEntrance
 import com.facet.music.core.player.QueueOrigin
 import com.facet.music.core.player.RepeatMode
 import com.facet.music.data.model.Track
@@ -85,7 +84,6 @@ fun PlayerQueueSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .cloudSheetEntrance()
                 .height(sheetHeight)
                 .padding(horizontal = 24.dp),
         ) {

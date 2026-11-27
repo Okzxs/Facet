@@ -1,7 +1,6 @@
 package com.facet.music.core.ui.theme
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -23,9 +22,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 object CloudSpacing {
     val Screen: Dp = 24.dp
@@ -60,28 +57,64 @@ fun Modifier.cloudPress(
 }
 
 @Composable
+private fun rememberScrollScale(
+    state: LazyListState,
+    key: Any,
+    minScale: Float,
+) = remember(state, key) {
+    derivedStateOf {
+        val layout = state.layoutInfo
+        val item = layout.visibleItemsInfo.firstOrNull { it.key == key }
+            ?: return@derivedStateOf 1f
+        val viewport = (layout.viewportEndOffset - layout.viewportStartOffset)
+            .toFloat()
+            .coerceAtLeast(1f)
+        val center = item.offset + item.size / 2f
+        val viewportCenter = layout.viewportStartOffset + viewport / 2f
+        val distance = abs(center - viewportCenter) / (viewport / 2f)
+        (1f - distance * (1f - minScale)).coerceIn(minScale, 1f)
+    }
+}
+
+@Composable
 fun Modifier.cloudScrollScale(
     state: LazyListState,
     key: Any,
     minScale: Float = 0.92f,
 ): Modifier {
-    val scale by remember(state, key) {
-        derivedStateOf {
-            val layout = state.layoutInfo
-            val item = layout.visibleItemsInfo.firstOrNull { it.key == key }
-                ?: return@derivedStateOf 1f
-            val viewport = (layout.viewportEndOffset - layout.viewportStartOffset)
-                .toFloat()
-                .coerceAtLeast(1f)
-            val center = item.offset + item.size / 2f
-            val viewportCenter = layout.viewportStartOffset + viewport / 2f
-            val distance = abs(center - viewportCenter) / (viewport / 2f)
-            (1f - distance * (1f - minScale)).coerceIn(minScale, 1f)
-        }
-    }
+    val scale = rememberScrollScale(state, key, minScale)
     return graphicsLayer {
-        scaleX = scale
-        scaleY = scale
+        val value = scale.value
+        scaleX = value
+        scaleY = value
+    }
+}
+
+@Composable
+fun Modifier.cloudCardMotion(
+    interactionSource: MutableInteractionSource,
+    state: LazyListState,
+    key: Any,
+    pressedScale: Float = 0.92f,
+    minScale: Float = 0.92f,
+): Modifier {
+    val pressed by interactionSource.collectIsPressedAsState()
+    val press by animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        animationSpec = Motion.press(),
+        label = "cloudCardPress",
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
+        animationSpec = Motion.press(),
+        label = "cloudCardAlpha",
+    )
+    val scroll = rememberScrollScale(state, key, minScale)
+    return graphicsLayer {
+        val value = scroll.value * press
+        scaleX = value
+        scaleY = value
+        this.alpha = alpha
     }
 }
 
@@ -118,21 +151,4 @@ fun CloudReveal(
         ),
         content = { content() },
     )
-}
-
-@Composable
-fun Modifier.cloudSheetEntrance(): Modifier {
-    val scale = remember { Animatable(0.9f) }
-    val alpha = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        coroutineScope {
-            launch { scale.animateTo(1f, Motion.bounce()) }
-            launch { alpha.animateTo(1f, tween(200)) }
-        }
-    }
-    return graphicsLayer {
-        scaleX = scale.value
-        scaleY = scale.value
-        this.alpha = alpha.value
-    }
 }
